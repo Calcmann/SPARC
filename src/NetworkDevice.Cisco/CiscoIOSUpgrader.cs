@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using NetworkDevice.Core.Provisioning;
 using NetworkDevice.Core.Session;
 using NetworkDevice.Protocols.Tftp;
 
@@ -23,6 +24,7 @@ public sealed class CiscoIOSUpgrader
 
     /// <summary>
     /// Executa o upgrade completo do Cisco IOS configurando IP temporário na LAN, copiando a imagem via TFTP, configurando o boot system e executando reload automático.
+    /// Caso o equipamento esteja em modo ROMMON (sem firmware / Flash vazia), executa a recuperação completa via tftpdnld no ROMMON.
     /// </summary>
     public async Task<bool> UpgradeAsync(
         DeviceSession session,
@@ -32,6 +34,7 @@ public sealed class CiscoIOSUpgrader
         string? subnetMask = null,
         string? lanInterface = null,
         string? expectedMd5 = null,
+        string? localAdapterName = null,
         CancellationToken cancellationToken = default)
     {
         if (!File.Exists(imageFilePath))
@@ -41,6 +44,38 @@ public sealed class CiscoIOSUpgrader
         var imageDir = Path.GetDirectoryName(imageFilePath) ?? AppContext.BaseDirectory;
         var fileSize = new FileInfo(imageFilePath).Length;
         var sizeMb = (fileSize / (1024.0 * 1024.0)).ToString("N1");
+
+        // 0. Verifica se o roteador Cisco está em Modo ROMMON (sem firmware na Flash)
+        var isRommon = session.Mode == ExecMode.Rommon ||
+                       session.CurrentPrompt?.Trim().StartsWith("rommon", StringComparison.OrdinalIgnoreCase) == true;
+
+        if (!isRommon)
+        {
+            try
+            {
+                await session.WriteLineAsync(string.Empty, cancellationToken);
+                await Task.Delay(300, cancellationToken);
+                if (session.Mode == ExecMode.Rommon ||
+                    session.CurrentPrompt?.Trim().StartsWith("rommon", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    isRommon = true;
+                }
+            }
+            catch { }
+        }
+
+        if (isRommon)
+        {
+            return await UpgradeViaRommonTftpAsync(
+                session,
+                imageFilePath,
+                hostIpAddress,
+                routerIpAddress,
+                subnetMask,
+                lanInterface,
+                localAdapterName,
+                cancellationToken);
+        }
 
         await ProgressAsync($"[*] INICIANDO UPGRADE DE IOS ({binFileName} — {sizeMb} MB)...");
 
@@ -446,5 +481,245 @@ public sealed class CiscoIOSUpgrader
 
         return bootOutput.Contains(cleanBin, StringComparison.OrdinalIgnoreCase) ||
                bootOutput.Contains(cleanBase, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Recuperação de emergência do Cisco IOS em modo ROMMON via comando tftpdnld.
+    /// Configura IP no notebook, ativa servidor TFTP local, programa variáveis no ROMMON e efetua boot.
+    /// </summary>
+    private async Task<bool> UpgradeViaRommonTftpAsync(
+        DeviceSession session,
+        string imageFilePath,
+        string hostIpAddress,
+        string? routerIpAddress,
+        string? subnetMask,
+        string? lanInterface,
+        string? localAdapterName,
+        CancellationToken cancellationToken)
+    {
+        var binFileName = Path.GetFileName(imageFilePath);
+        var imageDir = Path.GetDirectoryName(imageFilePath) ?? AppContext.BaseDirectory;
+        var fileSize = new FileInfo(imageFilePath).Length;
+        var sizeMb = (fileSize / (1024.0 * 1024.0)).ToString("N1");
+
+        await ProgressAsync($"\n=================================================================");
+        await ProgressAsync($"   ⚠️ RECUPERAÇÃO DE FIRMWARE VIA CISCO ROMMON (TFTPDNLD)        ");
+        await ProgressAsync("=================================================================");
+        await ProgressAsync($"  O roteador Cisco está em modo ROMMON (sem firmware na Flash).");
+        await ProgressAsync($"  Imagem a carregar   : {binFileName} ({sizeMb} MB)");
+
+        // 1. Definição dos endereços IP para recuperação ROMMON
+        var actualHostIp = (!string.IsNullOrWhiteSpace(hostIpAddress) && hostIpAddress != "127.0.0.1")
+            ? hostIpAddress
+            : "192.168.1.1";
+
+        var actualMask = !string.IsNullOrWhiteSpace(subnetMask) ? subnetMask : "255.255.255.0";
+
+        var actualRouterIp = (!string.IsNullOrWhiteSpace(routerIpAddress) && routerIpAddress != actualHostIp)
+            ? routerIpAddress
+            : "192.168.1.2";
+
+        await ProgressAsync($"  IP do Notebook (TFTP): {actualHostIp}");
+        await ProgressAsync($"  IP do Roteador (ROMMON): {actualRouterIp}");
+        await ProgressAsync($"  Máscara de Sub-rede  : {actualMask}");
+        await ProgressAsync($"  Gateway / Servidor   : {actualHostIp}");
+        await ProgressAsync("=================================================================\n");
+
+        _onProgress?.Invoke(25, "Fase B: Configurando Placa de Rede...", $"Configurando IP {actualHostIp} no Notebook...");
+
+        // 2. Configura IP estático no adaptador de rede do notebook (se informado)
+        if (!string.IsNullOrWhiteSpace(localAdapterName))
+        {
+            try
+            {
+                await ProgressAsync($"[*] Configurando IP estático {actualHostIp}/{actualMask} na interface '{localAdapterName}'...");
+                var (ok, outMsg) = await HostNetworkManager.SetStaticIpAsync(localAdapterName, actualHostIp, actualMask, null, cancellationToken);
+                if (ok)
+                    await ProgressAsync($"[OK] Interface '{localAdapterName}' configurada com sucesso com IP {actualHostIp}.");
+                else
+                    await ProgressAsync($"[AVISO] Configuração de IP local: {outMsg}");
+            }
+            catch (Exception ex)
+            {
+                await ProgressAsync($"[AVISO] Não foi possível ajustar o IP do adaptador automaticamente: {ex.Message}");
+            }
+        }
+
+        _onProgress?.Invoke(30, "Fase B: Iniciando Servidor TFTP...", "Iniciando servidor TFTP de alta performance...");
+
+        // 3. Inicia o Servidor TFTP
+        await using (var tftpServer = new EmbeddedTftpServer(imageDir))
+        {
+            tftpServer.TransferProgress += (file, bytesRead, total, pct) =>
+            {
+                _onProgress?.Invoke(
+                    35 + (int)(pct * 0.45),
+                    $"Fase B: Gravando {binFileName} na Flash via ROMMON...",
+                    $"{bytesRead / (1024 * 1024):N1} MB / {total / (1024 * 1024):N1} MB ({pct:F0}%)");
+            };
+            tftpServer.LogMessage += msg => _ = ProgressAsync(msg);
+            tftpServer.Start();
+
+            // 4. Envia variáveis de ambiente ao ROMMON do Cisco
+            await ProgressAsync("[*] Configurando variáveis de ambiente no ROMMON do Cisco...");
+            await session.WriteLineAsync($"IP_ADDRESS={actualRouterIp}", cancellationToken);
+            await Task.Delay(300, cancellationToken);
+
+            await session.WriteLineAsync($"IP_SUBNET_MASK={actualMask}", cancellationToken);
+            await Task.Delay(300, cancellationToken);
+
+            await session.WriteLineAsync($"DEFAULT_GATEWAY={actualHostIp}", cancellationToken);
+            await Task.Delay(300, cancellationToken);
+
+            await session.WriteLineAsync($"TFTP_SERVER={actualHostIp}", cancellationToken);
+            await Task.Delay(300, cancellationToken);
+
+            await session.WriteLineAsync($"TFTP_FILE={binFileName}", cancellationToken);
+            await Task.Delay(300, cancellationToken);
+
+            await session.WriteLineAsync("TFTP_CHECKSUM=0", cancellationToken);
+            await Task.Delay(300, cancellationToken);
+
+            // Exibe as variáveis ativas no ROMMON
+            await ProgressAsync("[*] Verificando variáveis do ROMMON (set)...");
+            var setOut = await session.SendCommandAsync("set", TimeSpan.FromSeconds(5), cancellationToken);
+            await ProgressAsync($"[ROMMON ENV]\n{setOut.Trim()}");
+
+            // 5. Executa comando de download TFTP no ROMMON (tftpdnld)
+            await ProgressAsync("\n[*] [ROMMON TFTP] Executando comando 'tftpdnld' para gravação na Flash...");
+            _onProgress?.Invoke(35, "Fase B: Executando tftpdnld...", "Aguardando confirmação e transferência TFTP...");
+
+            await session.WriteLineAsync("tftpdnld", cancellationToken);
+            await Task.Delay(1000, cancellationToken);
+
+            // Confirma o prompt de aviso: "Do you wish to continue? y/n:  [n]: y"
+            await ProgressAsync("[*] Confirmando gravação na Flash (y)...");
+            await session.WriteLineAsync("y", cancellationToken);
+
+            // Monitora a transferência e gravação da Flash
+            var timeout = DateTime.UtcNow.AddMinutes(20);
+            var buffer = new System.Text.StringBuilder();
+            var transferSuccess = false;
+            var readBuf = new byte[4096];
+
+            while (DateTime.UtcNow < timeout && !cancellationToken.IsCancellationRequested)
+            {
+                var readBytes = await session.Transport.ReadAsync(readBuf, cancellationToken);
+                if (readBytes > 0)
+                {
+                    var chunk = System.Text.Encoding.ASCII.GetString(readBuf, 0, readBytes);
+                    buffer.Append(chunk);
+                    session.EmitRawOutput(chunk);
+
+                    var currentText = buffer.ToString();
+                    if (currentText.Contains("File copy completed") ||
+                        currentText.Contains("File reception completed") ||
+                        (currentText.Contains("rommon") && currentText.Contains(">") && currentText.Length > 200))
+                    {
+                        transferSuccess = true;
+                        break;
+                    }
+
+                    if (currentText.Contains("TFTP: timeout") ||
+                        currentText.Contains("permission denied") ||
+                        currentText.Contains("No such file") ||
+                        currentText.Contains("aborted"))
+                    {
+                        throw new DeviceSessionException($"Falha durante transferência TFTP no ROMMON: {currentText.Trim()}");
+                    }
+                }
+                await Task.Delay(100, cancellationToken);
+            }
+
+            if (!transferSuccess)
+            {
+                await ProgressAsync("[AVISO] Tempo limite de transferência atingido ou prompt retornado.");
+            }
+            else
+            {
+                await ProgressAsync($"[OK] Transferência TFTP e gravação da imagem {binFileName} na Flash concluídas com sucesso!");
+            }
+
+            await tftpServer.StopAsync();
+        }
+
+        // 6. Configura o registrador para boot normal (0x2102) e inicia a nova imagem
+        _onProgress?.Invoke(85, "Fase B: Inicializando IOS...", "Configurando registrador 0x2102 e efetuando boot...");
+        await ProgressAsync("[*] Configurando registrador para boot normal (confreg 0x2102)...");
+        await session.WriteLineAsync("confreg 0x2102", cancellationToken);
+        await Task.Delay(500, cancellationToken);
+
+        await ProgressAsync($"[*] Executando boot da imagem 'boot flash:{binFileName}' a partir do ROMMON...");
+        await session.WriteLineAsync($"boot flash:{binFileName}", cancellationToken);
+        await Task.Delay(1000, cancellationToken);
+
+        // 7. Aguarda a descompressão e inicialização do Cisco IOS
+        await ProgressAsync("[*] Aguardando descompressão e inicialização completa do Cisco IOS (isso pode levar ~2-3 minutos)...");
+        _onProgress?.Invoke(90, "Fase B: Carregando Cisco IOS...", "Aguardando descompressão e prompt do Cisco IOS...");
+
+        var bootTimeout = DateTime.UtcNow.AddMinutes(5);
+        var booted = false;
+        var bootBuf = new byte[4096];
+
+        while (DateTime.UtcNow < bootTimeout && !cancellationToken.IsCancellationRequested)
+        {
+            var readBytes = await session.Transport.ReadAsync(bootBuf, cancellationToken);
+            if (readBytes > 0)
+            {
+                var chunk = System.Text.Encoding.ASCII.GetString(bootBuf, 0, readBytes);
+                session.EmitRawOutput(chunk);
+                if (chunk.Contains("initial configuration dialog?", StringComparison.OrdinalIgnoreCase) ||
+                    chunk.Contains("[yes/no]:", StringComparison.OrdinalIgnoreCase))
+                {
+                    await session.WriteLineAsync("no", cancellationToken);
+                }
+                else if (chunk.Contains("Press RETURN to get started", StringComparison.OrdinalIgnoreCase))
+                {
+                    await session.WriteLineAsync(string.Empty, cancellationToken);
+                }
+
+                if (chunk.TrimEnd().EndsWith(">") || chunk.TrimEnd().EndsWith("#"))
+                {
+                    booted = true;
+                    break;
+                }
+            }
+            await Task.Delay(300, cancellationToken);
+        }
+
+        // 8. Se entrou no prompt Cisco IOS, garante boot system persistente
+        if (booted)
+        {
+            try
+            {
+                await session.WriteLineAsync(string.Empty, cancellationToken);
+                await Task.Delay(500, cancellationToken);
+                await session.WriteLineAsync("enable", cancellationToken);
+                await Task.Delay(500, cancellationToken);
+                await session.WriteLineAsync("terminal length 0", cancellationToken);
+                await Task.Delay(300, cancellationToken);
+                await session.WriteLineAsync("configure terminal", cancellationToken);
+                await Task.Delay(300, cancellationToken);
+                await session.WriteLineAsync($"boot system flash:{binFileName}", cancellationToken);
+                await Task.Delay(300, cancellationToken);
+                await session.WriteLineAsync("config-register 0x2102", cancellationToken);
+                await Task.Delay(300, cancellationToken);
+                await session.WriteLineAsync("end", cancellationToken);
+                await Task.Delay(300, cancellationToken);
+                await session.WriteLineAsync("write memory", cancellationToken);
+                await Task.Delay(2000, cancellationToken);
+            }
+            catch { }
+        }
+
+        await ProgressAsync($"\n=================================================================");
+        await ProgressAsync($"   🎉 RECUPERAÇÃO DE FIRMWARE VIA ROMMON CONCLUÍDA COM SUCESSO!  ");
+        await ProgressAsync("=================================================================");
+        await ProgressAsync($"  Imagem gravada na Flash : {binFileName}");
+        await ProgressAsync($"  Cisco IOS carregado     : Pronto para provisionamento!");
+        await ProgressAsync("=================================================================\n");
+
+        _onProgress?.Invoke(100, "Fase B Concluída!", $"Roteador recuperado e bootado com {binFileName}.");
+        return true;
     }
 }

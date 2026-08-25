@@ -2207,11 +2207,12 @@ public partial class MainWindow : Window
             var routerIp = _loadedSaipCircuit?.LanIp ?? "200.182.245.17";
             var subnetMask = _loadedSaipCircuit?.LanSubnetMask ?? "255.255.255.240";
             var lanInterface = "GigabitEthernet 0/1";
+            var adapter = CbAdaptadorRede?.Text?.Trim();
 
             EscreverLinha($"[*] Equipamento identificado como Cisco IOS para upgrade de firmware ({fileName}).");
             AtualizarProgresso(22, "Fase B: Gravando IOS Cisco...", "Iniciando transferência TFTP...");
             var ciscoUpgrader = new CiscoIOSUpgrader(EscreverLinhaAsync, AtualizarProgresso);
-            success = await ciscoUpgrader.UpgradeAsync(session, _selectedIosBinPath, hostIp, routerIp, subnetMask, lanInterface, null, ct);
+            success = await ciscoUpgrader.UpgradeAsync(session, _selectedIosBinPath, hostIp, routerIp, subnetMask, lanInterface, null, adapter, ct);
         }
 
         if (success)
