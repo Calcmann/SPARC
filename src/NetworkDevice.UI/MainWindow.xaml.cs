@@ -989,8 +989,8 @@ public partial class MainWindow : Window
             LogAuto("================================================================="); LogAuto(" MODO AUTOMÁTICO CONCLUÍDO "); LogAuto("=================================================================");
             BtnAutoCancelar.Visibility = Visibility.Collapsed; BtnAutoVoltar.Visibility = Visibility.Visible;
 
-            // Gera e exibe o Relatório Final com diagnóstico de causas
-            ExibirRelatorioFinalAutomatico(
+            // Gera o Relatório Técnico PDF Completo com testes ICMP e Largura de Banda
+            await ExibirRelatorioFinalAutomaticoAsync(
                 porta, baud,
                 step1Ok: true,
                 step2Ok: true,
@@ -1013,7 +1013,7 @@ public partial class MainWindow : Window
             Progresso(0, $"Falha: {ex.Message}");
             BtnAutoVoltar.Visibility = Visibility.Visible;
 
-            ExibirRelatorioFinalAutomatico(
+            await ExibirRelatorioFinalAutomaticoAsync(
                 porta, baud,
                 step1Ok: false,
                 step2Ok: false,
@@ -1027,7 +1027,10 @@ public partial class MainWindow : Window
         finally { _cts?.Dispose(); _cts = null; }
     }
 
-    private void ExibirRelatorioFinalAutomatico(
+    private string? _lastGeneratedPdfPath;
+    private ActivationReportData? _lastReportData;
+
+    private async Task ExibirRelatorioFinalAutomaticoAsync(
         string porta,
         int baud,
         bool step1Ok,
@@ -1039,14 +1042,21 @@ public partial class MainWindow : Window
         BandwidthTestResult? bandResult,
         string? falhaGeral)
     {
-        var sb = new System.Text.StringBuilder();
-        var dataHora = DateTime.Now.ToString("dd/MM/yyyy HH:mm:ss");
+        var dataHora = DateTime.Now;
         var itemModelo = CbModeloRoteadorInicial?.SelectedItem as ComboBoxItem;
         var modelo = itemModelo?.Content?.ToString()?.Replace("🖧", "")?.Trim() ?? "Roteador";
         var cliente = SaipParser.CleanRazaoSocial(_loadedSaipCircuit?.ClienteRazaoSocial) ?? "Não informado / Manual";
-        var designacao = _loadedSaipCircuit?.DesignacaoIp ?? "Não informada";
-        var wanIp = _loadedSaipCircuit != null ? $"{_loadedSaipCircuit.WanIp}/{_loadedSaipCircuit.WanCidr} (GW: {_loadedSaipCircuit.WanGateway})" : "—";
-        var lanIp = _loadedSaipCircuit != null ? $"{_loadedSaipCircuit.LanIp}/{_loadedSaipCircuit.LanCidr} (Host: {_loadedSaipCircuit.HostLanIp})" : "—";
+        var designacao = _loadedSaipCircuit?.DesignacaoIp ?? _loadedSaipCircuit?.NumeroOts ?? "Não informada";
+        var wanIp = _loadedSaipCircuit?.WanIp;
+        var wanCidr = _loadedSaipCircuit?.WanCidr ?? 30;
+        var wanGateway = _loadedSaipCircuit?.WanGateway;
+        var wanMask = _loadedSaipCircuit?.WanSubnetMask;
+        var lanIp = _loadedSaipCircuit?.LanIp;
+        var lanCidr = _loadedSaipCircuit?.LanCidr ?? 28;
+        var lanBlock = _loadedSaipCircuit?.LanBlockNetwork;
+        var lanMask = _loadedSaipCircuit?.LanSubnetMask;
+        var hostLanIp = _loadedSaipCircuit?.HostLanIp;
+        var adapter = CbAdaptadorRede.Text?.Trim();
 
         var is5aOk = icmpResult?.IsLanOk == true;
         var is5bOk = icmpResult?.IsWanOk == true;
@@ -1054,104 +1064,228 @@ public partial class MainWindow : Window
         var isTelnetOk = telnetResult?.IsSuccess == true;
         var isBandOk = bandResult?.IsSuccess == true;
 
-        sb.AppendLine("================================================================================");
-        sb.AppendLine("           📊 RELATÓRIO FINAL DE PROVISIONAMENTO E ATIVAÇÃO (SPARC)            ");
-        sb.AppendLine("================================================================================");
-        sb.AppendLine($"  Data e Hora   : {dataHora}");
-        sb.AppendLine($"  Equipamento   : {modelo}");
-        sb.AppendLine($"  Comunicação   : {porta} @ {baud} baud (8-N-1)");
-        sb.AppendLine($"  Cliente       : {cliente}");
-        sb.AppendLine($"  Designação IP : {designacao}");
-        sb.AppendLine($"  Rede WAN      : {wanIp}");
-        sb.AppendLine($"  Rede LAN/Host : {lanIp}");
-        sb.AppendLine("--------------------------------------------------------------------------------");
-        sb.AppendLine("                      RESUMO DAS ETAPAS EXECUTADAS                              ");
-        sb.AppendLine("--------------------------------------------------------------------------------");
-
-        sb.AppendLine($"  [1] Zerar Configuração      : {(step1Ok ? "✅ CONCLUÍDO (Reset de fábrica aplicado)" : "❌ FALHA")}");
-        sb.AppendLine($"  [2] Firmware & SO           : {(step2Ok ? "✅ CONCLUÍDO (Imagem validada/carregada)" : "❌ FALHA")}");
-        sb.AppendLine($"  [3] Provisionamento SAIP    : {(step3Ok ? "✅ CONCLUÍDO (Configuração gravada)" : "❌ FALHA")}");
-        sb.AppendLine($"  [4] Configuração IP Teste   : {(step4Ok ? "✅ CONCLUÍDO (Placa de rede configurada)" : "⏭ PULADO / SEM PLACA")}");
-        
-        // ICMP
-        var icmpBadge = icmpResult != null ? icmpResult.StatusBadge : "⚪";
-        sb.AppendLine($"  [5] Testes de Conectividade : {icmpBadge} (5a LAN: {(is5aOk ? "OK" : "FALHA")} | 5b WAN: {(is5bOk ? "OK" : "FALHA")} | 5c WEB: {(is5cOk ? "OK" : "FALHA")})");
-        sb.AppendLine($"      • 5a. ICMP LAN (Roteador) : {(is5aOk ? $"✅ OK (RTT Médio {icmpResult?.LanResult?.AvgRttMs:F1}ms)" : "❌ SEM RESPOSTA")}");
-        sb.AppendLine($"      • 5b. ICMP WAN (Gateway)  : {(is5bOk ? $"✅ OK (RTT Médio {icmpResult?.WanResult?.AvgRttMs:F1}ms)" : "❌ SEM RESPOSTA")}");
-        sb.AppendLine($"      • 5c. ICMP WEB (Internet) : {(is5cOk ? $"✅ OK (RTT Médio {icmpResult?.WebResult?.AvgRttMs:F1}ms)" : "❌ SEM RESPOSTA")}");
-
-        sb.AppendLine($"  [6] Acesso Remoto (Telnet)  : {(isTelnetOk ? "✅ CONCLUÍDO (Porta 23 aberta no IP LAN)" : "❌ FALHA")}");
-        sb.AppendLine($"  [7] Teste de Banda (iPerf)  : {(isBandOk ? "✅ CONCLUÍDO" : "⚠ ALERTA / INDISPONÍVEL")}");
-
         // DIAGNÓSTICO DE CAUSAS EM CASO DE FALHAS
         var falhas = new List<string>();
 
         if (!string.IsNullOrEmpty(falhaGeral))
         {
-            falhas.Add($"❌ FALHA CRÍTICA NO PROCESSO:\n   • Erro: {falhaGeral}\n   • Possível Causa: Perda de conexão serial, erro de sintaxe de comando ou equipamento desligado.");
+            falhas.Add($"Falha Crítica no Processo: {falhaGeral}");
         }
 
         if (!is5aOk && step3Ok)
         {
-            falhas.Add("❌ FALHA NO TESTE 5a (ICMP LAN / Roteador):\n" +
-                       "   • Causa 1: Cabo de rede desconectado entre o PC e a porta LAN do roteador (Giga 0/1 ou Giga 1).\n" +
-                       "   • Causa 2: Placa de rede do PC não obteve o IP de teste (Etapa 4 falhou ou precisa de elevação de Administrador).\n" +
-                       "   • Causa 3: A porta LAN do roteador está em estado 'shutdown' ou com máscara de rede divergente.");
+            falhas.Add("Falha no Teste 5a (ICMP LAN / Roteador): Verifique se o cabo Ethernet do PC está conectado na porta LAN do roteador (Giga 0/1 ou Giga 1) e com IP configurado.");
         }
 
         if (!is5bOk && is5aOk)
         {
-            falhas.Add("⚠️ FALHA NO TESTE 5b (ICMP WAN / Gateway Claro):\n" +
-                       "   • Causa 1: Circuito físico WAN desconectado da porta WAN do roteador (cabo do modem óptico/rádio solto).\n" +
-                       "   • Causa 2: Circuito ainda não ativado ou porta bloqueada na central/NOC da operadora Claro.\n" +
-                       "   • Causa 3: VLAN de transporte ou encapsulamento incorreto na ficha SAIP.");
+            falhas.Add("Falha no Teste 5b (ICMP WAN / Gateway Claro): Cabo da WAN desconectado da porta WAN ou circuito ainda não ativado na central da operadora Claro.");
         }
 
         if (!is5cOk && is5bOk)
         {
-            falhas.Add("⚠️ FALHA NO TESTE 5c (ICMP WEB / Internet Pública 1.1.1.1 / 8.8.8.8):\n" +
-                       "   • Causa 1: Rota default (0.0.0.0/0) ou sessão BGP ainda não estabelecida na operadora.\n" +
-                       "   • Causa 2: Bloqueio de pacotes ICMP externos nos firewalls da rede da operadora.\n" +
-                       "   • Causa 3: DNS externo bloqueado para o range de IPs designado ao cliente.");
+            falhas.Add("Falha no Teste 5c (ICMP WEB / Internet Pública): Rota default (0.0.0.0/0) ou sessão BGP pendente de liberação pela operadora.");
         }
 
         if (!isTelnetOk && step3Ok)
         {
-            falhas.Add("❌ FALHA NO TESTE 6 (Acesso Remoto Telnet / Porta 23):\n" +
-                       "   • Causa 1: Firewall do Windows ou antivírus bloqueando conexões de saída na porta TCP 23.\n" +
-                       "   • Causa 2: Configuração de 'line vty 0 4' sem comando 'login' ou 'transport input telnet/all'.");
+            falhas.Add("Falha no Teste 6 (Acesso Remoto Telnet / Porta 23): Firewall do Windows bloqueando conexões de saída na porta 23 ou linha VTY sem senha/login.");
         }
 
-        if (falhas.Count > 0)
+        TripleIcmpData? icmpData = icmpResult != null
+            ? new TripleIcmpData(icmpResult.LanResult, icmpResult.WanResult, icmpResult.WebResult)
+            : null;
+
+        var reportData = new ActivationReportData(
+            DataHora: dataHora,
+            ModeloEquipamento: modelo,
+            PortaSerial: porta,
+            BaudRate: baud,
+            ClienteRazaoSocial: cliente,
+            DesignacaoIp: designacao,
+            NumeroOts: _loadedSaipCircuit?.NumeroOts,
+            PeRouter: _loadedSaipCircuit?.PeRouter,
+            WanIp: wanIp,
+            WanCidr: wanCidr,
+            WanGateway: wanGateway,
+            WanSubnetMask: wanMask,
+            WanInterface: "GigabitEthernet 0/0",
+            LanIp: lanIp,
+            LanCidr: lanCidr,
+            LanBlockNetwork: lanBlock,
+            LanSubnetMask: lanMask,
+            HostLanIp: hostLanIp,
+            LanInterface: "GigabitEthernet 0/1",
+            Step1ZerarOk: step1Ok,
+            Step2FirmwareOk: step2Ok,
+            FirmwareNome: Path.GetFileName(_selectedIosBinPath),
+            Step3SaipOk: step3Ok,
+            Step4IpLocalOk: step4Ok,
+            AdaptadorRedeLocal: adapter,
+            IcmpResult: icmpData,
+            TelnetResult: telnetResult,
+            BandResult: bandResult,
+            DiagnosticAlerts: falhas,
+            FalhaGeral: falhaGeral
+        );
+
+        _lastReportData = reportData;
+
+        // Gera o arquivo PDF de homologação
+        string pdfPath = "";
+        try
         {
-            sb.AppendLine("================================================================================");
-            sb.AppendLine("                 🔍 DIAGNÓSTICO DE FALHAS E POSSÍVEIS CAUSAS                   ");
-            sb.AppendLine("================================================================================");
-            foreach (var f in falhas)
+            pdfPath = await ActivationPdfReportService.GenerateReportPdfAsync(reportData);
+            _lastGeneratedPdfPath = pdfPath;
+        }
+        catch (Exception ex)
+        {
+            EscreverLinha($"[AVISO] Erro na geração automática do PDF: {ex.Message}");
+        }
+
+        // Escreve resumo formatado no terminal
+        EscreverLinha("\n================================================================================");
+        EscreverLinha("           📄 RELATÓRIO TÉCNICO DE HOMOLOGAÇÃO E ATIVAÇÃO (PDF GERADO)          ");
+        EscreverLinha("================================================================================");
+        EscreverLinha($"  Cliente       : {cliente}");
+        EscreverLinha($"  Circuito      : {designacao}");
+        EscreverLinha($"  WAN / LAN     : {wanIp}/{wanCidr} | {lanIp}/{lanCidr}");
+        EscreverLinha($"  Status Geral  : {(falhas.Count == 0 ? "🟢 100% HOMOLOGADO E APROVADO" : "🟡 HOMOLOGADO COM RESSALVAS")}");
+        if (!string.IsNullOrEmpty(pdfPath))
+        {
+            EscreverLinha($"  Arquivo PDF   : {pdfPath}");
+        }
+        EscreverLinha("================================================================================\n");
+
+        Dispatcher.Invoke(() =>
+        {
+            BtnAutoAbrirPdf.Visibility = Visibility.Visible;
+            BtnAutoExportarPdf.Visibility = Visibility.Visible;
+
+            if (!string.IsNullOrEmpty(pdfPath) && File.Exists(pdfPath))
             {
-                sb.AppendLine(f);
-                sb.AppendLine();
+                var abrirAgora = MessageBox.Show(
+                    $"Relatório Técnico de Homologação gerado em PDF com sucesso!\n\n" +
+                    $"📄 Arquivo: {Path.GetFileName(pdfPath)}\n" +
+                    $"Status: {(falhas.Count == 0 ? "🟢 100% Aprovado" : "🟡 Homologado com Ressalvas")}\n\n" +
+                    $"Deseja abrir o arquivo PDF agora?",
+                    "SPARC — Relatório Técnico em PDF",
+                    MessageBoxButton.YesNo,
+                    falhas.Count == 0 ? MessageBoxImage.Information : MessageBoxImage.Warning);
+
+                if (abrirAgora == MessageBoxResult.Yes)
+                {
+                    try
+                    {
+                        Process.Start(new ProcessStartInfo { FileName = pdfPath, UseShellExecute = true });
+                    }
+                    catch { }
+                }
+            }
+        });
+    }
+
+    private void BtnAutoAbrirPdf_Click(object sender, RoutedEventArgs e)
+    {
+        if (!string.IsNullOrEmpty(_lastGeneratedPdfPath) && File.Exists(_lastGeneratedPdfPath))
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo { FileName = _lastGeneratedPdfPath, UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Não foi possível abrir o PDF: {ex.Message}", "Erro ao Abrir PDF", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
         else
         {
-            sb.AppendLine("================================================================================");
-            sb.AppendLine("           🎉 SUCESSO TOTAL: EQUIPAMENTO 100% HOMOLOGADO E PRONTO!              ");
-            sb.AppendLine("================================================================================");
+            MessageBox.Show("Nenhum relatório PDF disponível no momento.", "Relatório PDF", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+    }
+
+    private void BtnAutoExportarPdf_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(_lastGeneratedPdfPath) || !File.Exists(_lastGeneratedPdfPath))
+        {
+            MessageBox.Show("Nenhum relatório PDF foi gerado ainda.", "Exportar PDF", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
         }
 
-        var relatorioTexto = sb.ToString();
-
-        // Escreve no terminal de logs da UI
-        EscreverLinha("\n" + relatorioTexto);
-
-        // Exibe modal com o relatório para o operador
-        Dispatcher.Invoke(() =>
+        var dlg = new Microsoft.Win32.SaveFileDialog
         {
-            var tituloModal = falhas.Count > 0 ? "Relatório de Conclusão — Alertas Identificados" : "Relatório de Conclusão — 100% Sucesso";
-            var icone = falhas.Count > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information;
-            MessageBox.Show(relatorioTexto, tituloModal, MessageBoxButton.OK, icone);
-        });
+            Title = "Salvar Relatório de Homologação SPARC como...",
+            Filter = "Documento PDF (*.pdf)|*.pdf|Arquivo HTML (*.html)|*.html",
+            FileName = Path.GetFileName(_lastGeneratedPdfPath)
+        };
+
+        if (dlg.ShowDialog() == true)
+        {
+            try
+            {
+                File.Copy(_lastGeneratedPdfPath, dlg.FileName, true);
+                MessageBox.Show($"Relatório salvo com sucesso em:\n{dlg.FileName}", "Relatório Exportado", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Falha ao salvar relatório: {ex.Message}", "Erro ao Salvar", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+    }
+
+    private async void BtnExportarRelatorioPdfTop_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var porta = CbPorta?.Text?.Trim() ?? "COM1";
+            var baud = int.TryParse(CbBaud?.Text, out var b) ? b : 9600;
+            var itemModelo = CbModeloRoteadorInicial?.SelectedItem as ComboBoxItem;
+            var modelo = itemModelo?.Content?.ToString()?.Replace("🖧", "")?.Trim() ?? "Roteador";
+            var cliente = SaipParser.CleanRazaoSocial(_loadedSaipCircuit?.ClienteRazaoSocial) ?? "Não informado / Manual";
+            var designacao = _loadedSaipCircuit?.DesignacaoIp ?? _loadedSaipCircuit?.NumeroOts ?? "Circuito";
+
+            var reportData = _lastReportData ?? new ActivationReportData(
+                DataHora: DateTime.Now,
+                ModeloEquipamento: modelo,
+                PortaSerial: porta,
+                BaudRate: baud,
+                ClienteRazaoSocial: cliente,
+                DesignacaoIp: designacao,
+                NumeroOts: _loadedSaipCircuit?.NumeroOts,
+                PeRouter: _loadedSaipCircuit?.PeRouter,
+                WanIp: _loadedSaipCircuit?.WanIp,
+                WanCidr: _loadedSaipCircuit?.WanCidr ?? 30,
+                WanGateway: _loadedSaipCircuit?.WanGateway,
+                WanSubnetMask: _loadedSaipCircuit?.WanSubnetMask,
+                WanInterface: "GigabitEthernet 0/0",
+                LanIp: _loadedSaipCircuit?.LanIp,
+                LanCidr: _loadedSaipCircuit?.LanCidr ?? 28,
+                LanBlockNetwork: _loadedSaipCircuit?.LanBlockNetwork,
+                LanSubnetMask: _loadedSaipCircuit?.LanSubnetMask,
+                HostLanIp: _loadedSaipCircuit?.HostLanIp,
+                LanInterface: "GigabitEthernet 0/1",
+                Step1ZerarOk: true,
+                Step2FirmwareOk: true,
+                FirmwareNome: Path.GetFileName(_selectedIosBinPath),
+                Step3SaipOk: true,
+                Step4IpLocalOk: true,
+                AdaptadorRedeLocal: CbAdaptadorRede?.Text?.Trim(),
+                IcmpResult: null,
+                TelnetResult: null,
+                BandResult: null,
+                DiagnosticAlerts: null,
+                FalhaGeral: null
+            );
+
+            var pdf = await ActivationPdfReportService.GenerateReportPdfAsync(reportData);
+            _lastGeneratedPdfPath = pdf;
+
+            Process.Start(new ProcessStartInfo { FileName = pdf, UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Erro ao gerar relatório PDF: {ex.Message}", "Relatório PDF", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private void BtnPularTelaInicial_Click(object sender, RoutedEventArgs e)

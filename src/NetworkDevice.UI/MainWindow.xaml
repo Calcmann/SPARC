@@ -372,7 +372,9 @@
                     </Border>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,14,0,0">
                         <Button x:Name="BtnAutoCancelar" Content="✖ Cancelar" Padding="14,6" Background="#EF4444" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnCancelar_Click" />
-                        <Button x:Name="BtnAutoVoltar" Content="← Voltar" Padding="14,6" Margin="8,0,0,0" Background="#64748B" Foreground="White" BorderThickness="0" Click="BtnAutoVoltar_Click" Visibility="Collapsed" />
+                        <Button x:Name="BtnAutoAbrirPdf" Content="📄 Visualizar Relatório PDF" Padding="14,6" Margin="8,0,0,0" Background="#0284C7" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnAutoAbrirPdf_Click" Visibility="Collapsed" />
+                        <Button x:Name="BtnAutoExportarPdf" Content="💾 Salvar PDF como..." Padding="12,6" Margin="8,0,0,0" Background="#475569" Foreground="White" BorderThickness="0" Click="BtnAutoExportarPdf_Click" Visibility="Collapsed" />
+                        <Button x:Name="BtnAutoVoltar" Content="← Voltar à Esteira" Padding="14,6" Margin="8,0,0,0" Background="#64748B" Foreground="White" BorderThickness="0" Click="BtnAutoVoltar_Click" Visibility="Collapsed" />
                     </StackPanel>
                     <Border Background="#0A0E14" CornerRadius="6" Margin="0,14,0,0" MaxHeight="200">
                         <ScrollViewer x:Name="ScrollAutoLog" VerticalScrollBarVisibility="Auto">
@@ -398,6 +400,7 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
@@ -432,7 +435,12 @@
                     </StackPanel>
 
                     <!-- Botões de Ação Global na Esteira -->
-                    <Button Grid.Column="6" x:Name="BtnExecutarSequencia" Cursor="Hand" Padding="14,6" Margin="0,0,8,0"
+                    <Button Grid.Column="6" x:Name="BtnExportarRelatorioPdfTop" Content="📄 Relatório PDF" Padding="10,6" Margin="0,0,8,0"
+                            Background="#0284C7" Foreground="White" BorderThickness="0" FontWeight="Bold" FontSize="11"
+                            ToolTip="Gera e abre o Relatório Técnico de Homologação em PDF"
+                            Click="BtnExportarRelatorioPdfTop_Click" />
+
+                    <Button Grid.Column="7" x:Name="BtnExecutarSequencia" Cursor="Hand" Padding="14,6" Margin="0,0,8,0"
                             Background="{StaticResource ClaroGradientBrush}" Foreground="White" BorderThickness="0" FontWeight="Bold" FontSize="12"
                             ToolTip="Executa todas as 7 fases da esteira em ordem automática (1 → 7)"
                             Click="BtnExecutarSequencia_Click">
@@ -441,7 +449,7 @@
                         </StackPanel>
                     </Button>
 
-                    <Button Grid.Column="7" x:Name="BtnCancelar" Content="✖ Cancelar" Padding="10,6"
+                    <Button Grid.Column="8" x:Name="BtnCancelar" Content="✖ Cancelar" Padding="10,6"
                             IsEnabled="False" Click="BtnCancelar_Click" Background="#EF4444" Foreground="White" BorderThickness="0" FontWeight="SemiBold" />
                 </Grid>
             </Border>
