@@ -114,4 +114,22 @@ public class DeviceSessionTests
 
         await Assert.ThrowsAsync<DeviceSessionException>(() => session.SendCommandAsync("show version"));
     }
+
+    [Theory]
+    [InlineData("rommon 1 >")]
+    [InlineData("rommon 2 >")]
+    [InlineData("rommon >")]
+    public async Task ConnectAsync_DetectsRommonMode(string prompt)
+    {
+        var transport = new ScriptedTransport(_ => $"{prompt}\r\n", initialOutput: $"{prompt}\r\n");
+        await using var session = new DeviceSession(transport, new SessionOptions
+        {
+            PromptMatcher = RegexPromptMatcher.Universal()
+        });
+
+        await session.ConnectAsync();
+
+        Assert.Equal(ExecMode.Rommon, session.Mode);
+        Assert.Equal(prompt, session.CurrentPrompt);
+    }
 }

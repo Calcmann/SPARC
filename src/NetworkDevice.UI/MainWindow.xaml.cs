@@ -525,8 +525,11 @@ public partial class MainWindow : Window
             AtualizarBotaoProsseguir();
             if (ok)
             {
-                TxtSerialTestStatus.Text = "✅ Serial OK";
-                TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#16A34A"));
+                if (TxtSerialTestStatus.Text?.Contains("ROMMON") != true)
+                {
+                    TxtSerialTestStatus.Text = "✅ Serial OK";
+                    TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#16A34A"));
+                }
             }
             else
             {
@@ -585,8 +588,55 @@ public partial class MainWindow : Window
             using var reg = ct.Register(() => { try { session.Transport.CloseAsync().Wait(500); } catch { } try { transport.DisposeAsync().AsTask().Wait(500); } catch { } });
             await session.ConnectAsync(ct);
             var prompt = session.CurrentPrompt ?? "(sem prompt)";
-            EscreverLinha($"[OK] Serial OK — prompt detectado: {prompt} (Modo: {session.Mode})");
-            EscreverLinha($"[OK] Cabo serial, porta {porta} e baud {baud} validados com sucesso!");
+
+            var isRommon = session.Mode == NetworkDevice.Core.Session.ExecMode.Rommon ||
+                           prompt.Trim().StartsWith("rommon", StringComparison.OrdinalIgnoreCase);
+
+            if (isRommon)
+            {
+                EscreverLinha("\n=================================================================");
+                EscreverLinha("   ⚠️ ROTEADOR CISCO EM MODO ROMMON (SEM FIRMWARE / FLASH VAZIA) ");
+                EscreverLinha("=================================================================");
+                EscreverLinha($"  Prompt detectado   : {prompt}");
+                EscreverLinha("  Diagnóstico        : O roteador Cisco está no bootloader ROMMON.");
+                EscreverLinha("  Possíveis Causas   : • Memória Flash sem arquivo de boot (.bin) válido.");
+                EscreverLinha("                       • Imagem IOS existente na Flash ausente ou corrompida.");
+                EscreverLinha("                       • Registrador de boot ajustado para modo de manutenção.");
+                EscreverLinha("  Status Conexão     : ✅ Cabo Serial e Porta COM comunicando perfeitamente!");
+                EscreverLinha("  Ação Recomendada   : O equipamento está pronto para receber novo firmware.");
+                EscreverLinha("                       Avance para a Fase B (TFTP) ou Modo Automático.");
+                EscreverLinha("=================================================================\n");
+
+                Dispatcher.Invoke(() =>
+                {
+                    TxtSerialTestStatus.Text = "⚠️ Cisco em ROMMON (Sem Firmware)";
+                    TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D97706"));
+
+                    if (CardChkSerial != null && TxtChkSerialIcon != null && TxtChkSerialSub != null)
+                    {
+                        TxtChkSerialIcon.Text = "🟡 2. Serial (ROMMON)";
+                        TxtChkSerialSub.Text = "Cisco sem firmware (ROMMON)";
+                    }
+
+                    // Se o modelo ainda não foi selecionado, auto-seleciona Cisco
+                    if (CbModeloRoteadorInicial != null && CbModeloRoteadorInicial.SelectedIndex <= 0)
+                    {
+                        CbModeloRoteadorInicial.SelectedIndex = 2; // Cisco Série 1900
+                    }
+                });
+            }
+            else
+            {
+                EscreverLinha($"[OK] Serial OK — prompt detectado: {prompt} (Modo: {session.Mode})");
+                EscreverLinha($"[OK] Cabo serial, porta {porta} e baud {baud} validados com sucesso!");
+
+                Dispatcher.Invoke(() =>
+                {
+                    TxtSerialTestStatus.Text = "✅ Serial OK";
+                    TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#16A34A"));
+                });
+            }
+
             return true;
         }
         catch (OperationCanceledException) { throw; }

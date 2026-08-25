@@ -5,7 +5,7 @@ namespace NetworkDevice.Core.Session;
 public sealed class RegexPromptMatcher : IPromptMatcher
 {
     private static readonly Regex UniversalPromptRegex = new(
-        @"^(?:(?<cisco>[A-Za-z0-9_.+()/-]+?(?:\([A-Za-z0-9_.+()/-]+\))?[#>])|\[[~*]?(?<hpe_sys>[A-Za-z0-9_.+()/-]+?)\]|<(?<hpe_user>[A-Za-z0-9_.+()/-]+?)>)$",
+        @"^(?:(?<rommon>rommon(?:\s+\d+)?\s*>)|(?<cisco>[A-Za-z0-9_.+()/-]+?(?:\([A-Za-z0-9_.+()/-]+\))?[#>])|\[[~*]?(?<hpe_sys>[A-Za-z0-9_.+()/-]+?)\]|<(?<hpe_user>[A-Za-z0-9_.+()/-]+?)>)$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private readonly Regex _regex;
@@ -43,7 +43,11 @@ public sealed class RegexPromptMatcher : IPromptMatcher
             return null;
 
         ExecMode mode = ExecMode.UserExec;
-        if (trimmed.EndsWith("#"))
+        if (trimmed.StartsWith("rommon", StringComparison.OrdinalIgnoreCase))
+        {
+            mode = ExecMode.Rommon;
+        }
+        else if (trimmed.EndsWith("#"))
         {
             mode = trimmed.Contains("(config-") ? ExecMode.ConfigSubmode
                  : trimmed.Contains("(config") ? ExecMode.GlobalConfig

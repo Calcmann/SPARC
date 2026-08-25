@@ -85,6 +85,17 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
 
     public async Task<DeviceInfo> IdentifyAsync(DeviceSession session, CancellationToken cancellationToken = default)
     {
+        if (session.Mode == ExecMode.Rommon || session.CurrentPrompt?.Trim().StartsWith("rommon", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return new DeviceInfo(
+                "Cisco",
+                "Cisco Router (Modo ROMMON - Sem Firmware)",
+                "ROMMON Bootloader",
+                "ROMMON (Flash vazia / sem IOS)",
+                "N/A",
+                "rommon");
+        }
+
         await EnterPrivilegedExecAsync(session, cancellationToken);
         try { await DisablePaginationAsync(session, cancellationToken); } catch { }
 

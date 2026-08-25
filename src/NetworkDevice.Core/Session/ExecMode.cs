@@ -6,5 +6,7 @@ public enum ExecMode
     UserExec,
     PrivilegedExec,
     GlobalConfig,
-    ConfigSubmode
+    ConfigSubmode,
+    Rommon
 }
+
