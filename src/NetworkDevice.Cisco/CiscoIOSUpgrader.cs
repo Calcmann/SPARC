@@ -579,22 +579,25 @@ public sealed class CiscoIOSUpgrader
 
             // 4. Envia variáveis de ambiente ao ROMMON do Cisco
             await ProgressAsync("[*] Configurando variáveis de ambiente no ROMMON do Cisco...");
-            await session.WriteLineAsync($"IP_ADDRESS={actualRouterIp}", cancellationToken);
+            await session.SendRawAsync($"IP_ADDRESS={actualRouterIp}\r", cancellationToken);
             await Task.Delay(300, cancellationToken);
 
-            await session.WriteLineAsync($"IP_SUBNET_MASK={actualMask}", cancellationToken);
+            await session.SendRawAsync($"IP_SUBNET_MASK={actualMask}\r", cancellationToken);
             await Task.Delay(300, cancellationToken);
 
-            await session.WriteLineAsync($"DEFAULT_GATEWAY={actualHostIp}", cancellationToken);
+            await session.SendRawAsync($"DEFAULT_GATEWAY={actualHostIp}\r", cancellationToken);
             await Task.Delay(300, cancellationToken);
 
-            await session.WriteLineAsync($"TFTP_SERVER={actualHostIp}", cancellationToken);
+            await session.SendRawAsync($"TFTP_SERVER={actualHostIp}\r", cancellationToken);
             await Task.Delay(300, cancellationToken);
 
-            await session.WriteLineAsync($"TFTP_FILE={binFileName}", cancellationToken);
+            await session.SendRawAsync($"TFTP_FILE={binFileName}\r", cancellationToken);
             await Task.Delay(300, cancellationToken);
 
-            await session.WriteLineAsync("TFTP_CHECKSUM=0", cancellationToken);
+            await session.SendRawAsync("TFTP_CHECKSUM=0\r", cancellationToken);
+            await Task.Delay(300, cancellationToken);
+
+            await session.SendRawAsync("TFTP_VERBOSE=1\r", cancellationToken);
             await Task.Delay(300, cancellationToken);
 
             // Exibe as variáveis ativas no ROMMON
