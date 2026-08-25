@@ -35,6 +35,7 @@ public sealed class CiscoIOSUpgrader
         string? lanInterface = null,
         string? expectedMd5 = null,
         string? localAdapterName = null,
+        Func<string, CancellationToken, Task>? requestOperatorAction = null,
         CancellationToken cancellationToken = default)
     {
         if (!File.Exists(imageFilePath))
@@ -74,6 +75,7 @@ public sealed class CiscoIOSUpgrader
                 subnetMask,
                 lanInterface,
                 localAdapterName,
+                requestOperatorAction,
                 cancellationToken);
         }
 
@@ -495,6 +497,7 @@ public sealed class CiscoIOSUpgrader
         string? subnetMask = "255.255.255.0",
         string? lanInterface = null,
         string? localAdapterName = null,
+        Func<string, CancellationToken, Task>? requestOperatorAction = null,
         CancellationToken cancellationToken = default)
     {
         var binFileName = Path.GetFileName(imageFilePath);
@@ -558,6 +561,18 @@ public sealed class CiscoIOSUpgrader
         }
 
         await ProgressAsync($"[*] [DICA FÍSICA] No modo ROMMON, conecte o cabo de rede Ethernet na porta GigabitEthernet 0/0 (GE0 / Porta 0) do roteador Cisco.");
+
+        if (requestOperatorAction is not null)
+        {
+            await requestOperatorAction(
+                "⚠️ ATENÇÃO OBRIGATÓRIA - CABO DE REDE NO MODO ROMMON\n\n" +
+                "O roteador Cisco está em modo de recuperação ROMMON (sem firmware).\n\n" +
+                "👉 CONECTE O CABO DE REDE ETHERNET NA PORTA:\n" +
+                "🔴 GigabitEthernet 0/0 (GE 0/0 / Porta 0)\n\n" +
+                "Esta é a única porta Ethernet habilitada no hardware para a transferência TFTP via ROMMON.\n\n" +
+                "Clique em OK assim que o cabo estiver conectado na porta GE 0/0.",
+                cancellationToken);
+        }
 
         _onProgress?.Invoke(30, "Fase B: Iniciando Servidor TFTP...", "Iniciando servidor TFTP de alta performance...");
 
@@ -806,6 +821,18 @@ public sealed class CiscoIOSUpgrader
         await ProgressAsync($"  Imagem gravada na Flash : {binFileName}");
         await ProgressAsync($"  Cisco IOS carregado     : Pronto para provisionamento!");
         await ProgressAsync("=================================================================\n");
+
+        if (requestOperatorAction is not null)
+        {
+            await requestOperatorAction(
+                "✅ FIRMWARE RECUPERADO COM SUCESSO!\n\n" +
+                "O Cisco IOS já está ativo e inicializado na nova versão.\n\n" +
+                "👉 ALTERE AGORA O CABO DE REDE PARA A PORTA:\n" +
+                "🟢 GigabitEthernet 0/1 (GE 0/1 / Porta 1 - LAN do Cliente)\n\n" +
+                "Para prosseguir com o Provisionamento e os Testes de ICMP (LAN/WAN/WEB), Telnet e Teste de Banda.\n\n" +
+                "Clique em OK assim que o cabo estiver conectado na porta GE 0/1.",
+                cancellationToken);
+        }
 
         _onProgress?.Invoke(100, "Fase B Concluída!", $"Roteador recuperado e bootado com {binFileName}.");
         return true;

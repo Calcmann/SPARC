@@ -1683,8 +1683,17 @@ public partial class MainWindow : Window
             if (session.Mode == ExecMode.Rommon ||
                 session.CurrentPrompt?.Trim().StartsWith("rommon", StringComparison.OrdinalIgnoreCase) == true)
             {
-                EscreverLinha("[*] Equipamento no ROMMON. Auditoria show version pulada (aguardando gravação de firmware via TFTP).");
-                AtualizarProgresso(100, "Fase A Concluída!", "Equipamento em ROMMON pronto para carga de firmware TFTP.");
+                EscreverLinha("[*] Equipamento identificado em MODO ROMMON (sem firmware na Flash).");
+                await InstruirOperadorAsync(
+                    "⚠️ ROTEADOR CISCO EM MODO ROMMON (SEM FIRMWARE)\n\n" +
+                    "O equipamento foi identificado em modo de recuperação ROMMON.\n\n" +
+                    "👉 CONECTE O CABO DE REDE ETHERNET NA PORTA:\n" +
+                    "🔴 GigabitEthernet 0/0 (GE 0/0 / Porta 0)\n\n" +
+                    "Esta é a única porta Ethernet habilitada no hardware para a transferência TFTP via ROMMON.\n\n" +
+                    "(Após a gravação do firmware e inicialização do Cisco IOS, o sistema solicitará a troca do cabo para a porta GE 0/1 - LAN).",
+                    ct);
+
+                AtualizarProgresso(100, "Fase A Concluída!", "Equipamento em ROMMON pronto para carga de firmware TFTP na porta GE 0/0.");
                 return;
             }
 
@@ -2200,6 +2209,7 @@ public partial class MainWindow : Window
                 subnetMask,
                 null,
                 adapter,
+                InstruirOperadorAsync,
                 _cts.Token);
 
             if (success)
@@ -2316,7 +2326,7 @@ public partial class MainWindow : Window
             EscreverLinha($"[*] Equipamento identificado como Cisco IOS para upgrade de firmware ({fileName}).");
             AtualizarProgresso(22, "Fase B: Gravando IOS Cisco...", "Iniciando transferência TFTP...");
             var ciscoUpgrader = new CiscoIOSUpgrader(EscreverLinhaAsync, AtualizarProgresso);
-            success = await ciscoUpgrader.UpgradeAsync(session, _selectedIosBinPath, hostIp, routerIp, subnetMask, lanInterface, null, adapter, ct);
+            success = await ciscoUpgrader.UpgradeAsync(session, _selectedIosBinPath, hostIp, routerIp, subnetMask, lanInterface, null, adapter, InstruirOperadorAsync, ct);
         }
 
         if (success)
