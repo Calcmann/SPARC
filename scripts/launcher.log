@@ -920,3 +920,28 @@ C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warn
 Tempo Decorrido 00:00:07.90
 2026-08-25 15:55:51 [OK] Build Release concluido.
 2026-08-25 15:55:51 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-25 16:08:18 [*] Verificando atualizacoes no Git remoto...
+2026-08-25 16:08:36 [*] Git ja atualizado.
+2026-08-25 16:08:36 [*] Codigo fonte mais recente que o .exe (NetworkDevice.UI.AssemblyInfo.cs 08/25/2026 16:06:15 > 08/25/2026 15:55:51). Recompilando...
+2026-08-25 16:08:36 [*] Compilando Release (dotnet build -c Release)...
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+    4 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:06.16
+2026-08-25 16:08:43 [OK] Build Release concluido.
+2026-08-25 16:08:43 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-25 16:09:36 [*] Verificando atualizacoes no Git remoto...
+2026-08-25 16:09:52 [*] Git ja atualizado.
+2026-08-25 16:09:52 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-25 16:09:52 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe

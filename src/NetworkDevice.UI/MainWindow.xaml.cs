@@ -2012,6 +2012,9 @@ public partial class MainWindow : Window
             AtualizarProgresso(50, "Fase C: Configurando Cisco...", $"WAN GE0/0 ({_loadedSaipCircuit.WanIp}), LAN GE0/1 ({_loadedSaipCircuit.LanIp})...");
             var ciscoConfig = new CiscoSaipConfigurator(EscreverLinhaAsync);
             await ciscoConfig.ApplyConfigAsync(session, _loadedSaipCircuit, "GigabitEthernet 0/0", "GigabitEthernet 0/1", ct);
+
+            // Valida se o técnico conectou o cabo na porta LAN (GE 0/1) antes de prosseguir
+            await CiscoIOSAdapter.EnforceLanPortConnectedAsync(session, "GigabitEthernet 0/1", InstruirOperadorAsync, EscreverLinhaAsync, ct);
         }
 
         AtualizarProgresso(100, "Fase C Concluída!", "Configurações do circuito salvas com sucesso no equipamento atualizado!");

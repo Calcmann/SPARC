@@ -65,7 +65,7 @@ public class ConnectivityService
         var buffer = new byte[Math.Max(1, Math.Min(bufferSizeBytes, 1472))];
         new Random().NextBytes(buffer);
 
-        // Se uma interface/IP de origem foi informada no Windows, força saída estrita por ela (-S)
+        // Se uma interface/IP de origem foi informada no Windows, força saída estrita por ela (-S) e NÃO permite vazamento por Wi-Fi
         if (!string.IsNullOrWhiteSpace(sourceIpAddress) && System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
         {
             await LogAsync($"[*] Direcionando ICMP estritamente via interface conectada ao roteador (IP Origem: {sourceIpAddress}) para isolar Wi-Fi/outras redes...");
@@ -74,6 +74,7 @@ public class ConnectivityService
             {
                 return cliResult;
             }
+            return new ConnectivityTestResult(cleanTarget, count, 0, 100, 0, 0, 0, 0, false, new List<PingPacketInfo>());
         }
 
         var packets = new List<PingPacketInfo>();
