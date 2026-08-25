@@ -189,58 +189,79 @@ public sealed class CiscoIOSRecovery
                 {
                     new StopCondition.LineRegex("rommon-router", RommonRouterPrompt),
                     new StopCondition.LineRegex("rommon-switch", RommonSwitchPrompt),
-                    new StopCondition.LineRegex("password", new Regex(@"(?i)(?:user|username|login|password|user access verification)\s*[:?]")),
-                    new StopCondition.LineRegex("unlocked-prompt", new Regex(@"^[A-Za-z0-9_\-\.]+\s*[>#]")),
+                    new StopCondition.LineRegex("dialog", BootDialogPrompt),
+                    new StopCondition.LineRegex("return", PressReturnPrompt),
+                    new StopCondition.LineRegex("password", new Regex(@"(?i)(?:user|username|login|password|user access verification|secret)\s*[:?]")),
+                    new StopCondition.LineRegex("prompt-priv", new Regex(@"#\s*$")),
+                    new StopCondition.LineRegex("prompt-user", new Regex(@">\s*$")),
                     new StopCondition.LineRegex("any-output", new Regex(@"\S"))
                 },
                 _verifyTimeout,
                 ct);
 
-            var tail = result.Output.Replace("\r", "").Replace("\n", " ").Trim();
+            var rawOutput = result.Output;
+            var tail = rawOutput.Replace("\r", "").Replace("\n", " ").Trim();
             await ProgressAsync($"Conexão RS-232 ativa. Resposta: {Truncate(tail)}", ct);
 
-            if (result.Matched is StopCondition.LineRegex lr)
+            // 1. ROMMON
+            if (result.Matched is StopCondition.LineRegex lr && lr.Name == "rommon-switch")
+                return (DeviceAccessState.AlreadyInRommon, RommonKind.Switch);
+            if (result.Matched is StopCondition.LineRegex lrR && lrR.Name == "rommon-router" || RommonRouterPrompt.IsMatch(rawOutput))
+                return (DeviceAccessState.AlreadyInRommon, RommonKind.Router);
+
+            // 2. Diálogo de Inicialização
+            if (rawOutput.Contains("initial configuration dialog", StringComparison.OrdinalIgnoreCase))
             {
-                if (lr.Name == "rommon-switch")
-                    return (DeviceAccessState.AlreadyInRommon, RommonKind.Switch);
-                if (lr.Name == "rommon-router")
-                    return (DeviceAccessState.AlreadyInRommon, RommonKind.Router);
-                if (lr.Name == "password")
-                    return (DeviceAccessState.PasswordLocked, null);
-                if (lr.Name == "unlocked-prompt")
+                await ProgressAsync("Detectado diálogo de configuração inicial. Respondendo 'no'...", ct);
+                await session.WriteLineAsync("no", ct);
+                await Task.Delay(1000, ct);
+                await session.WriteLineAsync(string.Empty, ct);
+                await Task.Delay(500, ct);
+            }
+            else if (rawOutput.Contains("Press RETURN to get started", StringComparison.OrdinalIgnoreCase))
+            {
+                await session.WriteLineAsync(string.Empty, ct);
+                await Task.Delay(500, ct);
+            }
+
+            // 3. Prompt aberto com # (Privilegiado)
+            if (tail.EndsWith("#"))
+            {
+                return (DeviceAccessState.UnlockedPrompt, null);
+            }
+
+            // 4. Prompt de usuário (>) -> Testa se enable é livre
+            if (tail.EndsWith(">"))
+            {
+                await session.WriteLineAsync("enable", ct);
+                try
                 {
-                    if (tail.EndsWith("#"))
-                        return (DeviceAccessState.UnlockedPrompt, null);
-
-                    await session.WriteLineAsync("enable", ct);
-                    try
-                    {
-                        var enableCheck = await session.WaitForAsync(
-                            new StopCondition[]
-                            {
-                                new StopCondition.LineRegex("password", new Regex(@"(?i)(?:password|secret)\s*[:?]")),
-                                new StopCondition.LineRegex("privileged-prompt", new Regex(@"^[A-Za-z0-9_\-\.]+\s*#")),
-                                new StopCondition.LineRegex("user-prompt", new Regex(@"^[A-Za-z0-9_\-\.]+\s*>"))
-                            },
-                            TimeSpan.FromSeconds(3),
-                            ct);
-
-                        if (enableCheck.Matched is StopCondition.LineRegex elr && elr.Name == "privileged-prompt")
+                    var enableResult = await session.WaitForAsync(
+                        new StopCondition[]
                         {
-                            return (DeviceAccessState.UnlockedPrompt, null);
-                        }
+                            new StopCondition.LineRegex("password", new Regex(@"(?i)(?:password|secret)\s*[:?]")),
+                            new StopCondition.LineRegex("prompt-priv", new Regex(@"#\s*$")),
+                            new StopCondition.LineRegex("prompt-user", new Regex(@">\s*$"))
+                        },
+                        TimeSpan.FromSeconds(3),
+                        ct);
+
+                    var enableTail = enableResult.Output.Replace("\r", "").Replace("\n", " ").Trim();
+                    if (enableTail.EndsWith("#"))
+                    {
+                        return (DeviceAccessState.UnlockedPrompt, null);
                     }
-                    catch (SessionTimeoutException) { }
-
-                    await ProgressAsync("Equipamento exige senha em modo privilegiado (enable). Prosseguindo para quebra via ROMMON...", ct);
-                    return (DeviceAccessState.PasswordLocked, null);
                 }
+                catch (SessionTimeoutException) { }
 
-                if (lr.Name == "any-output")
-                {
-                    if (RommonRouterPrompt.IsMatch(tail))
-                        return (DeviceAccessState.AlreadyInRommon, RommonKind.Router);
-                }
+                await ProgressAsync("Equipamento exige senha em modo privilegiado (enable). Prosseguindo para quebra via ROMMON...", ct);
+                return (DeviceAccessState.PasswordLocked, null);
+            }
+
+            // 5. Exige senha ou login inicial
+            if (Regex.IsMatch(rawOutput, @"(?i)(?:user|username|login|password|user access verification)\s*[:?]"))
+            {
+                return (DeviceAccessState.PasswordLocked, null);
             }
 
             return (DeviceAccessState.PasswordLocked, null);
@@ -257,7 +278,8 @@ public sealed class CiscoIOSRecovery
                         new StopCondition.LineRegex("rommon-router", RommonRouterPrompt),
                         new StopCondition.LineRegex("rommon-switch", RommonSwitchPrompt),
                         new StopCondition.LineRegex("password", new Regex(@"(?i)(?:user|username|login|password|user access verification)\s*[:?]")),
-                        new StopCondition.LineRegex("unlocked-prompt", new Regex(@"^[A-Za-z0-9_\-\.]+\s*[>#]")),
+                        new StopCondition.LineRegex("prompt-priv", new Regex(@"#\s*$")),
+                        new StopCondition.LineRegex("prompt-user", new Regex(@">\s*$")),
                         new StopCondition.LineRegex("any-output", new Regex(@"\S"))
                     },
                     TimeSpan.FromSeconds(2),
@@ -270,6 +292,10 @@ public sealed class CiscoIOSRecovery
                         return (DeviceAccessState.AlreadyInRommon, RommonKind.Switch);
                     if (rlr.Name == "rommon-router" || RommonRouterPrompt.IsMatch(tail2))
                         return (DeviceAccessState.AlreadyInRommon, RommonKind.Router);
+                    if (tail2.EndsWith("#"))
+                        return (DeviceAccessState.UnlockedPrompt, null);
+                    if (tail2.EndsWith(">"))
+                        return (DeviceAccessState.PasswordLocked, null);
                 }
             }
             catch { }
