@@ -589,7 +589,8 @@ public sealed class CiscoIOSUpgrader
             await ProgressAsync("\n[*] [ROMMON TFTP] Executando comando 'tftpdnld' para gravação na Flash...");
             _onProgress?.Invoke(35, "Fase B: Executando tftpdnld...", "Aguardando confirmação e transferência TFTP...");
 
-            await session.WriteLineAsync("tftpdnld", cancellationToken);
+            // Envia apenas \r para não deixar \n residual que faria o ROMMON escolher o default [n]
+            await session.SendRawAsync("tftpdnld\r", cancellationToken);
 
             // Aguarda o prompt de aviso: "Do you wish to continue? y/n:  [n]: "
             var confBuf = new byte[4096];
@@ -609,7 +610,8 @@ public sealed class CiscoIOSUpgrader
                     var textSoFar = confText.ToString();
                     if (textSoFar.Contains("Do you wish to continue", StringComparison.OrdinalIgnoreCase) ||
                         textSoFar.Contains("y/n:", StringComparison.OrdinalIgnoreCase) ||
-                        textSoFar.Contains("[n]:", StringComparison.OrdinalIgnoreCase))
+                        textSoFar.Contains("[n]:", StringComparison.OrdinalIgnoreCase) ||
+                        textSoFar.Contains("continue?", StringComparison.OrdinalIgnoreCase))
                     {
                         confirmPromptReceived = true;
                         break;
@@ -621,12 +623,13 @@ public sealed class CiscoIOSUpgrader
                         throw new DeviceSessionException($"Variável de ambiente do ROMMON inválida ou ausente: {textSoFar.Trim()}");
                     }
                 }
-                await Task.Delay(200, cancellationToken);
+                await Task.Delay(100, cancellationToken);
             }
 
-            // Confirma o prompt de aviso: "Do you wish to continue? y/n:  [n]: y"
+            // Confirma o prompt de aviso com 'y\r'
             await ProgressAsync("[*] Confirmando gravação na Flash (y)...");
-            await session.WriteLineAsync("y", cancellationToken);
+            await Task.Delay(200, cancellationToken);
+            await session.SendRawAsync("y\r", cancellationToken);
 
             // Monitora a transferência e gravação da Flash
             var timeout = DateTime.UtcNow.AddMinutes(25);
