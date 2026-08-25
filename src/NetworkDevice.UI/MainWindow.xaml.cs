@@ -2,6 +2,8 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Ports;
+using System.Linq;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -634,6 +636,12 @@ public partial class MainWindow : Window
                 {
                     TxtSerialTestStatus.Text = "✅ Serial OK";
                     TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#16A34A"));
+
+                    if (CardChkSerial != null && TxtChkSerialIcon != null && TxtChkSerialSub != null)
+                    {
+                        TxtChkSerialIcon.Text = "🟢 2. Cabo Serial";
+                        TxtChkSerialSub.Text = $"Conectado em {porta}";
+                    }
                 });
             }
 
@@ -661,6 +669,333 @@ public partial class MainWindow : Window
                 try { await transport.DisposeAsync(); } catch { }
             }
         }
+    }
+
+    private async void BtnAvaliarEquipamento_Click(object sender, RoutedEventArgs e)
+    {
+        var porta = CbPortaInicial?.Text?.Trim();
+        if (string.IsNullOrEmpty(porta) || porta == "(nenhuma)")
+            porta = CbPorta?.Text?.Trim();
+
+        if (string.IsNullOrEmpty(porta) || porta == "(nenhuma)")
+        {
+            MessageBox.Show("Selecione a porta serial do equipamento (ex: COM1 ou COM4) antes de iniciar a avaliação.", "Aviso", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var baud = int.TryParse(CbBaud?.Text, out var b) ? b : 9600;
+        SetBusy(true);
+        _cts = new CancellationTokenSource();
+        var ct = _cts.Token;
+
+        try
+        {
+            AtualizarProgresso(10, "Avaliando Equipamento...", $"Conectando em {porta} @ {baud} bps...");
+            EscreverLinha("\n================================================================================");
+            EscreverLinha("               🔍 AVALIAÇÃO E DIAGNÓSTICO DO EQUIPAMENTO CONECTADO              ");
+            EscreverLinha("================================================================================");
+            EscreverLinha($"  Porta Serial : {porta} @ {baud} bps");
+            EscreverLinha($"  Data / Hora  : {DateTime.Now:dd/MM/yyyy HH:mm:ss}\n");
+
+            var sessionOptions = new SessionOptions
+            {
+                PromptMatcher = RegexPromptMatcher.Universal(),
+                CommandTimeout = TimeSpan.FromSeconds(15),
+                ConnectTimeout = TimeSpan.FromSeconds(20)
+            };
+
+            var transport = new SerialTransport(porta, baud);
+            await using var session = new DeviceSession(transport, sessionOptions);
+            session.RawOutput += OnRawOutput;
+
+            await session.ConnectAsync(ct);
+
+            // 1. Diagnóstico do Estado de Acesso / Senha / ROMMON
+            AtualizarProgresso(25, "Diagnosticando Estado de Acesso...", "Verificando terminal e senha...");
+            var ciscoRecovery = new CiscoIOSRecovery();
+            var (accessState, rommonKind) = await ciscoRecovery.DiagnoseAccessStateAsync(session, ct);
+
+            string accessDesc;
+            bool isOpen = false;
+            switch (accessState)
+            {
+                case DeviceAccessState.AlreadyInRommon:
+                    accessDesc = $"🚨 MODO ROMMON / BOOTLOADER ({rommonKind}) — Sem Firmware ou em Recuperação";
+                    break;
+                case DeviceAccessState.UnlockedPrompt:
+                    accessDesc = "🟢 PROMPT ABERTO / SEM SENHA — Acesso Direto Liberado (Modo Privilegiado)";
+                    isOpen = true;
+                    break;
+                case DeviceAccessState.PasswordLocked:
+                    accessDesc = "🔒 PROTEGIDO POR SENHA — Requer quebra/zeramento na Fase 1 (Break/ROMMON)";
+                    break;
+                default:
+                    accessDesc = "❓ ESTADO NÃO IDENTIFICADO";
+                    break;
+            }
+
+            EscreverLinha($"  🔑 Estado de Acesso : {accessDesc}");
+
+            if (accessState == DeviceAccessState.AlreadyInRommon)
+            {
+                EscreverLinha("  ------------------------------------------------------------------------------");
+                EscreverLinha("  💡 Diagnóstico      : Equipamento no bootloader ROMMON (sem imagem de boot carregada).");
+                EscreverLinha("  💡 Ação Recomendada: Conectar o cabo na porta GE 0/0 e executar a Fase 2 (Firmware TFTP).");
+                EscreverLinha("================================================================================\n");
+
+                AtualizarProgresso(100, "Avaliação Concluída!", "Equipamento em modo ROMMON.");
+                MessageBox.Show(
+                    $"Equipamento conectado em {porta} está em MODO ROMMON / BOOTLOADER ({rommonKind}).\n\n" +
+                    "• Flash vazia ou sem imagem de boot configurada.\n" +
+                    "• Recomendação: Conecte o cabo na porta GE 0/0 e execute a Fase 2 (Atualização de Firmware via TFTP).",
+                    "Diagnóstico do Equipamento — SPARC",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            // Se o prompt estiver aberto, coleta inventário completo e configuração existente
+            if (isOpen)
+            {
+                AtualizarProgresso(50, "Coletando Inventário do Sistema...", "Consultando versão, hardware e interfaces...");
+
+                var promptStr = session.CurrentPrompt ?? "";
+                var isHpe = promptStr.StartsWith("<") || promptStr.StartsWith("[") || promptStr.Contains("HPE", StringComparison.OrdinalIgnoreCase);
+
+                if (isHpe)
+                {
+                    await AvaliarEquipamentoHpeAsync(session, ct);
+                }
+                else
+                {
+                    await AvaliarEquipamentoCiscoAsync(session, ct);
+                }
+            }
+            else
+            {
+                EscreverLinha("  ------------------------------------------------------------------------------");
+                EscreverLinha("  💡 Diagnóstico      : Equipamento com senha configurada no console/enable.");
+                EscreverLinha("  💡 Ação Recomendada: Executar a Fase 1 (Zerar Configuração) para quebrar a senha via Break/ROMMON.");
+                EscreverLinha("  ⚠️ ATENÇÃO          : Toda a configuração existente será APAGADA e os dados atuais serão PERDIDOS!");
+                EscreverLinha("================================================================================\n");
+
+                AtualizarProgresso(100, "Avaliação Concluída!", "Equipamento protegido por senha.");
+                MessageBox.Show(
+                    $"Equipamento conectado em {porta} está PROTEGIDO POR SENHA.\n\n" +
+                    "• O CLI exige usuário/senha ou enable com senha restrita.\n" +
+                    "• Recomendação: Execute a Fase 1 (Zerar Configuração) na esteira para quebrar a senha via Break/ROMMON e restaurar o config-register para 0x2102.\n\n" +
+                    "⚠️ ALERTA DE PERDA DE DADOS:\n" +
+                    "Ao executar o zeramento ou provisionamento, toda a configuração existente no equipamento será COMPLETAMENTE APAGADA e os dados configurados serão PERDIDOS.",
+                    "Diagnóstico do Equipamento — SPARC",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            EscreverLinha($"\n[FALHA NA AVALIAÇÃO] {ex.Message}");
+            AtualizarProgresso(0, "Falha na avaliação", ex.Message);
+            MessageBox.Show($"Não foi possível avaliar o equipamento na porta {porta}:\n\n{ex.Message}", "Erro de Comunicação Serial", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            _cts?.Dispose();
+            _cts = null;
+            SetBusy(false);
+        }
+    }
+
+    private async Task AvaliarEquipamentoCiscoAsync(DeviceSession session, CancellationToken ct)
+    {
+        // 1. show version
+        var showVer = await session.SendCommandAsync("show version", TimeSpan.FromSeconds(15), ct);
+
+        var modelMatch = Regex.Match(showVer, @"(?im)^\s*cisco\s+([A-Za-z0-9\-\/]+).+processor");
+        if (!modelMatch.Success) modelMatch = Regex.Match(showVer, @"(?im)^\s*Model number\s*:\s*(\S+)");
+        var modelo = modelMatch.Success ? modelMatch.Groups[1].Value.Trim() : "Cisco (modelo não parseado)";
+
+        var iosVerMatch = Regex.Match(showVer, @"(?im)Version\s+([0-9\.\(\)A-Za-z]+),");
+        var iosVer = iosVerMatch.Success ? iosVerMatch.Groups[1].Value.Trim() : "Desconhecida";
+
+        var serialMatch = Regex.Match(showVer, @"(?im)Processor board ID\s+(\S+)");
+        if (!serialMatch.Success) serialMatch = Regex.Match(showVer, @"(?im)System serial number\s*:\s*(\S+)");
+        var serialNumber = serialMatch.Success ? serialMatch.Groups[1].Value.Trim() : "Não informado";
+
+        var regMatch = Regex.Match(showVer, @"(?im)Configuration register is\s+(0x[0-9A-Fa-f]+)");
+        var configRegister = regMatch.Success ? regMatch.Groups[1].Value.Trim() : "0x2102";
+
+        var uptimeMatch = Regex.Match(showVer, @"(?im)uptime is\s+(.+)");
+        var uptime = uptimeMatch.Success ? uptimeMatch.Groups[1].Value.Trim() : "—";
+
+        // 2. dir flash:
+        var dirFlash = await session.SendCommandAsync("dir flash:", TimeSpan.FromSeconds(15), ct);
+        var binMatches = Regex.Matches(dirFlash, @"(?im)\b(\S+\.bin)\b");
+        var binFiles = binMatches.Select(m => m.Groups[1].Value).Distinct().ToList();
+        var flashFreeMatch = Regex.Match(dirFlash, @"(?im)([0-9]+)\s+bytes\s+free");
+        var flashFreeMb = flashFreeMatch.Success && long.TryParse(flashFreeMatch.Groups[1].Value, out var freeB)
+            ? $"{freeB / (1024.0 * 1024.0):F1} MB livres"
+            : "—";
+
+        // 3. show ip interface brief
+        var ipBrief = await session.SendCommandAsync("show ip interface brief", TimeSpan.FromSeconds(15), ct);
+        var ifLines = ipBrief.Split('\n')
+            .Where(l => l.StartsWith("GigabitEthernet", StringComparison.OrdinalIgnoreCase) || l.StartsWith("FastEthernet", StringComparison.OrdinalIgnoreCase) || l.StartsWith("Ethernet", StringComparison.OrdinalIgnoreCase))
+            .Select(l => l.Trim())
+            .ToList();
+
+        // 4. show running-config | include hostname|ip route 0.0.0.0
+        var hostOut = await session.SendCommandAsync("show running-config | include hostname", TimeSpan.FromSeconds(10), ct);
+        var hostMatch = Regex.Match(hostOut, @"(?im)^\s*hostname\s+(\S+)");
+        var hostname = hostMatch.Success ? hostMatch.Groups[1].Value.Trim() : "Router";
+
+        var routeOut = await session.SendCommandAsync("show running-config | include ip route 0.0.0.0", TimeSpan.FromSeconds(10), ct);
+        var routeMatches = Regex.Matches(routeOut, @"(?im)^\s*ip\s+route\s+0\.0\.0\.0\s+0\.0\.0\.0\s+(\S+)");
+        var defaultGateways = routeMatches.Select(m => m.Groups[1].Value.Trim()).ToList();
+
+        // Exibe painel consolidado
+        EscreverLinha($"  🏷️ Fabricante / Modelo : Cisco {modelo}");
+        EscreverLinha($"  🔢 Número de Série     : {serialNumber}");
+        EscreverLinha($"  💾 Versão Cisco IOS    : {iosVer}");
+        EscreverLinha($"  ⏱️ Uptime              : {uptime}");
+        EscreverLinha($"  ⚙️ Config-Register     : {configRegister} {(configRegister == "0x2142" ? "(⚠️ Bypass de senha ativo)" : "(✅ Normal)")}");
+        EscreverLinha($"  📁 Memória Flash       : {flashFreeMb} — {binFiles.Count} imagem(ns) IOS encontrada(s):");
+        foreach (var bin in binFiles)
+        {
+            EscreverLinha($"     • {bin}");
+        }
+
+        EscreverLinha("\n  🌐 Interfaces e Conectividade Fisiológica:");
+        foreach (var ifLine in ifLines)
+        {
+            EscreverLinha($"     {ifLine}");
+        }
+
+        EscreverLinha($"\n  📋 Configuração Atual  : Hostname '{hostname}' | Gateway(s) Default: {(defaultGateways.Count > 0 ? string.Join(", ", defaultGateways) : "Nenhum (Zerado)")}");
+
+        bool isZerado = hostname.Equals("Router", StringComparison.OrdinalIgnoreCase) && defaultGateways.Count == 0;
+        EscreverLinha($"  📊 Situação do Aparelho: {(isZerado ? "🟢 TOTALMENTE ZERADO (Pronto para provisionamento direto)" : "🟡 POSSUI CONFIGURAÇÃO PRÉVIA (Recomenda-se zerar na Fase 1 ou sobregravar)")}");
+        Dispatcher.Invoke(() =>
+        {
+            if (modelo.Contains("900", StringComparison.OrdinalIgnoreCase) || modelo.Contains("921", StringComparison.OrdinalIgnoreCase))
+            {
+                if (CbModeloRoteadorInicial != null) CbModeloRoteadorInicial.SelectedIndex = 3;
+            }
+            else
+            {
+                if (CbModeloRoteadorInicial != null) CbModeloRoteadorInicial.SelectedIndex = 2;
+            }
+
+            if (CardChkModelo != null && TxtChkModeloIcon != null && TxtChkModeloSub != null)
+            {
+                TxtChkModeloIcon.Text = "🟢 1. Modelo";
+                TxtChkModeloSub.Text = $"Cisco {modelo}";
+            }
+        });
+
+        MessageBox.Show(
+            $"AVALIAÇÃO DO EQUIPAMENTO CISCO:\n\n" +
+            $"• Modelo: Cisco {modelo}\n" +
+            $"• Serial: {serialNumber}\n" +
+            $"• Versão IOS: {iosVer}\n" +
+            $"• Config-Register: {configRegister}\n" +
+            $"• Imagens na Flash: {string.Join(", ", binFiles)}\n" +
+            $"• Status: {(isZerado ? "🟢 Equipamento Limpo/Zerado" : "🟡 Possui Configuração Anterior")}\n\n" +
+            $"{(isZerado ? "✅ Equipamento pronto para provisionamento direto (Fase 3)." : "💡 Dica: Execute a esteira completa para zerar e homologar.")}\n\n" +
+            "⚠️ ALERTA DE PERDA DE DADOS:\n" +
+            "Ao prosseguir com a esteira ou zeramento, toda a configuração existente no equipamento será COMPLETAMENTE APAGADA e os dados anteriores serão PERDIDOS.",
+            "Diagnóstico do Equipamento — SPARC",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+    }
+
+    private async Task AvaliarEquipamentoHpeAsync(DeviceSession session, CancellationToken ct)
+    {
+        // 1. display version
+        var dispVer = await session.SendCommandAsync("display version", TimeSpan.FromSeconds(15), ct);
+
+        var modelMatch = Regex.Match(dispVer, @"(?im)^\s*HPE\s+([A-Za-z0-9\-\/ ]+)uptime");
+        if (!modelMatch.Success) modelMatch = Regex.Match(dispVer, @"(?im)HPE\s+([A-Za-z0-9\-\/]+)");
+        var modelo = modelMatch.Success ? modelMatch.Groups[1].Value.Trim() : "HPE Comware";
+
+        var comwareVerMatch = Regex.Match(dispVer, @"(?im)HPE Comware Software,\s*Version\s*([0-9\.\, A-Za-z]+),");
+        var comwareVer = comwareVerMatch.Success ? comwareVerMatch.Groups[1].Value.Trim() : "Comware 7";
+
+        var releaseMatch = Regex.Match(dispVer, @"(?im)Release\s*([0-9A-Za-z]+)");
+        var release = releaseMatch.Success ? releaseMatch.Groups[1].Value.Trim() : "";
+
+        var bootImgMatch = Regex.Match(dispVer, @"(?im)Boot image\s*:\s*(\S+)");
+        var bootImg = bootImgMatch.Success ? bootImgMatch.Groups[1].Value.Trim() : "—";
+
+        var uptimeMatch = Regex.Match(dispVer, @"(?im)uptime is\s+(.+)");
+        var uptime = uptimeMatch.Success ? uptimeMatch.Groups[1].Value.Trim() : "—";
+
+        // 2. dir
+        var dirOut = await session.SendCommandAsync("dir", TimeSpan.FromSeconds(15), ct);
+        var binMatches = Regex.Matches(dirOut, @"(?im)\b(\S+\.(?:bin|ipe))\b");
+        var binFiles = binMatches.Select(m => m.Groups[1].Value).Distinct().ToList();
+
+        // 3. display interface brief
+        var ifBrief = await session.SendCommandAsync("display interface brief", TimeSpan.FromSeconds(15), ct);
+        var ifLines = ifBrief.Split('\n')
+            .Where(l => l.StartsWith("GE", StringComparison.OrdinalIgnoreCase) || l.StartsWith("GigabitEthernet", StringComparison.OrdinalIgnoreCase))
+            .Select(l => l.Trim())
+            .ToList();
+
+        // 4. display current-configuration | include sysname|ip route-static
+        var sysOut = await session.SendCommandAsync("display current-configuration | include sysname", TimeSpan.FromSeconds(10), ct);
+        var sysMatch = Regex.Match(sysOut, @"(?im)^\s*sysname\s+(\S+)");
+        var sysname = sysMatch.Success ? sysMatch.Groups[1].Value.Trim() : "HPE";
+
+        var routeOut = await session.SendCommandAsync("display current-configuration | include ip route-static", TimeSpan.FromSeconds(10), ct);
+        var routeMatches = Regex.Matches(routeOut, @"(?im)^\s*ip\s+route-static\s+0\.0\.0\.0\s+\S+\s+(\S+)");
+        var defaultGateways = routeMatches.Select(m => m.Groups[1].Value.Trim()).ToList();
+
+        // Exibe painel consolidado
+        EscreverLinha($"  🏷️ Fabricante / Modelo : HPE {modelo}");
+        EscreverLinha($"  💾 Versão Comware      : {comwareVer} {release}");
+        EscreverLinha($"  🚀 Imagem de Boot      : {bootImg}");
+        EscreverLinha($"  ⏱️ Uptime              : {uptime}");
+        EscreverLinha($"  📁 Arquivos na Flash   : {binFiles.Count} arquivo(s) (.bin/.ipe) encontrado(s):");
+        foreach (var bin in binFiles)
+        {
+            EscreverLinha($"     • {bin}");
+        }
+
+        EscreverLinha("\n  🌐 Interfaces e Conectividade Fisiológica:");
+        foreach (var ifLine in ifLines)
+        {
+            EscreverLinha($"     {ifLine}");
+        }
+
+        EscreverLinha($"\n  📋 Configuração Atual  : Sysname '{sysname}' | Gateway(s) Default: {(defaultGateways.Count > 0 ? string.Join(", ", defaultGateways) : "Nenhum (Zerado)")}");
+
+        bool isZerado = sysname.Equals("HPE", StringComparison.OrdinalIgnoreCase) && defaultGateways.Count == 0;
+        EscreverLinha($"  📊 Situação do Aparelho: {(isZerado ? "🟢 TOTALMENTE ZERADO (Pronto para provisionamento direto)" : "🟡 POSSUI CONFIGURAÇÃO PRÉVIA (Recomenda-se zerar na Fase 1 ou sobregravar)")}");
+        Dispatcher.Invoke(() =>
+        {
+            if (CbModeloRoteadorInicial != null) CbModeloRoteadorInicial.SelectedIndex = 1;
+
+            if (CardChkModelo != null && TxtChkModeloIcon != null && TxtChkModeloSub != null)
+            {
+                TxtChkModeloIcon.Text = "🟢 1. Modelo";
+                TxtChkModeloSub.Text = $"HPE {modelo}";
+            }
+        });
+
+        MessageBox.Show(
+            $"AVALIAÇÃO DO EQUIPAMENTO HPE:\n\n" +
+            $"• Modelo: HPE {modelo}\n" +
+            $"• Versão Comware: {comwareVer} {release}\n" +
+            $"• Imagem Boot: {bootImg}\n" +
+            $"• Arquivos na Flash: {string.Join(", ", binFiles)}\n" +
+            $"• Status: {(isZerado ? "🟢 Equipamento Limpo/Zerado" : "🟡 Possui Configuração Anterior")}\n\n" +
+            $"{(isZerado ? "✅ Equipamento pronto para provisionamento direto (Fase 3)." : "💡 Dica: Execute a esteira completa para zerar e homologar.")}\n\n" +
+            "⚠️ ALERTA DE PERDA DE DADOS:\n" +
+            "Ao prosseguir com a esteira ou zeramento, toda a configuração existente no equipamento será COMPLETAMENTE APAGADA e os dados anteriores serão PERDIDOS.",
+            "Diagnóstico do Equipamento — SPARC",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
     }
 
     private void AtualizarPortas()
@@ -1200,7 +1535,7 @@ public partial class MainWindow : Window
         EscreverLinha($"  Cliente       : {cliente}");
         EscreverLinha($"  Circuito      : {designacao}");
         EscreverLinha($"  WAN / LAN     : {wanIp}/{wanCidr} | {lanIp}/{lanCidr}");
-        EscreverLinha($"  Status Geral  : {(falhas.Count == 0 ? "🟢 100% HOMOLOGADO E APROVADO" : "🟡 HOMOLOGADO COM RESSALVAS")}");
+        EscreverLinha($"  Status Geral  : {(falhas.Count == 0 ? "🟢 100% HOMOLOGADO E APROVADO" : "🔴 NÃO HOMOLOGADO / REPROVADO")}");
         if (!string.IsNullOrEmpty(pdfPath))
         {
             EscreverLinha($"  Arquivo PDF   : {pdfPath}");
@@ -1217,7 +1552,7 @@ public partial class MainWindow : Window
                 var abrirAgora = MessageBox.Show(
                     $"Relatório Técnico de Homologação gerado em PDF com sucesso!\n\n" +
                     $"📄 Arquivo: {Path.GetFileName(pdfPath)}\n" +
-                    $"Status: {(falhas.Count == 0 ? "🟢 100% Aprovado" : "🟡 Homologado com Ressalvas")}\n\n" +
+                    $"Status: {(falhas.Count == 0 ? "🟢 100% Aprovado" : "🔴 Não Homologado / Reprovado")}\n\n" +
                     $"Deseja abrir o arquivo PDF agora?",
                     "SPARC — Relatório Técnico em PDF",
                     MessageBoxButton.YesNo,
@@ -2433,12 +2768,10 @@ public partial class MainWindow : Window
 
     private async Task<TripleIcmpResult> ExecutarTesteIcmpTriploAsync(CancellationToken ct)
     {
-        var lanTarget = TxtIcmpTargetLan?.Text?.Trim();
-        if (string.IsNullOrEmpty(lanTarget)) lanTarget = _loadedSaipCircuit?.LanIp ?? "200.182.245.17";
+        var lanTarget = _loadedSaipCircuit?.LanIp ?? TxtIcmpTargetLan?.Text?.Trim() ?? "200.182.245.17";
         lanTarget = lanTarget.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "200.182.245.17";
 
-        var wanTarget = TxtIcmpTargetWan?.Text?.Trim();
-        if (string.IsNullOrEmpty(wanTarget)) wanTarget = _loadedSaipCircuit?.WanGateway ?? "201.90.204.21";
+        var wanTarget = _loadedSaipCircuit?.WanGateway ?? TxtIcmpTargetWan?.Text?.Trim() ?? "201.90.204.21";
         wanTarget = wanTarget.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "201.90.204.21";
 
         var sourceIp = ObterIpOrigemParaIcmp();
@@ -2506,11 +2839,11 @@ public partial class MainWindow : Window
     // FASE F · TESTAR ACESSO REMOTO TELNET
     private async void BtnTestarTelnet_Click(object sender, RoutedEventArgs e)
     {
-        var host = TxtTelnetTarget.Text.Trim();
+        var host = _loadedSaipCircuit?.LanIp ?? (string.IsNullOrWhiteSpace(TxtTelnetTarget.Text) ? "200.182.245.17" : TxtTelnetTarget.Text.Trim());
         if (string.IsNullOrEmpty(host))
         {
-            if (_loadedSaipCircuit != null) host = _loadedSaipCircuit.LanIp;
-            else { MessageBox.Show("Informe o host/IP para teste Telnet.", "Aviso", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+            MessageBox.Show("Informe o host/IP para teste Telnet.", "Aviso", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
         }
         var port = int.TryParse(TxtTelnetPort.Text.Trim(), out var p) ? p : 23;
         SelecionarFase("F");
@@ -2536,8 +2869,9 @@ public partial class MainWindow : Window
         var telnetPass = TxtTelnetPass.Text.Trim(); if (string.IsNullOrEmpty(telnetPass)) telnetPass = "PRO1AN";
         AtualizarProgresso(50, "Fase F: Testando Telnet...", $"Login {telnetUser} em {host}:{port}...");
         EscreverLinha($"\n[*] [FASE F] TESTE DE ACESSO REMOTO TELNET {host}:{port} (user={telnetUser})");
+        var sourceIp = ObterIpOrigemParaIcmp();
         var service = new ConnectivityService(EscreverLinhaAsync);
-        var result = await service.TestTelnetAsync(host, port, username: telnetUser, password: telnetPass, timeoutMs: 10000, cancellationToken: ct);
+        var result = await service.TestTelnetAsync(host, port, username: telnetUser, password: telnetPass, timeoutMs: 10000, sourceIpAddress: sourceIp, cancellationToken: ct);
         if (result.IsSuccess)
         {
             AtualizarProgresso(100, "Fase F: Telnet OK!", $"{host}:{port} — {result.LatencyMs}ms{(string.IsNullOrEmpty(result.Banner) ? "" : $" | {result.Banner}")}");
@@ -2600,9 +2934,9 @@ public partial class MainWindow : Window
         }
 
         // 2. Fallback para Teste Nativo HTTP
-        EscreverLinha("[*] Executando Teste de Banda Nativo HTTP (Cloudflare CDN)...");
+        EscreverLinha("[*] Executando Teste de Banda Nativo HTTP (Cloudflare CDN - Payload: ~50 MB)...");
         var httpResult = await service.RunNativeHttpSpeedTestAsync(
-            testPayloadMegaBytes: 15,
+            testPayloadMegaBytes: 50,
             onProgress: (mbps, pct) =>
             {
                 AtualizarProgresso((int)pct, "Fase G: Medindo Vazão HTTP...", $"Vazão atual: {mbps:F2} Mbps ({pct:F0}%)");
@@ -2651,9 +2985,12 @@ public partial class MainWindow : Window
         try
         {
             ResetarBadges();
-            EscreverLinha("=================================================================");
-            EscreverLinha("        INICIANDO EXECUÇÃO COMPLETA DA ESTEIRA (1 A 7)           ");
-            EscreverLinha("=================================================================");
+            EscreverLinha("==================================================================================");
+            EscreverLinha("               INICIANDO EXECUÇÃO COMPLETA DA ESTEIRA (1 A 7)                     ");
+            EscreverLinha("==================================================================================");
+            EscreverLinha("  ⚠️ ATENÇÃO: A configuração existente no equipamento será COMPLETAMENTE APAGADA ");
+            EscreverLinha("              e todos os dados anteriores serão PERDIDOS permanentemente!         ");
+            EscreverLinha("==================================================================================\n");
 
             // -------------------------------------------------------------
             // FASE 1 (A): ZERAR CONFIGURAÇÃO
@@ -2737,9 +3074,8 @@ public partial class MainWindow : Window
             // -------------------------------------------------------------
             SelecionarFase("F");
             DefinirBadgeStatus("F", "⏳");
-            var telnetHostEsteira = !string.IsNullOrEmpty(TxtTelnetTarget.Text.Trim())
-                ? TxtTelnetTarget.Text.Trim()
-                : (_loadedSaipCircuit?.LanIp ?? "200.182.245.17");
+            var telnetHostEsteira = _loadedSaipCircuit?.LanIp
+                ?? (!string.IsNullOrWhiteSpace(TxtTelnetTarget.Text) ? TxtTelnetTarget.Text.Trim() : "200.182.245.17");
             var telnetPortEsteira = int.TryParse(TxtTelnetPort.Text.Trim(), out var tp) ? tp : 23;
 
             EscreverLinha("\n>>> [ESTEIRA] FASE 6: TESTAR ACESSO REMOTO TELNET");
@@ -2751,10 +3087,21 @@ public partial class MainWindow : Window
             // FASE 7 (G): TESTAR BANDA
             // -------------------------------------------------------------
             SelecionarFase("G");
-            DefinirBadgeStatus("G", "⏳");
-            EscreverLinha("\n>>> [ESTEIRA] FASE 7: TESTAR BANDA");
-            var speedResult = await ExecutarTesteBandaAsync(ct);
-            DefinirBadgeStatus("G", speedResult.IsSuccess ? "✅" : "❌");
+            BandwidthTestResult speedResult;
+            if (icmpResult != null && !icmpResult.IsWanOk)
+            {
+                DefinirBadgeStatus("G", "⏭");
+                EscreverLinha("\n>>> [ESTEIRA] FASE 7: TESTE DE BANDA DESCARTADO (WAN Offline / Gateway Claro sem resposta)");
+                AtualizarProgresso(100, "Fase 7: Descartada", "Teste de banda descartado pois o link WAN (5b) está offline.");
+                speedResult = new BandwidthTestResult(0, 0, 0, 0, "Nativo HTTP", "Descartado", false, "Descartado automaticamente devido a falha no gateway WAN.");
+            }
+            else
+            {
+                DefinirBadgeStatus("G", "⏳");
+                EscreverLinha("\n>>> [ESTEIRA] FASE 7: TESTAR BANDA");
+                speedResult = await ExecutarTesteBandaAsync(ct);
+                DefinirBadgeStatus("G", speedResult.IsSuccess ? "✅" : "❌");
+            }
 
             // -------------------------------------------------------------
             // RELATÓRIO CONSOLIDADO FINAL
@@ -2767,7 +3114,7 @@ public partial class MainWindow : Window
             EscreverLinha($"  2. b) Atualização Firmware  : {(!string.IsNullOrEmpty(_selectedIosBinPath) ? "ATUALIZADO VIA TFTP E REINICIADO" : "NÃO SOLICITADO")}");
             EscreverLinha($"  3. c) Provisionamento Rede  : {(_loadedSaipCircuit != null ? "CONFIGURADO COM SUCESSO" : "NÃO APLICADO")}");
             EscreverLinha($"  4. d) IP Dispositivo Teste  : {(_loadedSaipCircuit != null ? $"CONFIGURADO ({_loadedSaipCircuit.HostLanIp} + DNS 1.1.1.1/8.8.8.8)" : "NÃO CONFIGURADO")}");
-            EscreverLinha($"  5. e) Conectividade ICMP    : {(icmpResult.IsSuccess ? $"OK (5a LAN: {icmpResult.LanResult?.AvgRttMs:F1}ms | 5b WAN: {(icmpResult.WanResult?.IsSuccess == true ? $"{icmpResult.WanResult?.AvgRttMs:F1}ms" : "Offline")} | 5c WEB: {(icmpResult.WebResult?.IsSuccess == true ? $"{icmpResult.WebResult?.AvgRttMs:F1}ms" : "Offline")})" : "FALHA")}");
+            EscreverLinha($"  5. e) Conectividade ICMP    : {(icmpResult?.IsSuccess == true ? $"OK (5a LAN: {icmpResult.LanResult?.AvgRttMs:F1}ms | 5b WAN: {(icmpResult.WanResult?.IsSuccess == true ? $"{icmpResult.WanResult?.AvgRttMs:F1}ms" : "Offline")} | 5c WEB: {(icmpResult.WebResult?.IsSuccess == true ? $"{icmpResult.WebResult?.AvgRttMs:F1}ms" : "Offline")})" : "FALHA")}");
             EscreverLinha($"     Telnet {telnetHostEsteira}:{telnetPortEsteira} : {(telnetEsteiraResult == null ? "NÃO TESTADO" : telnetEsteiraResult.IsSuccess ? $"OK ({telnetEsteiraResult.LatencyMs}ms{(string.IsNullOrEmpty(telnetEsteiraResult.Banner) ? "" : $" | {telnetEsteiraResult.Banner}")})" : $"FALHA ({telnetEsteiraResult.Error})")}");
             EscreverLinha($"  6. f) Teste de Banda        : {(speedResult.IsSuccess ? $"OK ({speedResult.DownloadMbps} Mbps)" : "FALHA/OFFLINE")}");
             EscreverLinha("=================================================================\n");

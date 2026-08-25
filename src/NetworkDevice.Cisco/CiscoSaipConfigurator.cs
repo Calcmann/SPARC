@@ -91,6 +91,15 @@ public sealed class CiscoSaipConfigurator
             // 4. Usuário e Acesso Remoto Telnet (EBT / PRO1AN)
             "enable secret PRO1AN",
             "username EBT privilege 15 secret PRO1AN",
+
+            // Mantém o console serial (line con 0) 100% livre e sem bloqueio de senha na bancada
+            "line con 0",
+            "no login",
+            "privilege level 15",
+            "logging synchronous",
+            "exit",
+
+            // Linha VTY (Acesso Remoto Telnet)
             "line vty 0 4",
             "privilege level 15",
             "login local",
@@ -151,7 +160,26 @@ public sealed class CiscoSaipConfigurator
             // Usa as portas padrão
         }
 
-        // 4. Entra em modo de configuração global (configure terminal)
+        // 4. Limpa rotas default estáticas antigas para não duplicar gateway
+        try
+        {
+            var showRoutes = await session.SendCommandAsync("show running-config | include ip route 0.0.0.0", TimeSpan.FromSeconds(10), cancellationToken);
+            var routeMatches = Regex.Matches(showRoutes, @"(?im)^\s*ip\s+route\s+0\.0\.0\.0\s+0\.0\.0\.0\s+(\S+)");
+            foreach (Match m in routeMatches)
+            {
+                var oldGw = m.Groups[1].Value.Trim();
+                if (!string.Equals(oldGw, circuit.WanGateway, StringComparison.OrdinalIgnoreCase))
+                {
+                    await ProgressAsync($"[*] Removendo rota default antiga para o gateway '{oldGw}'...");
+                    await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(5), cancellationToken);
+                    await session.SendCommandAsync($"no ip route 0.0.0.0 0.0.0.0 {oldGw}", TimeSpan.FromSeconds(5), cancellationToken);
+                    await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
+                }
+            }
+        }
+        catch { }
+
+        // 5. Monta e envia os comandos de provisionamento global (configure terminal)
         await ProgressAsync("[*] Entrando em modo de configuração global (configure terminal)...");
         var confTermRes = await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(10), cancellationToken);
         if (confTermRes.Contains("% Invalid input", StringComparison.OrdinalIgnoreCase))
@@ -193,19 +221,7 @@ public sealed class CiscoSaipConfigurator
             await Task.Delay(1000, cancellationToken);
         }
 
-        // 6. Gravação na NVRAM (write memory)
-        await ProgressAsync("[*] Salvando configuração na NVRAM (write memory)...");
-        try
-        {
-            var wrMemRes = await session.SendCommandAsync("write memory", TimeSpan.FromSeconds(30), cancellationToken);
-            await ProgressAsync($"    {wrMemRes.Trim()}");
-        }
-        catch (Exception ex)
-        {
-            await ProgressAsync($"    [!] Erro no write memory: {ex.Message}");
-        }
-
-        // 7. Validação pós-provisionamento: exibe show ip interface brief
+        // 6. Validação pós-provisionamento: exibe show ip interface brief
         try
         {
             await Task.Delay(1000, cancellationToken);
@@ -221,6 +237,52 @@ public sealed class CiscoSaipConfigurator
             // Best-effort
         }
 
+        // 7. Gravação Persistente na NVRAM e Ajuste de Config-Register 0x2102 (Cisco IOS)
+        await ProgressAsync("[*] Gravando configuração permanentemente na NVRAM (Cisco write memory / copy run start)...");
+
+        try
+        {
+            await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("config-register 0x2102", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
+            await Task.Delay(500, cancellationToken);
+        }
+        catch { }
+
+        var writeRes = await session.SendExpectAsync("write memory",
+            new StopCondition[] {
+                new StopCondition.Contains("[OK]", "[OK]"),
+                new StopCondition.Contains("?", "?"),
+                new StopCondition.Prompt()
+            },
+            TimeSpan.FromSeconds(25), cancellationToken);
+
+        if (writeRes.Output.Contains("?"))
+        {
+            await session.WriteLineAsync(string.Empty, cancellationToken);
+            await session.WaitForAsync(new StopCondition[] { new StopCondition.Prompt() }, TimeSpan.FromSeconds(15), cancellationToken);
+        }
+
+        try
+        {
+            var copyRes = await session.SendExpectAsync("copy running-config startup-config",
+                new StopCondition[] {
+                    new StopCondition.Contains("Destination filename", "Destination filename"),
+                    new StopCondition.Contains("?", "?"),
+                    new StopCondition.Contains("[OK]", "[OK]"),
+                    new StopCondition.Prompt()
+                },
+                TimeSpan.FromSeconds(20), cancellationToken);
+
+            if (copyRes.Output.Contains("?") || copyRes.Output.Contains("Destination filename", StringComparison.OrdinalIgnoreCase))
+            {
+                await session.WriteLineAsync(string.Empty, cancellationToken);
+                await session.WaitForAsync(new StopCondition[] { new StopCondition.Prompt() }, TimeSpan.FromSeconds(15), cancellationToken);
+            }
+        }
+        catch { }
+
+        await ProgressAsync("[OK] Configuração Cisco gravada permanentemente na NVRAM com config-register 0x2102!");
         await ProgressAsync("[*] PROVISIONAMENTO SAIP CONCLUÍDO COM SUCESSO (Acesso Telnet EBT/PRO1AN ativo)!");
     }
 

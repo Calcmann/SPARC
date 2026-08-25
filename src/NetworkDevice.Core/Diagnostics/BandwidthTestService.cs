@@ -40,7 +40,7 @@ public class BandwidthTestService
     /// Funciona 100% multiplataforma no Windows, Android e Linux sem necessidade de programas externos instalados.
     /// </summary>
     public async Task<BandwidthTestResult> RunNativeHttpSpeedTestAsync(
-        int testPayloadMegaBytes = 15,
+        int testPayloadMegaBytes = 50,
         Action<double, double>? onProgress = null,
         CancellationToken cancellationToken = default)
     {

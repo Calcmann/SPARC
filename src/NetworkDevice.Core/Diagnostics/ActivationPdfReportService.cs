@@ -157,9 +157,9 @@ public static class ActivationPdfReportService
         var isTelnet = d.TelnetResult?.IsSuccess == true;
         var isBand = d.BandResult?.IsSuccess == true;
 
-        var hasAlerts = (d.DiagnosticAlerts != null && d.DiagnosticAlerts.Count > 0) || !string.IsNullOrEmpty(d.FalhaGeral) || !is5c || !isTelnet;
-        var statusBadge = hasAlerts ? "🟡 HOMOLOGADO COM RESSALVAS" : "🟢 100% HOMOLOGADO E APROVADO";
-        var statusColor = hasAlerts ? "#D97706" : "#16A34A";
+        var is100PercentApproved = d.Step1ZerarOk && d.Step2FirmwareOk && d.Step3SaipOk && is5a && is5b && is5c && isTelnet && isBand && string.IsNullOrEmpty(d.FalhaGeral);
+        var statusBadge = is100PercentApproved ? "🟢 100% HOMOLOGADO E APROVADO" : "🔴 NÃO HOMOLOGADO / REPROVADO";
+        var statusColor = is100PercentApproved ? "#16A34A" : "#DC2626";
 
         var step1Badge = d.Step1ZerarOk ? "<span class=\"tag-ok\">✅ APROVADO</span>" : "<span class=\"tag-fail\">❌ FALHA</span>";
         var step2Badge = d.Step2FirmwareOk ? "<span class=\"tag-ok\">✅ APROVADO</span>" : "<span class=\"tag-fail\">❌ FALHA</span>";

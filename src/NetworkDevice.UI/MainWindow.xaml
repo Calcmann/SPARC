@@ -89,7 +89,8 @@
                                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                                     <ComboBox x:Name="CbPortaInicial" Width="75" IsEditable="True" SelectionChanged="CbPortaInicial_SelectionChanged" />
                                     <Button Content="🔄" Padding="3,1" Margin="3,0,0,0" ToolTip="Atualizar portas COM" Click="BtnAtualizarPortas_Click" />
-                                    <Button x:Name="BtnTestarSerialInicial" Content="🔌 Testar Conexão" Padding="7,3.5" Margin="4,0,0,0" FontSize="10" FontWeight="Bold" Background="#881337" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnTestarSerialInicial_Click" ToolTip="Abre a porta COM, envia ENTER e valida prompt" />
+                                    <Button x:Name="BtnTestarSerialInicial" Content="🔌 Testar" Padding="6,3.5" Margin="3,0,0,0" FontSize="10" FontWeight="Bold" Background="#881337" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnTestarSerialInicial_Click" ToolTip="Abre a porta COM, envia ENTER e valida prompt" />
+                                    <Button x:Name="BtnAvaliarEquipamento" Content="🔍 Avaliar Situação" Padding="8,3.5" Margin="4,0,0,0" FontSize="10" FontWeight="Bold" Background="#0284C7" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnAvaliarEquipamento_Click" ToolTip="Avalia a situação do equipamento conectado: Senha, Modelo, Versão do SO, Flash e Configuração" />
                                     <TextBlock x:Name="TxtSerialTestStatus" Text="" VerticalAlignment="Center" Margin="5,0,0,0" FontSize="10" FontWeight="Bold" Foreground="#64748B" />
                                 </StackPanel>
                             </Grid>
@@ -399,10 +400,8 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
                     <!-- Porta Serial -->
@@ -421,9 +420,9 @@
                     </ComboBox>
 
                     <!-- Perfil de Hardware -->
-                    <StackPanel Grid.Column="5" Orientation="Horizontal" VerticalAlignment="Center">
+                    <StackPanel Grid.Column="5" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
                         <TextBlock Text="Perfil HW:" FontWeight="Bold" Foreground="#881337" Margin="0,0,8,0" VerticalAlignment="Center" />
-                        <ComboBox x:Name="CbInterrupt" SelectedIndex="0" Width="300" HorizontalAlignment="Left" SelectionChanged="CbInterrupt_SelectionChanged">
+                        <ComboBox x:Name="CbInterrupt" SelectedIndex="0" Width="280" HorizontalAlignment="Left" SelectionChanged="CbInterrupt_SelectionChanged">
                             <ComboBoxItem Content="HPE / HP MSR / Comware (Ctrl+B @ 9600 - BootWare)" Tag="hpe.msr.ctrl-b" />
                             <ComboBoxItem Content="Cisco Série 1900 / 1921 / 1941 / 1905 (Break @ 9600 - ROMMON)" Tag="cisco.c1900.break" />
                             <ComboBoxItem Content="Cisco Série 900 / C921-4P (Ctrl+C Puro @ 9600)" Tag="cisco.c900.ctrl-c" />
@@ -435,22 +434,29 @@
                     </StackPanel>
 
                     <!-- Botões de Ação Global na Esteira -->
-                    <Button Grid.Column="6" x:Name="BtnExportarRelatorioPdfTop" Content="📄 Relatório PDF" Padding="10,6" Margin="0,0,8,0"
-                            Background="#0284C7" Foreground="White" BorderThickness="0" FontWeight="Bold" FontSize="11"
-                            ToolTip="Gera e abre o Relatório Técnico de Homologação em PDF"
-                            Click="BtnExportarRelatorioPdfTop_Click" />
+                    <StackPanel Grid.Column="6" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <Button x:Name="BtnAvaliarEquipamentoTop" Content="🔍 Avaliar Situação" Padding="10,6" Margin="0,0,8,0"
+                                Background="#0369A1" Foreground="White" BorderThickness="0" FontWeight="Bold" FontSize="11"
+                                ToolTip="Diagnóstico Completo: Senha, Modelo, Versão do SO, Flash e Configuração"
+                                Click="BtnAvaliarEquipamento_Click" />
 
-                    <Button Grid.Column="7" x:Name="BtnExecutarSequencia" Cursor="Hand" Padding="14,6" Margin="0,0,8,0"
-                            Background="{StaticResource ClaroGradientBrush}" Foreground="White" BorderThickness="0" FontWeight="Bold" FontSize="12"
-                            ToolTip="Executa todas as 7 fases da esteira em ordem automática (1 → 7)"
-                            Click="BtnExecutarSequencia_Click">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="⚡ EXECUTAR ESTEIRA COMPLETA (1 → 7)" />
-                        </StackPanel>
-                    </Button>
+                        <Button x:Name="BtnExportarRelatorioPdfTop" Content="📄 Relatório PDF" Padding="10,6" Margin="0,0,8,0"
+                                Background="#0284C7" Foreground="White" BorderThickness="0" FontWeight="Bold" FontSize="11"
+                                ToolTip="Gera e abre o Relatório Técnico de Homologação em PDF"
+                                Click="BtnExportarRelatorioPdfTop_Click" />
 
-                    <Button Grid.Column="8" x:Name="BtnCancelar" Content="✖ Cancelar" Padding="10,6"
-                            IsEnabled="False" Click="BtnCancelar_Click" Background="#EF4444" Foreground="White" BorderThickness="0" FontWeight="SemiBold" />
+                        <Button x:Name="BtnExecutarSequencia" Cursor="Hand" Padding="14,6" Margin="0,0,8,0"
+                                Background="{StaticResource ClaroGradientBrush}" Foreground="White" BorderThickness="0" FontWeight="Bold" FontSize="12"
+                                ToolTip="Executa todas as 7 fases da esteira em ordem automática (1 → 7)"
+                                Click="BtnExecutarSequencia_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="⚡ EXECUTAR ESTEIRA COMPLETA (1 → 7)" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button x:Name="BtnCancelar" Content="✖ Cancelar" Padding="10,6"
+                                IsEnabled="False" Click="BtnCancelar_Click" Background="#EF4444" Foreground="White" BorderThickness="0" FontWeight="SemiBold" />
+                    </StackPanel>
                 </Grid>
             </Border>
 
@@ -765,7 +771,7 @@
                                 </DockPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                                     <TextBlock Text="Telnet Host:" VerticalAlignment="Center" FontWeight="Bold" Foreground="#1E293B" Margin="0,0,6,0" FontSize="11.5" />
-                                    <TextBox x:Name="TxtTelnetTarget" Width="130" Text="200.182.245.17" VerticalAlignment="Center" Margin="0,0,6,0" Padding="4,2" ToolTip="IP do roteador (LAN) para teste Telnet" />
+                                    <TextBox x:Name="TxtTelnetTarget" Width="130" Text="" VerticalAlignment="Center" Margin="0,0,6,0" Padding="4,2" ToolTip="IP do roteador (LAN) para teste Telnet" />
                                     <TextBlock Text="Porta:" VerticalAlignment="Center" Foreground="#334155" Margin="0,0,4,0" FontSize="11" />
                                     <TextBox x:Name="TxtTelnetPort" Width="50" Text="23" VerticalAlignment="Center" Margin="0,0,8,0" Padding="4,2" />
                                     <TextBlock Text="User:" VerticalAlignment="Center" Foreground="#334155" Margin="0,0,4,0" FontSize="11" />

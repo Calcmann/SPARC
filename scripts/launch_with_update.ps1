@@ -53,13 +53,16 @@ if (Test-Path "$sparcDir\.git") {
 $needBuild = $ForceRebuild -or -not (Test-Path $uiExe) -or $pulled
 if (-not $needBuild) {
     $exeTime = (Get-Item $uiExe).LastWriteTime
+    $coreDll = "$sparcDir\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.Core.dll"
+    $dllTime = if (Test-Path $coreDll) { (Get-Item $coreDll).LastWriteTime } else { [DateTime]::MinValue }
+    $minBinTime = if ($exeTime -lt $dllTime) { $exeTime } else { $dllTime }
+
     $newestSource = Get-ChildItem -Path "$sparcDir\src" -Recurse -Include *.cs,*.xaml,*.csproj -ErrorAction SilentlyContinue |
                     Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if ($newestSource -and $newestSource.LastWriteTime -gt $exeTime) {
-        Log "[*] Codigo fonte mais recente que o .exe ($($newestSource.Name) $($newestSource.LastWriteTime) > $($exeTime)). Recompilando..." Yellow
+    if ($newestSource -and $newestSource.LastWriteTime -gt $minBinTime) {
+        Log "[*] Codigo fonte mais recente que os binarios ($($newestSource.Name) $($newestSource.LastWriteTime) > $($minBinTime)). Recompilando..." Yellow
         $needBuild = $true
     } else {
-        # Fallback por hash: garante que build anterior nao ficou corrompido
         Log "[*] Nenhuma alteracao detectada. Usando build Release existente." Gray
     }
 }
@@ -67,18 +70,34 @@ if (-not $needBuild) {
 # 3. Compilacao Release automatica
 if ($needBuild) {
     Log "[*] Compilando Release (dotnet build -c Release)..." Cyan
-    # Evita lock do exe em execucao
-    Get-Process -Name "NetworkDevice.UI" -ErrorAction SilentlyContinue | ForEach-Object { try { $_.Kill(); $_.WaitForExit(3000) } catch {} }
-    dotnet build "$sparcDir\NetworkDevice.sln" -c Release -v q --nologo 2>&1 | Out-File -Append -FilePath $logFile -Encoding utf8
-    if ($LASTEXITCODE -ne 0) {
-        Log "[ERRO] Falha na compilacao Release (exit $LASTEXITCODE). Tentando iniciar versao anterior se existir..." Red
-        if (-not (Test-Path $uiExe)) {
-            Add-Type -AssemblyName System.Windows.Forms
-            [System.Windows.Forms.MessageBox]::Show("Falha ao compilar a versao atualizada. Verifique scripts/launcher.log","SPARC Launcher",0,48) | Out-Null
-            exit $LASTEXITCODE
+    # Encerra qualquer instancia aberta para liberar arquivos binarios (trata processos elevados)
+    taskkill /F /IM NetworkDevice.UI.exe 2>$null | Out-Null
+    Start-Sleep -Milliseconds 500
+    $runningUis = Get-Process -Name "NetworkDevice.UI" -ErrorAction SilentlyContinue
+    if ($runningUis) {
+        try {
+            $runningUis | ForEach-Object { $_.Kill(); $_.WaitForExit(2000) }
+        } catch {
+            Log "[*] Encerrando processo elevado via RunAs..." Yellow
+            Start-Process powershell -Verb RunAs -ArgumentList "-NoProfile -Command Stop-Process -Name NetworkDevice.UI -Force" -Wait -WindowStyle Hidden
         }
+    }
+    
+    dotnet build "$sparcDir\NetworkDevice.sln" -c Release -v m --nologo 2>&1 | Out-File -Append -FilePath $logFile -Encoding utf8
+    if ($LASTEXITCODE -ne 0) {
+        Log "[*] Nova tentativa de compilacao Release..." Yellow
+        taskkill /F /IM NetworkDevice.UI.exe 2>$null | Out-Null
+        Start-Sleep -Seconds 1
+        dotnet build "$sparcDir\NetworkDevice.sln" -c Release -v m --nologo 2>&1 | Out-File -Append -FilePath $logFile -Encoding utf8
+    }
+
+    if ($LASTEXITCODE -ne 0) {
+        Log "[ERRO] Falha na compilacao Release (exit $LASTEXITCODE)." Red
+        Add-Type -AssemblyName System.Windows.Forms
+        [System.Windows.Forms.MessageBox]::Show("Falha ao compilar a versao atualizada do SPARC.`n`nPor favor feche a janela do SPARC que esta aberta e tente novamente.`nLog: scripts/launcher.log","SPARC Launcher",0,16) | Out-Null
+        exit $LASTEXITCODE
     } else {
-        Log "[OK] Build Release concluido." Green
+        Log "[OK] Build Release concluido com sucesso." Green
     }
 }
 

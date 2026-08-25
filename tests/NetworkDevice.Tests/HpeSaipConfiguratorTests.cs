@@ -32,6 +32,8 @@ public sealed class HpeSaipConfiguratorTests
         Assert.Contains("local-user EBT class manage", cmds);
         Assert.Contains("password simple PRO1AN", cmds);
         Assert.Contains("telnet server enable", cmds);
+        Assert.Contains("line con 0", cmds);
+        Assert.Contains("line vty 0 63", cmds);
         Assert.Contains("save force", cmds);
     }
 }

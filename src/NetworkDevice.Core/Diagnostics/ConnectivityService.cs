@@ -281,6 +281,7 @@ public class ConnectivityService
         string? username = "EBT",
         string? password = "PRO1AN",
         int timeoutMs = 10000,
+        string? sourceIpAddress = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(hostOrIp))
@@ -301,6 +302,8 @@ public class ConnectivityService
         await LogAsync($"=================================================================");
         await LogAsync($"  Alvo    : {hostOrIp}:{port}");
         await LogAsync($"  Usuário : {username} | Senha: {(string.IsNullOrEmpty(password) ? "(vazia)" : new string('*', password.Length))}");
+        if (!string.IsNullOrEmpty(sourceIpAddress))
+            await LogAsync($"  Origem  : {sourceIpAddress} (Interface de Teste)");
         await LogAsync($"-----------------------------------------------------------------");
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -318,11 +321,29 @@ public class ConnectivityService
             {
                 try
                 {
+                    if (!string.IsNullOrWhiteSpace(sourceIpAddress) && System.Net.IPAddress.TryParse(sourceIpAddress, out var srcIp))
+                    {
+                        try
+                        {
+                            client = new TcpClient(new System.Net.IPEndPoint(srcIp, 0));
+                            var connSw = System.Diagnostics.Stopwatch.StartNew();
+                            await client.ConnectAsync(hostOrIp, port, cts.Token);
+                            connSw.Stop();
+                            latency = connSw.ElapsedMilliseconds;
+                            break;
+                        }
+                        catch
+                        {
+                            client?.Dispose();
+                            client = null;
+                        }
+                    }
+
                     client = new TcpClient();
-                    var connSw = System.Diagnostics.Stopwatch.StartNew();
+                    var connSw2 = System.Diagnostics.Stopwatch.StartNew();
                     await client.ConnectAsync(hostOrIp, port, cts.Token);
-                    connSw.Stop();
-                    latency = connSw.ElapsedMilliseconds;
+                    connSw2.Stop();
+                    latency = connSw2.ElapsedMilliseconds;
                     break;
                 }
                 catch (Exception ex)
@@ -347,12 +368,13 @@ public class ConnectivityService
 
             // 2 - Ler banner e negociar opções IAC
             await LogAsync($"[2/5] Aguardando banner / prompt de login...");
-            var banner = await ReadAndNegotiateTelnetAsync(stream, 3000, cts.Token);
-            if (string.IsNullOrEmpty(banner))
+            var banner = await ReadAndNegotiateTelnetAsync(stream, 4000, cts.Token);
+            if (string.IsNullOrEmpty(banner) || (!banner.Contains("login", StringComparison.OrdinalIgnoreCase) && !banner.Contains("Username", StringComparison.OrdinalIgnoreCase)))
             {
                 // Provoca o banner enviando CRLF
                 await WriteTelnetAsync(stream, "\r\n", cts.Token);
-                banner = await ReadAndNegotiateTelnetAsync(stream, 2000, cts.Token);
+                var extra = await ReadAndNegotiateTelnetAsync(stream, 2500, cts.Token);
+                banner += "\n" + extra;
             }
 
             if (!string.IsNullOrEmpty(banner))
@@ -366,9 +388,9 @@ public class ConnectivityService
             {
                 await LogAsync($"[3/5] Enviando Username: {username}");
                 await WriteTelnetAsync(stream, username + "\r\n", cts.Token);
-                await Task.Delay(500, cts.Token);
+                await Task.Delay(800, cts.Token);
 
-                var afterUser = await ReadAndNegotiateTelnetAsync(stream, 3000, cts.Token);
+                var afterUser = await ReadAndNegotiateTelnetAsync(stream, 3500, cts.Token);
                 if (!string.IsNullOrEmpty(afterUser))
                 {
                     AppendTranscript("APÓS USER", afterUser);
@@ -388,9 +410,9 @@ public class ConnectivityService
             {
                 await LogAsync($"[4/5] Enviando Password: {new string('*', pass.Length)}");
                 await WriteTelnetAsync(stream, pass + "\r\n", cts.Token);
-                await Task.Delay(800, cts.Token);
+                await Task.Delay(1000, cts.Token);
 
-                var afterPass = await ReadAndNegotiateTelnetAsync(stream, 3500, cts.Token);
+                var afterPass = await ReadAndNegotiateTelnetAsync(stream, 4000, cts.Token);
                 if (!string.IsNullOrEmpty(afterPass))
                 {
                     AppendTranscript("APÓS PASS", afterPass);
@@ -460,11 +482,18 @@ public class ConnectivityService
         {
             if (!stream.DataAvailable)
             {
-                await Task.Delay(100, ct);
+                await Task.Delay(150, ct);
                 if (!stream.DataAvailable)
                 {
-                    if (responseSb.Length > 0)
+                    var cur = responseSb.ToString();
+                    if (cur.Contains("Username:", StringComparison.OrdinalIgnoreCase) ||
+                        cur.Contains("login:", StringComparison.OrdinalIgnoreCase) ||
+                        cur.Contains("Password:", StringComparison.OrdinalIgnoreCase) ||
+                        cur.Contains("password:", StringComparison.OrdinalIgnoreCase) ||
+                        cur.Contains(">") || cur.Contains("#") || cur.Contains("]"))
+                    {
                         break;
+                    }
                     continue;
                 }
             }
@@ -515,9 +544,9 @@ public class ConnectivityService
                 current.Contains("Password:", StringComparison.OrdinalIgnoreCase) ||
                 current.Contains("<HPE>", StringComparison.OrdinalIgnoreCase) ||
                 current.Contains("[HPE]", StringComparison.OrdinalIgnoreCase) ||
-                current.Contains(">") || current.Contains("#"))
+                current.Contains(">") || current.Contains("#") || current.Contains("]"))
             {
-                await Task.Delay(150, ct);
+                await Task.Delay(200, ct);
                 if (!stream.DataAvailable) break;
             }
         }
@@ -552,6 +581,11 @@ public class ConnectivityService
             || t.EndsWith("[HPE]", StringComparison.OrdinalIgnoreCase)
             || t.Contains("<HPE>", StringComparison.OrdinalIgnoreCase)
             || t.Contains("[HPE]", StringComparison.OrdinalIgnoreCase)
-            || System.Text.RegularExpressions.Regex.IsMatch(t, @"[A-Za-z0-9_\-]+[#>]\s*$");
+            || t.EndsWith(">")
+            || t.EndsWith("#")
+            || t.EndsWith("]")
+            || (t.Contains("<") && t.Contains(">"))
+            || (t.Contains("[") && t.Contains("]"))
+            || System.Text.RegularExpressions.Regex.IsMatch(t, @"(?i)(?:<.+?>|\[.+?\]|[A-Za-z0-9_.\-/: ]+[#>])\s*$");
     }
 }
