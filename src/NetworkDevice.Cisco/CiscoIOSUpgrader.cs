@@ -590,14 +590,46 @@ public sealed class CiscoIOSUpgrader
             _onProgress?.Invoke(35, "Fase B: Executando tftpdnld...", "Aguardando confirmação e transferência TFTP...");
 
             await session.WriteLineAsync("tftpdnld", cancellationToken);
-            await Task.Delay(1000, cancellationToken);
+
+            // Aguarda o prompt de aviso: "Do you wish to continue? y/n:  [n]: "
+            var confBuf = new byte[4096];
+            var confText = new System.Text.StringBuilder();
+            var confTimeout = DateTime.UtcNow.AddSeconds(15);
+            var confirmPromptReceived = false;
+
+            while (DateTime.UtcNow < confTimeout && !cancellationToken.IsCancellationRequested)
+            {
+                var readBytes = await session.Transport.ReadAsync(confBuf, cancellationToken);
+                if (readBytes > 0)
+                {
+                    var chunk = System.Text.Encoding.ASCII.GetString(confBuf, 0, readBytes);
+                    confText.Append(chunk);
+                    session.EmitRawOutput(chunk);
+
+                    var textSoFar = confText.ToString();
+                    if (textSoFar.Contains("Do you wish to continue", StringComparison.OrdinalIgnoreCase) ||
+                        textSoFar.Contains("y/n:", StringComparison.OrdinalIgnoreCase) ||
+                        textSoFar.Contains("[n]:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        confirmPromptReceived = true;
+                        break;
+                    }
+
+                    if (textSoFar.Contains("variable not set", StringComparison.OrdinalIgnoreCase) ||
+                        textSoFar.Contains("illegal variable", StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new DeviceSessionException($"Variável de ambiente do ROMMON inválida ou ausente: {textSoFar.Trim()}");
+                    }
+                }
+                await Task.Delay(200, cancellationToken);
+            }
 
             // Confirma o prompt de aviso: "Do you wish to continue? y/n:  [n]: y"
             await ProgressAsync("[*] Confirmando gravação na Flash (y)...");
             await session.WriteLineAsync("y", cancellationToken);
 
             // Monitora a transferência e gravação da Flash
-            var timeout = DateTime.UtcNow.AddMinutes(20);
+            var timeout = DateTime.UtcNow.AddMinutes(25);
             var buffer = new System.Text.StringBuilder();
             var transferSuccess = false;
             var readBuf = new byte[4096];
@@ -612,20 +644,33 @@ public sealed class CiscoIOSUpgrader
                     session.EmitRawOutput(chunk);
 
                     var currentText = buffer.ToString();
-                    if (currentText.Contains("File copy completed") ||
-                        currentText.Contains("File reception completed") ||
-                        (currentText.Contains("rommon") && currentText.Contains(">") && currentText.Length > 200))
+                    if (currentText.Contains("File copy completed", StringComparison.OrdinalIgnoreCase) ||
+                        currentText.Contains("File reception completed", StringComparison.OrdinalIgnoreCase) ||
+                        (currentText.Contains("Copying image to flash", StringComparison.OrdinalIgnoreCase) && currentText.Contains("rommon")))
                     {
                         transferSuccess = true;
                         break;
                     }
 
-                    if (currentText.Contains("TFTP: timeout") ||
-                        currentText.Contains("permission denied") ||
-                        currentText.Contains("No such file") ||
-                        currentText.Contains("aborted"))
+                    if (currentText.Contains("TFTP: timeout", StringComparison.OrdinalIgnoreCase) ||
+                        currentText.Contains("ARP timeout", StringComparison.OrdinalIgnoreCase) ||
+                        currentText.Contains("permission denied", StringComparison.OrdinalIgnoreCase) ||
+                        currentText.Contains("No such file", StringComparison.OrdinalIgnoreCase) ||
+                        currentText.Contains("link down", StringComparison.OrdinalIgnoreCase) ||
+                        currentText.Contains("aborted", StringComparison.OrdinalIgnoreCase) ||
+                        currentText.Contains("bad device", StringComparison.OrdinalIgnoreCase) ||
+                        currentText.Contains("Open Error", StringComparison.OrdinalIgnoreCase))
                     {
                         throw new DeviceSessionException($"Falha durante transferência TFTP no ROMMON: {currentText.Trim()}");
+                    }
+
+                    // Se retornou ao prompt do rommon sem copiar o arquivo
+                    if (confirmPromptReceived &&
+                        currentText.Contains("rommon") && currentText.Contains(">") &&
+                        !currentText.Contains("File") && !currentText.Contains("Copying") &&
+                        currentText.Length > 80)
+                    {
+                        throw new DeviceSessionException($"Transferência tftpdnld abortada ou não iniciada pelo ROMMON:\n{currentText.Trim()}");
                     }
                 }
                 await Task.Delay(100, cancellationToken);
@@ -633,13 +678,10 @@ public sealed class CiscoIOSUpgrader
 
             if (!transferSuccess)
             {
-                await ProgressAsync("[AVISO] Tempo limite de transferência atingido ou prompt retornado.");
-            }
-            else
-            {
-                await ProgressAsync($"[OK] Transferência TFTP e gravação da imagem {binFileName} na Flash concluídas com sucesso!");
+                throw new DeviceSessionException($"Tempo limite de transferência TFTP excedido ({binFileName}). Verifique o cabo de rede Ethernet conectado no roteador e notebook.");
             }
 
+            await ProgressAsync($"[OK] Transferência TFTP e gravação da imagem {binFileName} na Flash concluídas com sucesso!");
             await tftpServer.StopAsync();
         }
 
