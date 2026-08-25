@@ -140,6 +140,7 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
             var fileInfo = new FileInfo(fullPath);
             var totalBytes = fileInfo.Length;
             using var fileStream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read, 512 * 1024);
+            LogMessage?.Invoke($"[TFTP] Roteador {clientEp.Address} conectado! Iniciando envio de '{cleanFilename}' ({totalBytes / (1024.0 * 1024.0):F1} MB)...");
 
             var ackBuffer = new byte[516];
             EndPoint remoteAckEp = new IPEndPoint(clientEp.Address, clientEp.Port);

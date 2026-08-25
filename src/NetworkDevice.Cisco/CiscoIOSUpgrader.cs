@@ -550,12 +550,29 @@ public sealed class CiscoIOSUpgrader
         // 3. Inicia o Servidor TFTP
         await using (var tftpServer = new EmbeddedTftpServer(imageDir))
         {
+            var swTftp = new System.Diagnostics.Stopwatch();
+            var lastLoggedPct = -1;
+
             tftpServer.TransferProgress += (file, bytesRead, total, pct) =>
             {
+                if (!swTftp.IsRunning)
+                    swTftp.Start();
+
+                var currentPct = (int)pct;
+                var mbSent = bytesRead / (1024.0 * 1024.0);
+                var mbTotal = total / (1024.0 * 1024.0);
+                var speed = swTftp.Elapsed.TotalSeconds > 0 ? (mbSent / swTftp.Elapsed.TotalSeconds) : 0;
+
                 _onProgress?.Invoke(
                     35 + (int)(pct * 0.45),
                     $"Fase B: Gravando {binFileName} na Flash via ROMMON...",
-                    $"{bytesRead / (1024 * 1024):N1} MB / {total / (1024 * 1024):N1} MB ({pct:F0}%)");
+                    $"{mbSent:N1} MB / {mbTotal:N1} MB ({pct:F0}%) @ {speed:F2} MB/s");
+
+                if (currentPct % 10 == 0 && currentPct != lastLoggedPct)
+                {
+                    lastLoggedPct = currentPct;
+                    _ = ProgressAsync($"  -> [TFTP ROMMON] Transferindo: {mbSent:F1} MB / {mbTotal:F1} MB ({pct:F0}%) @ {speed:F2} MB/s");
+                }
             };
             tftpServer.LogMessage += msg => _ = ProgressAsync(msg);
             tftpServer.Start();
