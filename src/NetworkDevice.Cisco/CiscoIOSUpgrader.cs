@@ -527,15 +527,23 @@ public sealed class CiscoIOSUpgrader
 
         _onProgress?.Invoke(25, "Fase B: Configurando Placa de Rede...", $"Configurando IP {actualHostIp} no Notebook...");
 
-        // 2. Configura IP estático no adaptador de rede do notebook (se informado)
-        if (!string.IsNullOrWhiteSpace(localAdapterName))
+        // 2. Configura IP estático no adaptador de rede do notebook
+        var targetAdapter = localAdapterName;
+        if (string.IsNullOrWhiteSpace(targetAdapter))
+        {
+            var adapters = HostNetworkManager.GetEthernetAdapters();
+            targetAdapter = adapters.FirstOrDefault(a => a.Contains("Ethernet", StringComparison.OrdinalIgnoreCase))
+                         ?? adapters.FirstOrDefault();
+        }
+
+        if (!string.IsNullOrWhiteSpace(targetAdapter))
         {
             try
             {
-                await ProgressAsync($"[*] Configurando IP estático {actualHostIp}/{actualMask} na interface '{localAdapterName}'...");
-                var (ok, outMsg) = await HostNetworkManager.SetStaticIpAsync(localAdapterName, actualHostIp, actualMask, null, cancellationToken);
+                await ProgressAsync($"[*] Configurando IP estático {actualHostIp}/{actualMask} na interface '{targetAdapter}'...");
+                var (ok, outMsg) = await HostNetworkManager.SetStaticIpAsync(targetAdapter, actualHostIp, actualMask, null, cancellationToken);
                 if (ok)
-                    await ProgressAsync($"[OK] Interface '{localAdapterName}' configurada com sucesso com IP {actualHostIp}.");
+                    await ProgressAsync($"[OK] Interface '{targetAdapter}' configurada com sucesso com IP {actualHostIp}.");
                 else
                     await ProgressAsync($"[AVISO] Configuração de IP local: {outMsg}");
             }
@@ -544,6 +552,12 @@ public sealed class CiscoIOSUpgrader
                 await ProgressAsync($"[AVISO] Não foi possível ajustar o IP do adaptador automaticamente: {ex.Message}");
             }
         }
+        else
+        {
+            await ProgressAsync($"[AVISO] Nenhum adaptador Ethernet especificado. Certifique-se de que sua placa de rede está com IP {actualHostIp} e máscara {actualMask}.");
+        }
+
+        await ProgressAsync($"[*] [DICA FÍSICA] No modo ROMMON, conecte o cabo de rede Ethernet na porta GigabitEthernet 0/0 (GE0 / Porta 0) do roteador Cisco.");
 
         _onProgress?.Invoke(30, "Fase B: Iniciando Servidor TFTP...", "Iniciando servidor TFTP de alta performance...");
 
@@ -675,8 +689,17 @@ public sealed class CiscoIOSUpgrader
                         break;
                     }
 
-                    if (currentText.Contains("TFTP: timeout", StringComparison.OrdinalIgnoreCase) ||
+                    if (currentText.Contains("ARP: address resolution", StringComparison.OrdinalIgnoreCase) ||
                         currentText.Contains("ARP timeout", StringComparison.OrdinalIgnoreCase) ||
+                        currentText.Contains("ARP failed", StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new DeviceSessionException(
+                            $"Falha de ARP no ROMMON: O roteador Cisco não obteve resposta no IP do Notebook ({actualHostIp}).\n" +
+                            $"• Dica de Cabo: No modo ROMMON, conecte o cabo de rede na porta GigabitEthernet 0/0 (GE0) do Cisco.\n" +
+                            $"• Dica de IP: Verifique se o adaptador '{targetAdapter ?? "Ethernet"}' está com o IP {actualHostIp} e máscara {actualMask}.");
+                    }
+
+                    if (currentText.Contains("TFTP: timeout", StringComparison.OrdinalIgnoreCase) ||
                         currentText.Contains("permission denied", StringComparison.OrdinalIgnoreCase) ||
                         currentText.Contains("No such file", StringComparison.OrdinalIgnoreCase) ||
                         currentText.Contains("link down", StringComparison.OrdinalIgnoreCase) ||
