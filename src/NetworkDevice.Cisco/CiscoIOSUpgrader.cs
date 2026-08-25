@@ -220,6 +220,9 @@ public sealed class CiscoIOSUpgrader
                     await session.SendCommandAsync("end", TimeSpan.FromSeconds(10), cancellationToken);
                     await Task.Delay(2000, cancellationToken);
 
+                    // Valida se o técnico conectou o cabo na porta LAN (GE 0/1) e não na GE 0/0
+                    await CiscoIOSAdapter.EnforceLanPortConnectedAsync(session, lanIf, requestOperatorAction, ProgressAsync, cancellationToken);
+
                     // Testa conectividade IP com o PC (ping)
                     await ProgressAsync($"[*] Testando conectividade de rede com o PC ({hostIpAddress})...");
                     var pingRes = await session.SendCommandAsync($"ping {hostIpAddress} repeat 4", TimeSpan.FromSeconds(15), cancellationToken);

@@ -211,6 +211,70 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
         return host.TrimEnd('#', '>');
     }
 
+    public static async Task<bool> EnforceLanPortConnectedAsync(
+        DeviceSession session,
+        string lanInterface = "GigabitEthernet 0/1",
+        Func<string, CancellationToken, Task>? requestOperatorAction = null,
+        Func<string, Task>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        var cleanLan = lanInterface.Replace(" ", ""); // GigabitEthernet0/1
+        var cleanWan = cleanLan.EndsWith("0/1") ? cleanLan.Replace("0/1", "0/0") : "GigabitEthernet0/0";
+
+        for (var attempt = 1; attempt <= 15; attempt++)
+        {
+            var output = await session.SendCommandAsync("show ip interface brief", TimeSpan.FromSeconds(10), cancellationToken);
+            
+            var isLanUp = Regex.IsMatch(output, $@"(?i){cleanLan}\s+\S+\s+\w+\s+\w+\s+up\s+up");
+            var isWanUp = Regex.IsMatch(output, $@"(?i){cleanWan}\s+\S+\s+\w+\s+\w+\s+up\s+up");
+
+            if (isLanUp)
+            {
+                if (progress is not null)
+                    await progress($"[OK] Link físico confirmado na porta LAN ({lanInterface}).");
+                return true;
+            }
+
+            if (isWanUp && !isLanUp)
+            {
+                if (progress is not null)
+                    await progress($"[CRÍTICA DE PORTA] Cabo de rede detectado na porta {cleanWan} (WAN/ROMMON) ao invés da porta LAN ({lanInterface})!");
+
+                if (requestOperatorAction is not null && attempt == 1)
+                {
+                    await requestOperatorAction(
+                        "❌ CABO DE REDE CONECTADO NA PORTA INCORRETA (GE 0/0)!\n\n" +
+                        "O cabo Ethernet está conectado na porta GigabitEthernet 0/0 (WAN / ROMMON).\n\n" +
+                        "👉 POR FAVOR, ALTERE O CABO DE REDE PARA A PORTA:\n" +
+                        "🟢 GigabitEthernet 0/1 (GE 0/1 / LAN do Cliente)\n\n" +
+                        "Todos os procedimentos no Cisco IOS (Upgrade, Provisionamento, Testes ICMP e Banda) são executados EXCLUSIVAMENTE pela porta LAN (GE 0/1).\n\n" +
+                        "Clique em OK após conectar na porta GE 0/1.",
+                        cancellationToken);
+                }
+            }
+            else if (!isLanUp)
+            {
+                if (progress is not null)
+                    await progress($"[AVISO] Porta LAN ({lanInterface}) sem link físico. Aguardando conexão do cabo de rede...");
+
+                if (requestOperatorAction is not null && attempt == 1)
+                {
+                    await requestOperatorAction(
+                        "⚠️ NENHUM CABO DETECTADO NA PORTA LAN (GE 0/1)!\n\n" +
+                        "O link físico da porta GigabitEthernet 0/1 está DOWN.\n\n" +
+                        "👉 Conecte o cabo de rede Ethernet do seu notebook na porta:\n" +
+                        "🟢 GigabitEthernet 0/1 (GE 0/1 / LAN)\n\n" +
+                        "Clique em OK após conectar o cabo na porta GE 0/1.",
+                        cancellationToken);
+                }
+            }
+
+            await Task.Delay(2000, cancellationToken);
+        }
+
+        return false;
+    }
+
     private static string StripEchoAndPrompt(string output, string command)
     {
         var lines = output.Replace("\r", "").Split('\n').ToList();
