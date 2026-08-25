@@ -16,7 +16,7 @@ public enum InterruptMethod
 public sealed class CiscoIOSRecovery
 {
     private static readonly Regex RommonRouterPrompt = new(
-        @"(?i)(?:^(?:rommon|common)\s*\S*\s*[>#]|rommon\s*\d+\s*>|^>)",
+        @"(?i)(?:rommon\s*\S*\s*>|common\s*\S*\s*>|cannot determine first executable|readonly rommon initialized|cannot load image)",
         RegexOptions.Compiled);
 
     private static readonly Regex RommonSwitchPrompt = new(
@@ -102,9 +102,25 @@ public sealed class CiscoIOSRecovery
 
         if (accessState == DeviceAccessState.AlreadyInRommon && rommonKind.HasValue)
         {
-            stateMachine.TransitionTo(RecoveryState.RommonDetected, "Equipamento já está no ROMMON — prosseguindo diretamente...");
-            await ProgressAsync("Equipamento já está no ROMMON — prosseguindo sem reload...", cancellationToken);
-            await RunRecoveryStepsAsync(session, rommonKind.Value, stateMachine, cancellationToken);
+            stateMachine.TransitionTo(RecoveryState.RommonDetected, "Equipamento já está no ROMMON...");
+            await ProgressAsync("Equipamento já está no ROMMON (sem firmware na Flash ou em bootloader).", cancellationToken);
+
+            // Garante que o registrador esteja ajustado no ROMMON
+            try
+            {
+                await SendRommonCommandAsync(session, "confreg 0x2142", cancellationToken, requirePromptReturn: false);
+                await Task.Delay(300, cancellationToken);
+            }
+            catch { }
+
+            // Conclui a Fase 1 imediatamente, deixando o equipamento no ROMMON
+            // pronto para a Fase 2 (Transferência TFTP via ROMMON / tftpdnld)
+            stateMachine.TransitionTo(RecoveryState.Completed, "Equipamento pronto no ROMMON para carga de firmware TFTP.");
+            await ProgressAsync("\n=================================================================", cancellationToken);
+            await ProgressAsync("  [OK] ROTEADOR NO MODO ROMMON (SEM FIRMWARE / FLASH VAZIA)", cancellationToken);
+            await ProgressAsync("  • Equipamento já se encontra no ROMMON aguardando gravação de imagem.", cancellationToken);
+            await ProgressAsync("  • Fase 1 concluída: Avançando para Atualização de Firmware via TFTP (Fase 2)...", cancellationToken);
+            await ProgressAsync("=================================================================\n", cancellationToken);
             return;
         }
 
@@ -193,11 +209,9 @@ public sealed class CiscoIOSRecovery
                     return (DeviceAccessState.PasswordLocked, null);
                 if (lr.Name == "unlocked-prompt")
                 {
-                    // Se o prompt já estiver em modo privilegiado (#), acesso direto garantido
                     if (tail.EndsWith("#"))
                         return (DeviceAccessState.UnlockedPrompt, null);
 
-                    // Se estiver em modo usuário (>), testa se entra em enable sem exigir senha
                     await session.WriteLineAsync("enable", ct);
                     try
                     {
@@ -216,22 +230,50 @@ public sealed class CiscoIOSRecovery
                             return (DeviceAccessState.UnlockedPrompt, null);
                         }
                     }
-                    catch (SessionTimeoutException)
-                    {
-                        // Se não respondeu, assume bloqueado
-                    }
+                    catch (SessionTimeoutException) { }
 
-                    // Se pediu senha de enable ou falhou, equipamento está protegido administrativamente
                     await ProgressAsync("Equipamento exige senha em modo privilegiado (enable). Prosseguindo para quebra via ROMMON...", ct);
                     return (DeviceAccessState.PasswordLocked, null);
                 }
+
+                if (lr.Name == "any-output")
+                {
+                    if (RommonRouterPrompt.IsMatch(tail))
+                        return (DeviceAccessState.AlreadyInRommon, RommonKind.Router);
+                }
             }
 
-            // Se recebeu qualquer texto mas não foi prompt aberto nem rommon, trata como bloqueado por autenticação
             return (DeviceAccessState.PasswordLocked, null);
         }
         catch (SessionTimeoutException)
         {
+            // Tenta enviar um Enter de renovação caso a console esteja em silêncio
+            try
+            {
+                await session.WriteLineAsync(string.Empty, ct);
+                var retryResult = await session.WaitForAsync(
+                    new StopCondition[]
+                    {
+                        new StopCondition.LineRegex("rommon-router", RommonRouterPrompt),
+                        new StopCondition.LineRegex("rommon-switch", RommonSwitchPrompt),
+                        new StopCondition.LineRegex("password", new Regex(@"(?i)(?:user|username|login|password|user access verification)\s*[:?]")),
+                        new StopCondition.LineRegex("unlocked-prompt", new Regex(@"^[A-Za-z0-9_\-\.]+\s*[>#]")),
+                        new StopCondition.LineRegex("any-output", new Regex(@"\S"))
+                    },
+                    TimeSpan.FromSeconds(2),
+                    ct);
+
+                var tail2 = retryResult.Output.Replace("\r", "").Replace("\n", " ").Trim();
+                if (retryResult.Matched is StopCondition.LineRegex rlr)
+                {
+                    if (rlr.Name == "rommon-switch")
+                        return (DeviceAccessState.AlreadyInRommon, RommonKind.Switch);
+                    if (rlr.Name == "rommon-router" || RommonRouterPrompt.IsMatch(tail2))
+                        return (DeviceAccessState.AlreadyInRommon, RommonKind.Router);
+                }
+            }
+            catch { }
+
             throw new DeviceSessionException(
                 "Conexão RS-232 inativa: sem resposta do equipamento. Verifique se o cabo serial está conectado (ex: COM4 para FTDI) e se o equipamento está ligado.");
         }
