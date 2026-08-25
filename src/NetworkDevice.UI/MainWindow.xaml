@@ -1,0 +1,819 @@
+<Window x:Class="NetworkDevice.UI.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="SPARC — Sistema de Provisionamento e Ativação de Roteadores Claro (Versão Beta - Ativação SC)"
+        Height="780" Width="1080"
+        MinHeight="680" MinWidth="940"
+        WindowStartupLocation="CenterScreen"
+        Background="#F1F5F9"
+        Loaded="Window_Loaded">
+
+    <Window.Resources>
+        <!-- Gradiente Claro S.A. (Vinho #881337 para Vermelho #DA291C) -->
+        <LinearGradientBrush x:Key="ClaroGradientBrush" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#881337" Offset="0.0" />
+            <GradientStop Color="#DA291C" Offset="1.0" />
+        </LinearGradientBrush>
+        
+        <LinearGradientBrush x:Key="ClaroGradientHoverBrush" StartPoint="0,0" EndPoint="1,1">
+            <GradientStop Color="#9F1239" Offset="0.0" />
+            <GradientStop Color="#E11D48" Offset="1.0" />
+        </LinearGradientBrush>
+
+        <LinearGradientBrush x:Key="BetaBadgeBrush" StartPoint="0,0" EndPoint="1,0">
+            <GradientStop Color="#4C0519" Offset="0.0" />
+            <GradientStop Color="#881337" Offset="0.5" />
+            <GradientStop Color="#DA291C" Offset="1.0" />
+        </LinearGradientBrush>
+    </Window.Resources>
+
+    <Grid Margin="6">
+
+        <!-- ========================================================================= -->
+        <!-- 1. TELA INICIAL DE ABERTURA: DEFINIÇÃO DE INSUMOS DO CIRCUITO             -->
+        <!-- ========================================================================= -->
+        <Grid x:Name="GridTelaInicial" Visibility="Visible">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <Border Background="#FFFFFF" BorderBrush="#FECDD3" BorderThickness="1" CornerRadius="10" Padding="14,10" MaxWidth="860" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="0,2">
+                <StackPanel>
+                    <!-- CABEÇALHO COMPACTO -->
+                    <StackPanel HorizontalAlignment="Center" Margin="0,0,0,8">
+                        <Border Background="{StaticResource BetaBadgeBrush}" CornerRadius="10" Padding="10,2" HorizontalAlignment="Center" Margin="0,0,0,4">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="🔴" FontSize="8.5" VerticalAlignment="Center" Margin="0,0,5,0" />
+                                <TextBlock Text="VERSÃO BETA — CLARO S.A. — ATIVAÇÃO SC" FontWeight="Black" FontSize="9.5" Foreground="#FFFFFF" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Text="SPARC — Provisionamento e Ativação de Roteadores" FontWeight="Black" FontSize="16.5" Foreground="#881337" HorizontalAlignment="Center" />
+                        <TextBlock Text="Configure o equipamento, informe os dados e escolha como deseja executar o provisionamento."
+                                   FontSize="11" Foreground="#64748B" Margin="0,2,0,0" HorizontalAlignment="Center" />
+                    </StackPanel>
+
+                    <!-- ======================================================== -->
+                    <!-- PASSO 1: EQUIPAMENTO & SERIAL                             -->
+                    <!-- ======================================================== -->
+                    <Border Background="#FFFFFF" BorderBrush="#FECDD3" BorderThickness="3.5,1,1,1" CornerRadius="6" Padding="10,7" Margin="0,0,0,8">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,5">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Border Background="#881337" CornerRadius="10" Width="20" Height="20" Margin="0,0,7,0">
+                                        <TextBlock Text="1" FontWeight="Black" FontSize="11" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                    <TextBlock Text="EQUIPAMENTO &amp; PORTA SERIAL" FontWeight="Black" FontSize="11.5" Foreground="#881337" VerticalAlignment="Center" />
+                                    <TextBlock Text="• Escolha o modelo e valide a comunicação" FontSize="9.5" Foreground="#9F1239" Margin="6,0,0,0" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <Border x:Name="BadgeStep1" Background="#FEE2E2" CornerRadius="4" Padding="6,1.5" HorizontalAlignment="Right">
+                                    <TextBlock x:Name="TxtBadgeStep1" Text="🔴 Modelo e Serial Pendentes" FontSize="9" FontWeight="Bold" Foreground="#991B1B" />
+                                </Border>
+                            </DockPanel>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <ComboBox Grid.Column="0" x:Name="CbModeloRoteadorInicial" SelectedIndex="-1" FontSize="11" FontWeight="Bold" Padding="6,4" VerticalAlignment="Center" Margin="0,0,8,0" SelectionChanged="CbModeloRoteadorInicial_SelectionChanged">
+                                    <ComboBoxItem Content="— Selecione o modelo do equipamento —" Tag="" IsEnabled="False" />
+                                    <ComboBoxItem Content="🖧 HPE / HP MSR / Comware (MSR954 / MSR958 - Ctrl+B @ 9600)" Tag="hpe.msr.ctrl-b" />
+                                    <ComboBoxItem Content="🖧 Cisco Série 1900 / 1921 / 1941 / 1905 (Break @ 9600 - ROMMON)" Tag="cisco.c1900.break" />
+                                    <ComboBoxItem Content="🖧 Cisco Série 900 / C921-4P (Ctrl+C Puro @ 9600)" Tag="cisco.c900.ctrl-c" />
+                                    <ComboBoxItem Content="🖧 Cisco Automático (Break + Ctrl+C)" Tag="cisco.universal" />
+                                    <ComboBoxItem Content="🖧 Cisco Tradicional / ISR (Break Elétrico)" Tag="cisco.standard.break" />
+                                    <ComboBoxItem Content="🖧 Cisco Catalyst Switch (Botão MODE)" Tag="cisco.catalyst.mode" />
+                                    <ComboBoxItem Content="🖧 Genérico / Intervenção Manual" Tag="generic.manual" />
+                                </ComboBox>
+
+                                <TextBlock Grid.Column="1" Text="Porta Serial:" FontWeight="Bold" FontSize="10.5" Foreground="#881337" VerticalAlignment="Center" Margin="4,0,5,0" />
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <ComboBox x:Name="CbPortaInicial" Width="75" IsEditable="True" SelectionChanged="CbPortaInicial_SelectionChanged" />
+                                    <Button Content="🔄" Padding="3,1" Margin="3,0,0,0" ToolTip="Atualizar portas COM" Click="BtnAtualizarPortas_Click" />
+                                    <Button x:Name="BtnTestarSerialInicial" Content="🔌 Testar Conexão" Padding="7,3.5" Margin="4,0,0,0" FontSize="10" FontWeight="Bold" Background="#881337" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnTestarSerialInicial_Click" ToolTip="Abre a porta COM, envia ENTER e valida prompt" />
+                                    <TextBlock x:Name="TxtSerialTestStatus" Text="" VerticalAlignment="Center" Margin="5,0,0,0" FontSize="10" FontWeight="Bold" Foreground="#64748B" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ======================================================== -->
+                    <!-- PASSO 2: DADOS DO CIRCUITO                                -->
+                    <!-- ======================================================== -->
+                    <Border Background="#FFFFFF" BorderBrush="#BAE6FD" BorderThickness="3.5,1,1,1" CornerRadius="6" Padding="10,7" Margin="0,0,0,8">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,5">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Border Background="#0284C7" CornerRadius="10" Width="20" Height="20" Margin="0,0,7,0">
+                                        <TextBlock Text="2" FontWeight="Black" FontSize="11" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                    <TextBlock Text="DADOS DO CIRCUITO" FontWeight="Black" FontSize="11.5" Foreground="#0369A1" VerticalAlignment="Center" />
+                                    <TextBlock Text="• Importar Ficha SAIP (PDF/TXT) ou Informar Manualmente" FontSize="9.5" Foreground="#0284C7" Margin="6,0,0,0" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <Border x:Name="BadgeStep2" Background="#FEE2E2" CornerRadius="4" Padding="6,1.5" HorizontalAlignment="Right">
+                                    <TextBlock x:Name="TxtBadgeStep2" Text="🔴 Circuito Pendente" FontSize="9" FontWeight="Bold" Foreground="#991B1B" />
+                                </Border>
+                            </DockPanel>
+
+                            <DockPanel Margin="0,0,0,4">
+                                <TextBlock Text="Origem dos dados:" FontSize="10" FontWeight="SemiBold" Foreground="#64748B" VerticalAlignment="Center" />
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <RadioButton x:Name="RbModoSaip" Content="● Importar Ficha SAIP (PDF/TXT)" IsChecked="True" FontWeight="Bold" Foreground="#DA291C" Margin="0,0,14,0" Checked="RbModoInsumo_Checked" />
+                                    <RadioButton x:Name="RbModoManual" Content="○ Informar manualmente (IPs, GW, VLAN)" FontWeight="Bold" Foreground="#881337" Checked="RbModoInsumo_Checked" />
+                                </StackPanel>
+                            </DockPanel>
+
+                            <!-- CONTAINER DINÂMICO DOS MODOS DE INSUMO -->
+                            <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="5" Padding="8">
+                                <Grid>
+                                    <!-- OPÇÃO 1: FICHA SAIP -->
+                                    <StackPanel x:Name="GridInsumoSaip" Visibility="Visible">
+                                        <DockPanel Margin="0,0,0,4">
+                                            <Button x:Name="BtnCarregarSaip" Content="📂 Selecionar Arquivo SAIP (.pdf / .txt)" Padding="10,4" FontWeight="Bold" FontSize="10.5" Background="#DA291C" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnCarregarSaip_Click" />
+                                            <Button x:Name="BtnLimparSaip" Content="✖ Limpar Ficha" Padding="6,3" Margin="6,0,0,0" Visibility="Collapsed" Click="BtnLimparSaip_Click" />
+                                        </DockPanel>
+                                        <Border Background="#FFF1F2" BorderBrush="#FECDD3" BorderThickness="1" CornerRadius="4" Padding="6">
+                                            <TextBlock x:Name="TxtSaipResumo" Text="Nenhuma ficha SAIP selecionada. Clique no botão acima para carregar o arquivo PDF ou TXT da ordem de serviço."
+                                                       Foreground="#881337" FontSize="10.5" TextWrapping="Wrap" />
+                                        </Border>
+                                    </StackPanel>
+
+                                    <!-- OPÇÃO 2: ENTRADA MANUAL -->
+                                    <StackPanel x:Name="PanelInsumoManual" Visibility="Collapsed">
+                                        <Grid Margin="0,0,0,4">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="1.5*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="Designação:" VerticalAlignment="Center" FontWeight="Bold" Foreground="#334155" Margin="0,0,4,0" FontSize="10.5" />
+                                            <TextBox Grid.Column="1" x:Name="TxtManualDesignacao" Text="" Padding="3,1" Margin="0,0,8,0" TextChanged="TxtManual_TextChanged" />
+
+                                            <TextBlock Grid.Column="2" Text="Nome do Cliente:" VerticalAlignment="Center" FontWeight="Bold" Foreground="#334155" Margin="0,0,4,0" FontSize="10.5" />
+                                            <TextBox Grid.Column="3" x:Name="TxtManualCliente" Text="" Padding="3,1" TextChanged="TxtManual_TextChanged" />
+                                        </Grid>
+
+                                        <Grid Margin="0,0,0,4">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="34" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="34" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="WAN IP:" VerticalAlignment="Center" FontWeight="Bold" Foreground="#334155" Margin="0,0,3,0" FontSize="10.5" />
+                                            <TextBox Grid.Column="1" x:Name="TxtManualWanIp" Text="" Padding="3,1" Margin="0,0,5,0" TextChanged="TxtManual_TextChanged" ToolTip="Ex.: 201.90.204.22" />
+                                            <TextBlock Grid.Column="2" Text="WAN GW:" VerticalAlignment="Center" FontWeight="Bold" Foreground="#334155" Margin="0,0,3,0" FontSize="10.5" />
+                                            <TextBox Grid.Column="3" x:Name="TxtManualWanGw" Text="" Padding="3,1" Margin="0,0,5,0" TextChanged="TxtManual_TextChanged" ToolTip="Ex.: 201.90.204.21" />
+                                            <TextBlock Grid.Column="4" Text="/" VerticalAlignment="Center" FontWeight="Bold" Foreground="#334155" Margin="0,0,2,0" FontSize="10.5" />
+                                            <TextBox Grid.Column="5" x:Name="TxtManualWanCidr" Text="" Padding="3,1" Margin="0,0,6,0" TextChanged="TxtManual_TextChanged" ToolTip="Ex.: 30" />
+                                            <TextBlock Grid.Column="6" Text="LAN IP:" VerticalAlignment="Center" FontWeight="Bold" Foreground="#334155" Margin="0,0,3,0" FontSize="10.5" />
+                                            <TextBox Grid.Column="7" x:Name="TxtManualLanIp" Text="" Padding="3,1" Margin="0,0,5,0" TextChanged="TxtManual_TextChanged" ToolTip="Ex.: 200.182.245.17" />
+                                            <TextBlock Grid.Column="8" Text="/" VerticalAlignment="Center" FontWeight="Bold" Foreground="#334155" Margin="0,0,2,0" FontSize="10.5" />
+                                            <TextBox Grid.Column="9" x:Name="TxtManualLanCidr" Text="" Padding="3,1" TextChanged="TxtManual_TextChanged" ToolTip="Ex.: 28" />
+                                        </Grid>
+
+                                        <Border Background="#F0FDF4" BorderBrush="#86EFAC" BorderThickness="1" CornerRadius="3" Padding="5,2" Margin="0,0,0,4">
+                                            <TextBlock x:Name="TxtManualHostCalculadoPreview" Text="Host LAN Calculado: — (preencha LAN IP)" FontWeight="SemiBold" Foreground="#64748B" FontSize="10" />
+                                        </Border>
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                            <Button x:Name="BtnAplicarManualInline" Content="✓ Aplicar Informações" Padding="10,3" FontWeight="Bold" FontSize="10" Background="#881337" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnAplicarManual_Click" ToolTip="Valida e carrega os dados manuais para liberar o checklist" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ======================================================== -->
+                    <!-- PASSO 3: MODO DE EXECUÇÃO & FIRMWARE                      -->
+                    <!-- ======================================================== -->
+                    <Border Background="#FFFFFF" BorderBrush="#FDE68A" BorderThickness="3.5,1,1,1" CornerRadius="6" Padding="10,7" Margin="0,0,0,8">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,5">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Border Background="#D97706" CornerRadius="10" Width="20" Height="20" Margin="0,0,7,0">
+                                        <TextBlock Text="3" FontWeight="Black" FontSize="11" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                    <TextBlock Text="MODO DE EXECUÇÃO &amp; FIRMWARE" FontWeight="Black" FontSize="11.5" Foreground="#B45309" VerticalAlignment="Center" />
+                                    <TextBlock Text="• Escolha o modo de provisionamento e imagem SO" FontSize="9.5" Foreground="#D97706" Margin="6,0,0,0" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <Border x:Name="BadgeStep3" Background="#FEF3C7" CornerRadius="4" Padding="6,1.5" HorizontalAlignment="Right">
+                                    <TextBlock x:Name="TxtBadgeStep3" Text="⚡ Automático Selecionado" FontSize="9" FontWeight="Bold" Foreground="#B45309" />
+                                </Border>
+                            </DockPanel>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <!-- CARD 1: AUTOMÁTICO (PRIMEIRA OPÇÃO) -->
+                                <Border x:Name="CardModoAutomatico" Grid.Column="0" Background="#FFFFFF" BorderBrush="#D97706" BorderThickness="2" CornerRadius="6" Padding="8,6" Margin="0,0,4,0" Cursor="Hand" MouseLeftButtonDown="CardModoAutomatico_Click">
+                                    <StackPanel>
+                                        <DockPanel Margin="0,0,0,2">
+                                            <RadioButton x:Name="RbExecAuto" GroupName="ModoExecucao" IsChecked="True" VerticalAlignment="Center" Checked="ModoExecucao_Changed" />
+                                            <TextBlock Text="⚡ AUTOMÁTICO" FontWeight="Black" FontSize="11.5" Foreground="#D97706" VerticalAlignment="Center" Margin="4,0,0,0" />
+                                            <Border Background="#FEF3C7" CornerRadius="3" Padding="4,1" HorizontalAlignment="Right">
+                                                <TextBlock Text="Sequencial 7 Etapas" FontSize="8.5" FontWeight="Bold" Foreground="#B45309" />
+                                            </Border>
+                                        </DockPanel>
+                                        <TextBlock Text="Executa as 7 etapas em sequência (Zerar → Firmware → Provisionar → IP → ICMP → Telnet → Banda)."
+                                                   FontSize="10" Foreground="#475569" TextWrapping="Wrap" Margin="18,1,0,0" />
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- CARD 2: SEMI-AUTOMÁTICO (SEGUNDA OPÇÃO) -->
+                                <Border x:Name="CardModoSemiAuto" Grid.Column="1" Background="#FFFFFF" BorderBrush="#CBD5E1" BorderThickness="1" CornerRadius="6" Padding="8,6" Margin="4,0,0,0" Cursor="Hand" MouseLeftButtonDown="CardModoSemiAuto_Click">
+                                    <StackPanel>
+                                        <DockPanel Margin="0,0,0,2">
+                                            <RadioButton x:Name="RbExecSemiAuto" GroupName="ModoExecucao" IsChecked="False" VerticalAlignment="Center" Checked="ModoExecucao_Changed" />
+                                            <TextBlock Text="🧑‍🔧 SEMI-AUTOMÁTICO" FontWeight="Black" FontSize="11.5" Foreground="#881337" VerticalAlignment="Center" Margin="4,0,0,0" />
+                                            <Border Background="#FFF1F2" CornerRadius="3" Padding="4,1" HorizontalAlignment="Right">
+                                                <TextBlock Text="Passo a Passo" FontSize="8.5" FontWeight="Bold" Foreground="#881337" />
+                                            </Border>
+                                        </DockPanel>
+                                        <TextBlock Text="Você acompanha e confirma cada etapa da esteira. Permite validar ou intervir antes de avançar."
+                                                   FontSize="10" Foreground="#475569" TextWrapping="Wrap" Margin="18,1,0,0" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+
+                            <!-- FIRMWARE OBRIGATÓRIO SE AUTOMÁTICO -->
+                            <Border x:Name="PanelFirmwareObrigatorio" Visibility="Visible" Background="#FFFBEB" BorderBrush="#F59E0B" BorderThickness="1" CornerRadius="5" Padding="6,4" Margin="0,5,0,0">
+                                <StackPanel>
+                                    <DockPanel>
+                                        <TextBlock Text="⚡ Firmware (.ipe / .bin) para validação ou upgrade TFTP:" FontWeight="Bold" FontSize="10" Foreground="#92400E" VerticalAlignment="Center" />
+                                        <Button x:Name="BtnSelecionarFirmwareAuto" Content="📂 Selecionar Firmware" Padding="6,2" Margin="6,0,0,0" FontWeight="Bold" FontSize="9.5" Background="#D97706" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnSelecionarFirmwareAuto_Click" HorizontalAlignment="Right" />
+                                    </DockPanel>
+                                    <TextBlock x:Name="TxtFirmwareAutoInfo" Text="Nenhum firmware selecionado (clique em Selecionar Firmware)" Margin="0,2,0,0" Foreground="#B45309" FontSize="10" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- CHECKLIST DE PRONTIDÃO EXPANDIDO, VISUAL E ORGANIZADO -->
+                    <Border Background="#F8FAFC" BorderBrush="#CBD5E1" BorderThickness="1.5" CornerRadius="8" Padding="8,6" Margin="0,0,0,6">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,5">
+                                <TextBlock Text="📋 CHECKLIST DE PRONTIDÃO (Pré-requisitos para Iniciar):" FontWeight="Black" FontSize="11" Foreground="#1E293B" VerticalAlignment="Center" />
+                                <TextBlock x:Name="TxtChecklistTotalPronto" Text="0 de 4 concluídos" FontWeight="Bold" FontSize="10" Foreground="#64748B" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                            </DockPanel>
+
+                            <!-- 4 CARDS LADO A LADO -->
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <!-- ITEM 1: MODELO -->
+                                <Border x:Name="CardChkModelo" Grid.Column="0" Background="#FEF2F2" BorderBrush="#FECDD3" BorderThickness="1" CornerRadius="6" Padding="6,4" Margin="0,0,3,0">
+                                    <StackPanel>
+                                        <TextBlock x:Name="TxtChkModeloIcon" Text="🔴 1. Modelo" FontWeight="Black" FontSize="10.5" Foreground="#991B1B" />
+                                        <TextBlock x:Name="TxtChkModeloSub" Text="Selecione Cisco ou HPE" FontSize="9" Foreground="#64748B" Margin="0,1,0,0" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- ITEM 2: SERIAL -->
+                                <Border x:Name="CardChkSerial" Grid.Column="1" Background="#FEF2F2" BorderBrush="#FECDD3" BorderThickness="1" CornerRadius="6" Padding="6,4" Margin="2,0,2,0">
+                                    <StackPanel>
+                                        <TextBlock x:Name="TxtChkSerialIcon" Text="🔴 2. Cabo Serial" FontWeight="Black" FontSize="10.5" Foreground="#991B1B" />
+                                        <TextBlock x:Name="TxtChkSerialSub" Text="Clique 'Testar Conexão'" FontSize="9" Foreground="#64748B" Margin="0,1,0,0" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- ITEM 3: DADOS / SAIP -->
+                                <Border x:Name="CardChkDados" Grid.Column="2" Background="#FEF2F2" BorderBrush="#FECDD3" BorderThickness="1" CornerRadius="6" Padding="6,4" Margin="2,0,2,0">
+                                    <StackPanel>
+                                        <TextBlock x:Name="TxtChkDadosIcon" Text="🔴 3. Ficha SAIP" FontWeight="Black" FontSize="10.5" Foreground="#991B1B" />
+                                        <TextBlock x:Name="TxtChkDadosSub" Text="Carregue PDF/TXT ou Manual" FontSize="9" Foreground="#64748B" Margin="0,1,0,0" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- ITEM 4: FIRMWARE -->
+                                <Border x:Name="CardChkFirmware" Grid.Column="3" Background="#FEF2F2" BorderBrush="#FECDD3" BorderThickness="1" CornerRadius="6" Padding="6,4" Margin="3,0,0,0">
+                                    <StackPanel>
+                                        <TextBlock x:Name="TxtChkFirmwareIcon" Text="🔴 4. Firmware" FontWeight="Black" FontSize="10.5" Foreground="#92400E" />
+                                        <TextBlock x:Name="TxtChkFirmwareSub" Text="Selecione .ipe / .bin" FontSize="9" Foreground="#64748B" Margin="0,1,0,0" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+
+                            <!-- BARRA DE STATUS / ORIENTAÇÃO EM DESTAQUE -->
+                            <Border x:Name="BannerStatusProntidao" Background="#FFFBEB" BorderBrush="#FCD34D" BorderThickness="1" CornerRadius="4" Padding="8,4">
+                                <TextBlock x:Name="TxtAlertaProsseguir" Text="⚠ Preencha os itens destacados em vermelho acima para habilitar o botão de início."
+                                           Foreground="#92400E" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" />
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- BOTÃO DE AÇÃO PRINCIPAL DINÂMICO -->
+                    <Button x:Name="BtnAvancarParaEsteira" Content="⚡ INICIAR PROVISIONAMENTO AUTOMÁTICO"
+                            Padding="14,8" Background="{StaticResource ClaroGradientBrush}" Foreground="White" BorderThickness="0" FontWeight="Black" FontSize="13" Cursor="Hand"
+                            HorizontalAlignment="Stretch" Click="BtnAvancarParaEsteira_Click" IsEnabled="False" ToolTip="Valide: modelo + teste serial + dados do circuito" />
+
+                    <!-- DESCRIÇÃO DO BOTÃO CONFORME O MODO -->
+                    <TextBlock x:Name="TxtDescricaoBotaoAcao" Text="O SPARC executará as 7 etapas em sequência. Acompanhe o progresso na esteira."
+                               Foreground="#64748B" FontSize="10" FontWeight="SemiBold" Margin="0,3,0,4" HorizontalAlignment="Center" />
+
+                    <!-- MAIS OPÇÕES EXPANSÍVEL (MODO LIVRE / MANUAL) -->
+                    <Expander Header="Mais opções ▾" HorizontalAlignment="Center" Foreground="#64748B" FontSize="10" FontWeight="SemiBold" Margin="0,0,0,2">
+                        <StackPanel Orientation="Horizontal" Margin="0,3,0,1">
+                            <Button Content="→ Abrir esteira vazia (modo livre)" Background="Transparent" Foreground="#475569" FontWeight="Bold" BorderThickness="0" Margin="0,0,12,0" Cursor="Hand" Click="BtnPularTelaInicial_Click" ToolTip="Acessa a esteira diretamente sem carregar dados" />
+                            <Button x:Name="BtnAbrirManualInicial" Content="📖 Abrir Manual de Instruções (PDF)" Background="Transparent" Foreground="#475569" FontWeight="Bold" BorderThickness="0" Cursor="Hand" Click="BtnAbrirManual_Click" ToolTip="Guia ilustrado de cabeamento e tempos de boot" />
+                        </StackPanel>
+                    </Expander>
+
+                    <!-- RODAPÉ COMPACTO -->
+                    <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="4" Padding="6,3" Margin="0,2,0,0">
+                        <DockPanel>
+                            <TextBlock Text="✉ Suporte:" FontWeight="Bold" FontSize="9.5" Foreground="#64748B" VerticalAlignment="Center" Margin="0,0,4,0" />
+                            <TextBlock Text="george.calcmann@claro.com.br" FontWeight="Bold" FontSize="9.5" Foreground="#881337" VerticalAlignment="Center" />
+                            <TextBlock Text="Claro S.A. — Ativação SC" HorizontalAlignment="Right" FontSize="9.5" FontWeight="SemiBold" Foreground="#64748B" VerticalAlignment="Center" />
+                        </DockPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+            </ScrollViewer>
+        </Grid>
+
+        <!-- ========================================================================= -->
+        <!-- 1b. TELA MODO AUTOMÁTICO — BARRA GERAL + STATUS POR ETAPA (SEM ESTEIRA)     -->
+        <!-- ========================================================================= -->
+        <Grid x:Name="GridModoAutomatico" Visibility="Collapsed" Background="#FFFFFF">
+            <Border Background="#FFFFFF" BorderBrush="#FECDD3" BorderThickness="1" CornerRadius="12" Padding="20" MaxWidth="920" VerticalAlignment="Center" HorizontalAlignment="Stretch" Margin="20">
+                <StackPanel>
+                    <Border Background="{StaticResource BetaBadgeBrush}" CornerRadius="10" Padding="12,4" HorizontalAlignment="Center" Margin="0,0,0,6">
+                        <TextBlock Text="🔴 VERSÃO BETA — CLARO S.A. — ATIVAÇÃO SC" FontWeight="Black" FontSize="10.5" Foreground="#FFFFFF" />
+                    </Border>
+                    <TextBlock Text="⚡ MODO AUTOMÁTICO EM EXECUÇÃO" FontWeight="Black" FontSize="18" Foreground="#881337" HorizontalAlignment="Center" />
+                    <TextBlock x:Name="TxtAutoStatusGeral" Text="Preparando..." FontSize="12" Foreground="#64748B" HorizontalAlignment="Center" Margin="0,4,0,14" />
+                    <ProgressBar x:Name="PbAutoGeral" Height="14" Minimum="0" Maximum="100" Value="0" Foreground="#DA291C" Background="#FFF1F2" BorderThickness="0" Margin="0,0,0,6" />
+                    <TextBlock x:Name="TxtAutoPorcentagem" Text="0%" FontWeight="Bold" Foreground="#881337" HorizontalAlignment="Center" Margin="0,0,0,16" />
+                    <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8" Padding="12">
+                        <StackPanel>
+                            <TextBlock x:Name="TxtAutoEtapa1" Text="○ 1. Zerar Configuração — aguardando" Foreground="#64748B" FontSize="11.5" Margin="0,3" />
+                            <TextBlock x:Name="TxtAutoEtapa2" Text="○ 2. Atualizar Firmware — aguardando" Foreground="#64748B" FontSize="11.5" Margin="0,3" />
+                            <TextBlock x:Name="TxtAutoEtapa3" Text="○ 3. Provisionar Equipamento — aguardando" Foreground="#64748B" FontSize="11.5" Margin="0,3" />
+                            <TextBlock x:Name="TxtAutoEtapa4" Text="○ 4. Configurar IP de Teste — aguardando" Foreground="#64748B" FontSize="11.5" Margin="0,3" />
+                            <TextBlock x:Name="TxtAutoEtapa5" Text="○ 5. Testar Conectividade (ICMP: 5a LAN, 5b WAN, 5c WEB) — aguardando" Foreground="#64748B" FontSize="11.5" Margin="0,3" />
+                            <TextBlock x:Name="TxtAutoEtapa6" Text="○ 6. Testar Acesso Remoto (Telnet) — aguardando" Foreground="#64748B" FontSize="11.5" Margin="0,3" />
+                            <TextBlock x:Name="TxtAutoEtapa7" Text="○ 7. Testar Banda — aguardando" Foreground="#64748B" FontSize="11.5" Margin="0,3" />
+                        </StackPanel>
+                    </Border>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,14,0,0">
+                        <Button x:Name="BtnAutoCancelar" Content="✖ Cancelar" Padding="14,6" Background="#EF4444" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnCancelar_Click" />
+                        <Button x:Name="BtnAutoVoltar" Content="← Voltar" Padding="14,6" Margin="8,0,0,0" Background="#64748B" Foreground="White" BorderThickness="0" Click="BtnAutoVoltar_Click" Visibility="Collapsed" />
+                    </StackPanel>
+                    <Border Background="#0A0E14" CornerRadius="6" Margin="0,14,0,0" MaxHeight="200">
+                        <ScrollViewer x:Name="ScrollAutoLog" VerticalScrollBarVisibility="Auto">
+                            <TextBlock x:Name="TxtAutoLog" Text="Aguardando início..." Foreground="#94A3B8" FontFamily="Consolas" FontSize="10.5" Padding="8" TextWrapping="Wrap" />
+                        </ScrollViewer>
+                    </Border>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- ========================================================================= -->
+        <!-- 2. TELA PRINCIPAL DA ESTEIRA (EXIBIDA APÓS DEFINIÇÃO DE INSUMOS)          -->
+        <!-- ========================================================================= -->
+        <DockPanel x:Name="GridEsteiraPrincipal" Visibility="Collapsed">
+
+            <!-- ================= BARRA SUPERIOR: CONEXÃO E CONTROLE GERAL ================= -->
+            <Border DockPanel.Dock="Top" Background="#FFFFFF" BorderBrush="#FECDD3" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,0,0,6">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Porta Serial -->
+                    <TextBlock Grid.Column="0" Text="Porta Serial:" VerticalAlignment="Center" FontWeight="Bold" Foreground="#881337" Margin="0,0,8,0" />
+                    <ComboBox Grid.Column="1" x:Name="CbPorta" Width="110" Margin="0,0,6,0" IsEditable="True" SelectionChanged="CbPorta_SelectionChanged" />
+                    <Button Grid.Column="2" x:Name="BtnAtualizarPortas" Content="🔄" Padding="6,2" Margin="0,0,16,0" ToolTip="Atualizar portas COM" Click="BtnAtualizarPortas_Click" />
+
+                    <!-- Baud Rate -->
+                    <TextBlock Grid.Column="3" Text="Baud Rate:" VerticalAlignment="Center" FontWeight="Bold" Foreground="#881337" Margin="0,0,8,0" />
+                    <ComboBox Grid.Column="4" x:Name="CbBaud" SelectedIndex="0" Width="95" Margin="0,0,16,0">
+                        <ComboBoxItem Content="9600" />
+                        <ComboBoxItem Content="19200" />
+                        <ComboBoxItem Content="38400" />
+                        <ComboBoxItem Content="57600" />
+                        <ComboBoxItem Content="115200" />
+                    </ComboBox>
+
+                    <!-- Perfil de Hardware -->
+                    <StackPanel Grid.Column="5" Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="Perfil HW:" FontWeight="Bold" Foreground="#881337" Margin="0,0,8,0" VerticalAlignment="Center" />
+                        <ComboBox x:Name="CbInterrupt" SelectedIndex="0" Width="300" HorizontalAlignment="Left" SelectionChanged="CbInterrupt_SelectionChanged">
+                            <ComboBoxItem Content="HPE / HP MSR / Comware (Ctrl+B @ 9600 - BootWare)" Tag="hpe.msr.ctrl-b" />
+                            <ComboBoxItem Content="Cisco Série 1900 / 1921 / 1941 / 1905 (Break @ 9600 - ROMMON)" Tag="cisco.c1900.break" />
+                            <ComboBoxItem Content="Cisco Série 900 / C921-4P (Ctrl+C Puro @ 9600)" Tag="cisco.c900.ctrl-c" />
+                            <ComboBoxItem Content="Cisco Automático (Break + Ctrl+C)" Tag="cisco.universal" />
+                            <ComboBoxItem Content="Cisco Tradicional / ISR (Break Elétrico)" Tag="cisco.standard.break" />
+                            <ComboBoxItem Content="Cisco Catalyst Switch (Botão MODE)" Tag="cisco.catalyst.mode" />
+                            <ComboBoxItem Content="Genérico / Intervenção Manual" Tag="generic.manual" />
+                        </ComboBox>
+                    </StackPanel>
+
+                    <!-- Botões de Ação Global na Esteira -->
+                    <Button Grid.Column="6" x:Name="BtnExecutarSequencia" Cursor="Hand" Padding="14,6" Margin="0,0,8,0"
+                            Background="{StaticResource ClaroGradientBrush}" Foreground="White" BorderThickness="0" FontWeight="Bold" FontSize="12"
+                            ToolTip="Executa todas as 7 fases da esteira em ordem automática (1 → 7)"
+                            Click="BtnExecutarSequencia_Click">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="⚡ EXECUTAR ESTEIRA COMPLETA (1 → 7)" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Grid.Column="7" x:Name="BtnCancelar" Content="✖ Cancelar" Padding="10,6"
+                            IsEnabled="False" Click="BtnCancelar_Click" Background="#EF4444" Foreground="White" BorderThickness="0" FontWeight="SemiBold" />
+                </Grid>
+            </Border>
+
+            <!-- ================= BANNER DO CIRCUITO ATIVO COM TÍTULO FORMATADO ================= -->
+            <Border DockPanel.Dock="Top" Background="#FFF1F2" BorderBrush="#FECDD3" BorderThickness="1" CornerRadius="6" Padding="12,6" Margin="0,0,0,6">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,0,0">
+                        <Border Background="{StaticResource BetaBadgeBrush}" CornerRadius="6" Padding="8,3" Margin="0,0,8,0" VerticalAlignment="Center">
+                            <TextBlock Text="VERSÃO BETA — CLARO S.A. — ATIVAÇÃO SC" FontWeight="Black" FontSize="9.5" Foreground="#FFFFFF" />
+                        </Border>
+                        <Button Content="✏ Trocar / Alterar Insumos" Padding="10,3" FontWeight="Bold" Background="#881337" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnTrocarInsumos_Click" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock x:Name="TxtCircuitoAtivoTitulo" Text="CIRCUITO: FNS/IP/03977 - SOLDI PROMOTORA DE VENDAS LTDA" FontWeight="Black" Foreground="#881337" FontSize="13" TextTrimming="CharacterEllipsis" />
+                        <TextBlock x:Name="TxtCircuitoAtivoResumo" Text="WAN (GE0): 201.90.204.22/30 (GW: 201.90.204.21) | LAN (GE1): 200.182.245.17/28 | Host: 200.182.245.18 | DNS: 1.1.1.1, 8.8.8.8" FontWeight="SemiBold" Foreground="#9F1239" FontSize="11.5" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <!-- ================= BARRA INFERIOR DE STATUS E LINK DO MANUAL COM E-MAIL DE SUPORTE ================= -->
+            <StatusBar DockPanel.Dock="Bottom" Background="#FFF1F2" Padding="6,4">
+                <StatusBarItem x:Name="StatusTexto" Content="Pronto para iniciar a esteira." FontWeight="SemiBold" Foreground="#881337" />
+                <StatusBarItem HorizontalAlignment="Right">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="✉ Contato:" FontWeight="Bold" FontSize="10.5" Foreground="#64748B" VerticalAlignment="Center" Margin="0,0,4,0" />
+                        <TextBlock Text="george.calcmann@claro.com.br" FontWeight="Bold" FontSize="10.5" Foreground="#881337" VerticalAlignment="Center" Margin="0,0,12,0" />
+                        <Button x:Name="BtnAbrirManualFooter" Content="📖 Manual de Instruções (PDF)" Padding="10,3" Margin="0,0,8,0" Background="#881337" Foreground="White" BorderThickness="0" FontWeight="Bold" FontSize="11" Cursor="Hand" Click="BtnAbrirManual_Click" ToolTip="Abrir Manual Ilustrado com diagrama de cabos e portas WAN/LAN" />
+                        <Button Content="Limpar Terminal" Padding="8,3" Background="#E2E8F0" Foreground="#334155" BorderThickness="0" FontSize="11" Click="BtnLimparTerminal_Click" />
+                    </StackPanel>
+                </StatusBarItem>
+            </StatusBar>
+
+            <!-- ================= CORPO PRINCIPAL ================= -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="310" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- ============ MENU LATERAL DA ESTEIRA (STEPPER ORDENADO) ============ -->
+                <Border Grid.Column="0" Background="#FFFFFF" BorderBrush="#FECDD3" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,0,10,0">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Text="FLUXO DA ESTEIRA" FontWeight="Bold" FontSize="12" Foreground="#881337" Margin="4,0,0,10" />
+
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <!-- FASE 1: ZERAR CONFIGURAÇÃO -->
+                                <Button x:Name="BtnStepA" Cursor="Hand" Padding="10,8" Margin="0,0,0,6"
+                                        Background="#FEF2F2" BorderBrush="#F87171" BorderThickness="1"
+                                        HorizontalContentAlignment="Left" Click="BtnStepA_Click">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="1" FontWeight="Bold" FontSize="14" Foreground="#DC2626" Margin="0,0,10,0" VerticalAlignment="Center" />
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="a) Zerar Configuração" FontWeight="Bold" FontSize="12" Foreground="#991B1B" />
+                                            <TextBlock Text="ROMMON Cisco / BootWare HPE" FontSize="10.5" Foreground="#7F1D1D" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2" x:Name="StatusBadgeA" Text="⚪" FontSize="13" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
+
+                                <!-- FASE 2: ATUALIZAR FIRMWARE (RELOAD AUTOMÁTICO) -->
+                                <Button x:Name="BtnStepB" Cursor="Hand" Padding="10,8" Margin="0,0,0,6"
+                                        Background="#FAF5FF" BorderBrush="#C084FC" BorderThickness="1"
+                                        HorizontalContentAlignment="Left" Click="BtnStepB_Click">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="2" FontWeight="Bold" FontSize="14" Foreground="#9333EA" Margin="0,0,10,0" VerticalAlignment="Center" />
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="b) Atualizar Firmware" FontWeight="Bold" FontSize="12" Foreground="#6B21A8" />
+                                            <TextBlock Text="TFTP (.ipe/.bin) + Reload" FontSize="10.5" Foreground="#581C87" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2" x:Name="StatusBadgeB" Text="⚪" FontSize="13" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
+
+                                <!-- FASE 3: PROVISIONAR EQUIPAMENTO -->
+                                <Button x:Name="BtnStepC" Cursor="Hand" Padding="10,8" Margin="0,0,0,6"
+                                        Background="#F0FDF4" BorderBrush="#4ADE80" BorderThickness="1"
+                                        HorizontalContentAlignment="Left" Click="BtnStepC_Click">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="3" FontWeight="Bold" FontSize="14" Foreground="#16A34A" Margin="0,0,10,0" VerticalAlignment="Center" />
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="c) Provisionar Equipamento" FontWeight="Bold" FontSize="12" Foreground="#166534" />
+                                            <TextBlock Text="WAN, LAN, Rota e Telnet EBT" FontSize="10.5" Foreground="#14532D" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2" x:Name="StatusBadgeC" Text="⚪" FontSize="13" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
+
+                                <!-- FASE 4: CONFIGURAR IP DISPOSITIVO DE TESTE -->
+                                <Button x:Name="BtnStepD" Cursor="Hand" Padding="10,8" Margin="0,0,0,6"
+                                        Background="#FFFBEB" BorderBrush="#FBBF24" BorderThickness="1"
+                                        HorizontalContentAlignment="Left" Click="BtnStepD_Click">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="4" FontWeight="Bold" FontSize="14" Foreground="#D97706" Margin="0,0,10,0" VerticalAlignment="Center" />
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="d) Configurar IP de Teste" FontWeight="Bold" FontSize="12" Foreground="#92400E" />
+                                            <TextBlock Text="Host LAN + DNS 1.1.1.1/8.8.8.8" FontSize="10.5" Foreground="#78350F" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2" x:Name="StatusBadgeD" Text="⚪" FontSize="13" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
+
+                                <!-- FASE 5: TESTAR CONECTIVIDADE (ICMP) -->
+                                <Button x:Name="BtnStepE" Cursor="Hand" Padding="10,8" Margin="0,0,0,6"
+                                        Background="#F0F9FF" BorderBrush="#38BDF8" BorderThickness="1"
+                                        HorizontalContentAlignment="Left" Click="BtnStepE_Click">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="5" FontWeight="Bold" FontSize="14" Foreground="#0284C7" Margin="0,0,10,0" VerticalAlignment="Center" />
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="e) Testar Conectividade (ICMP)" FontWeight="Bold" FontSize="12" Foreground="#075985" />
+                                            <TextBlock Text="5a LAN | 5b WAN | 5c WEB" FontSize="10.5" Foreground="#0C4A6E" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2" x:Name="StatusBadgeE" Text="⚪" FontSize="13" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
+
+                                <!-- FASE 6: TESTAR ACESSO REMOTO (TELNET) -->
+                                <Button x:Name="BtnStepF" Cursor="Hand" Padding="10,8" Margin="0,0,0,6"
+                                        Background="#F0FDFA" BorderBrush="#2DD4BF" BorderThickness="1"
+                                        HorizontalContentAlignment="Left" Click="BtnStepF_Click">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="6" FontWeight="Bold" FontSize="14" Foreground="#0F766E" Margin="0,0,10,0" VerticalAlignment="Center" />
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="f) Acesso Remoto (Telnet)" FontWeight="Bold" FontSize="12" Foreground="#115E59" />
+                                            <TextBlock Text="Login TCP:23 EBT/PRO1AN" FontSize="10.5" Foreground="#134E4A" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2" x:Name="StatusBadgeF" Text="⚪" FontSize="13" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
+
+                                <!-- FASE 7: TESTAR BANDA -->
+                                <Button x:Name="BtnStepG" Cursor="Hand" Padding="10,8" Margin="0,0,0,6"
+                                        Background="#EEF2FF" BorderBrush="#818CF8" BorderThickness="1"
+                                        HorizontalContentAlignment="Left" Click="BtnStepG_Click">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="7" FontWeight="Bold" FontSize="14" Foreground="#4F46E5" Margin="0,0,10,0" VerticalAlignment="Center" />
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="g) Testar Banda" FontWeight="Bold" FontSize="12" Foreground="#3730A3" />
+                                            <TextBlock Text="SpeedTest CLI + Nativo HTTP" FontSize="10.5" Foreground="#312E81" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Column="2" x:Name="StatusBadgeG" Text="⚪" FontSize="13" VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
+
+                                <!-- Indicador de Legenda -->
+                                <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="6" Padding="8" Margin="0,10,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="Legenda de Status:" FontWeight="SemiBold" FontSize="10.5" Foreground="#64748B" Margin="0,0,0,4" />
+                                        <TextBlock Text="⚪ Aguardando  |  ⏳ Executando  |  ✅ OK  |  ❌ Falha" FontSize="10" Foreground="#64748B" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </DockPanel>
+                </Border>
+
+                <!-- ============ COLUNA DIREITA: PAINEL DE CONTROLE DA FASE + TERMINAL ============ -->
+                <Grid Grid.Column="1">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <!-- PAINEL DINÂMICO DA FASE ATIVA / SELECIONADA -->
+                    <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#FECDD3" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,8">
+                        <Grid>
+                            <!-- =================== FASE 1: ZERAR CONFIGURAÇÃO =================== -->
+                            <StackPanel x:Name="PanelPhaseA" Visibility="Visible">
+                                <DockPanel Margin="0,0,0,8">
+                                    <TextBlock Text="Fase 1 · a) Zerar Configuração do Equipamento" FontWeight="Bold" FontSize="13" Foreground="#991B1B" />
+                                    <Button x:Name="BtnExecutarA" Content="▶ Executar Zeramento (Fase 1)" Padding="12,4" HorizontalAlignment="Right"
+                                            Background="#DC2626" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnZerarConfig_Click" />
+                                </DockPanel>
+                                <TextBlock Text="Conecta na porta serial, envia interrupção de boot (ROMMON Cisco ou BootWare HPE), quebra de senha, limpa configuração e ajusta registrador 0x2102." Foreground="#475569" FontSize="11" TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <!-- =================== FASE 2: ATUALIZAR FIRMWARE (COM RELOAD) =================== -->
+                            <StackPanel x:Name="PanelPhaseB" Visibility="Collapsed">
+                                <DockPanel Margin="0,0,0,8">
+                                    <TextBlock Text="Fase 2 · b) Atualizar Firmware (HPE .IPE / Cisco .BIN) + Reload Automático" FontWeight="Bold" FontSize="13" Foreground="#881337" />
+                                    <Button x:Name="BtnExecutarB" Content="⚡ Iniciar Upgrade TFTP e Reload (Fase 2)" Padding="14,5" HorizontalAlignment="Right"
+                                            Background="#881337" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnUpgradeIos_Click" />
+                                </DockPanel>
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Button Grid.Column="0" x:Name="BtnSelecionarIos" Content="📂 Selecionar Firmware (.ipe / .bin)" Padding="12,5" FontWeight="Bold" Background="#DA291C" Foreground="White" Click="BtnSelecionarIos_Click" />
+                                    <TextBlock Grid.Column="1" x:Name="TxtIosImageInfo" Text="Nenhum arquivo de firmware selecionado (opcional para a esteira)."
+                                               VerticalAlignment="Center" Margin="12,0,0,0" Foreground="#881337" FontSize="11.5" TextTrimming="CharacterEllipsis" />
+                                </Grid>
+                                <TextBlock Text="Inicia o servidor TFTP integrado, transfere o arquivo para a Flash, grava no bootloader e executa o reload automático para subir na nova versão." Foreground="#475569" FontSize="11" />
+                            </StackPanel>
+
+                            <!-- =================== FASE 3: PROVISIONAR EQUIPAMENTO =================== -->
+                            <StackPanel x:Name="PanelPhaseC" Visibility="Collapsed">
+                                <DockPanel Margin="0,0,0,8">
+                                    <TextBlock Text="Fase 3 · c) Provisionar Equipamento (WAN, LAN, Rota e Telnet)" FontWeight="Bold" FontSize="13" Foreground="#166534" />
+                                    <Button x:Name="BtnExecutarC" Content="▶ Aplicar Provisionamento (Fase 3)" Padding="12,4" HorizontalAlignment="Right"
+                                            Background="#16A34A" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnAplicarSaip_Click" />
+                                </DockPanel>
+                                <TextBlock Text="Aplica as configurações do circuito no equipamento já atualizado (WAN GigabitEthernet 0/0 [GE0], LAN GigabitEthernet 0/1 [GE1], Rota Default, Acesso Telnet EBT/PRO1AN e gravação na Flash)." Foreground="#475569" FontSize="11.5" TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <!-- =================== FASE 4: CONFIGURAR IP DISPOSITIVO DE TESTE =================== -->
+                            <StackPanel x:Name="PanelPhaseD" Visibility="Collapsed">
+                                <DockPanel Margin="0,0,0,8">
+                                    <TextBlock Text="Fase 4 · d) Configurar IP e DNS no Dispositivo de Teste (Host LAN)" FontWeight="Bold" FontSize="13" Foreground="#92400E" />
+                                    <Button x:Name="BtnExecutarD" Content="▶ Aplicar IP e DNS no Host (Fase 4)" Padding="12,4" HorizontalAlignment="Right"
+                                            Background="#D97706" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnConfigIpPc_Click" />
+                                </DockPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                    <TextBlock Text="Dispositivo:" VerticalAlignment="Center" FontWeight="Bold" Foreground="#1E293B" Margin="0,0,6,0" FontSize="11.5" />
+                                    <ComboBox x:Name="CbTipoDispositivo" SelectedIndex="0" Width="110" Margin="0,0,14,0" SelectionChanged="CbTipoDispositivo_SelectionChanged">
+                                        <ComboBoxItem Content="Windows" />
+                                        <ComboBoxItem Content="Android" />
+                                    </ComboBox>
+                                    <TextBlock Text="Placa/Interface:" VerticalAlignment="Center" FontWeight="Bold" Foreground="#1E293B" Margin="0,0,6,0" FontSize="11.5" />
+                                    <ComboBox x:Name="CbAdaptadorRede" Width="200" VerticalAlignment="Center" Margin="0,0,14,0" />
+                                    <TextBlock x:Name="TxtHostIpCalculado" Text="Host LAN: - | DNS: 1.1.1.1, 8.8.8.8" VerticalAlignment="Center" FontWeight="Bold" Foreground="#0284C7" FontSize="11.5" />
+                                </StackPanel>
+                                <TextBlock Text="Configura o IP fixo e servidores DNS (1.1.1.1 / 8.8.8.8) na placa de rede do operador para teste de conectividade." Foreground="#475569" FontSize="11" />
+                            </StackPanel>
+
+                            <!-- =================== FASE 5: TESTAR CONECTIVIDADE (ICMP) =================== -->
+                            <StackPanel x:Name="PanelPhaseE" Visibility="Collapsed">
+                                <DockPanel Margin="0,0,0,8">
+                                    <TextBlock Text="Fase 5 · e) Testar Conectividade ICMP (5a LAN, 5b WAN, 5c WEB)" FontWeight="Bold" FontSize="13" Foreground="#075985" />
+                                    <Button x:Name="BtnExecutarE" Content="▶ Disparar Teste ICMP (5a / 5b / 5c)" Padding="12,4" HorizontalAlignment="Right"
+                                            Background="#0284C7" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnTestarIcmp_Click" />
+                                </DockPanel>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <!-- 5a LAN -->
+                                    <Border Grid.Column="0" Background="#F8FAFC" BorderBrush="#BAE6FD" BorderThickness="1" CornerRadius="6" Padding="8" Margin="0,0,4,0">
+                                        <StackPanel>
+                                            <TextBlock Text="5a · ICMP LAN (Roteador)" FontWeight="Bold" FontSize="11" Foreground="#0369A1" Margin="0,0,0,4" />
+                                            <TextBox x:Name="TxtIcmpTargetLan" Text="200.182.245.17" Padding="4,2" FontSize="11" />
+                                        </StackPanel>
+                                    </Border>
+                                    <!-- 5b WAN -->
+                                    <Border Grid.Column="1" Background="#F8FAFC" BorderBrush="#BAE6FD" BorderThickness="1" CornerRadius="6" Padding="8" Margin="2,0,2,0">
+                                        <StackPanel>
+                                            <TextBlock Text="5b · ICMP WAN (Gateway Claro)" FontWeight="Bold" FontSize="11" Foreground="#0369A1" Margin="0,0,0,4" />
+                                            <TextBox x:Name="TxtIcmpTargetWan" Text="201.90.204.21" Padding="4,2" FontSize="11" />
+                                        </StackPanel>
+                                    </Border>
+                                    <!-- 5c WEB -->
+                                    <Border Grid.Column="2" Background="#F8FAFC" BorderBrush="#BAE6FD" BorderThickness="1" CornerRadius="6" Padding="8" Margin="4,0,0,0">
+                                        <StackPanel>
+                                            <TextBlock Text="5c · ICMP WEB (DNS Web)" FontWeight="Bold" FontSize="11" Foreground="#0369A1" Margin="0,0,0,4" />
+                                            <TextBox x:Name="TxtIcmpTargetWeb" Text="1.1.1.1, 8.8.8.8" Padding="4,2" FontSize="11" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                                <TextBox x:Name="TxtIcmpTarget" Visibility="Collapsed" />
+                                <TextBlock Text="Dispara testes ICMP sequenciais: 5a (Interface LAN local), 5b (Gateway WAN Claro) e 5c (DNS Cloudflare 1.1.1.1 / Google 8.8.8.8)." Foreground="#475569" FontSize="11" TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <!-- =================== FASE 6: TESTAR ACESSO REMOTO (TELNET) =================== -->
+                            <StackPanel x:Name="PanelPhaseF" Visibility="Collapsed">
+                                <DockPanel Margin="0,0,0,8">
+                                    <TextBlock Text="Fase 6 · f) Testar Acesso Remoto (Telnet :23)" FontWeight="Bold" FontSize="13" Foreground="#0F766E" />
+                                    <Button x:Name="BtnExecutarF" Content="☎ Disparar Teste Telnet (Fase 6)" Padding="12,4" HorizontalAlignment="Right"
+                                            Background="#0F766E" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnTestarTelnet_Click" />
+                                </DockPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                    <TextBlock Text="Telnet Host:" VerticalAlignment="Center" FontWeight="Bold" Foreground="#1E293B" Margin="0,0,6,0" FontSize="11.5" />
+                                    <TextBox x:Name="TxtTelnetTarget" Width="130" Text="200.182.245.17" VerticalAlignment="Center" Margin="0,0,6,0" Padding="4,2" ToolTip="IP do roteador (LAN) para teste Telnet" />
+                                    <TextBlock Text="Porta:" VerticalAlignment="Center" Foreground="#334155" Margin="0,0,4,0" FontSize="11" />
+                                    <TextBox x:Name="TxtTelnetPort" Width="50" Text="23" VerticalAlignment="Center" Margin="0,0,8,0" Padding="4,2" />
+                                    <TextBlock Text="User:" VerticalAlignment="Center" Foreground="#334155" Margin="0,0,4,0" FontSize="11" />
+                                    <TextBox x:Name="TxtTelnetUser" Width="70" Text="EBT" VerticalAlignment="Center" Margin="0,0,6,0" Padding="4,2" ToolTip="Usuário Telnet provisionado (HPE: EBT)" />
+                                    <TextBlock Text="Senha:" VerticalAlignment="Center" Foreground="#334155" Margin="0,0,4,0" FontSize="11" />
+                                    <TextBox x:Name="TxtTelnetPass" Width="80" Text="PRO1AN" VerticalAlignment="Center" Margin="0,0,8,0" Padding="4,2" ToolTip="Senha Telnet (HPE: PRO1AN)" />
+                                </StackPanel>
+                                <TextBlock Text="Testa conexão TCP na porta 23, negocia opções RFC 854 IAC e valida login com usuário e senha do provisionamento." Foreground="#475569" FontSize="11" TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <!-- =================== FASE 7: TESTAR BANDA =================== -->
+                            <StackPanel x:Name="PanelPhaseG" Visibility="Collapsed">
+                                <DockPanel Margin="0,0,0,8">
+                                    <TextBlock Text="Fase 7 · g) Testar Banda de Rede" FontWeight="Bold" FontSize="13" Foreground="#3730A3" />
+                                    <Button x:Name="BtnExecutarG" Content="▶ Iniciar Teste de Banda (Fase 7)" Padding="12,4" HorizontalAlignment="Right"
+                                            Background="#4F46E5" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnTestarBanda_Click" />
+                                </DockPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                    <TextBlock Text="Atalhos Web de Medição:" VerticalAlignment="Center" FontWeight="Bold" Foreground="#1E293B" Margin="0,0,8,0" FontSize="11.5" />
+                                    <Button Content="🌐 Abrir Speedtest.net" Padding="8,2" Margin="0,0,6,0" Click="BtnSpeedtestNet_Click" />
+                                    <Button Content="🌐 Abrir Fast.com" Padding="8,2" Click="BtnFastCom_Click" />
+                                </StackPanel>
+                                <TextBlock Text="Executa o Speedtest CLI ou teste nativo HTTP em nuvem para medir vazão em Mbps, latência e estabilidade." Foreground="#475569" FontSize="11" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- BARRA DE PROGRESSO DA ESTEIRA -->
+                    <Border Grid.Row="1" Background="#FFFFFF" BorderBrush="#FECDD3" BorderThickness="1" CornerRadius="8" Padding="12,10" Margin="0,0,0,8">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,6">
+                                <TextBlock x:Name="TxtEtapaTitulo" Text="Status da Esteira: Pronto" FontWeight="Bold" FontSize="13" Foreground="#0F172A" />
+                                <TextBlock x:Name="TxtEtapaPorcentagem" Text="0%" HorizontalAlignment="Right" FontWeight="Black" FontSize="13" Foreground="#881337" />
+                            </DockPanel>
+                            <ProgressBar x:Name="PbProgresso" Height="12" Minimum="0" Maximum="100" Value="0" Foreground="#DA291C" Background="#FFF1F2" BorderThickness="0" Margin="0,0,0,6" />
+                            <TextBlock x:Name="TxtEtapaDescricao" Text="Clique nas fases da esteira à esquerda para configurar ou use o botão 'Executar Esteira Completa'." Foreground="#475569" FontSize="11.5" FontWeight="Medium" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- TERMINAL SERIAL E LOGS COM SUPORTE A CORES -->
+                    <Border Grid.Row="2" Background="#0A0E14" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="8">
+                        <RichTextBox x:Name="TxtTerminal"
+                                     IsReadOnly="True"
+                                     Background="Transparent"
+                                     Foreground="#E2E8F0"
+                                     CaretBrush="#10B981"
+                                     FontFamily="Consolas"
+                                     FontSize="12"
+                                     BorderThickness="0"
+                                     Padding="10"
+                                     VerticalScrollBarVisibility="Auto"
+                                     HorizontalScrollBarVisibility="Auto">
+                            <FlowDocument PagePadding="0">
+                                <Paragraph x:Name="TerminalParagraph" LineHeight="18" />
+                            </FlowDocument>
+                        </RichTextBox>
+                    </Border>
+                </Grid>
+            </Grid>
+
+        </DockPanel>
+
+    </Grid>
+</Window>

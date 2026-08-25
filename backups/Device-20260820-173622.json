@@ -1,0 +1,14 @@
+﻿{
+  "FileName": "Device-20260820-173622.cfg",
+  "Hostname": "Device",
+  "Vendor": "Cisco",
+  "Model": "C921-4P",
+  "OsName": "Cisco IOS",
+  "OsVersion": "Cisco",
+  "SerialNumber": null,
+  "Sha256": "a892ec31284109c65da38066c20adac119f076173d7778c48aa211473d546725",
+  "Md5": "b3e77819427bb1b01ab2e3e007258ba4",
+  "Timestamp": "2026-08-20T17:36:22.4866502-03:00",
+  "Bytes": 1236,
+  "Operator": "User"
+}

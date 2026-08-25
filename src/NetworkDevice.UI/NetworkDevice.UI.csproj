@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>NetworkDevice.UI</AssemblyName>
+    <RootNamespace>NetworkDevice.UI</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NetworkDevice.Core\NetworkDevice.Core.csproj" />
+    <ProjectReference Include="..\NetworkDevice.Protocols\NetworkDevice.Protocols.csproj" />
+    <ProjectReference Include="..\NetworkDevice.Cisco\NetworkDevice.Cisco.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\Manual_Instrucoes_Operador_SPARC.pdf" Link="Manual_Instrucoes_Operador_SPARC.pdf" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\Manual_Instrucoes_Operador_Killtech.pdf" Link="Manual_Instrucoes_Operador_Killtech.pdf" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

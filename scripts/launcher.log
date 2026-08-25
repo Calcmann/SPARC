@@ -1,0 +1,626 @@
+﻿2026-08-21 18:10:26 [*] Codigo fonte mais recente que o .exe (MainWindow.g.cs 08/21/2026 18:07:18 > 08/21/2026 17:48:34). Recompilando...
+2026-08-21 18:10:26 [*] Compilando Release (dotnet build -c Release)...
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:07.57
+2026-08-21 18:10:34 [OK] Build Release concluido.
+2026-08-21 18:10:34 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-21 18:13:49 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-21 18:13:49 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-21 18:14:58 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-21 18:14:58 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-21 18:16:27 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-21 18:16:27 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-21 18:18:29 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-21 18:18:29 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-21 18:21:20 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-21 18:21:20 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-21 18:27:26 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-21 18:27:26 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-21 18:36:47 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-21 18:36:47 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-21 18:39:00 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-21 18:39:01 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-21 18:40:34 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-21 18:40:34 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-21 18:45:46 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-21 18:45:46 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-21 18:53:55 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-21 18:53:55 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-21 18:55:10 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-21 18:55:10 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-21 18:58:58 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-21 18:58:58 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-21 19:01:15 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-21 19:01:15 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-21 19:05:15 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-21 19:05:15 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-21 19:10:17 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-21 19:10:17 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-21 19:11:45 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-21 19:11:45 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-21 19:13:33 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-21 19:13:33 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-21 19:18:06 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-21 19:18:06 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-21 19:24:26 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-21 19:24:26 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 09:51:09 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 09:51:09 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 10:06:30 [*] Codigo fonte mais recente que o .exe (HpeComwareUpgrader.cs 08/24/2026 10:04:15 > 08/21/2026 19:17:56). Recompilando...
+2026-08-24 10:06:31 [*] Compilando Release (dotnet build -c Release)...
+C:\Killtech\src\NetworkDevice.Core\Diagnostics\ConnectivityService.cs(288,17): warning CS0219: A vari├ível "portOpen" ├® atribu├¡da, mas seu valor nunca ├® usado [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.UI\MainWindow.xaml.cs(195,102): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\Killtech\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+
+Compila├º├úo com ├¬xito.
+
+C:\Killtech\src\NetworkDevice.Core\Diagnostics\ConnectivityService.cs(288,17): warning CS0219: A vari├ível "portOpen" ├® atribu├¡da, mas seu valor nunca ├® usado [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.UI\MainWindow.xaml.cs(195,102): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\Killtech\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+    6 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:03.02
+2026-08-24 10:06:34 [OK] Build Release concluido.
+2026-08-24 10:06:34 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 10:13:08 [*] Codigo fonte mais recente que o .exe (HpeComwareUpgrader.cs 08/24/2026 10:12:22 > 08/24/2026 10:06:34). Recompilando...
+2026-08-24 10:13:08 [*] Compilando Release (dotnet build -c Release)...
+C:\Killtech\src\NetworkDevice.UI\MainWindow.xaml.cs(195,102): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\Killtech\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+
+Compila├º├úo com ├¬xito.
+
+C:\Killtech\src\NetworkDevice.UI\MainWindow.xaml.cs(195,102): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\Killtech\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+    1 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:02.76
+2026-08-24 10:13:12 [OK] Build Release concluido.
+2026-08-24 10:13:12 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 10:25:06 [*] Codigo fonte mais recente que o .exe (HpeSaipConfigurator.cs 08/24/2026 10:17:23 > 08/24/2026 10:13:11). Recompilando...
+2026-08-24 10:25:06 [*] Compilando Release (dotnet build -c Release)...
+C:\Killtech\src\NetworkDevice.Core\Diagnostics\ConnectivityService.cs(288,17): warning CS0219: A vari├ível "portOpen" ├® atribu├¡da, mas seu valor nunca ├® usado [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HpeSaipConfigurator.cs(191,21): error CS0826: N├úo foi encontrado nenhum tipo melhor para a matriz do tipo impl├¡cita [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HpeSaipConfigurator.cs(214,29): error CS0826: N├úo foi encontrado nenhum tipo melhor para a matriz do tipo impl├¡cita [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+
+FALHA da compila├º├úo.
+
+C:\Killtech\src\NetworkDevice.Core\Diagnostics\ConnectivityService.cs(288,17): warning CS0219: A vari├ível "portOpen" ├® atribu├¡da, mas seu valor nunca ├® usado [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HpeSaipConfigurator.cs(191,21): error CS0826: N├úo foi encontrado nenhum tipo melhor para a matriz do tipo impl├¡cita [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HpeSaipConfigurator.cs(214,29): error CS0826: N├úo foi encontrado nenhum tipo melhor para a matriz do tipo impl├¡cita [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+    5 Aviso(s)
+    2 Erro(s)
+
+Tempo Decorrido 00:00:03.72
+2026-08-24 10:25:10 [ERRO] Falha na compilacao Release (exit 1). Tentando iniciar versao anterior se existir...
+2026-08-24 10:25:10 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 10:32:42 [*] Codigo fonte mais recente que o .exe (HpeSaipConfigurator.cs 08/24/2026 10:30:23 > 08/24/2026 10:13:11). Recompilando...
+2026-08-24 10:32:42 [*] Compilando Release (dotnet build -c Release)...
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HpeSaipConfigurator.cs(191,21): error CS0826: N├úo foi encontrado nenhum tipo melhor para a matriz do tipo impl├¡cita [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HpeSaipConfigurator.cs(215,29): error CS0826: N├úo foi encontrado nenhum tipo melhor para a matriz do tipo impl├¡cita [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Diagnostics\ConnectivityService.cs(288,17): warning CS0219: A vari├ível "portOpen" ├® atribu├¡da, mas seu valor nunca ├® usado [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+
+FALHA da compila├º├úo.
+
+C:\Killtech\src\NetworkDevice.Core\Diagnostics\ConnectivityService.cs(288,17): warning CS0219: A vari├ível "portOpen" ├® atribu├¡da, mas seu valor nunca ├® usado [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HpeSaipConfigurator.cs(191,21): error CS0826: N├úo foi encontrado nenhum tipo melhor para a matriz do tipo impl├¡cita [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HpeSaipConfigurator.cs(215,29): error CS0826: N├úo foi encontrado nenhum tipo melhor para a matriz do tipo impl├¡cita [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+    5 Aviso(s)
+    2 Erro(s)
+
+Tempo Decorrido 00:00:01.71
+2026-08-24 10:32:44 [ERRO] Falha na compilacao Release (exit 1). Tentando iniciar versao anterior se existir...
+2026-08-24 10:32:44 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 10:37:47 [*] Codigo fonte mais recente que o .exe (MainWindow.g.cs 08/24/2026 10:35:43 > 08/24/2026 10:13:11). Recompilando...
+2026-08-24 10:37:47 [*] Compilando Release (dotnet build -c Release)...
+C:\Killtech\src\NetworkDevice.Core\Diagnostics\ConnectivityService.cs(288,17): warning CS0219: A vari├ível "portOpen" ├® atribu├¡da, mas seu valor nunca ├® usado [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.UI\MainWindow.xaml.cs(195,102): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\Killtech\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+
+Compila├º├úo com ├¬xito.
+
+C:\Killtech\src\NetworkDevice.Core\Diagnostics\ConnectivityService.cs(288,17): warning CS0219: A vari├ível "portOpen" ├® atribu├¡da, mas seu valor nunca ├® usado [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.UI\MainWindow.xaml.cs(195,102): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\Killtech\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+    6 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:07.68
+2026-08-24 10:37:55 [OK] Build Release concluido.
+2026-08-24 10:37:55 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 10:43:54 [*] Codigo fonte mais recente que o .exe (HpeSaipConfigurator.cs 08/24/2026 10:43:39 > 08/24/2026 10:37:55). Recompilando...
+2026-08-24 10:43:54 [*] Compilando Release (dotnet build -c Release)...
+C:\Killtech\src\NetworkDevice.Core\Diagnostics\ConnectivityService.cs(288,17): warning CS0219: A vari├ível "portOpen" ├® atribu├¡da, mas seu valor nunca ├® usado [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.UI\MainWindow.xaml.cs(195,102): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\Killtech\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+
+Compila├º├úo com ├¬xito.
+
+C:\Killtech\src\NetworkDevice.Core\Diagnostics\ConnectivityService.cs(288,17): warning CS0219: A vari├ível "portOpen" ├® atribu├¡da, mas seu valor nunca ├® usado [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.UI\MainWindow.xaml.cs(195,102): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\Killtech\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+    6 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:06.97
+2026-08-24 10:44:02 [OK] Build Release concluido.
+2026-08-24 10:44:02 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 10:46:16 [*] Codigo fonte mais recente que o .exe (HpeSaipConfigurator.cs 08/24/2026 10:45:55 > 08/24/2026 10:44:02). Recompilando...
+2026-08-24 10:46:16 [*] Compilando Release (dotnet build -c Release)...
+C:\Killtech\src\NetworkDevice.Core\Diagnostics\ConnectivityService.cs(288,17): warning CS0219: A vari├ível "portOpen" ├® atribu├¡da, mas seu valor nunca ├® usado [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.UI\MainWindow.xaml.cs(195,102): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\Killtech\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+
+Compila├º├úo com ├¬xito.
+
+C:\Killtech\src\NetworkDevice.Core\Diagnostics\ConnectivityService.cs(288,17): warning CS0219: A vari├ível "portOpen" ├® atribu├¡da, mas seu valor nunca ├® usado [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.UI\MainWindow.xaml.cs(195,102): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\Killtech\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+    6 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:03.48
+2026-08-24 10:46:21 [OK] Build Release concluido.
+2026-08-24 10:46:21 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 10:49:13 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 10:49:13 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 10:51:55 [*] Codigo fonte mais recente que o .exe (MainWindow.xaml.cs 08/24/2026 10:51:15 > 08/24/2026 10:46:21). Recompilando...
+2026-08-24 10:51:55 [*] Compilando Release (dotnet build -c Release)...
+C:\Killtech\src\NetworkDevice.UI\MainWindow.xaml.cs(195,102): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\Killtech\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+
+Compila├º├úo com ├¬xito.
+
+C:\Killtech\src\NetworkDevice.UI\MainWindow.xaml.cs(195,102): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\Killtech\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+    1 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:01.81
+2026-08-24 10:51:57 [OK] Build Release concluido.
+2026-08-24 10:51:57 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 11:05:10 [*] Codigo fonte mais recente que o .exe (HpeComwareRecovery.cs 08/24/2026 10:54:01 > 08/24/2026 10:51:57). Recompilando...
+2026-08-24 11:05:10 [*] Compilando Release (dotnet build -c Release)...
+C:\Killtech\src\NetworkDevice.Core\Diagnostics\ConnectivityService.cs(288,17): warning CS0219: A vari├ível "portOpen" ├® atribu├¡da, mas seu valor nunca ├® usado [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.UI\MainWindow.xaml.cs(195,102): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\Killtech\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+
+Compila├º├úo com ├¬xito.
+
+C:\Killtech\src\NetworkDevice.Core\Diagnostics\ConnectivityService.cs(288,17): warning CS0219: A vari├ível "portOpen" ├® atribu├¡da, mas seu valor nunca ├® usado [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.UI\MainWindow.xaml.cs(195,102): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\Killtech\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+    6 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:05.24
+2026-08-24 11:05:16 [OK] Build Release concluido.
+2026-08-24 11:05:16 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 11:12:03 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 11:12:03 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 11:12:32 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 11:12:32 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 11:14:51 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 11:14:51 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 11:16:48 [*] Codigo fonte mais recente que o .exe (HpeComwareUpgrader.cs 08/24/2026 11:16:36 > 08/24/2026 11:05:16). Recompilando...
+2026-08-24 11:16:48 [*] Compilando Release (dotnet build -c Release)...
+C:\Killtech\src\NetworkDevice.UI\MainWindow.xaml.cs(195,102): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\Killtech\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+
+Compila├º├úo com ├¬xito.
+
+C:\Killtech\src\NetworkDevice.UI\MainWindow.xaml.cs(195,102): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\Killtech\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+    1 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:04.87
+2026-08-24 11:16:53 [OK] Build Release concluido.
+2026-08-24 11:16:53 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 11:18:12 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 11:18:12 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 11:20:38 [*] Codigo fonte mais recente que o .exe (MainWindow.xaml.cs 08/24/2026 11:20:26 > 08/24/2026 11:16:53). Recompilando...
+2026-08-24 11:20:38 [*] Compilando Release (dotnet build -c Release)...
+C:\Killtech\src\NetworkDevice.Core\Diagnostics\ConnectivityService.cs(288,17): warning CS0219: A vari├ível "portOpen" ├® atribu├¡da, mas seu valor nunca ├® usado [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.UI\MainWindow.xaml.cs(195,102): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\Killtech\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+
+Compila├º├úo com ├¬xito.
+
+C:\Killtech\src\NetworkDevice.Core\Diagnostics\ConnectivityService.cs(288,17): warning CS0219: A vari├ível "portOpen" ├® atribu├¡da, mas seu valor nunca ├® usado [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.UI\MainWindow.xaml.cs(195,102): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\Killtech\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+    6 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:03.96
+2026-08-24 11:20:43 [OK] Build Release concluido.
+2026-08-24 11:20:43 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 11:29:00 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 11:29:00 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 11:30:42 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 11:30:42 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 11:31:28 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 11:31:28 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 11:31:58 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 11:31:58 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 12:08:34 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 12:08:34 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 12:15:40 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 12:15:40 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 12:21:45 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 12:21:45 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 12:23:03 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 12:23:03 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 12:27:07 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 12:27:07 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 12:40:22 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 12:40:23 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 12:44:07 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 12:44:07 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 12:45:09 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 12:45:09 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 12:48:33 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 12:48:34 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 12:49:15 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 12:49:15 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 13:04:14 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 13:04:14 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 13:07:24 [*] Codigo fonte mais recente que o .exe (MainWindow.g.cs 08/24/2026 13:05:22 > 08/24/2026 13:00:02). Recompilando...
+2026-08-24 13:07:24 [*] Compilando Release (dotnet build -c Release)...
+C:\Killtech\src\NetworkDevice.Core\Diagnostics\ConnectivityService.cs(288,17): warning CS0219: A vari├ível "portOpen" ├® atribu├¡da, mas seu valor nunca ├® usado [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.UI\MainWindow.xaml.cs(195,102): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\Killtech\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+
+Compila├º├úo com ├¬xito.
+
+C:\Killtech\src\NetworkDevice.Core\Diagnostics\ConnectivityService.cs(288,17): warning CS0219: A vari├ível "portOpen" ├® atribu├¡da, mas seu valor nunca ├® usado [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\Killtech\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\Killtech\src\NetworkDevice.UI\MainWindow.xaml.cs(195,102): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\Killtech\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+    6 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:03.26
+2026-08-24 13:07:27 [OK] Build Release concluido.
+2026-08-24 13:07:27 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 13:08:41 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 13:08:41 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 13:14:30 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 13:14:30 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 13:18:15 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 13:18:15 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 13:32:32 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 13:32:32 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 13:37:59 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 13:37:59 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 13:40:33 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 13:40:34 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 13:45:49 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 13:45:49 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 13:51:52 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 13:51:52 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 13:56:57 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 13:56:57 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 14:06:14 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 14:06:14 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 14:07:05 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 14:07:05 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 14:19:31 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 14:19:31 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 14:28:34 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 14:28:34 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 14:40:53 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 14:40:53 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 14:59:20 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 14:59:20 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 15:10:38 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 15:10:38 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 15:37:26 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 15:37:26 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 15:48:58 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 15:48:58 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 15:57:59 [*] Codigo fonte mais recente que o .exe (DeviceSession.cs 08/24/2026 15:57:50 > 08/24/2026 15:53:48). Recompilando...
+2026-08-24 15:57:59 [*] Compilando Release (dotnet build -c Release)...
+2026-08-24 15:59:47 [*] Codigo fonte mais recente que o .exe (CiscoIOSAdapter.cs 08/24/2026 15:58:21 > 08/24/2026 15:53:48). Recompilando...
+2026-08-24 15:59:47 [*] Compilando Release (dotnet build -c Release)...
+C:\Killtech\src\NetworkDevice.UI\MainWindow.xaml.cs(199,102): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\Killtech\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+
+Compila├º├úo com ├¬xito.
+
+C:\Killtech\src\NetworkDevice.UI\MainWindow.xaml.cs(199,102): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\Killtech\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+    1 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:05.26
+2026-08-24 15:59:53 [OK] Build Release concluido.
+2026-08-24 15:59:53 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 16:08:43 [*] Codigo fonte mais recente que o .exe (CiscoIOSRecovery.cs 08/24/2026 16:06:37 > 08/24/2026 15:59:53). Recompilando...
+2026-08-24 16:08:43 [*] Compilando Release (dotnet build -c Release)...
+C:\Killtech\src\NetworkDevice.UI\MainWindow.xaml.cs(199,102): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\Killtech\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+
+Compila├º├úo com ├¬xito.
+
+C:\Killtech\src\NetworkDevice.UI\MainWindow.xaml.cs(199,102): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\Killtech\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+    1 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:05.26
+2026-08-24 16:08:49 [OK] Build Release concluido.
+2026-08-24 16:08:49 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 16:21:27 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 16:21:27 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 16:34:43 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 16:34:43 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 16:44:12 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 16:44:12 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 16:54:06 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 16:54:06 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 16:54:52 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 16:54:52 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 16:58:25 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 16:58:25 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 17:05:13 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 17:05:13 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 17:09:34 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 17:09:34 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 17:21:10 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 17:21:10 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 17:32:46 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 17:32:46 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 17:42:51 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 17:42:51 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 17:59:11 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 17:59:11 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-24 18:10:26 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-24 18:10:26 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-25 09:35:25 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-25 09:35:25 [*] Iniciando C:\Killtech\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-25 09:52:35 [*] Atalho do Desktop recriado/corrigido: C:\Users\User\Desktop\NetworkDevice.lnk
+2026-08-25 09:52:35 [*] Compilando Release (dotnet build -c Release)...
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. Só há suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. Só há suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. Só há suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. Só há suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(245,102): warning CS8602: Desreferência de uma referência possivelmente nula. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+
+Compilação com êxito.
+
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. Só há suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. Só há suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. Só há suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. Só há suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(245,102): warning CS8602: Desreferência de uma referência possivelmente nula. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+    5 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:09.06
+2026-08-25 09:52:45 [OK] Build Release concluido.
+2026-08-25 09:52:45 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-25 10:14:03 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-25 10:14:03 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-25 10:23:43 [*] Codigo fonte mais recente que o .exe (MainWindow.g.cs 08/25/2026 10:20:41 > 08/25/2026 10:06:36). Recompilando...
+2026-08-25 10:23:43 [*] Compilando Release (dotnet build -c Release)...
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:02.49
+2026-08-25 10:23:46 [OK] Build Release concluido.
+2026-08-25 10:23:46 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-25 10:38:37 [*] Codigo fonte mais recente que o .exe (MainWindow.g.cs 08/25/2026 10:34:13 > 08/25/2026 10:18:52). Recompilando...
+2026-08-25 10:38:37 [*] Compilando Release (dotnet build -c Release)...
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:03.32
+2026-08-25 10:38:41 [OK] Build Release concluido.
+2026-08-25 10:38:41 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-25 10:48:04 [*] Codigo fonte mais recente que o .exe (MainWindow.g.cs 08/25/2026 10:46:01 > 08/25/2026 10:38:41). Recompilando...
+2026-08-25 10:48:04 [*] Compilando Release (dotnet build -c Release)...
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:02.07
+2026-08-25 10:48:07 [OK] Build Release concluido.
+2026-08-25 10:48:07 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-25 11:00:49 [*] Codigo fonte mais recente que o .exe (MainWindow.g.cs 08/25/2026 10:58:32 > 08/25/2026 10:48:07). Recompilando...
+2026-08-25 11:00:49 [*] Compilando Release (dotnet build -c Release)...
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+    4 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:02.34
+2026-08-25 11:00:52 [OK] Build Release concluido.
+2026-08-25 11:00:52 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-25 11:25:45 [*] Codigo fonte mais recente que o .exe (MainWindow.g.cs 08/25/2026 11:22:23 > 08/25/2026 11:00:52). Recompilando...
+2026-08-25 11:25:45 [*] Compilando Release (dotnet build -c Release)...
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:06.49
+2026-08-25 11:25:53 [OK] Build Release concluido.
+2026-08-25 11:25:53 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-25 11:42:07 [*] Nenhuma alteracao detectada. Usando build Release existente.
+2026-08-25 11:42:07 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-25 12:18:56 [*] Codigo fonte mais recente que o .exe (MainWindow.g.cs 08/25/2026 12:15:57 > 08/25/2026 11:25:52). Recompilando...
+2026-08-25 12:18:56 [*] Compilando Release (dotnet build -c Release)...
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:06.86
+2026-08-25 12:19:04 [OK] Build Release concluido.
+2026-08-25 12:19:04 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-25 12:27:14 [*] Codigo fonte mais recente que o .exe (MainWindow.g.cs 08/25/2026 12:25:48 > 08/25/2026 12:19:03). Recompilando...
+2026-08-25 12:27:14 [*] Compilando Release (dotnet build -c Release)...
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+    4 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:02.63
+2026-08-25 12:27:17 [OK] Build Release concluido.
+2026-08-25 12:27:17 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-25 12:32:30 [*] Codigo fonte mais recente que o .exe (MainWindow.g.cs 08/25/2026 12:31:30 > 08/25/2026 12:27:17). Recompilando...
+2026-08-25 12:32:30 [*] Compilando Release (dotnet build -c Release)...
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:01.79
+2026-08-25 12:32:32 [OK] Build Release concluido.
+2026-08-25 12:32:32 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-25 12:41:08 [*] Codigo fonte mais recente que o .exe (MainWindow.g.cs 08/25/2026 12:40:26 > 08/25/2026 12:32:32). Recompilando...
+2026-08-25 12:41:08 [*] Compilando Release (dotnet build -c Release)...
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:01.93
+2026-08-25 12:41:11 [OK] Build Release concluido.
+2026-08-25 12:41:11 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-25 12:48:31 [*] Codigo fonte mais recente que o .exe (MainWindow.xaml.cs 08/25/2026 12:46:52 > 08/25/2026 12:41:11). Recompilando...
+2026-08-25 12:48:31 [*] Compilando Release (dotnet build -c Release)...
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:01.64
+2026-08-25 12:48:33 [OK] Build Release concluido.
+2026-08-25 12:48:33 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-25 12:53:08 [*] Codigo fonte mais recente que o .exe (MainWindow.g.cs 08/25/2026 12:52:34 > 08/25/2026 12:48:32). Recompilando...
+2026-08-25 12:53:08 [*] Compilando Release (dotnet build -c Release)...
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(164,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(166,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(165,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+    4 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:02.37
+2026-08-25 12:53:11 [OK] Build Release concluido.
+2026-08-25 12:53:11 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-25 13:03:39 [*] Codigo fonte mais recente que o .exe (MainWindow.g.cs 08/25/2026 12:55:28 > 08/25/2026 12:53:11). Recompilando...
+2026-08-25 13:03:39 [*] Compilando Release (dotnet build -c Release)...
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:01.69
+2026-08-25 13:03:41 [OK] Build Release concluido.
+2026-08-25 13:03:41 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-25 13:13:54 [*] Codigo fonte mais recente que o .exe (MainWindow.g.cs 08/25/2026 13:12:33 > 08/25/2026 13:03:41). Recompilando...
+2026-08-25 13:13:54 [*] Compilando Release (dotnet build -c Release)...
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:02.00
+2026-08-25 13:13:56 [OK] Build Release concluido.
+2026-08-25 13:13:56 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-08-25 13:21:27 [*] Codigo fonte mais recente que o .exe (MainWindow.xaml.cs 08/25/2026 13:19:46 > 08/25/2026 13:13:56). Recompilando...
+2026-08-25 13:21:27 [*] Compilando Release (dotnet build -c Release)...
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:01.60
+2026-08-25 13:21:29 [OK] Build Release concluido.
+2026-08-25 13:21:29 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe

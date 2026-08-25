@@ -1,0 +1,64 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{4561E009-E205-4F7B-9396-4990B71FBFF0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetworkDevice.Core", "src\NetworkDevice.Core\NetworkDevice.Core.csproj", "{671787CD-26D1-4154-8930-F4EFA7FDD95B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetworkDevice.Protocols", "src\NetworkDevice.Protocols\NetworkDevice.Protocols.csproj", "{B4386D44-9AB2-4280-ADA7-508D8868076C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetworkDevice.Cisco", "src\NetworkDevice.Cisco\NetworkDevice.Cisco.csproj", "{4020F96B-F773-4EA9-BE4B-6C84C9209918}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetworkDevice.Cli", "src\NetworkDevice.Cli\NetworkDevice.Cli.csproj", "{54CF3394-4EEB-421E-B3DE-B100E2EE7240}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{32667A25-FA05-4E4D-A045-D145511D50EC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetworkDevice.Tests", "tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj", "{876CFCE0-EA4D-48DD-B847-F01A0509A5BD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NetworkDevice.UI", "src\NetworkDevice.UI\NetworkDevice.UI.csproj", "{D4E301C7-8D67-4142-BFEC-A87380FF6716}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{671787CD-26D1-4154-8930-F4EFA7FDD95B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{671787CD-26D1-4154-8930-F4EFA7FDD95B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{671787CD-26D1-4154-8930-F4EFA7FDD95B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{671787CD-26D1-4154-8930-F4EFA7FDD95B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B4386D44-9AB2-4280-ADA7-508D8868076C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B4386D44-9AB2-4280-ADA7-508D8868076C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B4386D44-9AB2-4280-ADA7-508D8868076C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B4386D44-9AB2-4280-ADA7-508D8868076C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4020F96B-F773-4EA9-BE4B-6C84C9209918}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4020F96B-F773-4EA9-BE4B-6C84C9209918}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4020F96B-F773-4EA9-BE4B-6C84C9209918}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4020F96B-F773-4EA9-BE4B-6C84C9209918}.Release|Any CPU.Build.0 = Release|Any CPU
+		{54CF3394-4EEB-421E-B3DE-B100E2EE7240}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{54CF3394-4EEB-421E-B3DE-B100E2EE7240}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{54CF3394-4EEB-421E-B3DE-B100E2EE7240}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{54CF3394-4EEB-421E-B3DE-B100E2EE7240}.Release|Any CPU.Build.0 = Release|Any CPU
+		{876CFCE0-EA4D-48DD-B847-F01A0509A5BD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{876CFCE0-EA4D-48DD-B847-F01A0509A5BD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{876CFCE0-EA4D-48DD-B847-F01A0509A5BD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{876CFCE0-EA4D-48DD-B847-F01A0509A5BD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D4E301C7-8D67-4142-BFEC-A87380FF6716}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D4E301C7-8D67-4142-BFEC-A87380FF6716}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D4E301C7-8D67-4142-BFEC-A87380FF6716}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D4E301C7-8D67-4142-BFEC-A87380FF6716}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{671787CD-26D1-4154-8930-F4EFA7FDD95B} = {4561E009-E205-4F7B-9396-4990B71FBFF0}
+		{B4386D44-9AB2-4280-ADA7-508D8868076C} = {4561E009-E205-4F7B-9396-4990B71FBFF0}
+		{4020F96B-F773-4EA9-BE4B-6C84C9209918} = {4561E009-E205-4F7B-9396-4990B71FBFF0}
+		{54CF3394-4EEB-421E-B3DE-B100E2EE7240} = {4561E009-E205-4F7B-9396-4990B71FBFF0}
+		{876CFCE0-EA4D-48DD-B847-F01A0509A5BD} = {32667A25-FA05-4E4D-A045-D145511D50EC}
+		{D4E301C7-8D67-4142-BFEC-A87380FF6716} = {4561E009-E205-4F7B-9396-4990B71FBFF0}
+	EndGlobalSection
+EndGlobal
