@@ -1679,10 +1679,26 @@ public partial class MainWindow : Window
             AtualizarProgresso(20, "Fase A: Verificando RS-232...", "Detectando ROMMON, senha ou prompt...");
             await recovery.RecoverAndResetAsync(session, InstruirOperadorAsync, ct);
 
+            // Se o equipamento estiver no ROMMON (sem IOS), não executa comandos de auditoria IOS
+            if (session.Mode == ExecMode.Rommon ||
+                session.CurrentPrompt?.Trim().StartsWith("rommon", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                EscreverLinha("[*] Equipamento no ROMMON. Auditoria show version pulada (aguardando gravação de firmware via TFTP).");
+                AtualizarProgresso(100, "Fase A Concluída!", "Equipamento em ROMMON pronto para carga de firmware TFTP.");
+                return;
+            }
+
             AtualizarProgresso(85, "Fase A: Auditando equipamento...", "Identificando versão e modelo...");
-            var adapter = new CiscoIOSAdapter(null);
-            var info = await adapter.IdentifyAsync(session, ct);
-            ExibirDadosEquipamento(info);
+            try
+            {
+                var adapter = new CiscoIOSAdapter(null);
+                var info = await adapter.IdentifyAsync(session, ct);
+                ExibirDadosEquipamento(info);
+            }
+            catch (Exception ex)
+            {
+                EscreverLinha($"[AVISO] Auditoria inicial show version: {ex.Message}");
+            }
 
             AtualizarProgresso(100, "Fase A Concluída!", "Cisco zerado com sucesso (0x2102).");
         }
@@ -2125,6 +2141,94 @@ public partial class MainWindow : Window
         finally
         {
             _cts.Dispose();
+            _cts = null;
+            SetBusy(false);
+        }
+    }
+
+    private async void BtnExecutarRommonTftp_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(_selectedIosBinPath))
+        {
+            MessageBox.Show("Selecione um arquivo de firmware Cisco (.bin) para efetuar a recuperação no modo ROMMON.", "Aviso", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var porta = CbPorta.Text.Trim();
+        if (string.IsNullOrEmpty(porta))
+        {
+            EscreverLinha("[!] Selecione a porta serial do equipamento (ex: COM1 ou COM4).");
+            MessageBox.Show("Selecione a porta serial do equipamento.", "Aviso", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var adapter = CbAdaptadorRede?.Text?.Trim();
+        var hostIp = _loadedSaipCircuit?.HostLanIp ?? ObterIpLocalParaTftp() ?? "192.168.1.1";
+        var routerIp = _loadedSaipCircuit?.LanIp ?? "192.168.1.2";
+        var subnetMask = _loadedSaipCircuit?.LanSubnetMask ?? "255.255.255.0";
+
+        SelecionarFase("B");
+        DefinirBadgeStatus("B", "⏳");
+        SetBusy(true);
+        _cts = new CancellationTokenSource();
+        var baud = int.TryParse(CbBaud.Text, out var b) ? b : 9600;
+
+        try
+        {
+            AtualizarProgresso(15, "Recuperação ROMMON TFTP...", "Conectando ao terminal serial...");
+            EscreverLinha("\n[*] [FASE B] RECUPERAÇÃO DE FIRMWARE VIA ROMMON TFTP...");
+
+            var sessionOptions = new SessionOptions
+            {
+                PromptMatcher = RegexPromptMatcher.Universal(),
+                CommandTimeout = TimeSpan.FromSeconds(30),
+                ConnectTimeout = TimeSpan.FromSeconds(15)
+            };
+
+            var transport = new SerialTransport(porta, baud);
+            await using var session = new DeviceSession(transport, sessionOptions);
+            session.RawOutput += OnRawOutput;
+
+            await session.ConnectAsync(_cts.Token);
+
+            var ciscoUpgrader = new CiscoIOSUpgrader(EscreverLinhaAsync, AtualizarProgresso);
+            var success = await ciscoUpgrader.UpgradeViaRommonTftpAsync(
+                session,
+                _selectedIosBinPath,
+                hostIp,
+                routerIp,
+                subnetMask,
+                null,
+                adapter,
+                _cts.Token);
+
+            if (success)
+            {
+                DefinirBadgeStatus("B", "✅");
+                AtualizarProgresso(100, "Fase B Concluída!", "Firmware gravado na Flash via ROMMON e roteador inicializado com sucesso.");
+                MessageBox.Show("Firmware transferido e gravado na Flash via ROMMON com sucesso!", "ROMMON TFTP Concluído", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                throw new InvalidOperationException("Falha no procedimento de transferência ROMMON TFTP.");
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            DefinirBadgeStatus("B", "⚪");
+            AtualizarProgresso(0, "Recuperação cancelada", "Cancelado pelo operador.");
+            EscreverLinha("\n[!] Recuperação ROMMON TFTP cancelada.");
+        }
+        catch (Exception ex)
+        {
+            DefinirBadgeStatus("B", "❌");
+            AtualizarProgresso(0, "Falha na Recuperação ROMMON", ex.Message);
+            EscreverLinha($"\n[ERRO ROMMON TFTP] {ex.Message}");
+            MessageBox.Show($"Erro durante a recuperação ROMMON TFTP:\n{ex.Message}", "Erro ROMMON TFTP", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            _cts?.Dispose();
             _cts = null;
             SetBusy(false);
         }

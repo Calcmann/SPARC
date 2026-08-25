@@ -666,9 +666,14 @@
                             <!-- =================== FASE 2: ATUALIZAR FIRMWARE (COM RELOAD) =================== -->
                             <StackPanel x:Name="PanelPhaseB" Visibility="Collapsed">
                                 <DockPanel Margin="0,0,0,8">
-                                    <TextBlock Text="Fase 2 · b) Atualizar Firmware (HPE .IPE / Cisco .BIN) + Reload Automático" FontWeight="Bold" FontSize="13" Foreground="#881337" />
-                                    <Button x:Name="BtnExecutarB" Content="⚡ Iniciar Upgrade TFTP e Reload (Fase 2)" Padding="14,5" HorizontalAlignment="Right"
-                                            Background="#881337" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnUpgradeIos_Click" />
+                                    <TextBlock Text="Fase 2 · b) Atualizar Firmware (HPE .IPE / Cisco .BIN) + Reload Automático" FontWeight="Bold" FontSize="13" Foreground="#881337" VerticalAlignment="Center" />
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button x:Name="BtnExecutarRommonTftp" Content="🚨 Recuperação ROMMON TFTP" Padding="10,5" Margin="0,0,8,0"
+                                                Background="#C2410C" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnExecutarRommonTftp_Click"
+                                                ToolTip="Configura IP no Notebook e no ROMMON do Cisco, inicia servidor TFTP integrado, executa tftpdnld e efetua o boot da imagem." />
+                                        <Button x:Name="BtnExecutarB" Content="⚡ Iniciar Upgrade TFTP e Reload (Fase 2)" Padding="14,5"
+                                                Background="#881337" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnUpgradeIos_Click" />
+                                    </StackPanel>
                                 </DockPanel>
                                 <Grid Margin="0,0,0,8">
                                     <Grid.ColumnDefinitions>

@@ -57,7 +57,8 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
 
     public async Task EnterPrivilegedExecAsync(DeviceSession session, CancellationToken cancellationToken = default)
     {
-        if (session.Mode is ExecMode.PrivilegedExec or ExecMode.GlobalConfig || (session.CurrentPrompt != null && session.CurrentPrompt.EndsWith("#")))
+        if (session.Mode is ExecMode.PrivilegedExec or ExecMode.GlobalConfig or ExecMode.Rommon ||
+            (session.CurrentPrompt != null && (session.CurrentPrompt.EndsWith("#") || session.CurrentPrompt.Contains("rommon", StringComparison.OrdinalIgnoreCase))))
             return;
 
         var result = await session.SendExpectAsync(
@@ -73,10 +74,13 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
             await session.SendCommandAsync(_enableSecret, cancellationToken: cancellationToken);
         }
 
+        if (session.Mode == ExecMode.Rommon || session.CurrentPrompt?.Contains("rommon", StringComparison.OrdinalIgnoreCase) == true)
+            return;
+
         if (session.Mode is not (ExecMode.PrivilegedExec or ExecMode.GlobalConfig) && (session.CurrentPrompt == null || !session.CurrentPrompt.EndsWith("#")))
         {
             // Se o output terminou com '#' ou '>'
-            if (result.Output.TrimEnd().EndsWith("#"))
+            if (result.Output.TrimEnd().EndsWith("#") || result.Output.Contains("rommon"))
                 return;
 
             throw new DeviceSessionException("Falha ao entrar em modo privilegiado (enable).");
@@ -85,7 +89,9 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
 
     public async Task<DeviceInfo> IdentifyAsync(DeviceSession session, CancellationToken cancellationToken = default)
     {
-        if (session.Mode == ExecMode.Rommon || session.CurrentPrompt?.Trim().StartsWith("rommon", StringComparison.OrdinalIgnoreCase) == true)
+        if (session.Mode == ExecMode.Rommon ||
+            session.CurrentPrompt?.Trim().StartsWith("rommon", StringComparison.OrdinalIgnoreCase) == true ||
+            session.CurrentPrompt?.Contains("rommon", StringComparison.OrdinalIgnoreCase) == true)
         {
             return new DeviceInfo(
                 "Cisco",

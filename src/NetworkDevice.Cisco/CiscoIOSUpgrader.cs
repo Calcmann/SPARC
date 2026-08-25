@@ -487,15 +487,15 @@ public sealed class CiscoIOSUpgrader
     /// Recuperação de emergência do Cisco IOS em modo ROMMON via comando tftpdnld.
     /// Configura IP no notebook, ativa servidor TFTP local, programa variáveis no ROMMON e efetua boot.
     /// </summary>
-    private async Task<bool> UpgradeViaRommonTftpAsync(
+    public async Task<bool> UpgradeViaRommonTftpAsync(
         DeviceSession session,
         string imageFilePath,
-        string hostIpAddress,
-        string? routerIpAddress,
-        string? subnetMask,
-        string? lanInterface,
-        string? localAdapterName,
-        CancellationToken cancellationToken)
+        string hostIpAddress = "192.168.1.1",
+        string? routerIpAddress = "192.168.1.2",
+        string? subnetMask = "255.255.255.0",
+        string? lanInterface = null,
+        string? localAdapterName = null,
+        CancellationToken cancellationToken = default)
     {
         var binFileName = Path.GetFileName(imageFilePath);
         var imageDir = Path.GetDirectoryName(imageFilePath) ?? AppContext.BaseDirectory;
