@@ -95,11 +95,11 @@ public partial class MainWindow : Window
             var candidates = new[]
             {
                 Path.Combine(baseDir, "Manual_Instrucoes_Operador_SPARC.pdf"),
-                @"C:\Killtech\Manual_Instrucoes_Operador_SPARC.pdf",
+                @"C:\SPARC\Manual_Instrucoes_Operador_SPARC.pdf",
                 Path.GetFullPath(Path.Combine(baseDir, @"..\..\..\..\Manual_Instrucoes_Operador_SPARC.pdf")),
                 Path.GetFullPath(Path.Combine(baseDir, @"..\..\..\..\..\Manual_Instrucoes_Operador_SPARC.pdf")),
                 Path.Combine(baseDir, "Manual_Instrucoes_Operador_Killtech.pdf"),
-                @"C:\Killtech\Manual_Instrucoes_Operador_Killtech.pdf",
+                @"C:\SPARC\Manual_Instrucoes_Operador_Killtech.pdf",
                 Path.GetFullPath(Path.Combine(baseDir, @"..\..\..\..\Manual_Instrucoes_Operador_Killtech.pdf")),
                 Path.GetFullPath(Path.Combine(baseDir, @"..\..\..\..\..\Manual_Instrucoes_Operador_Killtech.pdf"))
             };
@@ -116,7 +116,7 @@ public partial class MainWindow : Window
             else
             {
                 MessageBox.Show(
-                    "O arquivo do Manual do Operador (SPARC) não foi localizado em C:\\Killtech.",
+                    "O arquivo do Manual do Operador (SPARC) não foi localizado.",
                     "Manual do Operador — SPARC",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
