@@ -35,6 +35,7 @@ public partial class MainWindow : Window
     private SaipCircuitData? _loadedSaipCircuit;
     private string? _selectedIosBinPath;
     private bool _isBusy;
+    private TripleIcmpResult? _lastIcmpResult;
 
     public MainWindow()
     {
@@ -1367,9 +1368,20 @@ public partial class MainWindow : Window
             var telnetR = await ExecutarTesteTelnetAsync(telnetHost, telnetPort, ct);
             SetEtapa(6, (telnetR.IsSuccess ? "✅" : "❌") + " 6. Acesso Remoto (Telnet) — " + (telnetR.IsSuccess ? "OK" : "falha"), telnetR.IsSuccess ? "#16A34A" : "#EF4444"); Progresso(94, "6/7 OK");
 
-            SetEtapa(7, "⏳ 7. Testar Banda — em execução", "#D97706"); Progresso(96, "7/7 Banda..."); LogAuto(">>> [AUTO 7/7] Banda");
-            var bandR = await ExecutarTesteBandaAsync(ct);
-            SetEtapa(7, (bandR.IsSuccess ? "✅" : "⚠") + " 7. Testar Banda — " + (bandR.IsSuccess ? "OK" : "falha"), bandR.IsSuccess ? "#16A34A" : "#D97706"); Progresso(100, "Concluído!");
+            BandwidthTestResult bandR;
+            if (icmpR != null && (!icmpR.IsWanOk || !icmpR.IsWebOk))
+            {
+                SetEtapa(7, "⏭ 7. Testar Banda — descartado (WAN offline)", "#64748B");
+                Progresso(100, "Concluído!");
+                LogAuto(">>> [AUTO 7/7] Teste de banda descartado (WAN/Internet offline no teste ICMP)");
+                bandR = new BandwidthTestResult(0, 0, 0, 0, "Nativo HTTP", "Descartado", false, "Descartado automaticamente pois o link WAN / Internet não respondeu ao teste ICMP.");
+            }
+            else
+            {
+                SetEtapa(7, "⏳ 7. Testar Banda — em execução", "#D97706"); Progresso(96, "7/7 Banda..."); LogAuto(">>> [AUTO 7/7] Banda");
+                bandR = await ExecutarTesteBandaAsync(ct);
+                SetEtapa(7, (bandR.IsSuccess ? "✅" : "⚠") + " 7. Testar Banda — " + (bandR.IsSuccess ? "OK" : "falha"), bandR.IsSuccess ? "#16A34A" : "#D97706"); Progresso(100, "Concluído!");
+            }
 
             LogAuto("================================================================="); LogAuto(" MODO AUTOMÁTICO CONCLUÍDO "); LogAuto("=================================================================");
             BtnAutoCancelar.Visibility = Visibility.Collapsed; BtnAutoVoltar.Visibility = Visibility.Visible;
@@ -2833,7 +2845,8 @@ public partial class MainWindow : Window
         var summary = $"5a LAN: {(lanRes.IsSuccess ? $"{lanRes.AvgRttMs:F1}ms" : "Falha")} | 5b WAN: {(wanRes.IsSuccess ? $"{wanRes.AvgRttMs:F1}ms" : "Offline")} | 5c WEB: {(webRes.IsSuccess ? $"{webRes.AvgRttMs:F1}ms" : "Offline")}";
         AtualizarProgresso(84, "Fase 5 Concluída!", summary);
 
-        return new TripleIcmpResult(lanRes, wanRes, webRes);
+        _lastIcmpResult = new TripleIcmpResult(lanRes, wanRes, webRes);
+        return _lastIcmpResult;
     }
 
     // FASE F · TESTAR ACESSO REMOTO TELNET
@@ -2888,6 +2901,24 @@ public partial class MainWindow : Window
     // FASE G · TESTAR BANDA
     private async void BtnTestarBanda_Click(object sender, RoutedEventArgs e)
     {
+        if (_lastIcmpResult != null && (!_lastIcmpResult.IsWanOk || !_lastIcmpResult.IsWebOk))
+        {
+            var prosseguir = MessageBox.Show(
+                "O link WAN / Gateway Claro ou a Internet não responderam aos testes de conectividade ICMP (Fase 5).\n\n" +
+                "Executar o teste de banda sem WAN ativa poderá medir a internet local do computador (Wi-Fi/Rede corporativa) em vez do roteador em bancada.\n\n" +
+                "Deseja prosseguir com o teste de banda mesmo assim?",
+                "Link WAN Desconectado / Offline",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (prosseguir != MessageBoxResult.Yes)
+            {
+                DefinirBadgeStatus("G", "⏭");
+                EscreverLinha("\n[!] Teste de banda cancelado: link WAN offline.");
+                return;
+            }
+        }
+
         SelecionarFase("G");
         DefinirBadgeStatus("G", "⏳");
         SetBusy(true);
