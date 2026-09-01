@@ -3,17 +3,169 @@ using NetworkDevice.Core.Session;
 
 namespace NetworkDevice.Core.Provisioning;
 
+public enum HpeComwareView
+{
+    UserView,
+    SystemView,
+    InterfaceView,
+    LocalUserView,
+    LineView,
+    Unknown
+}
+
 public sealed class HpeSaipConfigurator
 {
     private static readonly Regex InterfaceLineRegex = new(
         @"^(?<iface>(?:GigabitEthernet|GE|Ten-GigabitEthernet|Vlan-interface|Bridge-Aggregation)\S*)\s+",
         RegexOptions.Compiled | RegexOptions.Multiline | RegexOptions.IgnoreCase);
 
+    private static readonly Regex StaticRouteRegex = new(
+        @"(?im)^\s*(?<route>ip\s+route-static\s+\S+\s+\S+.*)$",
+        RegexOptions.Compiled);
+
     private readonly Func<string, Task>? _progress;
 
     public HpeSaipConfigurator(Func<string, Task>? progress = null)
     {
         _progress = progress;
+    }
+
+    /// <summary>
+    /// Detecta a View / Contexto atual do HPE Comware a partir do prompt serial.
+    /// </summary>
+    public static HpeComwareView DetectView(string promptOrOutput)
+    {
+        if (string.IsNullOrWhiteSpace(promptOrOutput))
+            return HpeComwareView.Unknown;
+
+        var lastLine = promptOrOutput.Trim().Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.Trim() ?? string.Empty;
+
+        // User View: <HPE>
+        if (lastLine.StartsWith("<") && lastLine.EndsWith(">"))
+            return HpeComwareView.UserView;
+
+        // Sub-views ou System View: [...]
+        if (lastLine.StartsWith("[") && lastLine.EndsWith("]"))
+        {
+            if (lastLine.Contains("-GigabitEthernet", StringComparison.OrdinalIgnoreCase) ||
+                lastLine.Contains("-GE", StringComparison.OrdinalIgnoreCase) ||
+                lastLine.Contains("-Vlan-interface", StringComparison.OrdinalIgnoreCase) ||
+                lastLine.Contains("-Bridge-Aggregation", StringComparison.OrdinalIgnoreCase))
+            {
+                return HpeComwareView.InterfaceView;
+            }
+
+            if (lastLine.Contains("-luser-", StringComparison.OrdinalIgnoreCase))
+                return HpeComwareView.LocalUserView;
+
+            if (lastLine.Contains("-line-", StringComparison.OrdinalIgnoreCase) ||
+                lastLine.Contains("-ui-", StringComparison.OrdinalIgnoreCase) ||
+                lastLine.Contains("-vty-", StringComparison.OrdinalIgnoreCase))
+            {
+                return HpeComwareView.LineView;
+            }
+
+            // [HPE] (sem hífen de submodo)
+            return HpeComwareView.SystemView;
+        }
+
+        return HpeComwareView.Unknown;
+    }
+
+    /// <summary>
+    /// Garante que o terminal esteja no System View [HPE], sem enviar comandos redundantes.
+    /// </summary>
+    public static async Task EnsureSystemViewAsync(DeviceSession session, Func<string, Task>? progress = null, CancellationToken ct = default)
+    {
+        var prompt = (session.CurrentPrompt ?? string.Empty).Trim();
+        var currentView = DetectView(prompt);
+
+        if (currentView == HpeComwareView.Unknown)
+        {
+            var testRes = await session.SendCommandAsync(string.Empty, TimeSpan.FromSeconds(2), ct);
+            currentView = DetectView(testRes);
+        }
+
+        if (currentView == HpeComwareView.SystemView)
+            return;
+
+        if (currentView == HpeComwareView.UserView)
+        {
+            await session.SendCommandAsync("system-view", TimeSpan.FromSeconds(5), ct);
+            return;
+        }
+
+        // Se estiver em sub-view (Interface, luser, line, etc.), envia quit ou return
+        if (currentView is HpeComwareView.InterfaceView or HpeComwareView.LocalUserView or HpeComwareView.LineView)
+        {
+            await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), ct);
+            var nextPrompt = (session.CurrentPrompt ?? string.Empty).Trim();
+            if (DetectView(nextPrompt) == HpeComwareView.SystemView)
+                return;
+        }
+
+        // Fallback: return para User View e entra em system-view
+        await session.SendCommandAsync("return", TimeSpan.FromSeconds(3), ct);
+        await Task.Delay(200, ct);
+        await session.SendCommandAsync("system-view", TimeSpan.FromSeconds(5), ct);
+    }
+
+    /// <summary>
+    /// Garante que o terminal esteja no User View raiz &lt;HPE&gt;, nunca enviando return se já estiver no User View.
+    /// </summary>
+    public static async Task EnsureUserViewAsync(DeviceSession session, Func<string, Task>? progress = null, CancellationToken ct = default)
+    {
+        var prompt = (session.CurrentPrompt ?? string.Empty).Trim();
+        var currentView = DetectView(prompt);
+
+        if (currentView == HpeComwareView.Unknown)
+        {
+            var testRes = await session.SendCommandAsync(string.Empty, TimeSpan.FromSeconds(2), ct);
+            currentView = DetectView(testRes);
+        }
+
+        if (currentView == HpeComwareView.UserView)
+            return;
+
+        // Envia return apenas se estiver em SystemView ou Sub-views
+        await session.SendCommandAsync("return", TimeSpan.FromSeconds(3), ct);
+        await Task.Delay(200, ct);
+    }
+
+    /// <summary>
+    /// Interpreta as rotas estáticas existentes a partir do output de 'display current-configuration'.
+    /// </summary>
+    public static IReadOnlyList<string> ParseStaticRoutes(string displayConfigOutput)
+    {
+        var routes = new List<string>();
+        if (string.IsNullOrWhiteSpace(displayConfigOutput))
+            return routes;
+
+        var matches = StaticRouteRegex.Matches(displayConfigOutput);
+        foreach (Match m in matches)
+        {
+            var route = m.Groups["route"].Value.Trim();
+            if (!string.IsNullOrWhiteSpace(route) && !routes.Contains(route, StringComparer.OrdinalIgnoreCase))
+            {
+                routes.Add(route);
+            }
+        }
+        return routes;
+    }
+
+    /// <summary>
+    /// Gera os comandos de undo correspondentes para as rotas estáticas encontradas.
+    /// </summary>
+    public static IReadOnlyList<string> GenerateUndoStaticRoutes(IEnumerable<string> existingRoutes)
+    {
+        var undos = new List<string>();
+        foreach (var route in existingRoutes)
+        {
+            var trimmed = route.Trim();
+            if (!trimmed.StartsWith("undo ", StringComparison.OrdinalIgnoreCase))
+                undos.Add($"undo {trimmed}");
+        }
+        return undos;
     }
 
     /// <summary>
@@ -59,7 +211,7 @@ public sealed class HpeSaipConfigurator
     }
 
     /// <summary>
-    /// Gera a lista de comandos CLI HPE Comware para provisionamento da Ficha SAIP com Telnet EBT/PRO1AN.
+    /// Gera a lista de comandos CLI HPE Comware para provisionamento da Ficha SAIP com sintaxe determinística Comware 7.
     /// </summary>
     public static IReadOnlyList<string> GenerateCommands(
         SaipCircuitData circuit,
@@ -81,7 +233,7 @@ public sealed class HpeSaipConfigurator
             "undo shutdown",
             "quit",
 
-            // 2. LAN (GE 1 - Mudar modo para Router)
+            // 2. LAN (GE 1 - Modo Router)
             $"interface {lanInterface}",
             "port link-mode route",
             $"description LAN_CLIENTE_{lanDesc}",
@@ -89,362 +241,231 @@ public sealed class HpeSaipConfigurator
             "undo shutdown",
             "quit",
 
-            // 3. Rota Default (Gateway) - Limpa rotas antigas antes de aplicar o novo gateway
-            "undo ip route-static 0.0.0.0 0.0.0.0",
-            "undo ip route-static 0.0.0.0 0",
+            // 3. Rota Default Canônica (Única sintaxe)
             $"ip route-static 0.0.0.0 0.0.0.0 {circuit.WanGateway}",
 
-            // 4. Usuário e Acesso Remoto Telnet (EBT / PRO1AN)
+            // 4. Usuário e Acesso Remoto Telnet (EBT / PRO1ANPRO1AN) - Padrão Comware 7
             "telnet server enable",
             "undo password-control enable",
             "local-user EBT class manage",
-            "password simple PRO1AN",
-            "service-type telnet ssh",
+            "password simple PRO1ANPRO1AN",
+            "service-type telnet",
             "authorization-attribute user-role network-admin",
-            "authorization-attribute user-role level-15",
-            "authorization-attribute user-role level-3",
             "quit",
 
-            // Garante que o Console Serial (CON 0) permaneça SEMPRE desbloqueado e livre na bancada
+            // Console Serial (CON 0)
             "line con 0",
             "authentication-mode none",
             "user-role network-admin",
-            "user-role level-15",
-            "user-role level-3",
             "quit",
 
-            // Linha VTY (Comware 7 - HPE MSR 954)
+            // Linha VTY Telnet (Comware 7 - HPE MSR 954)
             "line vty 0 63",
             "authentication-mode scheme",
             "user-role network-admin",
-            "user-role level-15",
-            "user-role level-3",
-            "protocol inbound all",
+            "protocol inbound telnet",
             "quit",
 
-            // Linha VTY (Comware 5 / Legado)
-            "user-interface vty 0 4",
-            "authentication-mode scheme",
-            "user-role level-3",
-            "user-role level-15",
-            "protocol inbound all",
-            "quit",
-
-            // 5. Salvar Configuração
+            // 5. Salvar Configuração Canônica
             "return",
-            "save force"
+            "save safely force"
         };
     }
 
     /// <summary>
-    /// Aplica a configuração do circuito SAIP no roteador HPE conectado de forma estruturada e validada.
+    /// Aplica a configuração do circuito SAIP no roteador HPE com sintaxe determinística e validação completa.
     /// </summary>
-    public async Task ApplyConfigAsync(
+    public async Task<HpeValidationReport> ApplyConfigAsync(
         DeviceSession session,
         SaipCircuitData circuit,
         string wanInterface = "GigabitEthernet0/0",
         string lanInterface = "GigabitEthernet0/1",
         CancellationToken cancellationToken = default)
     {
-        await ProgressAsync($"[*] INICIANDO PROVISIONAMENTO HPE COMWARE ({circuit.DesignacaoIp ?? circuit.NumeroOts})...");
+        await ProgressAsync($"[*] [AUTO] HPE MSR954 identificado ({circuit.DesignacaoIp ?? circuit.NumeroOts})...");
 
-        // 1. Acorda o terminal e limpa qualquer submodo
-        await session.SendCommandAsync(string.Empty, TimeSpan.FromSeconds(5), cancellationToken);
-        await Task.Delay(300, cancellationToken);
-        await EnsureSystemViewAsync(session, cancellationToken);
+        // 1. Valida User View / System View inicial
+        await EnsureUserViewAsync(session, _progress, cancellationToken);
+        await ProgressAsync("[OK] User View confirmado");
 
-        // 2. Limpa rotas default antigas que possam estar ativas
+        await EnsureSystemViewAsync(session, _progress, cancellationToken);
+
+        // 2. Limpeza pré-provisionamento determinística
+        await ProgressAsync("[*] [FASE C] Limpando vestígios HPE (rotas existentes + interfaces)...");
         try
         {
-            var curRoutes = await session.SendCommandAsync("display current-configuration | include ip route-static", TimeSpan.FromSeconds(10), cancellationToken);
-            var routeMatches = Regex.Matches(curRoutes, @"(?im)^\s*ip\s+route-static\s+0\.0\.0\.0\s+\S+\s+(\S+)");
-            foreach (Match m in routeMatches)
-            {
-                var oldGw = m.Groups[1].Value.Trim();
-                if (!string.Equals(oldGw, circuit.WanGateway, StringComparison.OrdinalIgnoreCase))
-                {
-                    await ProgressAsync($"[*] Removendo rota default antiga para o gateway '{oldGw}'...");
-                    await session.SendCommandAsync($"undo ip route-static 0.0.0.0 0.0.0.0 {oldGw}", TimeSpan.FromSeconds(5), cancellationToken);
-                    await session.SendCommandAsync($"undo ip route-static 0.0.0.0 0 {oldGw}", TimeSpan.FromSeconds(5), cancellationToken);
-                }
-            }
-        }
-        catch { }
+            // 2a. Interpreta e remove exatamente as rotas existentes
+            var curRoutes = await session.SendCommandAsync("display current-configuration | include route-static", TimeSpan.FromSeconds(10), cancellationToken);
+            var existingRoutes = ParseStaticRoutes(curRoutes);
+            var undos = GenerateUndoStaticRoutes(existingRoutes);
 
-        // 3. Verifica interfaces disponíveis com display interface brief
+            foreach (var undoCmd in undos)
+            {
+                await ProgressAsync($"    [-] Removendo rota: {undoCmd}");
+                await session.SendCommandAsync(undoCmd, TimeSpan.FromSeconds(5), cancellationToken);
+            }
+
+            // 2b. Limpa IPs residuais em Vlan-interface1 se houver conflito
+            var vlanCfg = await session.SendCommandAsync("display current-configuration interface Vlan-interface 1", TimeSpan.FromSeconds(5), cancellationToken);
+            if (vlanCfg.Contains("ip address", StringComparison.OrdinalIgnoreCase) &&
+                (vlanCfg.Contains(circuit.WanIp ?? "---") || vlanCfg.Contains(circuit.LanIp ?? "---")))
+            {
+                await ProgressAsync("    [-] Limpando IP conflitante em Vlan-interface 1...");
+                await session.SendCommandAsync("interface Vlan-interface 1", TimeSpan.FromSeconds(5), cancellationToken);
+                await session.SendCommandAsync("undo ip address", TimeSpan.FromSeconds(5), cancellationToken);
+                await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
+            }
+
+            // 2c. Reseta interfaces WAN e LAN
+            foreach (var iface in new[] { wanInterface, lanInterface })
+            {
+                await session.SendCommandAsync($"interface {iface}", TimeSpan.FromSeconds(5), cancellationToken);
+                await session.SendCommandAsync("undo ip address", TimeSpan.FromSeconds(5), cancellationToken);
+                await session.SendCommandAsync("undo description", TimeSpan.FromSeconds(5), cancellationToken);
+                await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
+            }
+            await ProgressAsync("[OK] Configuração antiga removida");
+        }
+        catch (Exception ex)
+        {
+            await ProgressAsync($"[AVISO] Limpeza prévia: {ex.Message}");
+        }
+
+        // 3. Detecta interfaces exatas disponíveis
         try
         {
             var briefOutput = await session.SendCommandAsync("display interface brief", TimeSpan.FromSeconds(15), cancellationToken);
             var (detectedWan, detectedLan) = DetectInterfaces(briefOutput, wanInterface, lanInterface);
             wanInterface = detectedWan;
             lanInterface = detectedLan;
-            await ProgressAsync($"[*] Interfaces HPE detectadas: WAN -> '{wanInterface}' | LAN -> '{lanInterface}'");
         }
-        catch
-        {
-            // Usa as portas padrão
-        }
-        await Task.Delay(500, cancellationToken);
+        catch { }
 
         var wanDesc = SanitizeDescription(circuit.DesignacaoIp ?? circuit.NumeroOts ?? "LINK");
         var lanDesc = SanitizeDescription(circuit.ClienteRazaoSocial);
 
         // 4. Configura Interface WAN
-        await EnsureSystemViewAsync(session, cancellationToken);
-        await ProgressAsync($"[*] Configurando interface WAN: '{wanInterface}'...");
-        var wanEnter = await session.SendCommandAsync($"interface {wanInterface}", TimeSpan.FromSeconds(5), cancellationToken);
-        if (!IsError(wanEnter))
-        {
-            var linkResp = await session.SendExpectAsync("port link-mode route",
-                new StopCondition[] { new StopCondition.Contains("[Y/N]:", "[Y/N]:"), new StopCondition.Contains("[Y/N]", "[Y/N]"), new StopCondition.Prompt() },
-                TimeSpan.FromSeconds(10), cancellationToken);
-            if (linkResp.Output.Contains("[Y/N]", StringComparison.OrdinalIgnoreCase))
-            {
-                await session.WriteLineAsync("Y", cancellationToken);
-                await session.WaitForAsync(new StopCondition[] { new StopCondition.Prompt() }, TimeSpan.FromSeconds(10), cancellationToken);
-                await Task.Delay(500, cancellationToken);
-            }
+        await EnsureSystemViewAsync(session, _progress, cancellationToken);
+        await session.SendCommandAsync($"interface {wanInterface}", TimeSpan.FromSeconds(5), cancellationToken);
 
-            await session.SendCommandAsync($"description WAN_EBT_{wanDesc}", TimeSpan.FromSeconds(5), cancellationToken);
-            await session.SendCommandAsync($"ip address {circuit.WanIp} {circuit.WanSubnetMask}", TimeSpan.FromSeconds(5), cancellationToken);
-            await session.SendCommandAsync("undo shutdown", TimeSpan.FromSeconds(5), cancellationToken);
-            await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
-        }
-        else
+        var linkRespWan = await session.SendExpectAsync("port link-mode route",
+            new StopCondition[] { new StopCondition.Contains("[Y/N]:", "[Y/N]:"), new StopCondition.Contains("[Y/N]", "[Y/N]"), new StopCondition.Prompt() },
+            TimeSpan.FromSeconds(10), cancellationToken);
+        if (linkRespWan.Output.Contains("[Y/N]", StringComparison.OrdinalIgnoreCase))
         {
-            await ProgressAsync($"    [AVISO] Resposta ao acessar interface WAN '{wanInterface}': {wanEnter.Trim()}");
+            await session.WriteLineAsync("Y", cancellationToken);
+            await session.WaitForAsync(new StopCondition[] { new StopCondition.Prompt() }, TimeSpan.FromSeconds(10), cancellationToken);
         }
+
+        await session.SendCommandAsync($"description WAN_EBT_{wanDesc}", TimeSpan.FromSeconds(5), cancellationToken);
+        await session.SendCommandAsync($"ip address {circuit.WanIp} {circuit.WanSubnetMask}", TimeSpan.FromSeconds(5), cancellationToken);
+        await session.SendCommandAsync("undo shutdown", TimeSpan.FromSeconds(5), cancellationToken);
+        await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
+        await ProgressAsync("[OK] WAN configurada");
 
         // 5. Configura Interface LAN
-        await EnsureSystemViewAsync(session, cancellationToken);
-        await ProgressAsync($"[*] Configurando interface LAN: '{lanInterface}'...");
-        var lanEnter = await session.SendCommandAsync($"interface {lanInterface}", TimeSpan.FromSeconds(5), cancellationToken);
-        if (!IsError(lanEnter))
-        {
-            var linkResp = await session.SendExpectAsync("port link-mode route",
-                new StopCondition[] { new StopCondition.Contains("[Y/N]:", "[Y/N]:"), new StopCondition.Contains("[Y/N]", "[Y/N]"), new StopCondition.Prompt() },
-                TimeSpan.FromSeconds(10), cancellationToken);
-            if (linkResp.Output.Contains("[Y/N]", StringComparison.OrdinalIgnoreCase))
-            {
-                await session.WriteLineAsync("Y", cancellationToken);
-                await session.WaitForAsync(new StopCondition[] { new StopCondition.Prompt() }, TimeSpan.FromSeconds(10), cancellationToken);
-                await Task.Delay(500, cancellationToken);
-            }
+        await EnsureSystemViewAsync(session, _progress, cancellationToken);
+        await session.SendCommandAsync($"interface {lanInterface}", TimeSpan.FromSeconds(5), cancellationToken);
 
-            await session.SendCommandAsync($"description LAN_CLIENTE_{lanDesc}", TimeSpan.FromSeconds(5), cancellationToken);
-            await session.SendCommandAsync($"ip address {circuit.LanIp} {circuit.LanSubnetMask}", TimeSpan.FromSeconds(5), cancellationToken);
-            await session.SendCommandAsync("undo shutdown", TimeSpan.FromSeconds(5), cancellationToken);
-            await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
-        }
-        else
+        var linkRespLan = await session.SendExpectAsync("port link-mode route",
+            new StopCondition[] { new StopCondition.Contains("[Y/N]:", "[Y/N]:"), new StopCondition.Contains("[Y/N]", "[Y/N]"), new StopCondition.Prompt() },
+            TimeSpan.FromSeconds(10), cancellationToken);
+        if (linkRespLan.Output.Contains("[Y/N]", StringComparison.OrdinalIgnoreCase))
         {
-            await ProgressAsync($"    [AVISO] Resposta ao acessar interface LAN '{lanInterface}': {lanEnter.Trim()}");
+            await session.WriteLineAsync("Y", cancellationToken);
+            await session.WaitForAsync(new StopCondition[] { new StopCondition.Prompt() }, TimeSpan.FromSeconds(10), cancellationToken);
         }
 
-        // 6. Rota Default (Gateway)
-        await EnsureSystemViewAsync(session, cancellationToken);
-        await ProgressAsync($"[*] Aplicando rota estática padrão (Gateway: {circuit.WanGateway})...");
-        await session.SendCommandAsync("undo ip route-static 0.0.0.0 0.0.0.0", TimeSpan.FromSeconds(5), cancellationToken);
-        await session.SendCommandAsync("undo ip route-static 0.0.0.0 0", TimeSpan.FromSeconds(5), cancellationToken);
+        await session.SendCommandAsync($"description LAN_CLIENTE_{lanDesc}", TimeSpan.FromSeconds(5), cancellationToken);
+        await session.SendCommandAsync($"ip address {circuit.LanIp} {circuit.LanSubnetMask}", TimeSpan.FromSeconds(5), cancellationToken);
+        await session.SendCommandAsync("undo shutdown", TimeSpan.FromSeconds(5), cancellationToken);
+        await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
+        await ProgressAsync("[OK] LAN configurada");
+
+        // 6. Rota Default Canônica
+        await EnsureSystemViewAsync(session, _progress, cancellationToken);
         await session.SendCommandAsync($"ip route-static 0.0.0.0 0.0.0.0 {circuit.WanGateway}", TimeSpan.FromSeconds(5), cancellationToken);
+        await ProgressAsync("[OK] Rota default configurada");
 
-        // 7. Usuário e Acesso Remoto Telnet (EBT / PRO1AN)
-        await EnsureSystemViewAsync(session, cancellationToken);
-        await ProgressAsync("[*] Habilitando serviço Telnet Server e desativando restrições de senha...");
-        await session.SendCommandAsync("telnet server enable", TimeSpan.FromSeconds(5), cancellationToken);
+        // 7. Usuário EBT (Comware 7)
+        await EnsureSystemViewAsync(session, _progress, cancellationToken);
         await session.SendCommandAsync("undo password-control enable", TimeSpan.FromSeconds(5), cancellationToken);
-
-        await EnsureSystemViewAsync(session, cancellationToken);
-        await ProgressAsync("[*] Configurando usuário local 'EBT' para acesso remoto...");
-        var luserResp = await session.SendCommandAsync("local-user EBT class manage", TimeSpan.FromSeconds(5), cancellationToken);
-        bool inUserView = !IsError(luserResp);
-        if (!inUserView)
+        await session.SendCommandAsync("local-user EBT class manage", TimeSpan.FromSeconds(5), cancellationToken);
+        var passResp = await session.SendCommandAsync("password simple PRO1ANPRO1AN", TimeSpan.FromSeconds(5), cancellationToken);
+        if (passResp.Contains("Wrong parameter", StringComparison.OrdinalIgnoreCase) || passResp.Contains("%", StringComparison.OrdinalIgnoreCase))
         {
-            await EnsureSystemViewAsync(session, cancellationToken);
-            var luserResp5 = await session.SendCommandAsync("local-user EBT", TimeSpan.FromSeconds(5), cancellationToken);
-            inUserView = !IsError(luserResp5);
+            await session.SendCommandAsync("password simple PRO1AN", TimeSpan.FromSeconds(5), cancellationToken);
         }
+        await session.SendCommandAsync("service-type telnet", TimeSpan.FromSeconds(5), cancellationToken);
+        await session.SendCommandAsync("authorization-attribute user-role network-admin", TimeSpan.FromSeconds(5), cancellationToken);
+        await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
+        await ProgressAsync("[OK] Usuário EBT configurado");
 
-        if (inUserView)
+        // 8. Telnet Server e Linhas VTY
+        await EnsureSystemViewAsync(session, _progress, cancellationToken);
+        await session.SendCommandAsync("telnet server enable", TimeSpan.FromSeconds(5), cancellationToken);
+
+        await session.SendCommandAsync("line con 0", TimeSpan.FromSeconds(5), cancellationToken);
+        await session.SendCommandAsync("authentication-mode none", TimeSpan.FromSeconds(5), cancellationToken);
+        await session.SendCommandAsync("user-role network-admin", TimeSpan.FromSeconds(5), cancellationToken);
+        await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
+
+        var vtyResp = await session.SendCommandAsync("line vty 0 63", TimeSpan.FromSeconds(5), cancellationToken);
+        if (IsError(vtyResp))
         {
-            // Tenta PRO1ANPRO1AN (12 caracteres - exigido pela política de complexidade do Comware 7.1 P43)
-            var passResp = await session.SendCommandAsync("password simple PRO1ANPRO1AN", TimeSpan.FromSeconds(5), cancellationToken);
-            string senhaFinal = "PRO1ANPRO1AN";
-            if (IsError(passResp))
-            {
-                await ProgressAsync($"    [AVISO] Senha 'PRO1ANPRO1AN' rejeitada pelo Comware ({passResp.Trim().Split('\n').LastOrDefault()?.Trim()}). Tentando alternativa 'PRO1AN'...");
-                var passResp2 = await session.SendCommandAsync("password simple PRO1AN", TimeSpan.FromSeconds(5), cancellationToken);
-                if (!IsError(passResp2))
-                {
-                    senhaFinal = "PRO1AN";
-                    await ProgressAsync("    [INFO] Senha 'PRO1AN' aceita com sucesso.");
-                }
-            }
-
-            await ProgressAsync($"\n=================================================================");
-            await ProgressAsync($"   🔑 SENHA APLICADA NO EQUIPAMENTO: {senhaFinal} (usuário EBT)       ");
-            await ProgressAsync($"=================================================================");
-
-            await session.SendCommandAsync("service-type telnet ssh", TimeSpan.FromSeconds(5), cancellationToken);
-            await session.SendCommandAsync("service-type telnet", TimeSpan.FromSeconds(5), cancellationToken);
-            await session.SendCommandAsync("authorization-attribute user-role network-admin", TimeSpan.FromSeconds(5), cancellationToken);
-            await session.SendCommandAsync("authorization-attribute user-role level-15", TimeSpan.FromSeconds(5), cancellationToken);
-            await session.SendCommandAsync("authorization-attribute user-role level-3", TimeSpan.FromSeconds(5), cancellationToken);
-            await session.SendCommandAsync("authorization-attribute level 3", TimeSpan.FromSeconds(5), cancellationToken);
-            await session.SendCommandAsync("authorization-attribute level 15", TimeSpan.FromSeconds(5), cancellationToken);
-            await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
+            await EnsureSystemViewAsync(session, _progress, cancellationToken);
+            await session.SendCommandAsync("user-interface vty 0 4", TimeSpan.FromSeconds(5), cancellationToken);
         }
+        await session.SendCommandAsync("authentication-mode scheme", TimeSpan.FromSeconds(5), cancellationToken);
+        await session.SendCommandAsync("user-role network-admin", TimeSpan.FromSeconds(5), cancellationToken);
+        await session.SendCommandAsync("protocol inbound telnet", TimeSpan.FromSeconds(5), cancellationToken);
+        await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
+        await ProgressAsync("[OK] Telnet habilitado");
 
-        // 8. Console Serial (CON 0 / AUX 0)
-        await EnsureSystemViewAsync(session, cancellationToken);
-        await ProgressAsync("[*] Configurando Console Serial para acesso livre na bancada...");
-        var lineCon = await session.SendCommandAsync("line con 0", TimeSpan.FromSeconds(5), cancellationToken);
-        if (!IsError(lineCon))
-        {
-            await session.SendCommandAsync("authentication-mode none", TimeSpan.FromSeconds(5), cancellationToken);
-            await session.SendCommandAsync("user-role network-admin", TimeSpan.FromSeconds(5), cancellationToken);
-            await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
-        }
-        else
-        {
-            await EnsureSystemViewAsync(session, cancellationToken);
-            var uiCon = await session.SendCommandAsync("user-interface con 0", TimeSpan.FromSeconds(5), cancellationToken);
-            if (!IsError(uiCon))
-            {
-                await session.SendCommandAsync("authentication-mode none", TimeSpan.FromSeconds(5), cancellationToken);
-                await session.SendCommandAsync("user-role level-3", TimeSpan.FromSeconds(5), cancellationToken);
-                await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
-            }
-            else
-            {
-                await EnsureSystemViewAsync(session, cancellationToken);
-                var uiAux = await session.SendCommandAsync("user-interface aux 0", TimeSpan.FromSeconds(5), cancellationToken);
-                if (!IsError(uiAux))
-                {
-                    await session.SendCommandAsync("authentication-mode none", TimeSpan.FromSeconds(5), cancellationToken);
-                    await session.SendCommandAsync("user-role level-3", TimeSpan.FromSeconds(5), cancellationToken);
-                    await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
-                }
-            }
-        }
-
-        // 9. Linhas VTY (Acesso Remoto Telnet)
-        await EnsureSystemViewAsync(session, cancellationToken);
-        await ProgressAsync("[*] Configurando linhas VTY para acesso Telnet...");
-        var lineVty = await session.SendCommandAsync("line vty 0 63", TimeSpan.FromSeconds(5), cancellationToken);
-        if (IsError(lineVty))
-        {
-            await EnsureSystemViewAsync(session, cancellationToken);
-            lineVty = await session.SendCommandAsync("line vty 0 15", TimeSpan.FromSeconds(5), cancellationToken);
-        }
-
-        if (!IsError(lineVty))
-        {
-            await session.SendCommandAsync("authentication-mode scheme", TimeSpan.FromSeconds(5), cancellationToken);
-            await session.SendCommandAsync("user-role network-admin", TimeSpan.FromSeconds(5), cancellationToken);
-            await session.SendCommandAsync("protocol inbound all", TimeSpan.FromSeconds(5), cancellationToken);
-            await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
-        }
-        else
-        {
-            await EnsureSystemViewAsync(session, cancellationToken);
-            var uiVty = await session.SendCommandAsync("user-interface vty 0 4", TimeSpan.FromSeconds(5), cancellationToken);
-            if (!IsError(uiVty))
-            {
-                await session.SendCommandAsync("authentication-mode scheme", TimeSpan.FromSeconds(5), cancellationToken);
-                await session.SendCommandAsync("user-role level-3", TimeSpan.FromSeconds(5), cancellationToken);
-                await session.SendCommandAsync("protocol inbound all", TimeSpan.FromSeconds(5), cancellationToken);
-                await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
-            }
-        }
-
-        // 10. Gravação Persistente e Vinculação de Boot (HPE Comware)
-        await ProgressAsync("[*] Gravando configuração permanentemente na Flash (HPE Comware save)...");
-
-        // Garante que está no modo de usuário (<HPE>) para o comando save
-        await session.SendCommandAsync("return", TimeSpan.FromSeconds(5), cancellationToken);
-        await Task.Delay(500, cancellationToken);
-
-        // Tenta salvar com save force e trata qualquer prompt interativo
-        var saveResp = await session.SendExpectAsync("save force",
+        // 9. Persistência Canônica (save safely force)
+        await EnsureUserViewAsync(session, _progress, cancellationToken);
+        var saveResp = await session.SendExpectAsync("save safely force",
             new StopCondition[] {
                 new StopCondition.Contains("[Y/N]:", "[Y/N]:"),
                 new StopCondition.Contains("[Y/N]", "[Y/N]"),
-                new StopCondition.Contains(".cfg]:", ".cfg]:"),
-                new StopCondition.Contains(".cfg]", ".cfg]"),
-                new StopCondition.Contains("?", "?"),
                 new StopCondition.Prompt()
             },
             TimeSpan.FromSeconds(25), cancellationToken);
 
-        if (saveResp.Output.Contains(".cfg", StringComparison.OrdinalIgnoreCase) || saveResp.Output.Contains("?"))
-        {
-            await session.WriteLineAsync("startup.cfg", cancellationToken);
-            await Task.Delay(500, cancellationToken);
-            var saveResp2 = await session.SendExpectAsync(string.Empty,
-                new StopCondition[] {
-                    new StopCondition.Contains("[Y/N]:", "[Y/N]:"),
-                    new StopCondition.Contains("[Y/N]", "[Y/N]"),
-                    new StopCondition.Prompt()
-                },
-                TimeSpan.FromSeconds(15), cancellationToken);
-
-            if (saveResp2.Output.Contains("[Y/N]", StringComparison.OrdinalIgnoreCase))
-            {
-                await session.WriteLineAsync("Y", cancellationToken);
-                await session.WaitForAsync(new StopCondition[] { new StopCondition.Prompt() }, TimeSpan.FromSeconds(15), cancellationToken);
-            }
-        }
-        else if (saveResp.Output.Contains("[Y/N]", StringComparison.OrdinalIgnoreCase))
+        if (saveResp.Output.Contains("[Y/N]", StringComparison.OrdinalIgnoreCase))
         {
             await session.WriteLineAsync("Y", cancellationToken);
             await session.WaitForAsync(new StopCondition[] { new StopCondition.Prompt() }, TimeSpan.FromSeconds(15), cancellationToken);
         }
+        await ProgressAsync("[OK] Configuração salva");
 
-        // Também tenta 'save safely force' como garantia
-        try
-        {
-            await session.SendCommandAsync("save safely force", TimeSpan.FromSeconds(10), cancellationToken);
-        }
-        catch { }
-
-        // Define explicitamente o arquivo de configuração principal para o próximo boot
-        await ProgressAsync("[*] Vinculando arquivo 'startup.cfg' como configuração principal de boot (startup saved-configuration)...");
-        try
-        {
-            await session.SendCommandAsync("startup saved-configuration startup.cfg main", TimeSpan.FromSeconds(10), cancellationToken);
-            await session.SendCommandAsync("startup saved-configuration flash:/startup.cfg main", TimeSpan.FromSeconds(10), cancellationToken);
-        }
-        catch { }
-
-        // Valida se o arquivo foi definido
+        // 10. Validação de Startup Configuration
         var dispStartup = await session.SendCommandAsync("display startup", TimeSpan.FromSeconds(10), cancellationToken);
         if (dispStartup.Contains("startup.cfg", StringComparison.OrdinalIgnoreCase))
         {
-            await ProgressAsync("    [OK] Arquivo 'startup.cfg' confirmado como configuração de inicialização principal.");
+            await ProgressAsync("[OK] Startup configuration validada");
         }
-
-        await ProgressAsync("[OK] PROVISIONAMENTO HPE CONCLUÍDO E GRAVADO COM SUCESSO!");
-        await ProgressAsync("    -> Acesso Telnet: usuário 'EBT' com senha informada acima | Telnet server enable ativo");
-        await ProgressAsync("    -> Guarde a senha exibida (PRO1AN ou alternativa) para acesso Telnet/SSH ao equipamento.");
-    }
-
-    private async Task EnsureSystemViewAsync(DeviceSession session, CancellationToken ct)
-    {
-        var resp = await session.SendCommandAsync(string.Empty, TimeSpan.FromSeconds(3), ct);
-        var p = (session.CurrentPrompt ?? resp).Trim();
-
-        // Se já estiver no system-view raiz [HPE] (sem subview de interface, line, user-interface ou local-user)
-        if (p.StartsWith("[") && !p.Contains("-GigabitEthernet") && !p.Contains("-GE") && !p.Contains("-line-") && !p.Contains("-ui-") && !p.Contains("-luser-"))
+        else
         {
-            return;
+            await session.SendCommandAsync("startup saved-configuration startup.cfg main", TimeSpan.FromSeconds(8), cancellationToken);
+            await ProgressAsync("[OK] Startup configuration vinculada (startup.cfg)");
         }
 
-        // Volta ao modo de usuário com return e entra em system-view
-        await session.SendCommandAsync("return", TimeSpan.FromSeconds(3), ct);
-        await Task.Delay(300, ct);
-        await session.SendCommandAsync("system-view", TimeSpan.FromSeconds(5), ct);
-        await Task.Delay(400, ct);
+        // 11. Auditoria Completa Pós-Provisionamento
+        var validator = new HpeProvisioningValidator(_progress);
+        var report = await validator.ValidateAsync(session, circuit, wanInterface, lanInterface, cancellationToken);
+
+        if (report.OverallStatus == HpeValidationStatus.Fail)
+        {
+            var failItems = report.Items.Where(i => i.Status == HpeValidationStatus.Fail).Select(i => i.Name);
+            await ProgressAsync($"[AVISO] Auditoria pós-provisionamento apontou divergências em: {string.Join(", ", failItems)} — prosseguindo para testes de conectividade.");
+        }
+        else
+        {
+            await ProgressAsync("[OK] Provisionamento HPE concluído com sucesso!");
+        }
+
+        return report;
     }
 
     private static bool IsError(string output)
@@ -455,8 +476,16 @@ public sealed class HpeSaipConfigurator
             || output.Contains("Too many parameters", StringComparison.OrdinalIgnoreCase)
             || output.Contains("Incomplete command", StringComparison.OrdinalIgnoreCase)
             || output.Contains("Ambiguous command", StringComparison.OrdinalIgnoreCase)
-            || output.Contains("Error", StringComparison.OrdinalIgnoreCase)
-            || output.Contains("%", StringComparison.OrdinalIgnoreCase);
+            || output.Contains("Error:", StringComparison.OrdinalIgnoreCase)
+            || output.Contains("% Error", StringComparison.OrdinalIgnoreCase)
+            || output.Contains("% Unrecognized", StringComparison.OrdinalIgnoreCase)
+            || output.Contains("% Incomplete", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string SanitizeDescription(string? input)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return "CIRCUITO";
+        return Regex.Replace(input, @"[^\w\-\.]", "_").Trim('_');
     }
 
     private async Task ProgressAsync(string message)
@@ -465,19 +494,44 @@ public sealed class HpeSaipConfigurator
             await _progress(message);
     }
 
-    public static string SanitizeDescription(string? text)
+    public static async Task<bool> EnforceLanPortConnectedAsync(
+        DeviceSession session,
+        string lanInterface = "GigabitEthernet0/1",
+        Func<string, CancellationToken, Task>? requestOperatorAction = null,
+        Func<string, Task>? progress = null,
+        CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(text))
-            return "LINK";
+        var cleanLan = lanInterface.Replace(" ", "");
+        var cleanWan = cleanLan.EndsWith("0/1") ? cleanLan.Replace("0/1", "0/0") : "GigabitEthernet0/0";
 
-        var clean = text.Trim();
-        clean = Regex.Replace(clean, @"[^\u0000-\u007F]+", string.Empty);
-        clean = Regex.Replace(clean, @"[^A-Za-z0-9_\-\./]", "_");
-        clean = Regex.Replace(clean, @"_+", "_").Trim('_');
+        for (var attempt = 1; attempt <= 15; attempt++)
+        {
+            var output = await session.SendCommandAsync("display ip interface brief", TimeSpan.FromSeconds(8), cancellationToken);
 
-        if (clean.Length > 28)
-            clean = clean[..28];
+            var isLanUp = Regex.IsMatch(output, $@"(?i)(?:{cleanLan}|GE0/1)\s+UP\s+(?:UP|\S+)");
+            var isWanUp = Regex.IsMatch(output, $@"(?i)(?:{cleanWan}|GE0/0)\s+UP\s+(?:UP|\S+)");
 
-        return string.IsNullOrWhiteSpace(clean) ? "LINK" : clean;
+            if (isLanUp)
+            {
+                if (progress != null)
+                    await progress($"[OK] Porta LAN ({lanInterface}) confirmada com link ativo (UP).");
+                return true;
+            }
+
+            if (requestOperatorAction != null)
+            {
+                var msg = isWanUp
+                    ? $"[ATENÇÃO] O cabo de rede está conectado na porta GE0 (WAN / recovery).\n\n" +
+                      $"Por favor, MUDE O CABO DE REDE para a porta GE1 (LAN / Porta 1) para dar continuidade aos testes de conectividade e banda."
+                    : $"[ATENÇÃO] Nenhuma porta de rede ativa detectada.\n\n" +
+                      $"Por favor, CONECTE O CABO DE REDE na porta GE1 (LAN / Porta 1) do roteador HPE.";
+
+                await requestOperatorAction(msg, cancellationToken);
+            }
+
+            await Task.Delay(2000, cancellationToken);
+        }
+
+        return false;
     }
 }

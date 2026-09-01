@@ -65,15 +65,46 @@ public class ConnectivityService
         var buffer = new byte[Math.Max(1, Math.Min(bufferSizeBytes, 1472))];
         new Random().NextBytes(buffer);
 
-        // Se uma interface/IP de origem foi informada no Windows, força saída estrita por ela (-S) e NÃO permite vazamento por Wi-Fi
+        // Isolamento estrito: se sourceIp foi informado, exige que esteja vinculado localmente e NÃO vaza por Wi-Fi/outras redes
         if (!string.IsNullOrWhiteSpace(sourceIpAddress) && System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
         {
+            var isSourceBound = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+                .SelectMany(ni => ni.GetIPProperties().UnicastAddresses)
+                .Any(a => a.Address.ToString() == sourceIpAddress.Trim());
+            if (!isSourceBound)
+            {
+                await LogAsync($"[ERRO ISOLAMENTO] IP de origem {sourceIpAddress} NÃO está vinculado a nenhuma interface local - Fase D não executada ou IP desatualizado. Abortando ICMP para evitar vazamento por Wi-Fi.");
+                return new ConnectivityTestResult(cleanTarget, count, 0, 100, 0, 0, 0, 0, false, new List<PingPacketInfo>());
+            }
             await LogAsync($"[*] Direcionando ICMP estritamente via interface conectada ao roteador (IP Origem: {sourceIpAddress}) para isolar Wi-Fi/outras redes...");
             var cliResult = await RunCliPingFallbackAsync(cleanTarget, count, timeoutMs, sourceIpAddress, cancellationToken);
-            if (cliResult != null)
+            if (cliResult != null && cliResult.PacketsReceived > 0)
             {
                 return cliResult;
             }
+            // Determina se alvo é LAN direta (mesma /28 do source) - único caso onde fallback sem -S é tolerado (GE4 down mas GE5 up mesmo cabo físico)
+            bool isSameSubnet = false;
+            try
+            {
+                if (System.Net.IPAddress.TryParse(sourceIpAddress.Trim(), out var srcIp) && System.Net.IPAddress.TryParse(cleanTarget, out var dstIp))
+                {
+                    var srcBytes = srcIp.GetAddressBytes();
+                    var dstBytes = dstIp.GetAddressBytes();
+                    // /28 check (máscara 255.255.255.240)
+                    isSameSubnet = srcBytes[0]==dstBytes[0] && srcBytes[1]==dstBytes[1] && srcBytes[2]==dstBytes[2] && (srcBytes[3]/16)==(dstBytes[3]/16);
+                }
+            } catch {}
+            if (isSameSubnet)
+            {
+                await LogAsync($"[AVISO] Ping -S falhou para LAN mesma sub-rede, tentando sem -S (cabo em GE5 mas IP em GE4 down)...");
+                var fallbackNoSrc = await RunCliPingFallbackAsync(cleanTarget, count, timeoutMs, null, cancellationToken);
+                if (fallbackNoSrc != null && fallbackNoSrc.PacketsReceived > 0)
+                {
+                    await LogAsync($"[OK] Resposta LAN obtida sem -S validada ({fallbackNoSrc.PacketsReceived}/{count}) - aceito via GE5 (mesmo cabo físico).");
+                    return fallbackNoSrc;
+                }
+            }
+            await LogAsync($"[FALHA] Ping via -S {sourceIpAddress} sem resposta - roteador/cabo na porta correta? WAN/WEB exigem -S estrito, sem fallback para evitar vazamento por Wi-Fi.");
             return new ConnectivityTestResult(cleanTarget, count, 0, 100, 0, 0, 0, 0, false, new List<PingPacketInfo>());
         }
 
@@ -279,7 +310,7 @@ public class ConnectivityService
         string hostOrIp,
         int port = 23,
         string? username = "EBT",
-        string? password = "PRO1AN",
+        string? password = "PRO1ANPRO1AN",
         int timeoutMs = 10000,
         string? sourceIpAddress = null,
         CancellationToken cancellationToken = default)

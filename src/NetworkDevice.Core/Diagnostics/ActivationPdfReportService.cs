@@ -49,7 +49,8 @@ public sealed record ActivationReportData(
     ConnectivityService.TelnetTestResult? TelnetResult,
     BandwidthTestResult? BandResult,
     IReadOnlyList<string>? DiagnosticAlerts,
-    string? FalhaGeral);
+    string? FalhaGeral,
+    string? AppliedConfigScript = null);
 
 public static class ActivationPdfReportService
 {
@@ -338,6 +339,14 @@ public static class ActivationPdfReportService
                 sb.Append($@"<div class=""diag-item"">• {diag.Replace("\n", "<br>• ")}</div>");
             }
             sb.Append("</div>");
+        }
+
+        if (!string.IsNullOrWhiteSpace(d.AppliedConfigScript))
+        {
+            var esc = System.Net.WebUtility.HtmlEncode(d.AppliedConfigScript);
+            sb.Append($@"<div class=""section-title"">3. Script / Running-Config Aplicado e Salvo (write memory)</div>
+<div style=""background:#0F172A;color:#E2E8F0;border-radius:8px;padding:12px;font-family:'Consolas',monospace;font-size:11px;white-space:pre-wrap;word-break:break-all;max-height:420px;overflow:auto;border:1px solid #334155;"">{esc}</div>
+<div style=""font-size:10px;color:#64748B;margin-top:4px;"">Configuração capturada via 'show running-config' após provisionamento e gravada com 'write memory'.</div>");
         }
 
         sb.Append(@"

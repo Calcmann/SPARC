@@ -64,11 +64,11 @@ public class AndroidHostNetworkGuidance : IHostNetworkService
 public static class HostNetworkManager
 {
     /// <summary>
-    /// Lista os nomes dos adaptadores de rede físicos Ethernet/Wi-Fi disponíveis.
+    /// Lista os nomes dos adaptadores de rede físicos Ethernet/Wi-Fi disponíveis, priorizando SEMPRE adaptadores Ethernet cabeados.
     /// </summary>
     public static IReadOnlyList<string> GetEthernetAdapters()
     {
-        var list = new List<string>();
+        var list = new List<(string name, bool isUp, bool isEthernet)>();
         try
         {
             var interfaces = NetworkInterface.GetAllNetworkInterfaces();
@@ -80,28 +80,32 @@ public static class HostNetworkManager
                     ni.NetworkInterfaceType == NetworkInterfaceType.FastEthernetT ||
                     ni.NetworkInterfaceType == NetworkInterfaceType.Wireless80211)
                 {
-                    // Ignora loopback e virtuais/hyper-v/vpn
                     if (ni.Description.Contains("Loopback", StringComparison.OrdinalIgnoreCase) ||
                         ni.Description.Contains("Virtual", StringComparison.OrdinalIgnoreCase) ||
                         ni.Description.Contains("Hyper-V", StringComparison.OrdinalIgnoreCase) ||
-                        ni.Description.Contains("WSL", StringComparison.OrdinalIgnoreCase))
+                        ni.Description.Contains("WSL", StringComparison.OrdinalIgnoreCase) ||
+                        ni.Description.Contains("VPN", StringComparison.OrdinalIgnoreCase) ||
+                        ni.Description.Contains("Bluetooth", StringComparison.OrdinalIgnoreCase) ||
+                        ni.Name.Contains("Loopback", StringComparison.OrdinalIgnoreCase) ||
+                        ni.Name.Contains("vEthernet", StringComparison.OrdinalIgnoreCase) ||
+                        ni.Name.Contains("WSL", StringComparison.OrdinalIgnoreCase))
                     {
                         continue;
                     }
-
-                    list.Add(ni.Name);
+                    var isUp = ni.OperationalStatus == OperationalStatus.Up;
+                    var isEth = ni.NetworkInterfaceType != NetworkInterfaceType.Wireless80211 &&
+                                !ni.Description.Contains("Wireless", StringComparison.OrdinalIgnoreCase) &&
+                                !ni.Description.Contains("Wi-Fi", StringComparison.OrdinalIgnoreCase) &&
+                                !ni.Description.Contains("802.11", StringComparison.OrdinalIgnoreCase) &&
+                                !ni.Name.Contains("Wi-Fi", StringComparison.OrdinalIgnoreCase);
+                    list.Add((ni.Name, isUp, isEth));
                 }
             }
         }
-        catch
-        {
-            // Fallback padrão
-        }
-
-        if (list.Count == 0)
-            list.Add("Ethernet");
-
-        return list;
+        catch { }
+        if (list.Count == 0) return new List<string> { "Ethernet" };
+        // Prioriza: Ethernet cabeada (Up > Down) > Wi-Fi (Up > Down)
+        return list.OrderByDescending(x => x.isEthernet).ThenByDescending(x => x.isUp).Select(x => x.name).ToList();
     }
 
     /// <summary>
@@ -124,7 +128,17 @@ public static class HostNetworkManager
 
         var (ipSuccess, ipOutput) = await RunNetshAsync(cmdIp, cancellationToken);
         if (!ipSuccess)
+        {
+            // Se o netsh acusou que o objeto já existe, confere se o adaptador já está com o IP desejado
+            var currentIp = GetCurrentIpForAdapter(adapterName);
+            if (currentIp == ipAddress ||
+                ipOutput.Contains("objeto j", StringComparison.OrdinalIgnoreCase) ||
+                ipOutput.Contains("already exists", StringComparison.OrdinalIgnoreCase))
+            {
+                return (true, $"IP: {ipAddress}, Máscara: {subnetMask} já atribuído à interface '{adapterName}'.");
+            }
             return (false, $"Falha ao configurar IP na interface '{adapterName}': {ipOutput}");
+        }
 
         // Configuração de DNS Primário (1.1.1.1) e Secundário (8.8.8.8)
         var cmdDns1 = $"interface ip set dns name=\"{adapterName}\" static 1.1.1.1 primary";
@@ -155,6 +169,25 @@ public static class HostNetworkManager
         await RunNetshAsync(cmdDns, cancellationToken);
 
         return (true, $"Interface '{adapterName}' retornada para DHCP (IP e DNS automáticos).");
+    }
+
+    public static async Task EnsureTftpFirewallRuleAsync(CancellationToken ct = default)
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return;
+        var args = "advfirewall firewall add rule name=\"SPARC TFTP 69\" dir=in action=allow protocol=UDP localport=69 profile=any";
+        await RunNetshAsync(args, ct);
+    }
+
+    public static string? GetCurrentIpForAdapter(string adapterName)
+    {
+        try
+        {
+            var ni = NetworkInterface.GetAllNetworkInterfaces().FirstOrDefault(n => n.Name.Equals(adapterName, StringComparison.OrdinalIgnoreCase));
+            if (ni == null) return null;
+            var ip = ni.GetIPProperties().UnicastAddresses.FirstOrDefault(a => a.Address.AddressFamily == AddressFamily.InterNetwork);
+            return ip?.Address.ToString();
+        }
+        catch { return null; }
     }
 
     public static bool IsAdministrator()

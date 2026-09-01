@@ -69,10 +69,23 @@ public sealed class DeviceSession : IAsyncDisposable
                     continue;
                 }
 
-                if (stage.Kind == LoginStageKind.Prompt)
+                if (stage.Kind == LoginStageKind.Prompt || stage.Kind == LoginStageKind.BootWareMenu)
                 {
+                    // BootWare menu é estado conectado válido — preserva o banner como CurrentPrompt para detecção na UI
+                    if (stage.Kind == LoginStageKind.BootWareMenu)
+                        CurrentPrompt = stage.Full;
                     _connected = true;
                     return;
+                }
+                else if (stage.Kind == LoginStageKind.BootWareCountdown)
+                {
+                    await SendCtrlBAsync(cancellationToken);
+                    await Task.Delay(200, cancellationToken);
+                }
+                else if (stage.Kind == LoginStageKind.BootWarePassword)
+                {
+                    await _transport.WriteAsync(Text("\r\n"), cancellationToken);
+                    await Task.Delay(300, cancellationToken);
                 }
                 else if (stage.Kind == LoginStageKind.Username)
                 {
@@ -382,7 +395,7 @@ public sealed class DeviceSession : IAsyncDisposable
         }
     }
 
-    private LoginStageKind ClassifyLogin(string lastLine)
+    internal LoginStageKind ClassifyLogin(string lastLine)
     {
         // Prompt tem prioridade: se a última linha é prompt (<HPE>, [HPE], <HPE-Gigabit...>, Cisco#/>), retorna imediatamente
         if (_options.PromptMatcher.TryMatch(lastLine) is { } pm)
@@ -407,38 +420,42 @@ public sealed class DeviceSession : IAsyncDisposable
             return LoginStageKind.PressEnter;
         if (Regex.IsMatch(lastLine, @"(?i)\[Y/N\]\s*[:?]?\s*$"))
             return LoginStageKind.InteractiveYesNo;
+        // HPE 954 BootWare menu / contagem regressiva / senha / mensagens de boot sem firmware
+        if (Regex.IsMatch(lastLine, @"(?i)(?:Press\s+Ctrl\+[BD]\s+to\s+enter|Press\s+Ctrl\+B\s+to\s+access|Press\s+Ctrl\+B\s+to\s+stop)"))
+            return LoginStageKind.BootWareCountdown;
+        if (Regex.IsMatch(lastLine, @"(?i)(?:(?:bootware|input|please\s+input)?\s*password\s*:)"))
+            return LoginStageKind.BootWarePassword;
+        if (Regex.IsMatch(lastLine, @"(?i)(?:Enter\s+your\s+choice|choice\s*\(\s*0\s*-\s*[0-9]\s*\)|choice\s*:|Select\s+your\s+choice|Enter\s+choice|BOOT\s*MENU|<(?:EXTENDED-)?BOOTWARE\s*MENU>|<MAIN\s*MENU>|<BASIC\s*BOOT\s*MENU>|<ETHERNET\s*SUBMENU>|BootWare\s+Operation\s+Menu|Enter\s+Ethernet\s+SubMenu|Modify\s+Ethernet\s+Parameter|Ensure\s+The\s+Parameter\s+Be\s+Modified|The\s+image\s+does\s+not\s+exist|Loading\s+images\s+fails|Loading\s+boot\s+image\s+fails|operating\s+device\s+is\s+flash)"))
+            return LoginStageKind.BootWareMenu;
         return LoginStageKind.Unknown;
     }
 
+    private static readonly Regex MoreRegex = new(@"--+\s*More\s*--+\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
     private async Task HandlePaginationAsync(StringBuilder output, CancellationToken ct)
     {
-        while (TrimmedEndsWithMore(output))
+        var text = output.ToString();
+        var match = MoreRegex.Match(text);
+        if (match.Success)
         {
-            StripSuffix(output, MoreMarker);
+            output.Remove(match.Index, match.Length);
             while (output.Length > 0 && char.IsWhiteSpace(output[^1]))
                 output.Length--;
             await _transport.WriteAsync(new ReadOnlyMemory<byte>(new byte[] { 0x20 }), ct);
+            await Task.Delay(40, ct);
         }
-    }
-
-    private static bool TrimmedEndsWithMore(StringBuilder sb)
-    {
-        var end = sb.Length;
-        while (end > 0 && char.IsWhiteSpace(sb[end - 1]))
-            end--;
-        return end >= MoreMarker.Length
-            && sb.ToString(end - MoreMarker.Length, MoreMarker.Length).Equals(MoreMarker, StringComparison.Ordinal);
-    }
-
-    private static void StripSuffix(StringBuilder sb, string suffix)
-    {
-        if (sb.Length >= suffix.Length)
-            sb.Length -= suffix.Length;
     }
 
     private void AppendCleaned(StringBuilder output, int count)
     {
-        var raw = Encoding.UTF8.GetString(_readBuffer, 0, count);
+        for (int i = 0; i < count; i++)
+        {
+            byte b = _readBuffer[i];
+            if (b == 0x00 || b == 0xFF)
+                _readBuffer[i] = 0x20;
+        }
+
+        var raw = Encoding.UTF8.GetString(_readBuffer, 0, count).Replace("\uFFFD", "");
         output.Append(raw);
         output.Replace("\r", "");
         var text = output.ToString();
@@ -482,7 +499,7 @@ public sealed class DeviceSession : IAsyncDisposable
         catch { /* ignorar ao limpar após falha */ }
     }
 
-    private enum LoginStageKind
+    internal enum LoginStageKind
     {
         Unknown = 0,
         Prompt,
@@ -490,7 +507,10 @@ public sealed class DeviceSession : IAsyncDisposable
         Password,
         InteractiveYesNo,
         InitialDialogNo,
-        PressEnter
+        PressEnter,
+        BootWareMenu,
+        BootWareCountdown,
+        BootWarePassword
     }
 
     public sealed record ExpectResult(string Output, StopCondition? Matched);

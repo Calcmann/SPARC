@@ -1,0 +1,14 @@
+﻿{
+  "FileName": "SW-DEPTO-01-20260827-103708.cfg",
+  "Hostname": "SW-DEPTO-01",
+  "Vendor": "Cisco",
+  "Model": "WS-C2960X-48FPS-L",
+  "OsName": "Cisco IOS",
+  "OsVersion": "15.2(7)E6",
+  "SerialNumber": "FOC1234ABCD",
+  "Sha256": "2d44f9259ed0b71c814040a7968b476ca8030c0ee9272d702a32d4c2dc7dd94e",
+  "Md5": "7920b830ce873e87c938889f06f53652",
+  "Timestamp": "2026-08-27T10:37:08.2962593-03:00",
+  "Bytes": 615,
+  "Operator": "User"
+}

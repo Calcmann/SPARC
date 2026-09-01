@@ -51,21 +51,47 @@ public sealed class SerialTransport : ITransport
         if (!_port.IsOpen)
             throw new DeviceSessionException("Porta serial fechada.");
 
-        using var timeoutCts = new CancellationTokenSource(_readTimeout);
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        while (sw.Elapsed < _readTimeout && !cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                var bytesAvailable = _port.BytesToRead;
+                if (bytesAvailable > 0)
+                {
+                    var array = System.Buffers.ArrayPool<byte>.Shared.Rent(buffer.Length);
+                    try
+                    {
+                        var toRead = Math.Min(buffer.Length, bytesAvailable);
+                        var read = _port.Read(array, 0, toRead);
+                        if (read > 0)
+                        {
+                            array.AsSpan(0, read).CopyTo(buffer.Span);
+                            return read;
+                        }
+                    }
+                    finally
+                    {
+                        System.Buffers.ArrayPool<byte>.Shared.Return(array);
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                return 0;
+            }
 
-        try
-        {
-            return await _port.BaseStream.ReadAsync(buffer, linkedCts.Token);
+            try
+            {
+                await Task.Delay(25, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                return 0;
+            }
         }
-        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
-        {
-            return 0;
-        }
-        catch (TimeoutException)
-        {
-            return 0;
-        }
+
+        return 0;
     }
 
     public async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
@@ -73,16 +99,10 @@ public sealed class SerialTransport : ITransport
         if (!_port.IsOpen)
             throw new DeviceSessionException("Porta serial fechada.");
 
-        if (buffer.Length <= 64)
-        {
-            var array = buffer.ToArray();
-            _port.Write(array, 0, array.Length);
-            // Pacing para 9600 baud (9600 ~ 960 bytes/s): garante que HPE processe cada linha antes da próxima
-            await Task.Delay(60, cancellationToken);
-            return;
-        }
+        cancellationToken.ThrowIfCancellationRequested();
 
-        await _port.BaseStream.WriteAsync(buffer, cancellationToken);
+        var array = buffer.ToArray();
+        _port.Write(array, 0, array.Length);
         await Task.Delay(30, cancellationToken);
     }
 

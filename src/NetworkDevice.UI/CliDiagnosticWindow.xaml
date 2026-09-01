@@ -1,0 +1,94 @@
+<Window x:Class="NetworkDevice.UI.CliDiagnosticWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="SPARC — Diagnóstico CLI em Tempo Real (Console Serial)"
+        Icon="Assets/sparc.ico"
+        Height="620" Width="980"
+        MinHeight="450" MinWidth="700"
+        WindowStartupLocation="CenterScreen"
+        Background="#0B0F19">
+
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- ================= BARRA SUPERIOR DE CONTROLE E AÇÕES RÁPIDAS ================= -->
+        <Border Grid.Row="0" Background="#111827" BorderBrush="#1F2937" BorderThickness="1" CornerRadius="8" Padding="10,8" Margin="0,0,0,10">
+            <DockPanel>
+                <!-- Status da Porta e Modo -->
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" DockPanel.Dock="Left">
+                    <Border Background="#16A34A" CornerRadius="4" Padding="6,2" Margin="0,0,8,0">
+                        <TextBlock x:Name="TxtStatusBadge" Text="🟢 CONSOLE LIVE" FontWeight="Bold" FontSize="11" Foreground="#FFFFFF" />
+                    </Border>
+                    <TextBlock x:Name="TxtPortaInfo" Text="Porta: COM1 @ 9600 baud" FontWeight="SemiBold" FontSize="11.5" Foreground="#94A3B8" VerticalAlignment="Center" Margin="0,0,16,0" />
+                </StackPanel>
+
+                <!-- Botões de Ações Rápidas (BootWare / Cisco) -->
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <TextBlock Text="Comandos Rápidos:" FontSize="11" Foreground="#64748B" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <Button Content="Ctrl+B" ToolTip="Enviar sinal de interrupção HPE BootWare (Ctrl+B)" Padding="8,3" Margin="0,0,4,0" Background="#881337" Foreground="White" FontWeight="Bold" FontSize="11" Click="BtnCtrlB_Click" />
+                    <Button Content="Ctrl+C" ToolTip="Enviar cancelamento Cisco/Comware (Ctrl+C)" Padding="8,3" Margin="0,0,4,0" Background="#991B1B" Foreground="White" FontWeight="Bold" FontSize="11" Click="BtnCtrlC_Click" />
+                    <Button Content="Enter ⏎" ToolTip="Enviar quebra de linha (Enter)" Padding="8,3" Margin="0,0,4,0" Background="#374151" Foreground="White" FontWeight="Bold" FontSize="11" Click="BtnEnter_Click" />
+                    
+                    <Separator Width="1" Background="#374151" Margin="6,2" />
+                    
+                    <Button Content="1 (Boot)" ToolTip="Enviar Opção 1 (Boot System)" Padding="6,3" Margin="0,0,3,0" Background="#1E293B" Foreground="#38BDF8" FontSize="11" Click="BtnSendOpt1_Click" />
+                    <Button Content="3 (Ethernet)" ToolTip="Enviar Opção 3 (Ethernet SubMenu)" Padding="6,3" Margin="0,0,3,0" Background="#1E293B" Foreground="#38BDF8" FontSize="11" Click="BtnSendOpt3_Click" />
+                    <Button Content="5 (Param)" ToolTip="Enviar Opção 5 (Modify Ethernet Parameter)" Padding="6,3" Margin="0,0,3,0" Background="#1E293B" Foreground="#38BDF8" FontSize="11" Click="BtnSendOpt5_Click" />
+                    <Button Content="2 (Flash)" ToolTip="Enviar Opção 2 (Update Main Image File)" Padding="6,3" Margin="0,0,3,0" Background="#1E293B" Foreground="#38BDF8" FontSize="11" Click="BtnSendOpt2_Click" />
+                    <Button Content="0 (Sair)" ToolTip="Enviar Opção 0 (Exit/Reboot)" Padding="6,3" Margin="0,0,8,0" Background="#1E293B" Foreground="#38BDF8" FontSize="11" Click="BtnSendOpt0_Click" />
+
+                    <Separator Width="1" Background="#374151" Margin="6,2" />
+
+                    <CheckBox x:Name="ChkAutoScroll" Content="Auto-Scroll" IsChecked="True" Foreground="#94A3B8" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <Button Content="📋 Copiar" Padding="8,3" Margin="0,0,4,0" Background="#1E293B" Foreground="#E2E8F0" FontSize="11" Click="BtnCopiar_Click" />
+                    <Button Content="🧹 Limpar" Padding="8,3" Background="#1E293B" Foreground="#E2E8F0" FontSize="11" Click="BtnLimpar_Click" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- ================= TERMINAL RAW MONOSPACE EM TEMPO REAL ================= -->
+        <Border Grid.Row="1" Background="#030712" BorderBrush="#1F2937" BorderThickness="1" CornerRadius="8" Padding="6">
+            <TextBox x:Name="TxtLiveTerminal"
+                     IsReadOnly="True"
+                     Background="Transparent"
+                     Foreground="#10B981"
+                     CaretBrush="#10B981"
+                     FontFamily="Consolas, Cascadia Mono, Courier New"
+                     FontSize="12.5"
+                     BorderThickness="0"
+                     Padding="8"
+                     TextWrapping="Wrap"
+                     VerticalScrollBarVisibility="Auto"
+                     HorizontalScrollBarVisibility="Auto" />
+        </Border>
+
+        <!-- ================= BARRA INFERIOR DE ENVIO DE COMANDOS ================= -->
+        <Border Grid.Row="2" Background="#111827" BorderBrush="#1F2937" BorderThickness="1" CornerRadius="8" Padding="8,6" Margin="0,10,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="CLI >" FontWeight="Bold" FontSize="13" Foreground="#10B981" VerticalAlignment="Center" Margin="4,0,10,0" />
+                
+                <TextBox Grid.Column="1" x:Name="TxtComandoManual"
+                         Background="#1F2937" Foreground="#F3F4F6"
+                         FontFamily="Consolas" FontSize="12.5"
+                         BorderBrush="#374151" BorderThickness="1"
+                         Padding="6,4"
+                         KeyDown="TxtComandoManual_KeyDown"
+                         ToolTip="Digite o comando ou resposta e pressione Enter ou clique em Enviar" />
+
+                <Button Grid.Column="2" Content="Enviar ⏎" Padding="14,4" Margin="8,0,0,0"
+                        Background="#881337" Foreground="White" FontWeight="Bold" FontSize="11.5"
+                        Click="BtnEnviarManual_Click" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

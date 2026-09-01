@@ -20,6 +20,7 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
 
     private readonly string _rootDirectory;
     private readonly int _port;
+    private readonly bool _throttleForRommon;
     private Socket? _listenerSocket;
     private CancellationTokenSource? _cts;
     private Task? _serverTask;
@@ -27,10 +28,11 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
     public event Action<string, long, long, double>? TransferProgress;
     public event Action<string>? LogMessage;
 
-    public EmbeddedTftpServer(string rootDirectory, int port = DefaultPort)
+    public EmbeddedTftpServer(string rootDirectory, int port = DefaultPort, bool throttleForRommon = false)
     {
         _rootDirectory = rootDirectory;
         _port = port;
+        _throttleForRommon = throttleForRommon;
     }
 
     public bool IsRunning => _listenerSocket is not null;
@@ -116,8 +118,14 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
         var cleanFilename = Path.GetFileName(filename);
         var fullPath = Path.Combine(_rootDirectory, cleanFilename);
 
-        if (!File.Exists(fullPath) && File.Exists(filename))
-            fullPath = filename;
+        // Compatibilidade Tftpd32: busca case-insensitive (ROMMON pode variar case)
+        if (!File.Exists(fullPath))
+        {
+            var dirFiles = Directory.Exists(_rootDirectory) ? Directory.GetFiles(_rootDirectory) : Array.Empty<string>();
+            var match = dirFiles.FirstOrDefault(f => Path.GetFileName(f).Equals(cleanFilename, StringComparison.OrdinalIgnoreCase));
+            if (match != null) { fullPath = match; cleanFilename = Path.GetFileName(match); }
+            else if (File.Exists(filename)) fullPath = filename;
+        }
 
         using var transferSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp)
         {
@@ -145,15 +153,30 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
             var ackBuffer = new byte[516];
             EndPoint remoteAckEp = new IPEndPoint(clientEp.Address, clientEp.Port);
 
-            // 1. Negociação de Opções OACK (RFC 2347 / 2348 / 7440)
-            if (blkSize != DefaultBlockSize || windowSize > 1 || tsizeRequested)
+            var hasOptions = (blkSize != DefaultBlockSize) || (windowSize > 1) || tsizeRequested;
+
+            if (_throttleForRommon || !hasOptions)
             {
-                SendOAck(transferSocket, clientEp, blkSize != DefaultBlockSize ? blkSize : null, windowSize > 1 ? windowSize : null, totalBytes);
-                var oackAck = ReceiveAckSync(transferSocket, ref remoteAckEp, 0, ackBuffer, 3000, ct);
-                if (!oackAck)
+                blkSize = DefaultBlockSize;
+                windowSize = 1;
+            }
+            else
+            {
+                var proposeBlk = Math.Min(blkSize, 1468);
+                var proposeWin = windowSize;
+                SendOAck(transferSocket, clientEp, proposeBlk, proposeWin > 1 ? proposeWin : (int?)null, totalBytes, tsizeRequested);
+                var oackAck = ReceiveAckSync(transferSocket, ref remoteAckEp, 0, ackBuffer, 2000, ct);
+                if (oackAck)
                 {
-                    LogMessage?.Invoke("[TFTP] Falha ao receber confirmação do OACK.");
-                    return;
+                    blkSize = proposeBlk;
+                    windowSize = proposeWin;
+                    LogMessage?.Invoke($"[TFTP] OACK aceito — blksize {blkSize}, windowsize {windowSize}.");
+                }
+                else
+                {
+                    LogMessage?.Invoke("[TFTP] OACK sem resposta — utilizando padrão 512 bytes.");
+                    blkSize = DefaultBlockSize;
+                    windowSize = 1;
                 }
             }
 
@@ -178,9 +201,9 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
                 if (bytesRead < blkSize)
                     isFinished = true;
 
-                // Envia pacote e aguarda ACK com recepção síncrona imediata (0.01ms de latência)
+                // Envia pacote e aguarda ACK correspondente ao bloco exato
                 var ackOk = false;
-                for (var retry = 0; retry < 6; retry++)
+                for (var retry = 0; retry < 8; retry++)
                 {
                     transferSocket.SendTo(dataPacket, 0, dataPacket.Length, SocketFlags.None, clientEp);
 
@@ -199,8 +222,9 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
 
                 var pct = totalBytes > 0 ? (double)totalSent / totalBytes * 100.0 : 100.0;
                 TransferProgress?.Invoke(cleanFilename, totalSent, totalBytes, pct);
+                if (_throttleForRommon) Thread.Sleep(15);
 
-                blockNumber++;
+                unchecked { blockNumber++; }
             }
 
             LogMessage?.Invoke($"[TFTP] Transferência de '{cleanFilename}' concluída ({totalSent / (1024.0 * 1024.0):F1} MB enviados com sucesso).");
@@ -230,7 +254,7 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
                 if (received >= 4 && buffer[0] == 0 && buffer[1] == OpCodeAck)
                 {
                     var block = (ushort)((buffer[2] << 8) | buffer[3]);
-                    if (block == expectedBlock || block >= expectedBlock)
+                    if (block == expectedBlock)
                         return true;
                 }
             }
@@ -274,7 +298,7 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
         return (filename, mode, blkSize, windowSize, tsize);
     }
 
-    private static void SendOAck(Socket socket, IPEndPoint ep, int? blkSize, int? windowSize, long totalBytes)
+    private static void SendOAck(Socket socket, IPEndPoint ep, int? blkSize, int? windowSize, long totalBytes, bool includeTsize)
     {
         var sb = new StringBuilder();
         if (blkSize.HasValue)
@@ -289,9 +313,12 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
             sb.Append(windowSize.Value);
             sb.Append('\0');
         }
-        sb.Append("tsize\0");
-        sb.Append(totalBytes);
-        sb.Append('\0');
+        if (includeTsize)
+        {
+            sb.Append("tsize\0");
+            sb.Append(totalBytes);
+            sb.Append('\0');
+        }
 
         var payload = Encoding.ASCII.GetBytes(sb.ToString());
         var packet = new byte[2 + payload.Length];

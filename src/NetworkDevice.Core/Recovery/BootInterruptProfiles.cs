@@ -16,7 +16,7 @@ public static class BootInterruptProfiles
         InitialDelay = TimeSpan.Zero,
         BurstCount = 1,
         BurstInterval = TimeSpan.Zero,
-        RetryInterval = TimeSpan.FromMilliseconds(1000),
+        RetryInterval = TimeSpan.FromMilliseconds(500),
         MaxWindow = TimeSpan.FromSeconds(90),
         MaxTotalTransmissions = 95,
         OsBootPolicy = OsBootPolicy.TerminalFail
@@ -95,7 +95,7 @@ public static class BootInterruptProfiles
         Name = "HPE / HP MSR / Comware (Ctrl+B @ 9600 - BootWare)",
         Manufacturer = "HPE",
         Family = "MSR / FlexNetwork / Comware",
-        ModelPatterns = new[] { "MSR920", "MSR930", "MSR931", "MSR935", "MSR900", "921", "HPE", "HP", "Comware", "5130", "5500", "5900" },
+        ModelPatterns = new[] { "MSR954", "954", "HP 954", "HPE 954", "MSR920", "MSR930", "MSR931", "MSR935", "MSR900", "921", "HPE", "HP", "Comware", "5130", "5500", "5900" },
         Method = BootInterruptMethod.CtrlB,
         RequiresManualIntervention = false,
         InitialDelay = TimeSpan.Zero,
@@ -104,7 +104,13 @@ public static class BootInterruptProfiles
         RetryInterval = TimeSpan.FromMilliseconds(160),
         MaxWindow = TimeSpan.FromMinutes(3),
         MaxTotalTransmissions = 400,
-        OsBootPolicy = OsBootPolicy.Warning
+        OsBootPolicy = OsBootPolicy.Warning,
+        RommonPatterns = new List<Regex>
+        {
+            new(@"(?i)(?:BOOT\s*MENU|<(?:EXTENDED-)?BOOTWARE\s*MENU>|<MAIN\s*MENU>|<BASIC\s*BOOT\s*MENU>|<ETHERNET\s*SUBMENU>|Enter\s+your\s+choice|choice\s*\(\s*0\s*-\s*[0-9]\s*\)|choice\s*:|BootWare\s+Operation\s+Menu)", RegexOptions.Compiled),
+            new(@"(?i)(?:Press\s+Ctrl\+[BD]\s+to\s+enter|Press\s+Ctrl\+B\s+to\s+access|Press\s+Ctrl\+B\s+to\s+stop)", RegexOptions.Compiled),
+            new(@"(?i)(?:The\s+image\s+does\s+not\s+exist|Loading\s+images\s+fails|Loading\s+boot\s+image\s+fails|operating\s+device\s+is\s+flash)", RegexOptions.Compiled)
+        }
     };
 
     public static readonly BootInterruptProfile GenericManual = new()
@@ -136,15 +142,46 @@ public static class BootInterruptProfiles
         if (string.IsNullOrWhiteSpace(id))
             return CiscoUniversal;
 
-        return All.FirstOrDefault(p => p.Id.Equals(id, StringComparison.OrdinalIgnoreCase))
-            ?? (id.Contains("hpe", StringComparison.OrdinalIgnoreCase) || id.Contains("msr", StringComparison.OrdinalIgnoreCase) || id.Contains("comware", StringComparison.OrdinalIgnoreCase)
-                ? HpeMsr
-                : id.Contains("1900", StringComparison.OrdinalIgnoreCase) || id.Contains("1921", StringComparison.OrdinalIgnoreCase) || id.Contains("1941", StringComparison.OrdinalIgnoreCase) || id.Contains("1905", StringComparison.OrdinalIgnoreCase)
-                    ? Cisco1900
-                    : id.Contains("900", StringComparison.OrdinalIgnoreCase) || id.Contains("921", StringComparison.OrdinalIgnoreCase) || id.Contains("ctrl", StringComparison.OrdinalIgnoreCase)
-                        ? Cisco900
-                        : id.Contains("break", StringComparison.OrdinalIgnoreCase)
-                            ? Cisco1900
-                            : CiscoUniversal);
+        var trimmed = id.Trim();
+
+        // 1. Correspondência exata por Id
+        var byId = All.FirstOrDefault(p => p.Id.Equals(trimmed, StringComparison.OrdinalIgnoreCase));
+        if (byId != null) return byId;
+
+        // 2. Correspondência exata por ModelPatterns
+        var byModel = All.FirstOrDefault(p => p.ModelPatterns.Any(m => m.Equals(trimmed, StringComparison.OrdinalIgnoreCase)));
+        if (byModel != null) return byModel;
+
+        // 3. Heurística contextual por substrings (priorizando HPE antes de Cisco)
+        if (trimmed.Contains("hpe", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("msr", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("comware", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("954", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("958", StringComparison.OrdinalIgnoreCase))
+        {
+            return HpeMsr;
+        }
+
+        if (trimmed.Contains("1900", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("1921", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("1941", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("1905", StringComparison.OrdinalIgnoreCase))
+        {
+            return Cisco1900;
+        }
+
+        if (trimmed.Contains("900", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("921", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("ctrl", StringComparison.OrdinalIgnoreCase))
+        {
+            return Cisco900;
+        }
+
+        if (trimmed.Contains("break", StringComparison.OrdinalIgnoreCase))
+        {
+            return Cisco1900;
+        }
+
+        return CiscoUniversal;
     }
 }

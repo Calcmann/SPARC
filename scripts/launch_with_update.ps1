@@ -9,45 +9,36 @@ Set-Location $sparcDir
 
 function Log($msg, $color="Gray") { $ts = Get-Date -Format "yyyy-MM-dd HH:mm:ss"; "$ts $msg" | Out-File -Append -FilePath $logFile -Encoding utf8; Write-Host $msg -ForegroundColor $color }
 
-# 0. Auto-repara atalho no Desktop a cada inicio (garante que o duplo-clique sempre passa por este launcher)
+# 0. Auto-repara atalho SPARC no Desktop e remove legado NetworkDevice.lnk
 try {
     $wsh = New-Object -ComObject WScript.Shell
     $desktop = [Environment]::GetFolderPath("Desktop")
-    $shortcutPath = "$desktop\NetworkDevice.lnk"
+    $sparcLink = "$desktop\SPARC.lnk"
+    $legacyLink = "$desktop\NetworkDevice.lnk"
+    if (Test-Path $legacyLink) { Remove-Item $legacyLink -Force -ErrorAction SilentlyContinue; Log "[*] Atalho legado removido: $legacyLink" Yellow }
     $launcherArgs = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$sparcDir\scripts\launch_with_update.ps1`""
+    $iconFile = "$sparcDir\src\NetworkDevice.UI\Assets\sparc.ico"
     $needsFix = $true
-    if (Test-Path $shortcutPath) {
-        $sc = $wsh.CreateShortcut($shortcutPath)
-        if ($sc.Arguments -eq $launcherArgs -and (Test-Path $sc.TargetPath)) { $needsFix = $false }
+    if (Test-Path $sparcLink) {
+        $sc = $wsh.CreateShortcut($sparcLink)
+        if ($sc.Arguments -eq $launcherArgs -and (Test-Path $sc.TargetPath) -and $sc.IconLocation -eq $iconFile) { $needsFix = $false }
     }
     if ($needsFix) {
-        $sc2 = $wsh.CreateShortcut($shortcutPath)
+        $sc2 = $wsh.CreateShortcut($sparcLink)
         $sc2.TargetPath = "powershell.exe"
         $sc2.Arguments = $launcherArgs
         $sc2.WorkingDirectory = $sparcDir
-        $sc2.IconLocation = if (Test-Path $uiExe) { "$uiExe,0" } else { "shell32.dll,21" }
-        $sc2.Description = "SPARC Network Device (auto-atualizado ao iniciar)"
+        $sc2.IconLocation = if (Test-Path $iconFile) { $iconFile } elseif (Test-Path $uiExe) { "$uiExe,0" } else { "shell32.dll,21" }
+        $sc2.Description = "SPARC - Sistema de Provisionamento e Ativacao de Roteadores Claro"
         $sc2.Save()
-        Log "[*] Atalho do Desktop recriado/corrigido: $shortcutPath" Cyan
+        Log "[*] Atalho SPARC recriado/corrigido com icone oficial: $sparcLink" Cyan
     }
 } catch { Log "[WARN] Falha ao verificar atalho: $_" Yellow }
 
-# 1. Git pull --ff-only se houver remoto (traz ultima versao commitada)
+# 1. Git é apenas backup eventual - NÃO faz pull automático. Diretório local é a raiz do projeto.
+# Backup para Git deve ser feito manualmente via: git add -A; git commit -m "backup"; git push
 $pulled = $false
-if (Test-Path "$sparcDir\.git") {
-    try {
-        $hasRemote = git remote 2>$null
-        if ($hasRemote) {
-            Log "[*] Verificando atualizacoes no Git remoto..." Cyan
-            git fetch --all --prune 2>&1 | Out-Null
-            $before = git rev-parse HEAD 2>$null
-            git pull --ff-only 2>&1 | Tee-Object -Variable pullOut | Out-Null
-            $after = git rev-parse HEAD 2>$null
-            if ($before -ne $after) { $pulled = $true; Log "[*] Novos commits baixados: $before -> $after" Green }
-            elseif ($pullOut -match "Already up to date") { Log "[*] Git ja atualizado." Gray }
-        }
-    } catch { Log "[WARN] Git pull falhou: $_" Yellow }
-}
+Log "[*] Modo local: Git não sincronizado automaticamente (backup eventual apenas)." Gray
 
 # 2. Decide se precisa recompilar Release
 $needBuild = $ForceRebuild -or -not (Test-Path $uiExe) -or $pulled
@@ -70,9 +61,10 @@ if (-not $needBuild) {
 # 3. Compilacao Release automatica
 if ($needBuild) {
     Log "[*] Compilando Release (dotnet build -c Release)..." Cyan
-    # Encerra qualquer instancia aberta para liberar arquivos binarios (trata processos elevados)
+    # Encerra qualquer instancia aberta para liberar arquivos binarios — SEMPRE via taskkill elevado (processo roda como Admin)
+    try { Start-Process powershell -Verb RunAs -ArgumentList "-NoProfile -Command taskkill /F /IM NetworkDevice.UI.exe 2>`$null; Start-Sleep 1; Get-Process -Name NetworkDevice.UI -ErrorAction SilentlyContinue | Stop-Process -Force" -Wait -WindowStyle Hidden } catch { }
     taskkill /F /IM NetworkDevice.UI.exe 2>$null | Out-Null
-    Start-Sleep -Milliseconds 500
+    Start-Sleep -Milliseconds 800
     $runningUis = Get-Process -Name "NetworkDevice.UI" -ErrorAction SilentlyContinue
     if ($runningUis) {
         try {
@@ -80,7 +72,15 @@ if ($needBuild) {
         } catch {
             Log "[*] Encerrando processo elevado via RunAs..." Yellow
             Start-Process powershell -Verb RunAs -ArgumentList "-NoProfile -Command Stop-Process -Name NetworkDevice.UI -Force" -Wait -WindowStyle Hidden
+            Start-Sleep 1500
         }
+    }
+    # Aguarda liberação real do lock da DLL antes de compilar
+    for ($i=0; $i -lt 5; $i++) {
+        $stillRunning = Get-Process -Name "NetworkDevice.UI" -ErrorAction SilentlyContinue
+        if (-not $stillRunning) { break }
+        Log "[*] Aguardando encerramento do SPARC antigo (tentativa $($i+1)/5)..." Yellow
+        Start-Sleep 1000
     }
     
     dotnet build "$sparcDir\NetworkDevice.sln" -c Release -v m --nologo 2>&1 | Out-File -Append -FilePath $logFile -Encoding utf8

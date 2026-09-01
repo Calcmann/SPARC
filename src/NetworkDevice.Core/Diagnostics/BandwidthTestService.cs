@@ -240,7 +240,7 @@ public class BandwidthTestService
         }
         catch (Exception ex)
         {
-            await LogAsync($"[ERRO CLI] Speedtest CLI não encontrado ou falhou ({ex.Message}). Recomendado usar o Teste HTTP Nativo ou abrir no navegador.");
+            await LogAsync($"[AVISO] Speedtest CLI não instalado ({ex.Message}) — usando Teste HTTP Nativo (sem dependência externa).");
             return new BandwidthTestResult(0, 0, 0, 0, "Speedtest CLI", "CLI", false, ex.Message);
         }
     }

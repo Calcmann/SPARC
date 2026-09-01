@@ -9,7 +9,12 @@
     <AssemblyName>NetworkDevice.UI</AssemblyName>
     <RootNamespace>NetworkDevice.UI</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\sparc.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\**\*" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\NetworkDevice.Core\NetworkDevice.Core.csproj" />

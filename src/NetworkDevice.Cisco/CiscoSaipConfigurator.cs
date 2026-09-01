@@ -160,24 +160,49 @@ public sealed class CiscoSaipConfigurator
             // Usa as portas padrão
         }
 
-        // 4. Limpa rotas default estáticas antigas para não duplicar gateway
+        // 4. Limpeza pré-provisionamento — garante configuração limpa (remove vestígios)
+        await ProgressAsync("[*] [FASE C] Limpando vestígios de configuração anterior (baseline limpo)...");
         try
         {
-            var showRoutes = await session.SendCommandAsync("show running-config | include ip route 0.0.0.0", TimeSpan.FromSeconds(10), cancellationToken);
-            var routeMatches = Regex.Matches(showRoutes, @"(?im)^\s*ip\s+route\s+0\.0\.0\.0\s+0\.0\.0\.0\s+(\S+)");
+            // 4a. Remove todas as rotas default antigas (qualquer gateway)
+            var showRoutes = await session.SendCommandAsync("show running-config | include ip route", TimeSpan.FromSeconds(10), cancellationToken);
+            var routeMatches = Regex.Matches(showRoutes, @"(?im)^\s*ip\s+route\s+0\.0\.0\.0\s+0\.0\.0\.0\s+(\S+)(?:\s+\S+)*");
             foreach (Match m in routeMatches)
             {
                 var oldGw = m.Groups[1].Value.Trim();
-                if (!string.Equals(oldGw, circuit.WanGateway, StringComparison.OrdinalIgnoreCase))
-                {
-                    await ProgressAsync($"[*] Removendo rota default antiga para o gateway '{oldGw}'...");
-                    await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(5), cancellationToken);
-                    await session.SendCommandAsync($"no ip route 0.0.0.0 0.0.0.0 {oldGw}", TimeSpan.FromSeconds(5), cancellationToken);
-                    await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
-                }
+                await ProgressAsync($"[*] Removendo rota default antiga -> gateway '{oldGw}'...");
+                await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(5), cancellationToken);
+                await session.SendCommandAsync($"no ip route 0.0.0.0 0.0.0.0 {oldGw}", TimeSpan.FromSeconds(5), cancellationToken);
+                await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
             }
+
+            // 4b. Limpa IPs/descrições antigas das interfaces WAN/LAN (default interface = estado limpo Cisco)
+            foreach (var iface in new[] { wanInterface, lanInterface })
+            {
+                await ProgressAsync($"[*] Resetando interface {iface} (default + no ip address)...");
+                await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(5), cancellationToken);
+                // 'default interface' restaura ao padrão; fallback 'no ip address' + 'no description' se não suportado
+                var defRes = await session.SendCommandAsync($"default interface {iface}", TimeSpan.FromSeconds(8), cancellationToken);
+                if (defRes.Contains("% Invalid", StringComparison.OrdinalIgnoreCase))
+                {
+                    await session.SendCommandAsync($"interface {iface}", TimeSpan.FromSeconds(5), cancellationToken);
+                    await session.SendCommandAsync("no ip address", TimeSpan.FromSeconds(5), cancellationToken);
+                    await session.SendCommandAsync("no description", TimeSpan.FromSeconds(5), cancellationToken);
+                    await session.SendCommandAsync("shutdown", TimeSpan.FromSeconds(5), cancellationToken);
+                    await session.SendCommandAsync("exit", TimeSpan.FromSeconds(5), cancellationToken);
+                }
+                await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
+            }
+
+            // 4c. Remove usuários/credenciais residuais que conflitam com EBT/PRO1AN
+            await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("no username admin", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            await ProgressAsync($"[AVISO] Limpeza best-effort falhou parcialmente: {ex.Message} — prosseguindo.");
+        }
 
         // 5. Monta e envia os comandos de provisionamento global (configure terminal)
         await ProgressAsync("[*] Entrando em modo de configuração global (configure terminal)...");
