@@ -709,6 +709,7 @@ public partial class MainWindow : Window
                     TxtSerialTestStatus.Foreground = BrushErro;
                     MessageBox.Show(this,
                         $"Tempo limite de 10 segundos esgotado sem resposta na porta {porta}.\n\n" +
+                        $"• Se acabou de ligar o roteador, ele pode ainda estar em processo de inicialização (geralmente leva de 2 a 5 minutos) — aguarde um momento e tente novamente;\n" +
                         $"• Verifique se o cabo console serial está conectado firmemente;\n" +
                         $"• Verifique se o equipamento está ligado na tomada;\n" +
                         $"• Confirme se a porta {porta} e a taxa {baud} baud são as corretas.",

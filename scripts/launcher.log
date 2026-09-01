@@ -7624,3 +7624,32 @@ Compila├º├úo com ├¬xito.
 Tempo Decorrido 00:00:02.54
 2026-09-01 15:01:55 [OK] Build Release concluido com sucesso.
 2026-09-01 15:01:55 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-01 15:06:24 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-01 15:06:24 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-01 15:06:24 [*] Codigo fonte mais recente que os binarios (PasswordAuthDialog.g.cs 09/01/2026 13:56:28 > 09/01/2026 13:56:27). Recompilando...
+2026-09-01 15:06:24 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(197,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(199,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(199,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(198,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(197,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(199,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(199,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(198,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+    4 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:07.61
+2026-09-01 15:06:35 [OK] Build Release concluido com sucesso.
+2026-09-01 15:06:35 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
