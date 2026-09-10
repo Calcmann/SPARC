@@ -39,7 +39,9 @@ public sealed class HpeComwareUpgrader
         string hostIpAddress,
         Func<string, CancellationToken, Task<bool>>? confirmBootLoaderUpdate = null,
         Func<string, CancellationToken, Task>? requestOperatorAction = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? subnetMask = null,
+        string? localAdapterName = null)
     {
         if (!File.Exists(firmwareFilePath))
             throw new FileNotFoundException($"Arquivo de firmware HPE não encontrado: {firmwareFilePath}");
@@ -396,7 +398,7 @@ public sealed class HpeComwareUpgrader
                 // Configura IP temporário na GE0/1 (LAN) para TFTP e configura adaptador Windows
                 try
                 {
-                    await ConfigurarIpTemporarioHpeAsync(session, hostIpAddress, requestOperatorAction, cancellationToken);
+                    await ConfigurarIpTemporarioHpeAsync(session, hostIpAddress, requestOperatorAction, cancellationToken, subnetMask, localAdapterName);
                 }
                 catch (Exception ex) { await ProgressAsync($"[AVISO] Falha ao configurar IP temporário HPE: {ex.Message}"); }
 
@@ -1204,21 +1206,29 @@ public sealed class HpeComwareUpgrader
         DeviceSession session,
         string hostIp,
         Func<string, CancellationToken, Task>? requestOperatorAction,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? subnetMask = null,
+        string? localAdapterName = null)
     {
         if (!System.Net.IPAddress.TryParse(hostIp, out var hip)) return "GigabitEthernet0/1";
+        if (System.Net.IPAddress.IsLoopback(hip))
+        {
+            await ProgressAsync("[AVISO] IP do notebook indefinido (loopback) — confira a Ficha SAIP e a placa selecionada antes do TFTP.");
+            return "GigabitEthernet0/1";
+        }
         var bytes = hip.GetAddressBytes();
         if (bytes.Length != 4) return "GigabitEthernet0/1";
         var routerIp = $"{bytes[0]}.{bytes[1]}.{bytes[2]}.{bytes[3] - 1}";
-        var mask = "255.255.255.240";
+        var mask = string.IsNullOrWhiteSpace(subnetMask) ? "255.255.255.240" : subnetMask.Trim();
 
-        // 1. Configura IP estático no adaptador Windows
+        // 1. Configura IP estático no adaptador Windows (respeita o combo da UI)
         try
         {
-            var ethAdapters = HostNetworkManager.GetEthernetAdapters();
-            var targetAdapter = ethAdapters.FirstOrDefault(a => !a.Contains("Wi-Fi", StringComparison.OrdinalIgnoreCase) && !a.Contains("Wireless", StringComparison.OrdinalIgnoreCase))
-                             ?? ethAdapters.FirstOrDefault()
-                             ?? "Ethernet";
+            var targetAdapter = HostNetworkManager.EscolherAdaptadorNotebook(localAdapterName)
+                ?? HostNetworkManager.GetEthernetAdapters()
+                    .FirstOrDefault(a => !a.Contains("Wi-Fi", StringComparison.OrdinalIgnoreCase) && !a.Contains("Wireless", StringComparison.OrdinalIgnoreCase))
+                ?? HostNetworkManager.GetEthernetAdapters().FirstOrDefault()
+                ?? "Ethernet";
             await ProgressAsync($"[*] Configurando IP estático {hostIp}/{mask} na interface de rede '{targetAdapter}'...");
             var (okNet, outNet) = await HostNetworkManager.SetStaticIpAsync(targetAdapter, hostIp, mask, null, ct);
             if (okNet)

@@ -50,7 +50,8 @@ public sealed record ActivationReportData(
     BandwidthTestResult? BandResult,
     IReadOnlyList<string>? DiagnosticAlerts,
     string? FalhaGeral,
-    string? AppliedConfigScript = null);
+    string? AppliedConfigScript = null,
+    double? BandaMbpsNominal = null);
 
 public static class ActivationPdfReportService
 {
@@ -170,7 +171,14 @@ public static class ActivationPdfReportService
         var icmp5bBadge = is5b ? "<span class=\"tag-ok\">✅ RESPOSTA OK</span>" : "<span class=\"tag-fail\">❌ SEM RESPOSTA</span>";
         var icmp5cBadge = is5c ? "<span class=\"tag-ok\">✅ RESPOSTA OK</span>" : "<span class=\"tag-fail\">❌ SEM RESPOSTA</span>";
         var telnetBadge = isTelnet ? "<span class=\"tag-ok\">✅ CONEXÃO OK</span>" : "<span class=\"tag-fail\">❌ FALHA</span>";
-        var bandBadge = isBand ? "<span class=\"tag-ok\">✅ VAZÃO OK</span>" : "<span class=\"tag-warn\">⚠️ NÃO MEDIDO</span>";
+        var avBanda = BandwidthTestService.AvaliarBanda(d.BandaMbpsNominal, d.BandResult?.DownloadMbps ?? 0);
+        var bandBadge = d.BandResult == null
+            ? "<span class=\"tag-warn\">⚠️ NÃO MEDIDO</span>"
+            : avBanda == null
+                ? (isBand ? "<span class=\"tag-ok\">✅ VAZÃO OK</span>" : "<span class=\"tag-warn\">⚠️ NÃO MEDIDO</span>")
+                : avBanda.Aprovado
+                    ? $"<span class=\"tag-ok\">✅ APROVADO ({avBanda.Percentual:F1}%)</span>"
+                    : $"<span class=\"tag-fail\">❌ REPROVADO ({avBanda.Percentual:F1}%)</span>";
 
         var rtt5a = d.IcmpResult?.LanResult?.AvgRttMs > 0 ? $"{d.IcmpResult.LanResult.AvgRttMs:F1} ms" : "< 1 ms";
         var rtt5b = d.IcmpResult?.WanResult?.AvgRttMs > 0 ? $"{d.IcmpResult.WanResult.AvgRttMs:F1} ms" : "—";
@@ -178,7 +186,12 @@ public static class ActivationPdfReportService
         var loss5a = d.IcmpResult?.LanResult?.PacketLossPercentage ?? 0;
         var loss5b = d.IcmpResult?.WanResult?.PacketLossPercentage ?? (is5b ? 0 : 100);
         var loss5c = d.IcmpResult?.WebResult?.PacketLossPercentage ?? (is5c ? 0 : 100);
-        var bandSpeed = d.BandResult != null ? $"{d.BandResult.DownloadMbps:F1} Mbps" : "—";
+        var bandSpeed = d.BandResult != null
+            ? $"{d.BandResult.DownloadMbps:F1} Mbps" +
+              (d.BandaMbpsNominal is > 0
+                  ? $" | Nominal: {d.BandaMbpsNominal:F1} Mbps ({(avBanda != null ? $"{avBanda.Percentual:F1}% — mín 92% ({avBanda.MinimoMbps:F1} Mbps)" : "—")})"
+                  : "")
+            : "—";
 
         var sb = new StringBuilder();
         sb.Append($@"<!DOCTYPE html>
@@ -339,14 +352,6 @@ public static class ActivationPdfReportService
                 sb.Append($@"<div class=""diag-item"">• {diag.Replace("\n", "<br>• ")}</div>");
             }
             sb.Append("</div>");
-        }
-
-        if (!string.IsNullOrWhiteSpace(d.AppliedConfigScript))
-        {
-            var esc = System.Net.WebUtility.HtmlEncode(d.AppliedConfigScript);
-            sb.Append($@"<div class=""section-title"">3. Script / Running-Config Aplicado e Salvo (write memory)</div>
-<div style=""background:#0F172A;color:#E2E8F0;border-radius:8px;padding:12px;font-family:'Consolas',monospace;font-size:11px;white-space:pre-wrap;word-break:break-all;max-height:420px;overflow:auto;border:1px solid #334155;"">{esc}</div>
-<div style=""font-size:10px;color:#64748B;margin-top:4px;"">Configuração capturada via 'show running-config' após provisionamento e gravada com 'write memory'.</div>");
         }
 
         sb.Append(@"

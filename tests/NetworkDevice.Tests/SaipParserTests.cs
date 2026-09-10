@@ -133,6 +133,15 @@ topo      consultas      menu
     }
 
     [Fact]
+    public void ParseText_ExtraiBandaNominalEmMbps()
+    {
+        var data = SaipParser.ParseText(ExemploFichaSaip);
+
+        // Ficha traz "Banda 50000" (kbps) => 50 Mbps nominais
+        Assert.Equal(50.0, data.BandaMbpsNominal);
+    }
+
+    [Fact]
     public void CleanRazaoSocial_TruncatesTrailingContaCorrente()
     {
         var rawFromPdf = "SOLDI PROMOTORA DE VENDAS LTDA CONTA CORRENTE00015187188/0001 (GC/CS) CNPJ (CLE)07.249.846/0001-09 CNPJ REGISTRO07.249.846/0001-09 (RegistroBr) ADMINISTRADOR TELEFONE EMAIL DESIGNAÇÃO IPFNS/IP/03977 ESTAÇÃO DE ACESSOSOO NS DESIGNAÇÃO DE ACESSOFNS 00001101833";

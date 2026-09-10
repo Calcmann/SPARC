@@ -2339,6 +2339,7 @@ public partial class MainWindow : Window
         Progresso(0, "Modo automático — iniciando verificação...");
         BtnAutoCancelar.Visibility = Visibility.Visible; BtnAutoVoltar.Visibility = Visibility.Collapsed;
         if (BtnAutoRestaurarRede != null) BtnAutoRestaurarRede.Visibility = Visibility.Collapsed;
+        if (BtnAutoSalvarScript != null) BtnAutoSalvarScript.Visibility = Visibility.Collapsed;
 
         // Garante que o modo automático importe o mesmo sistema de análise de boot do modo padrão (HPE BootWare Ctrl+B)
         if (CbModeloRoteadorInicial.SelectedIndex > 0 && CbInterrupt.SelectedIndex != CbModeloRoteadorInicial.SelectedIndex - 1)
@@ -2531,6 +2532,7 @@ public partial class MainWindow : Window
 
     private string? _lastGeneratedPdfPath;
     private ActivationReportData? _lastReportData;
+    private string? _lastAppliedConfigScript;
 
     private async Task ExibirRelatorioFinalAutomaticoAsync(
         string porta,
@@ -2595,6 +2597,11 @@ public partial class MainWindow : Window
             falhas.Add("Falha no Teste 6 (Acesso Remoto Telnet / Porta 23): Firewall do Windows bloqueando conexões de saída na porta 23 ou linha VTY sem senha/login.");
         }
 
+        if (bandResult != null && !isBandOk)
+        {
+            falhas.Add($"Falha no Teste 7 (Banda abaixo do nominal): {bandResult.Message}");
+        }
+
         TripleIcmpData? icmpData = icmpResult != null
             ? new TripleIcmpData(icmpResult.LanResult, icmpResult.WanResult, icmpResult.WebResult)
             : null;
@@ -2629,7 +2636,9 @@ public partial class MainWindow : Window
             TelnetResult: telnetResult,
             BandResult: bandResult,
             DiagnosticAlerts: falhas,
-            FalhaGeral: falhaGeral
+            FalhaGeral: falhaGeral,
+            BandaMbpsNominal: _loadedSaipCircuit?.BandaMbpsNominal,
+            AppliedConfigScript: _lastAppliedConfigScript
         );
 
         _lastReportData = reportData;
@@ -2665,6 +2674,7 @@ public partial class MainWindow : Window
             BtnAutoAbrirPdf.Visibility = Visibility.Visible;
             BtnAutoExportarPdf.Visibility = Visibility.Visible;
             BtnAutoRestaurarRede.Visibility = Visibility.Visible;
+            BtnAutoSalvarScript.Visibility = Visibility.Visible;
 
             if (exibirPopup && !string.IsNullOrEmpty(pdfPath) && File.Exists(pdfPath))
             {
@@ -2711,6 +2721,44 @@ public partial class MainWindow : Window
     private async void BtnAutoRestaurarRede_Click(object sender, RoutedEventArgs e)
     {
         await PerguntarRestauracaoRedeAsync();
+    }
+
+    private void BtnAutoSalvarScript_Click(object sender, RoutedEventArgs e)
+    {
+        var script = _lastReportData?.AppliedConfigScript ?? _lastAppliedConfigScript;
+        if (string.IsNullOrWhiteSpace(script))
+        {
+            MessageBox.Show(this, "Nenhuma configuração aplicada foi capturada ainda.\nExecute a Fase C (provisionamento) antes de salvar o script.",
+                "Salvar script TXT", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+        var designacao = _loadedSaipCircuit?.DesignacaoIp ?? _loadedSaipCircuit?.NumeroOts ?? "Circuito";
+        foreach (var c in Path.GetInvalidFileNameChars()) designacao = designacao.Replace(c, '_');
+        var dlg = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Salvar script das configurações aplicadas",
+            Filter = "Script TXT (*.txt)|*.txt|Todos os Arquivos (*.*)|*.*",
+            FileName = $"Script_SPARC_{designacao}_{DateTime.Now:yyyyMMdd_HHmmss}.txt"
+        };
+        if (dlg.ShowDialog() == true)
+        {
+            try
+            {
+                var header = $"SPARC — Configurações aplicadas no equipamento\n" +
+                             $"Data: {DateTime.Now:dd/MM/yyyy HH:mm}\n" +
+                             $"Circuito: {_loadedSaipCircuit?.DesignacaoIp ?? "-"} | OTS: {_loadedSaipCircuit?.NumeroOts ?? "-"}\n" +
+                             new string('=', 70) + "\n\n";
+                File.WriteAllText(dlg.FileName, header + script, Encoding.UTF8);
+                EscreverLinha($"[OK] Script das configurações salvo em: {dlg.FileName}");
+                MessageBox.Show(this, $"Script salvo em:\n{dlg.FileName}", "Salvar script TXT",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"Não foi possível salvar: {ex.Message}", "Salvar script TXT",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
     }
 
     private void BtnAutoExportarPdf_Click(object sender, RoutedEventArgs e)
@@ -3815,6 +3863,20 @@ public partial class MainWindow : Window
             await CiscoIOSAdapter.EnforceLanPortConnectedAsync(session, "GigabitEthernet 0/1", NotificarConexaoCaboAsync, EscreverLinhaAsync, ct);
         }
 
+        try
+        {
+            EscreverLinha("[*] Capturando running-config aplicada para o relatório TXT...");
+            _lastAppliedConfigScript = isHpe
+                ? await session.SendCommandAsync("display current-configuration", TimeSpan.FromSeconds(120), ct)
+                : await new CiscoIOSAdapter().GetRunningConfigAsync(session, ct);
+            EscreverLinha($"[OK] Running-config capturada ({_lastAppliedConfigScript?.Length ?? 0} caracteres).");
+        }
+        catch (Exception ex)
+        {
+            EscreverLinha($"[AVISO] Não foi possível capturar a running-config: {ex.Message}");
+            _lastAppliedConfigScript = null;
+        }
+
         AtualizarProgresso(100, "Fase C Concluída!", "Configurações do circuito salvas com sucesso no equipamento atualizado!");
     }
 
@@ -4117,7 +4179,9 @@ public partial class MainWindow : Window
                         MessageBox.Show(msg + "\n\nDeseja atualizar o boot-loader agora?", "Boot-loader desatualizado", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes);
                 },
                 InstruirOperadorAsync,
-                ct);
+                ct,
+                _loadedSaipCircuit?.LanSubnetMask,
+                CbAdaptadorRede?.Text?.Trim());
         }
         else
         {
@@ -4239,6 +4303,117 @@ public partial class MainWindow : Window
         return null;
     }
 
+    /// <summary>
+    /// Verifica via console serial se a porta WAN esperada do modelo está DOWN.
+    /// Retorna null quando inconclusivo (segue fluxo normal).
+    /// </summary>
+    private async Task<bool?> VerificarWanDownAsync(WanPortaInfo info, CancellationToken ct)
+    {
+        SerialTransport? transport = null;
+        DeviceSession? session = null;
+        try
+        {
+            var porta = ObterPortaSelecionada();
+            var baud = ObterBaudRateSelecionado();
+            EscreverLinha($"[*] [5b] Verificando estado da porta WAN {info.InterfaceExibicao} via console serial...");
+            transport = new SerialTransport(porta, baud, readTimeout: TimeSpan.FromMilliseconds(400));
+            session = new DeviceSession(transport, new SessionOptions
+            {
+                PromptMatcher = RegexPromptMatcher.Universal(),
+                ConnectTimeout = TimeSpan.FromSeconds(8),
+                CommandTimeout = TimeSpan.FromSeconds(10),
+                Username = "EBT",
+                Password = info.IsHpe ? "PRO1ANPRO1AN" : "PRO1AN",
+            });
+            session.RawOutput += OnRawOutput;
+            await session.ConnectAsync(ct);
+
+            if (info.IsHpe)
+            {
+                try { await session.SendCommandAsync("screen-length disable", TimeSpan.FromSeconds(5), ct); } catch { }
+                var brief = await session.SendCommandAsync("display interface brief", TimeSpan.FromSeconds(15), ct);
+                var (encontrada, down) = WanPortInspector.HpeWanStatus(brief, info.NomesBusca);
+                if (!encontrada) return null;
+                EscreverLinha(down
+                    ? $"[ALERTA 5b] Porta WAN {info.InterfaceExibicao} DOWN no {info.ModeloExibicao}."
+                    : $"[*] [5b] Porta WAN {info.InterfaceExibicao} UP no {info.ModeloExibicao} — falha é de rota/operadora.");
+                return down;
+            }
+            else
+            {
+                try { await session.SendCommandAsync("terminal length 0", TimeSpan.FromSeconds(5), ct); } catch { }
+                var brief = await session.SendCommandAsync("show ip interface brief", TimeSpan.FromSeconds(15), ct);
+                var (encontrada, down) = WanPortInspector.CiscoWanStatus(brief, info.NomesBusca);
+                if (!encontrada) return null;
+                EscreverLinha(down
+                    ? $"[ALERTA 5b] Porta WAN {info.InterfaceExibicao} DOWN no {info.ModeloExibicao}."
+                    : $"[*] [5b] Porta WAN {info.InterfaceExibicao} UP no {info.ModeloExibicao} — falha é de rota/operadora.");
+                return down;
+            }
+        }
+        catch (Exception ex)
+        {
+            EscreverLinha($"[AVISO 5b] Não foi possível verificar a porta WAN via serial ({ex.Message}) — seguindo fluxo normal.");
+            return null;
+        }
+        finally
+        {
+            if (session != null)
+            {
+                session.RawOutput -= OnRawOutput;
+                try { await session.DisposeAsync(); } catch { }
+            }
+            if (transport != null)
+            {
+                try { await transport.DisposeAsync(); } catch { }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Se a WAN está DOWN no equipamento: pergunta se conecta o cabo (SIM repete o teste, até 3x)
+    /// ou segue normalmente (NÃO). Sem diagnóstico conclusivo, mantém comportamento atual.
+    /// </summary>
+    private async Task<ConnectivityTestResult> TratarWanDownAsync(
+        ConnectivityService service, string wanTarget, string? sourceIp,
+        ConnectivityTestResult atual, CancellationToken ct)
+    {
+        var tag = (CbInterrupt.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "";
+        var info = WanPortInspector.PorTagModelo(tag);
+        if (info == null) return atual;
+
+        bool? down;
+        try { down = await VerificarWanDownAsync(info, ct); }
+        catch { return atual; }
+        if (down != true) return atual;
+
+        for (var tentativa = 1; tentativa <= 3; tentativa++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var resp = Dispatcher.Invoke(() => MessageBox.Show(this,
+                $"A porta WAN {info.InterfaceExibicao} do roteador {info.ModeloExibicao} está DOWN (sem link).\n\n" +
+                $"👉 Conecte o cabo de rede na porta WAN e clique SIM para repetir o teste.\n\n" +
+                $"Clique NÃO para seguir normalmente (WAN ficará como Offline).",
+                "Porta WAN DOWN — Fase 5b",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning));
+            if (resp != MessageBoxResult.Yes)
+            {
+                EscreverLinha("[*] [5b] Operador optou por seguir com WAN Offline.");
+                break;
+            }
+            EscreverLinha($"[*] [5b] Repetindo teste WAN após conexão do cabo (tentativa {tentativa}/3)...");
+            AtualizarProgresso(78, "Fase 5b: Repetindo ICMP WAN...", $"Disparando pacotes ICMP para Gateway WAN ({wanTarget})...");
+            var retry = await service.TestPingAsync(wanTarget, count: 4, timeoutMs: 2000, sourceIpAddress: sourceIp, cancellationToken: ct);
+            if (retry.IsSuccess)
+            {
+                EscreverLinha($"[OK 5b WAN] Conectividade de enlace WAN confirmada após conexão do cabo: RTT Médio {retry.AvgRttMs:F1}ms, 0% perda.");
+                return retry;
+            }
+            EscreverLinha($"[AVISO 5b WAN] Ainda sem resposta após a tentativa {tentativa}/3.");
+        }
+        return atual;
+    }
+
     private async Task<TripleIcmpResult> ExecutarTesteIcmpTriploAsync(CancellationToken ct)
     {
         var lanTarget = _loadedSaipCircuit?.LanIp ?? TxtIcmpTargetLan?.Text?.Trim() ?? "200.182.245.17";
@@ -4282,7 +4457,10 @@ public partial class MainWindow : Window
         if (wanRes.IsSuccess)
             EscreverLinha($"[OK 5b WAN] Conectividade de enlace WAN confirmada: RTT Médio {wanRes.AvgRttMs:F1}ms, 0% perda.");
         else
+        {
             EscreverLinha($"[AVISO 5b WAN] Gateway WAN ({wanTarget}) sem resposta (Link físico ou rota pendente na operadora).");
+            wanRes = await TratarWanDownAsync(service, wanTarget, sourceIp, wanRes, ct);
+        }
 
         // -------------------------------------------------------------
         // 5c. TESTE ICMP WEB (DNS Cloudflare 1.1.1.1 / Google 8.8.8.8)
@@ -4476,29 +4654,53 @@ public partial class MainWindow : Window
         var service = new BandwidthTestService(EscreverLinhaAsync);
 
         // 1. Tenta executar CLI Speedtest se disponível
+        BandwidthTestResult raw;
         var cliResult = await service.RunSpeedtestCliAsync(cancellationToken: ct);
         if (cliResult.IsSuccess)
         {
-            AtualizarProgresso(100, "Fase G: Teste Concluído!", $"Download: {cliResult.DownloadMbps} Mbps | Latência: {cliResult.LatencyMs:F0}ms");
-            return cliResult;
+            raw = cliResult;
         }
-
-        // 2. Fallback para Teste Nativo HTTP
-        EscreverLinha("[*] Executando Teste de Banda Nativo HTTP (Cloudflare CDN - Payload: ~50 MB)...");
-        var httpResult = await service.RunNativeHttpSpeedTestAsync(
-            testPayloadMegaBytes: 50,
-            onProgress: (mbps, pct) =>
-            {
-                AtualizarProgresso((int)pct, "Fase G: Medindo Vazão HTTP...", $"Vazão atual: {mbps:F2} Mbps ({pct:F0}%)");
-            },
-            cancellationToken: ct);
-
-        if (httpResult.IsSuccess)
+        else
         {
-            AtualizarProgresso(100, "Fase G Concluída!", $"Download: {httpResult.DownloadMbps} Mbps | Latência: {httpResult.LatencyMs:F0}ms");
+            // 2. Fallback para Teste Nativo HTTP
+            EscreverLinha("[*] Executando Teste de Banda Nativo HTTP (Cloudflare CDN - Payload: ~50 MB)...");
+            raw = await service.RunNativeHttpSpeedTestAsync(
+                testPayloadMegaBytes: 50,
+                onProgress: (mbps, pct) =>
+                {
+                    AtualizarProgresso((int)pct, "Fase G: Medindo Vazão HTTP...", $"Vazão atual: {mbps:F2} Mbps ({pct:F0}%)");
+                },
+                cancellationToken: ct);
         }
 
-        return httpResult;
+        // 3. Critica contra a banda nominal da ficha SAIP (margem 8%: aprova com >= 92%)
+        var judged = AplicarCriterioBanda(raw);
+        if (judged.IsSuccess)
+        {
+            AtualizarProgresso(100, "Fase G: Teste Concluído!", $"Download: {judged.DownloadMbps} Mbps | Latência: {judged.LatencyMs:F0}ms");
+        }
+        else
+        {
+            AtualizarProgresso(0, "Fase G: Banda reprovada/insuficiente", judged.Message);
+        }
+
+        return judged;
+    }
+
+    private BandwidthTestResult AplicarCriterioBanda(BandwidthTestResult raw)
+    {
+        if (!raw.IsSuccess) return raw;
+        var nominal = _loadedSaipCircuit?.BandaMbpsNominal;
+        var av = BandwidthTestService.AvaliarBanda(nominal, raw.DownloadMbps);
+        if (av == null)
+        {
+            EscreverLinha($"[*] Banda medida: {raw.DownloadMbps:F1} Mbps (sem banda nominal na ficha — sem crítica).");
+            return raw;
+        }
+        EscreverLinha($"  📊 Nominal ficha: {av.NominalMbps:F1} Mbps | Medido: {av.MedidoMbps:F1} Mbps ({av.Percentual:F1}%) | Mínimo 92%: {av.MinimoMbps:F1} Mbps → {(av.Aprovado ? "🟢 APROVADO" : "🔴 REPROVADO")}");
+        if (av.Aprovado)
+            return raw with { Message = raw.Message + $" | {av.Veredito}" };
+        return raw with { IsSuccess = false, Message = raw.Message + $" | {av.Veredito}" };
     }
 
     #endregion

@@ -199,6 +199,18 @@ public static class HostNetworkManager
         return (true, $"Interface '{adapterName}' retornada para DHCP (IP e DNS automáticos).");
     }
 
+    /// <summary>
+    /// Escolhe a placa do notebook: preferência explícita (combo da UI) ou primeira Ethernet.
+    /// Nulo apenas se não houver adaptador algum.
+    /// </summary>
+    public static string? EscolherAdaptadorNotebook(string? preferido)
+    {
+        if (!string.IsNullOrWhiteSpace(preferido)) return preferido.Trim();
+        var adapters = GetEthernetAdapters();
+        return adapters.FirstOrDefault(a => a.Contains("Ethernet", StringComparison.OrdinalIgnoreCase))
+            ?? adapters.FirstOrDefault();
+    }
+
     public static string SnapshotDirectory =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SPARC", "netbackup");
 

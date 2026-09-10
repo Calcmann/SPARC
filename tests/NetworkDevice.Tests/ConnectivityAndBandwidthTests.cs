@@ -68,3 +68,36 @@ public class ConnectivityAndBandwidthTests
         Assert.NotEmpty(adapters);
     }
 }
+
+public sealed class AvaliacaoBandaTests
+{
+    [Fact]
+    public void SemNominal_SemJulgamento()
+    {
+        Assert.Null(BandwidthTestService.AvaliarBanda(null, 40.0));
+        Assert.Null(BandwidthTestService.AvaliarBanda(0, 40.0));
+    }
+
+    [Theory]
+    [InlineData(50.0, 50.0, true)]
+    [InlineData(50.0, 46.0, true)]
+    [InlineData(50.0, 45.99, false)]
+    [InlineData(50.0, 30.0, false)]
+    [InlineData(50.0, 0.0, false)]
+    public void Limite92(double nominal, double medido, bool esperado)
+    {
+        var av = BandwidthTestService.AvaliarBanda(nominal, medido);
+        Assert.NotNull(av);
+        Assert.Equal(esperado, av.Aprovado);
+        Assert.Equal(nominal, av.NominalMbps);
+    }
+
+    [Fact]
+    public void PercentualEMinimo()
+    {
+        var av = BandwidthTestService.AvaliarBanda(50.0, 46.0)!;
+        Assert.Equal(92.0, av.Percentual);
+        Assert.Equal(46.0, av.MinimoMbps);
+        Assert.Contains("APROVADO", av.Veredito);
+    }
+}

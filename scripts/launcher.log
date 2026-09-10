@@ -12043,3 +12043,194 @@ Tempo Decorrido 00:00:01.47
 As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
 2026-09-10 17:02:02 [OK] Build Release concluido com sucesso.
 2026-09-10 17:02:02 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-10 18:17:17 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-10 18:17:17 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-10 18:17:17 [*] Codigo fonte mais recente que os binarios (PasswordAuthDialog.g.cs 09/10/2026 16:57:29 > 09/10/2026 16:47:38). Recompilando...
+2026-09-10 18:17:17 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(256,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(500,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(501,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(499,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(501,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(256,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(500,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(501,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(499,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(501,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+    6 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:09.76
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-10 18:17:32 [OK] Build Release concluido com sucesso.
+2026-09-10 18:17:32 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-10 18:22:45 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-10 18:22:45 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-10 18:22:45 [*] Codigo fonte mais recente que os binarios (NetworkDevice.UI.AssemblyInfo.cs 09/10/2026 18:17:30 > 09/10/2026 18:17:27). Recompilando...
+2026-09-10 18:22:45 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:01.53
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-10 18:22:51 [OK] Build Release concluido com sucesso.
+2026-09-10 18:22:51 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-10 18:29:37 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-10 18:29:37 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-10 18:29:37 [*] Codigo fonte mais recente que os binarios (NetworkDevice.Cisco.AssemblyInfo.cs 09/10/2026 18:27:27 > 09/10/2026 18:17:27). Recompilando...
+2026-09-10 18:29:37 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+    1 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:02.76
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-10 18:29:45 [OK] Build Release concluido com sucesso.
+2026-09-10 18:29:45 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-10 18:47:56 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-10 18:47:56 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-10 18:47:56 [*] Codigo fonte mais recente que os binarios (PasswordAuthDialog.g.cs 09/10/2026 18:47:41 > 09/10/2026 18:17:27). Recompilando...
+2026-09-10 18:47:56 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+    1 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:03.38
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-10 18:48:04 [OK] Build Release concluido com sucesso.
+2026-09-10 18:48:04 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-10 18:57:49 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-10 18:57:49 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-10 18:57:49 [*] Codigo fonte mais recente que os binarios (PasswordAuthDialog.g.cs 09/10/2026 18:48:03 > 09/10/2026 18:47:40). Recompilando...
+2026-09-10 18:57:49 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:01.50
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-10 18:57:55 [OK] Build Release concluido com sucesso.
+2026-09-10 18:57:55 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-10 19:09:22 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-10 19:09:22 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-10 19:09:22 [*] Codigo fonte mais recente que os binarios (PasswordAuthDialog.g.cs 09/10/2026 19:07:47 > 09/10/2026 18:47:40). Recompilando...
+2026-09-10 19:09:22 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+    1 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:03.60
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-10 19:09:30 [OK] Build Release concluido com sucesso.
+2026-09-10 19:09:30 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-10 19:20:11 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-10 19:20:11 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-10 19:20:11 [*] Codigo fonte mais recente que os binarios (ActivationPdfReportService.cs 09/10/2026 19:19:17 > 09/10/2026 19:07:45). Recompilando...
+2026-09-10 19:20:11 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(47,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(65,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(268,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(512,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(513,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(513,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(511,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(47,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(65,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(268,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(512,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(513,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(513,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(511,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+    7 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:03.10
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-10 19:20:18 [OK] Build Release concluido com sucesso.
+2026-09-10 19:20:18 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe

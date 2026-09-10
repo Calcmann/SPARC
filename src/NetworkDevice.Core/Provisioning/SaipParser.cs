@@ -34,6 +34,10 @@ public static class SaipParser
         @"(?i)Roteador\s*[:\t]?\s*([A-Za-z0-9_\-\.]+)",
         RegexOptions.Compiled);
 
+    private static readonly Regex RegexBandaKbps = new(
+        @"(?im)^\s*Banda\s*[:\t]?\s*([0-9]+(?:[.,][0-9]+)?)",
+        RegexOptions.Compiled);
+
     /// <summary>
     /// Carrega e extrai os dados de uma Ficha SAIP a partir de um arquivo .txt ou .pdf.
     /// </summary>
@@ -121,6 +125,17 @@ public static class SaipParser
         var peRouter = CleanField(RegexPeRouter.Match(text).Groups[1].Value);
         var hostLanIp = string.IsNullOrEmpty(lanBlock) ? "192.168.1.2" : IpCalculator.CalculateHostLanIp(lanBlock, lanCidr);
 
+        // Banda nominal da ficha (kbps -> Mbps). Ex: "Banda 50000" => 50 Mbps.
+        double? bandaMbps = null;
+        var bandaMatch = RegexBandaKbps.Match(text);
+        if (bandaMatch.Success &&
+            double.TryParse(bandaMatch.Groups[1].Value.Replace(',', '.'),
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var kbps) && kbps > 0)
+        {
+            bandaMbps = Math.Round(kbps / 1000.0, 2);
+        }
+
         return new SaipCircuitData
         {
             ClienteRazaoSocial = razaoSocial,
@@ -137,6 +152,7 @@ public static class SaipParser
             LanIp = lanIp,
             LanSubnetMask = lanMask,
             HostLanIp = hostLanIp,
+            BandaMbpsNominal = bandaMbps,
             RawSource = text
         };
     }

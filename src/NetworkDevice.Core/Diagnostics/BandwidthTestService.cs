@@ -14,6 +14,17 @@ public sealed record BandwidthTestResult(
     bool IsSuccess,
     string Message);
 
+/// <summary>
+/// Veredito da banda contra o nominal da ficha SAIP (margem default 8%: aprova com >= 92%).
+/// </summary>
+public sealed record AvaliacaoBanda(
+    double NominalMbps,
+    double MedidoMbps,
+    double Percentual,
+    double MinimoMbps,
+    bool Aprovado,
+    string Veredito);
+
 public class BandwidthTestService
 {
     private readonly Func<string, Task>? _logger;
@@ -25,6 +36,25 @@ public class BandwidthTestService
     public BandwidthTestService(Func<string, Task>? logger = null)
     {
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Critica a vazão medida contra a banda nominal da ficha SAIP.
+    /// Retorna null quando não há nominal (sem ficha / modo manual): sem julgamento.
+    /// </summary>
+    public static AvaliacaoBanda? AvaliarBanda(double? nominalMbps, double medidoMbps, double margem = 0.08)
+    {
+        if (nominalMbps is null || nominalMbps <= 0) return null;
+        var minimo = Math.Round(nominalMbps.Value * (1 - margem), 2);
+        var pct = Math.Round(medidoMbps / nominalMbps.Value * 100.0, 1);
+        var aprovado = medidoMbps >= minimo;
+        var veredito = aprovado
+            ? $"APROVADO ({pct:F1}% da nominal)"
+            : $"REPROVADO ({pct:F1}% da nominal, mínimo {minimo:F1} Mbps)";
+        return new AvaliacaoBanda(
+            Math.Round(nominalMbps.Value, 2),
+            Math.Round(medidoMbps, 2),
+            pct, minimo, aprovado, veredito);
     }
 
     private async Task LogAsync(string message)

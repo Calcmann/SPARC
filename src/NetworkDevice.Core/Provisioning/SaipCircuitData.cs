@@ -20,6 +20,9 @@ public sealed record SaipCircuitData
     public string LanSubnetMask { get; init; } = "255.255.255.248";
     public string HostLanIp { get; init; } = string.Empty;
 
+    // Banda nominal da ficha SAIP (Mbps). Ex: ficha "Banda 50000" (kbps) => 50 Mbps.
+    public double? BandaMbpsNominal { get; init; }
+
     // Informações de Acesso / Roteamento
     public string? PeRouter { get; init; }
     public string? VlanCliente { get; init; }

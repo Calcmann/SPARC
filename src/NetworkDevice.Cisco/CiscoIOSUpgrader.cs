@@ -163,6 +163,30 @@ public sealed class CiscoIOSUpgrader
         else
         {
             // CASO D: Arquivo NÃO existe na Flash -> Realiza transferência via Servidor TFTP Integrado
+            // 0. Garante o IP do notebook (a Fase B avulsa não passa pela Fase D, que faria isso)
+            var notebookAdapter = EscolherAdaptadorNotebook(localAdapterName);
+            if (!string.IsNullOrWhiteSpace(hostIpAddress) && hostIpAddress != "127.0.0.1" && notebookAdapter != null)
+            {
+                try
+                {
+                    var pcMask = string.IsNullOrWhiteSpace(subnetMask) ? "255.255.255.0" : subnetMask;
+                    await ProgressAsync($"[*] Configurando IP {hostIpAddress}/{pcMask} na placa '{notebookAdapter}'...");
+                    var (okPc, outPc) = await HostNetworkManager.SetStaticIpAsync(notebookAdapter, hostIpAddress, pcMask, null, cancellationToken);
+                    await ProgressAsync(okPc
+                        ? $"[OK] Placa '{notebookAdapter}' configurada com IP {hostIpAddress}."
+                        : $"[AVISO] Configuração de IP local: {outPc}");
+                }
+                catch (Exception ex)
+                {
+                    await ProgressAsync($"[AVISO] Não foi possível ajustar o IP do notebook: {ex.Message}");
+                }
+            }
+            else if (hostIpAddress == "127.0.0.1")
+            {
+                await ProgressAsync("[AVISO] IP do notebook indefinido (127.0.0.1) — confira a Ficha SAIP e a placa selecionada antes do TFTP.");
+            }
+            try { await HostNetworkManager.EnsureTftpFirewallRuleAsync(cancellationToken); } catch { }
+
                 await using var tftpServer = new EmbeddedTftpServer(imageDir);
                 var stopwatch = System.Diagnostics.Stopwatch.StartNew();
                 var lastUiUpdate = DateTime.MinValue;
@@ -549,6 +573,13 @@ public sealed class CiscoIOSUpgrader
         return bootOutput.Contains(cleanBin, StringComparison.OrdinalIgnoreCase) ||
                bootOutput.Contains(cleanBase, StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// Escolhe a placa do notebook para o TFTP: preferência explícita (combo da UI) ou
+    /// primeira Ethernet disponível. Nulo apenas se não houver adaptador algum.
+    /// </summary>
+    public static string? EscolherAdaptadorNotebook(string? preferido) =>
+        HostNetworkManager.EscolherAdaptadorNotebook(preferido);
 
     /// <summary>
     /// Recuperação de emergência do Cisco IOS em modo ROMMON via comando tftpdnld.

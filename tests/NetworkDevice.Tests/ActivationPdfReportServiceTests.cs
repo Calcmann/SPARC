@@ -64,4 +64,65 @@ public sealed class ActivationPdfReportServiceTests
         Assert.Contains("ms", html);
         Assert.Contains("Rota padrão pendente na operadora", html);
     }
+
+    private static ActivationReportData RelatorioBanda(double medidoMbps, double? nominalMbps)
+    {
+        return new ActivationReportData(
+            DataHora: new DateTime(2026, 9, 10, 12, 0, 0),
+            ModeloEquipamento: "Cisco Série 1900",
+            PortaSerial: "COM1",
+            BaudRate: 9600,
+            ClienteRazaoSocial: "LAB",
+            DesignacaoIp: "LAB4G-SP01",
+            NumeroOts: "LAB000001",
+            PeRouter: "PE-LAB",
+            WanIp: "192.168.10.2",
+            WanCidr: 30,
+            WanGateway: "192.168.10.1",
+            WanSubnetMask: "255.255.255.252",
+            WanInterface: "GigabitEthernet 0/0",
+            LanIp: "10.10.10.1",
+            LanCidr: 29,
+            LanBlockNetwork: "10.10.10.0",
+            LanSubnetMask: "255.255.255.248",
+            HostLanIp: "10.10.10.2",
+            LanInterface: "GigabitEthernet 0/1",
+            Step1ZerarOk: true,
+            Step2FirmwareOk: true,
+            FirmwareNome: "c1900-universalk9-mz.bin",
+            Step3SaipOk: true,
+            Step4IpLocalOk: true,
+            AdaptadorRedeLocal: "Ethernet",
+            IcmpResult: null,
+            TelnetResult: null,
+            BandResult: new BandwidthTestResult(medidoMbps, 0, 10.0, 1.0, "HTTP CDN", "Nativo HTTP", true, "Download OK"),
+            DiagnosticAlerts: null,
+            FalhaGeral: null,
+            BandaMbpsNominal: nominalMbps
+        );
+    }
+
+    [Fact]
+    public void GenerateHtml_BandaAprovada_AcimaDe92()
+    {
+        var html = ActivationPdfReportService.GenerateHtml(RelatorioBanda(48.5, 50.0));
+        Assert.Contains("APROVADO (97", html);
+        Assert.Contains("Nominal:", html);
+    }
+
+    [Fact]
+    public void GenerateHtml_BandaReprovada_AbaixoDe92()
+    {
+        var html = ActivationPdfReportService.GenerateHtml(RelatorioBanda(40.0, 50.0));
+        Assert.Contains("REPROVADO (80", html);
+    }
+
+    [Fact]
+    public void GenerateHtml_SemNominal_SemCritica()
+    {
+        var html = ActivationPdfReportService.GenerateHtml(RelatorioBanda(40.0, null));
+        Assert.DoesNotContain("REPROVADO (", html);
+        Assert.Contains("VAZÃO OK", html);
+    }
 }
+

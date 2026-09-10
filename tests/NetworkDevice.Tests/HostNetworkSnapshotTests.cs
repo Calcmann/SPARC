@@ -101,3 +101,25 @@ public sealed class HostNetworkExitTests
         _ = HostNetworkManager.NeedsRestoreOnExit;
     }
 }
+
+public sealed class EscolherAdaptadorTests
+{
+    [Fact]
+    public void Preferido_Prevalece_ETrim()
+    {
+        Assert.Equal("Minha Placa", NetworkDevice.Cisco.CiscoIOSUpgrader.EscolherAdaptadorNotebook("  Minha Placa "));
+    }
+
+    [Fact]
+    public void NuloOuVazio_NaoLancaERetornaAlgoOuNull()
+    {
+        // Depende dos adaptadores da maquina: só garante que não lança e retorna string ou null.
+        var ex = Record.Exception(() =>
+        {
+            _ = NetworkDevice.Cisco.CiscoIOSUpgrader.EscolherAdaptadorNotebook(null);
+            _ = NetworkDevice.Cisco.CiscoIOSUpgrader.EscolherAdaptadorNotebook("");
+            _ = NetworkDevice.Cisco.CiscoIOSUpgrader.EscolherAdaptadorNotebook("   ");
+        });
+        Assert.Null(ex);
+    }
+}
