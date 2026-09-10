@@ -209,23 +209,33 @@ public sealed class CiscoIOSUpgrader
                 {
                     // Configura temporariamente a interface LAN no roteador Cisco para ter IP e rota para o PC
                     var lanIf = lanInterface ?? "GigabitEthernet 0/1";
+                    try
+                    {
+                        var briefOut = await session.SendCommandAsync("show ip interface brief", TimeSpan.FromSeconds(10), cancellationToken);
+                        var (_, detectedLan) = CiscoSaipConfigurator.DetectInterfaces(briefOut, preferredLan: lanIf);
+                        if (!string.IsNullOrWhiteSpace(detectedLan))
+                            lanIf = detectedLan;
+                    }
+                    catch { }
+
                     var rIp = routerIpAddress ?? "200.182.245.17";
                     var mask = subnetMask ?? "255.255.255.240";
 
                     await ProgressAsync($"[*] Configurando temporariamente {lanIf} ({rIp} {mask}) no Cisco para viabilizar transferência TFTP...");
                     await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(10), cancellationToken);
                     await session.SendCommandAsync($"interface {lanIf}", TimeSpan.FromSeconds(10), cancellationToken);
+                    await session.SendCommandAsync("no switchport", TimeSpan.FromSeconds(5), cancellationToken);
                     await session.SendCommandAsync($"ip address {rIp} {mask}", TimeSpan.FromSeconds(10), cancellationToken);
                     await session.SendCommandAsync("no shutdown", TimeSpan.FromSeconds(10), cancellationToken);
                     await session.SendCommandAsync("end", TimeSpan.FromSeconds(10), cancellationToken);
-                    await Task.Delay(2000, cancellationToken);
+                    await Task.Delay(1500, cancellationToken);
 
-                    // Valida se o técnico conectou o cabo na porta LAN (GE 0/1) e não na GE 0/0
+                    // Valida se o técnico conectou o cabo na porta LAN (GE 0/1 / GE 5 / GE 0/5)
                     await CiscoIOSAdapter.EnforceLanPortConnectedAsync(session, lanIf, requestOperatorAction, ProgressAsync, cancellationToken);
 
                     // Testa conectividade IP com o PC (ping)
                     await ProgressAsync($"[*] Testando conectividade de rede com o PC ({hostIpAddress})...");
-                    var pingRes = await session.SendCommandAsync($"ping {hostIpAddress} repeat 4", TimeSpan.FromSeconds(15), cancellationToken);
+                    var pingRes = await session.SendCommandAsync($"ping {hostIpAddress}", TimeSpan.FromSeconds(15), cancellationToken);
                     if (pingRes.Contains("!"))
                     {
                         await ProgressAsync($"[OK] Conectividade IP com o PC ({hostIpAddress}) confirmada.");
@@ -238,35 +248,67 @@ public sealed class CiscoIOSUpgrader
                     // Envia o comando de cópia TFTP para a flash
                     await ProgressAsync($"[*] Solicitando cópia TFTP: copy tftp://{hostIpAddress}/{binFileName} flash:{binFileName}...");
                     var copyCmd = $"copy tftp://{hostIpAddress}/{binFileName} flash:{binFileName}";
-
                     await session.WriteLineAsync(copyCmd, cancellationToken);
+                    var fullOutput = new System.Text.StringBuilder();
 
-                    // Responde as perguntas de confirmação do Cisco IOS e monitora transferência
+                    // 1. Responde a pergunta de confirmação de destino do Cisco IOS (Destination filename [...])
+                    var confirmConds = new StopCondition[]
+                    {
+                        new StopCondition.LineRegex("confirm", PromptConfirmRegex),
+                        new StopCondition.LineRegex("prompt", new Regex(@"^[A-Za-z0-9_\-\.]+\s*[>#]")),
+                        new StopCondition.Contains("error", "%Error"),
+                        new StopCondition.Contains("error_sp", "% Error")
+                    };
+
+                    try
+                    {
+                        var confirmExp = await session.WaitForAsync(confirmConds, TimeSpan.FromSeconds(15), cancellationToken);
+                        fullOutput.Append(confirmExp.Output);
+                        if (confirmExp.Matched is StopCondition.LineRegex lrConf && lrConf.Name == "confirm")
+                        {
+                            await session.WriteLineAsync(string.Empty, cancellationToken);
+                        }
+                    }
+                    catch (SessionTimeoutException)
+                    {
+                        // Se não solicitou confirmação de nome, continua monitorando
+                    }
+
+                    // 2. Monitora transferência do arquivo até a conclusão total (retorno do prompt)
+                    var transferConds = new StopCondition[]
+                    {
+                        new StopCondition.LineRegex("prompt", new Regex(@"^[A-Za-z0-9_\-\.]+\s*[>#]")),
+                        new StopCondition.Contains("error", "%Error"),
+                        new StopCondition.Contains("error_sp", "% Error"),
+                        new StopCondition.Contains("timed_out", "Timed out"),
+                        new StopCondition.Contains("socket_err", "Socket error")
+                    };
+
                     var copyTimeout = DateTime.UtcNow.AddMinutes(15);
                     var isCopying = true;
-                    var fullOutput = new System.Text.StringBuilder();
 
                     while (isCopying && DateTime.UtcNow < copyTimeout && !cancellationToken.IsCancellationRequested)
                     {
-                        var conds = new StopCondition[]
+                        try
                         {
-                            new StopCondition.LineRegex("confirm", PromptConfirmRegex),
-                            new StopCondition.LineRegex("prompt", new Regex(@"^[A-Za-z0-9_\-\.]+\s*[>#]"))
-                        };
+                            var exp = await session.WaitForAsync(transferConds, TimeSpan.FromSeconds(5), cancellationToken);
+                            fullOutput.Append(exp.Output);
 
-                        var exp = await session.SendExpectAsync(string.Empty, conds, TimeSpan.FromMinutes(2), cancellationToken);
-                        fullOutput.Append(exp.Output);
-
-                        if (exp.Matched is StopCondition.LineRegex lr)
-                        {
-                            if (lr.Name == "confirm")
-                            {
-                                await session.WriteLineAsync(string.Empty, cancellationToken);
-                            }
-                            else if (lr.Name == "prompt")
+                            if (exp.Matched is StopCondition.LineRegex lr && lr.Name == "prompt")
                             {
                                 isCopying = false;
+                                break;
                             }
+
+                            if (exp.Output.Contains("%Error") || exp.Output.Contains("% Error") || exp.Output.Contains("Socket error"))
+                            {
+                                throw new DeviceSessionException($"Erro reportado pelo Cisco durante TFTP: {exp.Output.Trim()}");
+                            }
+                        }
+                        catch (SessionTimeoutException)
+                        {
+                            // Transferência em andamento no Cisco (imprimindo pontos de exclamação !): continua aguardando
+                            continue;
                         }
                     }
 
@@ -284,6 +326,14 @@ public sealed class CiscoIOSUpgrader
 
             // 6. Confirma se o arquivo está na memória Flash
             dirFlash = await session.SendCommandAsync("dir flash:", TimeSpan.FromSeconds(15), cancellationToken);
+            if (dirFlash.Contains("% Invalid", StringComparison.OrdinalIgnoreCase))
+            {
+                dirFlash = await session.SendCommandAsync("dir sdflash:", TimeSpan.FromSeconds(15), cancellationToken);
+                if (dirFlash.Contains("% Invalid", StringComparison.OrdinalIgnoreCase))
+                {
+                    dirFlash = await session.SendCommandAsync("dir", TimeSpan.FromSeconds(15), cancellationToken);
+                }
+            }
             if (!dirFlash.Contains(binFileName, StringComparison.OrdinalIgnoreCase))
             {
                 throw new DeviceSessionException($"Arquivo {binFileName} não foi localizado na flash: após a transferência.");
@@ -354,8 +404,9 @@ public sealed class CiscoIOSUpgrader
         catch { }
 
         // Monitora o boot completo e envia Enter / responde diálogos iniciais
-        var bootTimeout = DateTime.UtcNow.AddSeconds(160);
+        var bootTimeout = DateTime.UtcNow.AddSeconds(240);
         var lastStatusLog = DateTime.MinValue;
+        var memoryUpgradeDetected = false;
 
         while (DateTime.UtcNow < bootTimeout && !ct.IsCancellationRequested)
         {
@@ -366,30 +417,43 @@ public sealed class CiscoIOSUpgrader
                 await ProgressAsync($"[*] Aguardando boot da nova versão Cisco IOS (~{remainingSec}s max)...");
             }
 
-            // Envia Enter periódico para acordar console e forçar redesenho de prompt
-            await session.WriteLineAsync(string.Empty, ct);
-
             try
             {
                 var result = await session.WaitForAsync(
                     new StopCondition[]
                     {
+                        new StopCondition.LineRegex("mem-upgrade", new Regex(@"(?i)UPGRADING\s+TO\s+\d+MB|RELOADING\.\.\.\.")),
+                        new StopCondition.LineRegex("invalid-image", new Regex(@"(?i)Invalid\s+image\s+for\s+platform|failed\s+to\s+boot.*unsupported")),
                         new StopCondition.LineRegex("dialog", new Regex(@"(?i)initial\s+configuration\s+dialog|\?\s*\[yes/no\]|\[yes\]")),
                         new StopCondition.LineRegex("autoinstall", new Regex(@"(?i)terminate\s+autoinstall")),
                         new StopCondition.LineRegex("press-return", new Regex(@"(?i)press\s+return\s+to\s+get\s+started|press\s+enter")),
                         new StopCondition.LineRegex("cisco-prompt", new Regex(@"(?i)^[A-Za-z0-9_.+()/-]+[>#]")),
                         new StopCondition.Prompt()
                     },
-                    TimeSpan.FromSeconds(4),
+                    TimeSpan.FromSeconds(3),
                     ct);
 
                 if (result.Matched is StopCondition.LineRegex lr)
                 {
-                    if (lr.Name == "dialog")
+                    if (lr.Name == "mem-upgrade")
+                    {
+                        if (!memoryUpgradeDetected)
+                        {
+                            memoryUpgradeDetected = true;
+                            await ProgressAsync("[*] Roteador atualizou a controladora DRAM (UPGRADING TO 512MB) e iniciou segundo ciclo de boot — estendendo tempo de espera em +180s...");
+                            bootTimeout = DateTime.UtcNow.AddSeconds(180);
+                            await Task.Delay(3000, ct);
+                        }
+                    }
+                    else if (lr.Name == "invalid-image")
+                    {
+                        await ProgressAsync("[ALERTA CRÍTICO] A imagem de firmware é incompatível com a plataforma do roteador (Invalid image for platform). O equipamento tentará autoboot na imagem padrão.");
+                    }
+                    else if (lr.Name == "dialog")
                     {
                         await ProgressAsync("[*] Diálogo de configuração inicial detectado — enviando 'no'...");
                         await session.WriteLineAsync("no", ct);
-                        await Task.Delay(1000, ct);
+                        await Task.Delay(2000, ct);
                     }
                     else if (lr.Name == "autoinstall")
                     {
@@ -419,9 +483,12 @@ public sealed class CiscoIOSUpgrader
             }
             catch (SessionTimeoutException)
             {
-                // Continua no loop de espera
+                // Envia Enter leve para acordar console quando inativo
+                await session.WriteLineAsync(string.Empty, ct);
             }
         }
+
+        throw new TimeoutException("O Cisco IOS reiniciou mas o prompt operacional não respondeu dentro do tempo limite (~160s). Verifique a console serial.");
     }
 
     private async Task ProgressAsync(string message)
@@ -453,15 +520,10 @@ public sealed class CiscoIOSUpgrader
 
             if (major.Length == 3)
             {
-                var vStr1 = $"{major[0]}{major[1]}.{major[2]}({minor}){train}"; // 15.7(3)M9
-                var vStr2 = $"{major[0]}{major[1]}.{major[2]}({minor}) {train}"; // 15.7(3) M9
+                var vStr1 = $"{major[0]}{major[1]}.{major[2]}({minor}){train}"; // 15.9(3)M12
+                var vStr2 = $"{major[0]}{major[1]}.{major[2]}({minor}) {train}"; // 15.9(3) M12
                 if (showVerOutput.Contains(vStr1, StringComparison.OrdinalIgnoreCase) ||
                     showVerOutput.Contains(vStr2, StringComparison.OrdinalIgnoreCase))
-                    return true;
-
-                var vShort = $"{major[0]}{major[1]}.{major[2]}"; // 15.7
-                if (showVerOutput.Contains(vShort, StringComparison.OrdinalIgnoreCase) &&
-                    (showVerOutput.Contains(train, StringComparison.OrdinalIgnoreCase) || showVerOutput.Contains($"({minor})", StringComparison.OrdinalIgnoreCase)))
                     return true;
             }
         }
@@ -563,7 +625,11 @@ public sealed class CiscoIOSUpgrader
             await ProgressAsync($"[AVISO] Nenhum adaptador Ethernet especificado. Certifique-se de que sua placa de rede está com IP {actualHostIp} e máscara {actualMask}.");
         }
 
-        await ProgressAsync($"[*] [DICA FÍSICA] No modo ROMMON, conecte o cabo de rede Ethernet na porta GigabitEthernet 0/0 (GE0 / Porta 0) do roteador Cisco.");
+        var is921 = (lanInterface?.Contains("5") == true || lanInterface?.Contains("4") == true || binFileName.StartsWith("c900", StringComparison.OrdinalIgnoreCase) || binFileName.StartsWith("c8", StringComparison.OrdinalIgnoreCase));
+        var rommonPort = is921 ? "GigabitEthernet 4 (GE 4 / Porta 4)" : "GigabitEthernet 0/0 (GE 0/0 / Porta 0)";
+        var rommonShort = is921 ? "GE 4" : "GE 0/0";
+
+        await ProgressAsync($"[*] [DICA FÍSICA] No modo ROMMON, conecte o cabo de rede Ethernet na porta {rommonPort} do roteador Cisco.");
 
         if (requestOperatorAction is not null)
         {
@@ -571,9 +637,9 @@ public sealed class CiscoIOSUpgrader
                 "⚠️ ATENÇÃO OBRIGATÓRIA - CABO DE REDE NO MODO ROMMON\n\n" +
                 "O roteador Cisco está em modo de recuperação ROMMON (sem firmware).\n\n" +
                 "👉 CONECTE O CABO DE REDE ETHERNET NA PORTA:\n" +
-                "🔴 GigabitEthernet 0/0 (GE 0/0 / Porta 0)\n\n" +
+                $"🔴 {rommonPort}\n\n" +
                 "Esta é a única porta Ethernet habilitada no hardware para a transferência TFTP via ROMMON.\n\n" +
-                "Clique em OK assim que o cabo estiver conectado na porta GE 0/0.",
+                $"Clique em OK assim que o cabo estiver conectado na porta {rommonShort}.",
                 cancellationToken);
         }
 
@@ -584,6 +650,7 @@ public sealed class CiscoIOSUpgrader
         {
             var swTftp = new System.Diagnostics.Stopwatch();
             var lastLoggedPct = -1;
+            var tftpCompleted = false;
 
             tftpServer.TransferProgress += (file, bytesRead, total, pct) =>
             {
@@ -594,6 +661,11 @@ public sealed class CiscoIOSUpgrader
                 var mbSent = bytesRead / (1024.0 * 1024.0);
                 var mbTotal = total / (1024.0 * 1024.0);
                 var speed = swTftp.Elapsed.TotalSeconds > 0 ? (mbSent / swTftp.Elapsed.TotalSeconds) : 0;
+
+                if (pct >= 100 || (total > 0 && bytesRead >= total))
+                {
+                    tftpCompleted = true;
+                }
 
                 _onProgress?.Invoke(
                     35 + (int)(pct * 0.45),
@@ -648,7 +720,6 @@ public sealed class CiscoIOSUpgrader
             var confBuf = new byte[4096];
             var confText = new System.Text.StringBuilder();
             var confTimeout = DateTime.UtcNow.AddSeconds(15);
-            var confirmPromptReceived = false;
 
             while (DateTime.UtcNow < confTimeout && !cancellationToken.IsCancellationRequested)
             {
@@ -665,7 +736,6 @@ public sealed class CiscoIOSUpgrader
                         textSoFar.Contains("[n]:", StringComparison.OrdinalIgnoreCase) ||
                         textSoFar.Contains("continue?", StringComparison.OrdinalIgnoreCase))
                     {
-                        confirmPromptReceived = true;
                         break;
                     }
 
@@ -687,6 +757,8 @@ public sealed class CiscoIOSUpgrader
             var timeout = DateTime.UtcNow.AddMinutes(25);
             var buffer = new System.Text.StringBuilder();
             var transferSuccess = false;
+            var transferStarted = false;
+            var lastChunkTime = DateTime.UtcNow;
             var readBuf = new byte[4096];
 
             while (DateTime.UtcNow < timeout && !cancellationToken.IsCancellationRequested)
@@ -694,14 +766,29 @@ public sealed class CiscoIOSUpgrader
                 var readBytes = await session.Transport.ReadAsync(readBuf, cancellationToken);
                 if (readBytes > 0)
                 {
+                    lastChunkTime = DateTime.UtcNow;
                     var chunk = System.Text.Encoding.ASCII.GetString(readBuf, 0, readBytes);
                     buffer.Append(chunk);
                     session.EmitRawOutput(chunk);
 
                     var currentText = buffer.ToString();
+
+                    if (currentText.Contains("Transferring", StringComparison.OrdinalIgnoreCase) ||
+                        currentText.Contains("TFTP", StringComparison.OrdinalIgnoreCase) ||
+                        Regex.IsMatch(currentText, @"\d{6,}"))
+                    {
+                        transferStarted = true;
+                    }
+
+                    // Critérios de sucesso:
+                    // 1) Mensagens explícitas de conclusão de arquivo
+                    // 2) TFTP do servidor completou 100% e o prompt rommon retornou (comum no Cisco 921)
+                    // 3) Bloco numérico final de bytes gravados seguido do prompt rommon
                     if (currentText.Contains("File copy completed", StringComparison.OrdinalIgnoreCase) ||
                         currentText.Contains("File reception completed", StringComparison.OrdinalIgnoreCase) ||
-                        (currentText.Contains("Copying image to flash", StringComparison.OrdinalIgnoreCase) && currentText.Contains("rommon")))
+                        (currentText.Contains("Copying image to flash", StringComparison.OrdinalIgnoreCase) && currentText.Contains("rommon")) ||
+                        (tftpCompleted && Regex.IsMatch(currentText, @"rommon\s*\d*\s*>")) ||
+                        (transferStarted && Regex.IsMatch(currentText, @"\d{6,}[\s\r\n]+rommon\s*\d*\s*>")))
                     {
                         transferSuccess = true;
                         break;
@@ -713,7 +800,7 @@ public sealed class CiscoIOSUpgrader
                     {
                         throw new DeviceSessionException(
                             $"Falha de ARP no ROMMON: O roteador Cisco não obteve resposta no IP do Notebook ({actualHostIp}).\n" +
-                            $"• Dica de Cabo: No modo ROMMON, conecte o cabo de rede na porta GigabitEthernet 0/0 (GE0) do Cisco.\n" +
+                            $"• Dica de Cabo: No modo ROMMON, conecte o cabo de rede na porta {rommonPort} do Cisco.\n" +
                             $"• Dica de IP: Verifique se o adaptador '{targetAdapter ?? "Ethernet"}' está com o IP {actualHostIp} e máscara {actualMask}.");
                     }
 
@@ -728,15 +815,26 @@ public sealed class CiscoIOSUpgrader
                         throw new DeviceSessionException($"Falha durante transferência TFTP no ROMMON: {currentText.Trim()}");
                     }
 
-                    // Se retornou ao prompt do rommon sem copiar o arquivo
-                    if (confirmPromptReceived &&
-                        currentText.Contains("rommon") && currentText.Contains(">") &&
+                    // Se retornou ao prompt do rommon sem copiar o arquivo e sem iniciar a transferência
+                    if (!transferStarted && !tftpCompleted &&
+                        Regex.IsMatch(currentText, @"rommon\s*\d*\s*>") &&
                         !currentText.Contains("File") && !currentText.Contains("Copying") &&
                         currentText.Length > 80)
                     {
                         throw new DeviceSessionException($"Transferência tftpdnld abortada ou não iniciada pelo ROMMON:\n{currentText.Trim()}");
                     }
                 }
+                else
+                {
+                    // Se o servidor TFTP já enviou 100% dos dados e a serial ficou ociosa por 2s, envia \r para verificar prompt
+                    if (tftpCompleted && transferStarted && (DateTime.UtcNow - lastChunkTime > TimeSpan.FromSeconds(2)))
+                    {
+                        lastChunkTime = DateTime.UtcNow;
+                        await session.SendRawAsync("\r", cancellationToken);
+                        await Task.Delay(300, cancellationToken);
+                    }
+                }
+
                 await Task.Delay(100, cancellationToken);
             }
 
@@ -745,55 +843,131 @@ public sealed class CiscoIOSUpgrader
                 throw new DeviceSessionException($"Tempo limite de transferência TFTP excedido ({binFileName}). Verifique o cabo de rede Ethernet conectado no roteador e notebook.");
             }
 
-            await ProgressAsync($"[OK] Transferência TFTP e gravação da imagem {binFileName} na Flash concluídas com sucesso!");
+            await ProgressAsync($"[OK] Transferência de pacotes TFTP da imagem {binFileName} concluída com sucesso!");
             await tftpServer.StopAsync();
         }
 
-        // 6. Configura o registrador para boot normal (0x2102) e inicia a nova imagem
-        _onProgress?.Invoke(85, "Fase B: Inicializando IOS...", "Configurando registrador 0x2102 e efetuando boot...");
-        await ProgressAsync("[*] Configurando registrador para boot normal (confreg 0x2102)...");
-        await session.WriteLineAsync("confreg 0x2102", cancellationToken);
-        await Task.Delay(500, cancellationToken);
+        // Aguarda o ROMMON concluir a formatação e gravação física dos setores na Flash (pode levar 1 a 2 min em 80MB)
+        await ProgressAsync("[*] Aguardando ROMMON gravar e consolidar a imagem na Flash (isso pode levar ~1-2 minutos)...");
+        try
+        {
+            await session.WaitForAsync(
+                new StopCondition[]
+                {
+                    new StopCondition.LineRegex("rommon-prompt", new Regex(@"(?i)rommon\s+\d+\s*>"))
+                },
+                TimeSpan.FromMinutes(4),
+                cancellationToken);
+            await ProgressAsync("[OK] Imagem gravada e validada na Flash com sucesso pelo ROMMON.");
+        }
+        catch { }
+
+        // 6. Configura o registrador para ignorar configuração antiga/senha (confreg 0x2142) e inicia a nova imagem
+        _onProgress?.Invoke(85, "Fase B: Inicializando IOS...", "Configurando registrador 0x2142 (ignora senhas residuais) e efetuando boot...");
+        await ProgressAsync("[*] Configurando registrador para ignorar senhas e configurações antigas (confreg 0x2142)...");
+        await session.WriteLineAsync("confreg 0x2142", cancellationToken);
+        await Task.Delay(1000, cancellationToken);
 
         await ProgressAsync($"[*] Executando boot da imagem 'boot flash:{binFileName}' a partir do ROMMON...");
         await session.WriteLineAsync($"boot flash:{binFileName}", cancellationToken);
-        await Task.Delay(1000, cancellationToken);
+        await Task.Delay(2000, cancellationToken);
 
         // 7. Aguarda a descompressão e inicialização do Cisco IOS
         await ProgressAsync("[*] Aguardando descompressão e inicialização completa do Cisco IOS (isso pode levar ~2-3 minutos)...");
         _onProgress?.Invoke(90, "Fase B: Carregando Cisco IOS...", "Aguardando descompressão e prompt do Cisco IOS...");
 
         var bootTimeout = DateTime.UtcNow.AddMinutes(5);
+        var lastStatusLog = DateTime.MinValue;
+        var memoryUpgradeDetected = false;
+        var decompressionLogged = false;
         var booted = false;
-        var bootBuf = new byte[4096];
 
         while (DateTime.UtcNow < bootTimeout && !cancellationToken.IsCancellationRequested)
         {
-            var readBytes = await session.Transport.ReadAsync(bootBuf, cancellationToken);
-            if (readBytes > 0)
+            var remainingSec = (int)Math.Max(0, (bootTimeout - DateTime.UtcNow).TotalSeconds);
+            if ((DateTime.UtcNow - lastStatusLog).TotalSeconds >= 15)
             {
-                var chunk = System.Text.Encoding.ASCII.GetString(bootBuf, 0, readBytes);
-                session.EmitRawOutput(chunk);
-                if (chunk.Contains("initial configuration dialog?", StringComparison.OrdinalIgnoreCase) ||
-                    chunk.Contains("[yes/no]:", StringComparison.OrdinalIgnoreCase))
-                {
-                    await session.WriteLineAsync("no", cancellationToken);
-                }
-                else if (chunk.Contains("Press RETURN to get started", StringComparison.OrdinalIgnoreCase))
-                {
-                    await session.WriteLineAsync(string.Empty, cancellationToken);
-                }
+                lastStatusLog = DateTime.UtcNow;
+                await ProgressAsync($"[*] Aguardando descompressão e boot do Cisco IOS (~{remainingSec}s max)...");
+            }
 
-                if (chunk.TrimEnd().EndsWith(">") || chunk.TrimEnd().EndsWith("#"))
+            try
+            {
+                var result = await session.WaitForAsync(
+                    new StopCondition[]
+                    {
+                        new StopCondition.LineRegex("mem-upgrade", new Regex(@"(?i)UPGRADING\s+TO\s+\d+MB|RELOADING\.\.\.\.")),
+                        new StopCondition.LineRegex("decompression", new Regex(@"(?i)Self\s+decompressing\s+the\s+image|Smart\s+Init\s+is\s+enabled|Cisco\s+IOS\s+Software")),
+                        new StopCondition.LineRegex("invalid-image", new Regex(@"(?i)Invalid\s+image\s+for\s+platform|failed\s+to\s+boot.*unsupported")),
+                        new StopCondition.LineRegex("dialog", new Regex(@"(?i)initial\s+configuration\s+dialog|\?\s*\[yes/no\]|\[yes\]")),
+                        new StopCondition.LineRegex("autoinstall", new Regex(@"(?i)terminate\s+autoinstall")),
+                        new StopCondition.LineRegex("press-return", new Regex(@"(?i)press\s+return\s+to\s+get\s+started|press\s+enter")),
+                        new StopCondition.LineRegex("cisco-prompt", new Regex(@"^[A-Za-z0-9_.-]+[>#]\s*$", RegexOptions.Compiled))
+                    },
+                    TimeSpan.FromSeconds(3),
+                    cancellationToken);
+
+                if (result.Matched is StopCondition.LineRegex lr)
                 {
-                    booted = true;
-                    break;
+                    if (lr.Name == "mem-upgrade")
+                    {
+                        if (!memoryUpgradeDetected)
+                        {
+                            memoryUpgradeDetected = true;
+                            await ProgressAsync("[*] Roteador atualizou controladora DRAM (UPGRADING TO 512MB) e reiniciou — estendendo tempo de espera em +180s...");
+                            bootTimeout = DateTime.UtcNow.AddSeconds(180);
+                            await Task.Delay(3000, cancellationToken);
+                        }
+                    }
+                    else if (lr.Name == "decompression")
+                    {
+                        if (!decompressionLogged)
+                        {
+                            decompressionLogged = true;
+                            await ProgressAsync("[*] Descompressão e carga do kernel Cisco IOS em andamento...");
+                        }
+                        if ((bootTimeout - DateTime.UtcNow).TotalSeconds < 180)
+                        {
+                            bootTimeout = DateTime.UtcNow.AddSeconds(180);
+                        }
+                    }
+                    else if (lr.Name == "invalid-image")
+                    {
+                        await ProgressAsync("[ALERTA CRÍTICO] A imagem gravada é incompatível com o hardware do roteador (Invalid image for platform).");
+                    }
+                    else if (lr.Name == "dialog")
+                    {
+                        await ProgressAsync("[*] Diálogo de configuração inicial detectado — enviando 'no'...");
+                        await session.WriteLineAsync("no", cancellationToken);
+                        await Task.Delay(2000, cancellationToken);
+                    }
+                    else if (lr.Name == "autoinstall")
+                    {
+                        await ProgressAsync("[*] Diálogo autoinstall detectado — enviando 'yes'...");
+                        await session.WriteLineAsync("yes", cancellationToken);
+                        await Task.Delay(1000, cancellationToken);
+                    }
+                    else if (lr.Name == "press-return")
+                    {
+                        await ProgressAsync("[*] 'Press RETURN to get started' detectado — enviando ENTER...");
+                        await session.WriteLineAsync(string.Empty, cancellationToken);
+                        await Task.Delay(1000, cancellationToken);
+                    }
+                    else if (lr.Name == "cisco-prompt")
+                    {
+                        await ProgressAsync("[OK] Cisco IOS reinicializado e pronto para provisionamento!");
+                        booted = true;
+                        break;
+                    }
                 }
             }
-            await Task.Delay(300, cancellationToken);
+            catch (SessionTimeoutException)
+            {
+                await session.WriteLineAsync(string.Empty, cancellationToken);
+            }
         }
 
-        // 8. Se entrou no prompt Cisco IOS, garante boot system persistente
+        // 8. Se entrou no prompt Cisco IOS, limpa NVRAM antiga e garante boot normal persistente (0x2102)
         if (booted)
         {
             try
@@ -804,11 +978,23 @@ public sealed class CiscoIOSUpgrader
                 await Task.Delay(500, cancellationToken);
                 await session.WriteLineAsync("terminal length 0", cancellationToken);
                 await Task.Delay(300, cancellationToken);
+
+                // Apaga permanentemente configurações e senhas antigas da NVRAM
+                await ProgressAsync("[*] Apagando configurações antigas e senhas residuais da NVRAM (write erase)...");
+                await session.WriteLineAsync("write erase", cancellationToken);
+                await Task.Delay(400, cancellationToken);
+                await session.WriteLineAsync(string.Empty, cancellationToken);
+                await Task.Delay(800, cancellationToken);
+
                 await session.WriteLineAsync("configure terminal", cancellationToken);
                 await Task.Delay(300, cancellationToken);
                 await session.WriteLineAsync($"boot system flash:{binFileName}", cancellationToken);
                 await Task.Delay(300, cancellationToken);
                 await session.WriteLineAsync("config-register 0x2102", cancellationToken);
+                await Task.Delay(300, cancellationToken);
+                await session.WriteLineAsync("no ip domain-lookup", cancellationToken);
+                await Task.Delay(300, cancellationToken);
+                await session.WriteLineAsync("no ip domain lookup", cancellationToken);
                 await Task.Delay(300, cancellationToken);
                 await session.WriteLineAsync("end", cancellationToken);
                 await Task.Delay(300, cancellationToken);
@@ -816,6 +1002,11 @@ public sealed class CiscoIOSUpgrader
                 await Task.Delay(2000, cancellationToken);
             }
             catch { }
+        }
+
+        if (!booted)
+        {
+            throw new TimeoutException("O Cisco IOS foi gravado via ROMMON mas não concluiu a inicialização até o prompt operacional dentro do tempo limite. Verifique a console serial.");
         }
 
         await ProgressAsync($"\n=================================================================");
@@ -827,13 +1018,17 @@ public sealed class CiscoIOSUpgrader
 
         if (requestOperatorAction is not null)
         {
+            var is921Post = (lanInterface?.Contains("5") == true || lanInterface?.Contains("4") == true || binFileName.StartsWith("c900", StringComparison.OrdinalIgnoreCase) || binFileName.StartsWith("c8", StringComparison.OrdinalIgnoreCase));
+            var lanPostDisplay = is921Post ? "GigabitEthernet 5 (GE 5 / Porta 5 - LAN do Cliente)" : "GigabitEthernet 0/1 (GE 0/1 / Porta 1 - LAN do Cliente)";
+            var lanPostShort = is921Post ? "GE 5" : "GE 0/1";
+
             await requestOperatorAction(
                 "✅ FIRMWARE RECUPERADO COM SUCESSO!\n\n" +
                 "O Cisco IOS já está ativo e inicializado na nova versão.\n\n" +
                 "👉 ALTERE AGORA O CABO DE REDE PARA A PORTA:\n" +
-                "🟢 GigabitEthernet 0/1 (GE 0/1 / Porta 1 - LAN do Cliente)\n\n" +
+                $"🟢 {lanPostDisplay}\n\n" +
                 "Para prosseguir com o Provisionamento e os Testes de ICMP (LAN/WAN/WEB), Telnet e Teste de Banda.\n\n" +
-                "Clique em OK assim que o cabo estiver conectado na porta GE 0/1.",
+                $"Clique em OK assim que o cabo estiver conectado na porta {lanPostShort}.",
                 cancellationToken);
         }
 

@@ -10,15 +10,33 @@ public static class BootInterruptProfiles
         Name = "Cisco Série 900 / C921-4P (Ctrl+C Puro @ 9600)",
         Manufacturer = "Cisco",
         Family = "ISR 900",
-        ModelPatterns = new[] { "C921", "C926", "C927", "C931" },
+        ModelPatterns = new[] { "C921", "C926", "C927", "C931", "921", "Cisco 921", "Cisco C921", "ISR921", "ISR 921", "900" },
         Method = BootInterruptMethod.CtrlC,
         RequiresManualIntervention = false,
         InitialDelay = TimeSpan.Zero,
         BurstCount = 1,
         BurstInterval = TimeSpan.Zero,
-        RetryInterval = TimeSpan.FromMilliseconds(500),
+        RetryInterval = TimeSpan.FromMilliseconds(750),
         MaxWindow = TimeSpan.FromSeconds(90),
-        MaxTotalTransmissions = 95,
+        MaxTotalTransmissions = 100,
+        OsBootPolicy = OsBootPolicy.TerminalFail
+    };
+
+    public static readonly BootInterruptProfile Cisco841 = new()
+    {
+        Id = "cisco.c841.break",
+        Name = "Cisco Série 800 / C841M (Break @ 9600)",
+        Manufacturer = "Cisco",
+        Family = "ISR 800 / 841",
+        ModelPatterns = new[] { "C841", "C841M", "841", "Cisco 841", "Cisco C841", "ISR841", "ISR 841", "C800M", "800M", "C800", "800", "cisco.c841.break", "cisco.c841.ctrl-c" },
+        Method = BootInterruptMethod.Break,
+        RequiresManualIntervention = false,
+        InitialDelay = TimeSpan.FromMilliseconds(100),
+        BurstCount = 2,
+        BurstInterval = TimeSpan.FromMilliseconds(40),
+        RetryInterval = TimeSpan.FromMilliseconds(350),
+        MaxWindow = TimeSpan.FromSeconds(90),
+        MaxTotalTransmissions = 180,
         OsBootPolicy = OsBootPolicy.TerminalFail
     };
 
@@ -89,13 +107,37 @@ public static class BootInterruptProfiles
         OsBootPolicy = OsBootPolicy.TerminalFail
     };
 
-    public static readonly BootInterruptProfile HpeMsr = new()
+    public static readonly BootInterruptProfile HpeMsr954 = new()
     {
-        Id = "hpe.msr.ctrl-b",
-        Name = "HPE / HP MSR / Comware (Ctrl+B @ 9600 - BootWare)",
+        Id = "hpe.msr954.ctrl-b",
+        Name = "HPE MSR 954 / 958 (Ctrl+B @ 9600 - BootWare)",
         Manufacturer = "HPE",
-        Family = "MSR / FlexNetwork / Comware",
-        ModelPatterns = new[] { "MSR954", "954", "HP 954", "HPE 954", "MSR920", "MSR930", "MSR931", "MSR935", "MSR900", "921", "HPE", "HP", "Comware", "5130", "5500", "5900" },
+        Family = "MSR / Comware 7",
+        ModelPatterns = new[] { "MSR954", "954", "HP 954", "HPE 954", "MSR958", "958", "hpe.msr954.ctrl-b" },
+        Method = BootInterruptMethod.CtrlB,
+        RequiresManualIntervention = false,
+        InitialDelay = TimeSpan.Zero,
+        BurstCount = 2,
+        BurstInterval = TimeSpan.FromMilliseconds(40),
+        RetryInterval = TimeSpan.FromMilliseconds(160),
+        MaxWindow = TimeSpan.FromMinutes(3),
+        MaxTotalTransmissions = 400,
+        OsBootPolicy = OsBootPolicy.Warning,
+        RommonPatterns = new List<Regex>
+        {
+            new(@"(?i)(?:BOOT\s*MENU|<(?:EXTENDED-)?BOOTWARE\s*MENU>|<MAIN\s*MENU>|<BASIC\s*BOOT\s*MENU>|<ETHERNET\s*SUBMENU>|Enter\s+your\s+choice|choice\s*\(\s*0\s*-\s*[0-9]\s*\)|choice\s*:|BootWare\s+Operation\s+Menu)", RegexOptions.Compiled),
+            new(@"(?i)(?:Press\s+Ctrl\+[BD]\s+to\s+enter|Press\s+Ctrl\+B\s+to\s+access|Press\s+Ctrl\+B\s+to\s+stop)", RegexOptions.Compiled),
+            new(@"(?i)(?:The\s+image\s+does\s+not\s+exist|Loading\s+images\s+fails|Loading\s+boot\s+image\s+fails|The\s+main\s+application\s+file\s+does\s+not\s+exist|Booting\s+App\s+fails|operating\s+device\s+is\s+flash)", RegexOptions.Compiled)
+        }
+    };
+
+    public static readonly BootInterruptProfile HpeMsr930 = new()
+    {
+        Id = "hpe.msr930.ctrl-b",
+        Name = "HPE MSR 930 / 931 / 935 (Ctrl+B @ 9600 - BootWare)",
+        Manufacturer = "HPE",
+        Family = "MSR / Comware 7",
+        ModelPatterns = new[] { "MSR930", "930", "HP 930", "HPE 930", "MSR931", "MSR935", "MSR920", "MSR900", "hpe.msr930.ctrl-b" },
         Method = BootInterruptMethod.CtrlB,
         RequiresManualIntervention = false,
         InitialDelay = TimeSpan.Zero,
@@ -113,6 +155,56 @@ public static class BootInterruptProfiles
         }
     };
 
+    public static readonly BootInterruptProfile HpeMsr1002 = new()
+    {
+        Id = "hpe.msr1002.ctrl-b",
+        Name = "HPE MSR 1002 / 1003 / MSR 1000 (Ctrl+B @ 9600 - BootWare)",
+        Manufacturer = "HPE",
+        Family = "MSR / Comware 7",
+        ModelPatterns = new[] { "MSR1002", "1002", "HP 1002", "HPE 1002", "MSR1003", "1003", "MSR1000", "1000", "MSR100X", "100X", "hpe.msr1002.ctrl-b" },
+        Method = BootInterruptMethod.CtrlB,
+        RequiresManualIntervention = false,
+        InitialDelay = TimeSpan.Zero,
+        BurstCount = 2,
+        BurstInterval = TimeSpan.FromMilliseconds(40),
+        RetryInterval = TimeSpan.FromMilliseconds(160),
+        MaxWindow = TimeSpan.FromMinutes(3),
+        MaxTotalTransmissions = 400,
+        OsBootPolicy = OsBootPolicy.Warning,
+        RommonPatterns = new List<Regex>
+        {
+            new(@"(?i)(?:BOOT\s*MENU|<(?:EXTENDED-)?BOOTWARE\s*MENU>|<MAIN\s*MENU>|<BASIC\s*BOOT\s*MENU>|<ETHERNET\s*SUBMENU>|Enter\s+your\s+choice|choice\s*\(\s*0\s*-\s*[0-9]\s*\)|choice\s*:|BootWare\s+Operation\s+Menu)", RegexOptions.Compiled),
+            new(@"(?i)(?:Press\s+Ctrl\+[BD]\s+to\s+enter|Press\s+Ctrl\+B\s+to\s+access|Press\s+Ctrl\+B\s+to\s+stop)", RegexOptions.Compiled),
+            new(@"(?i)(?:The\s+image\s+does\s+not\s+exist|Loading\s+images\s+fails|Loading\s+boot\s+image\s+fails|operating\s+device\s+is\s+flash)", RegexOptions.Compiled)
+        }
+    };
+
+    public static readonly BootInterruptProfile HpeMsrGeneric = new()
+    {
+        Id = "hpe.msr.ctrl-b",
+        Name = "HPE Comware / MSR (Ctrl+B @ 9600 - BootWare)",
+        Manufacturer = "HPE",
+        Family = "MSR / Comware 7",
+        ModelPatterns = new[] { "HPE", "HP", "Comware", "MSR", "hpe.msr.ctrl-b" },
+        Method = BootInterruptMethod.CtrlB,
+        RequiresManualIntervention = false,
+        InitialDelay = TimeSpan.Zero,
+        BurstCount = 2,
+        BurstInterval = TimeSpan.FromMilliseconds(40),
+        RetryInterval = TimeSpan.FromMilliseconds(160),
+        MaxWindow = TimeSpan.FromMinutes(3),
+        MaxTotalTransmissions = 400,
+        OsBootPolicy = OsBootPolicy.Warning,
+        RommonPatterns = new List<Regex>
+        {
+            new(@"(?i)(?:BOOT\s*MENU|<(?:EXTENDED-)?BOOTWARE\s*MENU>|<MAIN\s*MENU>|<BASIC\s*BOOT\s*MENU>|<ETHERNET\s*SUBMENU>|Enter\s+your\s+choice|choice\s*\(\s*0\s*-\s*[0-9]\s*\)|choice\s*:|BootWare\s+Operation\s+Menu)", RegexOptions.Compiled),
+            new(@"(?i)(?:Press\s+Ctrl\+[BD]\s+to\s+enter|Press\s+Ctrl\+B\s+to\s+access|Press\s+Ctrl\+B\s+to\s+stop)", RegexOptions.Compiled),
+            new(@"(?i)(?:The\s+image\s+does\s+not\s+exist|Loading\s+images\s+fails|Loading\s+boot\s+image\s+fails|operating\s+device\s+is\s+flash)", RegexOptions.Compiled)
+        }
+    };
+
+    public static readonly BootInterruptProfile HpeMsr = HpeMsrGeneric;
+
     public static readonly BootInterruptProfile GenericManual = new()
     {
         Id = "generic.manual",
@@ -128,9 +220,13 @@ public static class BootInterruptProfiles
 
     public static IReadOnlyList<BootInterruptProfile> All { get; } = new[]
     {
-        HpeMsr,
+        HpeMsr1002,
+        HpeMsr930,
+        HpeMsr954,
+        HpeMsrGeneric,
         Cisco1900,
         Cisco900,
+        Cisco841,
         CiscoStandardBreak,
         CiscoUniversal,
         CiscoCatalystManualMode,
@@ -153,13 +249,31 @@ public static class BootInterruptProfiles
         if (byModel != null) return byModel;
 
         // 3. Heurística contextual por substrings (priorizando HPE antes de Cisco)
-        if (trimmed.Contains("hpe", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.Contains("msr", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.Contains("comware", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.Contains("954", StringComparison.OrdinalIgnoreCase) ||
+        if (trimmed.Contains("1002", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("1003", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("1000", StringComparison.OrdinalIgnoreCase))
+        {
+            return HpeMsr1002;
+        }
+
+        if (trimmed.Contains("930", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("931", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("935", StringComparison.OrdinalIgnoreCase))
+        {
+            return HpeMsr930;
+        }
+
+        if (trimmed.Contains("954", StringComparison.OrdinalIgnoreCase) ||
             trimmed.Contains("958", StringComparison.OrdinalIgnoreCase))
         {
-            return HpeMsr;
+            return HpeMsr954;
+        }
+
+        if (trimmed.Contains("hpe", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("msr", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("comware", StringComparison.OrdinalIgnoreCase))
+        {
+            return HpeMsrGeneric;
         }
 
         if (trimmed.Contains("1900", StringComparison.OrdinalIgnoreCase) ||
@@ -168,6 +282,12 @@ public static class BootInterruptProfiles
             trimmed.Contains("1905", StringComparison.OrdinalIgnoreCase))
         {
             return Cisco1900;
+        }
+
+        if (trimmed.Contains("841", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("800", StringComparison.OrdinalIgnoreCase))
+        {
+            return Cisco841;
         }
 
         if (trimmed.Contains("900", StringComparison.OrdinalIgnoreCase) ||

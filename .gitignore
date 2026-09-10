@@ -28,3 +28,4 @@ $RECYCLE.BIN/
 *.zip
 speedtest_tmp/
 *.log
+dist-beta/*.exe

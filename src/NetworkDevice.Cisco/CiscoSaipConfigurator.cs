@@ -20,7 +20,7 @@ public sealed class CiscoSaipConfigurator
     /// <summary>
     /// Detecta os nomes exatos das interfaces WAN e LAN a partir do 'show ip interface brief'.
     /// </summary>
-    public static (string wanIface, string lanIface) DetectInterfaces(string showIpIntBriefOutput, string preferredWan = "GigabitEthernet 5", string preferredLan = "GigabitEthernet 4")
+    public static (string wanIface, string lanIface) DetectInterfaces(string showIpIntBriefOutput, string preferredWan = "GigabitEthernet 4", string preferredLan = "GigabitEthernet 5")
     {
         var matches = InterfaceLineRegex.Matches(showIpIntBriefOutput);
         var ifaces = new List<string>();
@@ -34,19 +34,27 @@ public sealed class CiscoSaipConfigurator
         if (ifaces.Count == 0)
             return (preferredWan, preferredLan);
 
-        // WAN (Porta 5)
+        // WAN (Porta 4 / GE0/4 / GE4 ou GE0/0 ou GE0/0/0)
         string resolvedWan = preferredWan;
-        if (ifaces.Any(i => i.Equals("GigabitEthernet5", StringComparison.OrdinalIgnoreCase) || i.Equals("GigabitEthernet 5", StringComparison.OrdinalIgnoreCase)))
-            resolvedWan = "GigabitEthernet 5";
+        if (ifaces.Any(i => i.Equals("GigabitEthernet0/4", StringComparison.OrdinalIgnoreCase) || i.Equals("GigabitEthernet 0/4", StringComparison.OrdinalIgnoreCase)))
+            resolvedWan = "GigabitEthernet0/4";
+        else if (ifaces.Any(i => i.Equals("GigabitEthernet4", StringComparison.OrdinalIgnoreCase) || i.Equals("GigabitEthernet 4", StringComparison.OrdinalIgnoreCase)))
+            resolvedWan = "GigabitEthernet 4";
         else if (ifaces.Any(i => i.Equals("GigabitEthernet0/0/0", StringComparison.OrdinalIgnoreCase)))
             resolvedWan = "GigabitEthernet0/0/0";
+        else if (ifaces.Any(i => i.Equals("GigabitEthernet0/0", StringComparison.OrdinalIgnoreCase) || i.Equals("GigabitEthernet 0/0", StringComparison.OrdinalIgnoreCase)))
+            resolvedWan = "GigabitEthernet 0/0";
 
-        // LAN (Porta 4)
+        // LAN (Porta 5 / GE0/5 / GE5 ou GE0/1 ou GE0/0/1)
         string resolvedLan = preferredLan;
-        if (ifaces.Any(i => i.Equals("GigabitEthernet4", StringComparison.OrdinalIgnoreCase) || i.Equals("GigabitEthernet 4", StringComparison.OrdinalIgnoreCase)))
-            resolvedLan = "GigabitEthernet 4";
+        if (ifaces.Any(i => i.Equals("GigabitEthernet0/5", StringComparison.OrdinalIgnoreCase) || i.Equals("GigabitEthernet 0/5", StringComparison.OrdinalIgnoreCase)))
+            resolvedLan = "GigabitEthernet0/5";
+        else if (ifaces.Any(i => i.Equals("GigabitEthernet5", StringComparison.OrdinalIgnoreCase) || i.Equals("GigabitEthernet 5", StringComparison.OrdinalIgnoreCase)))
+            resolvedLan = "GigabitEthernet 5";
         else if (ifaces.Any(i => i.Equals("GigabitEthernet0/0/1", StringComparison.OrdinalIgnoreCase)))
             resolvedLan = "GigabitEthernet0/0/1";
+        else if (ifaces.Any(i => i.Equals("GigabitEthernet0/1", StringComparison.OrdinalIgnoreCase) || i.Equals("GigabitEthernet 0/1", StringComparison.OrdinalIgnoreCase)))
+            resolvedLan = "GigabitEthernet 0/1";
 
         return (resolvedWan, resolvedLan);
     }
@@ -56,8 +64,8 @@ public sealed class CiscoSaipConfigurator
     /// </summary>
     public static IReadOnlyList<string> GenerateCommands(
         SaipCircuitData circuit,
-        string wanInterface = "GigabitEthernet 5",
-        string lanInterface = "GigabitEthernet 4")
+        string wanInterface = "GigabitEthernet 4",
+        string lanInterface = "GigabitEthernet 5")
     {
         var wanDesc = SanitizeDescription(circuit.DesignacaoIp ?? circuit.NumeroOts ?? "LINK");
         var lanDesc = SanitizeDescription(circuit.ClienteRazaoSocial);
@@ -65,19 +73,22 @@ public sealed class CiscoSaipConfigurator
         return new List<string>
         {
             "configure terminal",
+            "no ip domain-lookup",
+            "no ip domain lookup",
             "no logging console",
             "line con 0",
             "logging synchronous",
             "exit",
 
-            // 1. WAN (Porta Giga 5 - Nativa)
+            // 1. WAN (Porta 4 - Nativa WAN)
             $"interface {wanInterface}",
+            "no switchport",
             $"description WAN_EBT_{wanDesc}",
             $"ip address {circuit.WanIp} {circuit.WanSubnetMask}",
             "no shutdown",
             "exit",
 
-            // 2. LAN (Porta Giga 4 - Nativa)
+            // 2. LAN (Porta 5 - Nativa LAN)
             $"interface {lanInterface}",
             "no switchport",
             $"description LAN_CLIENTE_{lanDesc}",
@@ -125,16 +136,21 @@ public sealed class CiscoSaipConfigurator
     public async Task ApplyConfigAsync(
         DeviceSession session,
         SaipCircuitData circuit,
-        string wanInterface = "GigabitEthernet 5",
-        string lanInterface = "GigabitEthernet 4",
+        string wanInterface = "GigabitEthernet 4",
+        string lanInterface = "GigabitEthernet 5",
         CancellationToken cancellationToken = default)
     {
         await ProgressAsync($"[*] INICIANDO PROVISIONAMENTO DA FICHA SAIP ({circuit.DesignacaoIp ?? circuit.NumeroOts})...");
 
-        // 1. Acorda o terminal
-        await session.WriteLineAsync("end", cancellationToken);
-        await session.WriteLineAsync(string.Empty, cancellationToken);
-        await Task.Delay(500, cancellationToken);
+        // 1. Acorda o terminal e cancela qualquer comando/submodo pendente de forma segura (Ctrl+C + Enter)
+        try
+        {
+            await session.Transport.WriteAsync(new byte[] { 0x03 }, cancellationToken);
+            await Task.Delay(100, cancellationToken);
+            await session.WriteLineAsync(string.Empty, cancellationToken);
+            await Task.Delay(200, cancellationToken);
+        }
+        catch { }
 
         // 2. Garante modo privilegiado (enable)
         var prompt = await session.SendCommandAsync(string.Empty, TimeSpan.FromSeconds(5), cancellationToken);
@@ -142,7 +158,7 @@ public sealed class CiscoSaipConfigurator
         {
             await ProgressAsync("[*] Acessando modo privilegiado: enviando 'enable'...");
             var enableRes = await session.SendCommandAsync("enable", TimeSpan.FromSeconds(10), cancellationToken);
-            await Task.Delay(500, cancellationToken);
+            await Task.Delay(300, cancellationToken);
         }
 
         // 3. Obtém as interfaces reais do equipamento
@@ -164,6 +180,11 @@ public sealed class CiscoSaipConfigurator
         await ProgressAsync("[*] [FASE C] Limpando vestígios de configuração anterior (baseline limpo)...");
         try
         {
+            // Desativa lookup DNS imediatamente para evitar travamentos com "Translating... domain server"
+            await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("no ip domain-lookup", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("no ip domain lookup", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
             // 4a. Remove todas as rotas default antigas (qualquer gateway)
             var showRoutes = await session.SendCommandAsync("show running-config | include ip route", TimeSpan.FromSeconds(10), cancellationToken);
             var routeMatches = Regex.Matches(showRoutes, @"(?im)^\s*ip\s+route\s+0\.0\.0\.0\s+0\.0\.0\.0\s+(\S+)(?:\s+\S+)*");
@@ -213,12 +234,12 @@ public sealed class CiscoSaipConfigurator
             await session.SendCommandAsync("enable", TimeSpan.FromSeconds(10), cancellationToken);
             await session.SendCommandAsync("config t", TimeSpan.FromSeconds(10), cancellationToken);
         }
-        await Task.Delay(1000, cancellationToken);
+        await Task.Delay(300, cancellationToken);
 
-        // 5. Lista de comandos a serem aplicados com cadência de 1s
+        // 5. Lista de comandos a serem aplicados com cadência otimizada e segura de 200ms
         var commands = GenerateCommands(circuit, wanInterface, lanInterface);
 
-        await ProgressAsync("[*] Aplicando comandos no roteador (cadência: 1s por comando)...");
+        await ProgressAsync("[*] Aplicando comandos no roteador (cadência: 200ms por comando)...");
         foreach (var cmd in commands)
         {
             if (cmd == "configure terminal" || cmd == "write memory")
@@ -243,7 +264,7 @@ public sealed class CiscoSaipConfigurator
                 await ProgressAsync($"    [!] Falha ao executar '{cmd}': {ex.Message}");
             }
 
-            await Task.Delay(1000, cancellationToken);
+            await Task.Delay(200, cancellationToken);
         }
 
         // 6. Validação pós-provisionamento: exibe show ip interface brief
@@ -274,32 +295,10 @@ public sealed class CiscoSaipConfigurator
         }
         catch { }
 
-        var writeRes = await session.SendExpectAsync("write memory",
-            new StopCondition[] {
-                new StopCondition.Contains("[OK]", "[OK]"),
-                new StopCondition.Contains("?", "?"),
-                new StopCondition.Prompt()
-            },
-            TimeSpan.FromSeconds(25), cancellationToken);
-
-        if (writeRes.Output.Contains("?"))
-        {
-            await session.WriteLineAsync(string.Empty, cancellationToken);
-            await session.WaitForAsync(new StopCondition[] { new StopCondition.Prompt() }, TimeSpan.FromSeconds(15), cancellationToken);
-        }
-
         try
         {
-            var copyRes = await session.SendExpectAsync("copy running-config startup-config",
-                new StopCondition[] {
-                    new StopCondition.Contains("Destination filename", "Destination filename"),
-                    new StopCondition.Contains("?", "?"),
-                    new StopCondition.Contains("[OK]", "[OK]"),
-                    new StopCondition.Prompt()
-                },
-                TimeSpan.FromSeconds(20), cancellationToken);
-
-            if (copyRes.Output.Contains("?") || copyRes.Output.Contains("Destination filename", StringComparison.OrdinalIgnoreCase))
+            var writeRes = await session.SendCommandAsync("write memory", TimeSpan.FromSeconds(30), cancellationToken);
+            if (writeRes.Contains("?"))
             {
                 await session.WriteLineAsync(string.Empty, cancellationToken);
                 await session.WaitForAsync(new StopCondition[] { new StopCondition.Prompt() }, TimeSpan.FromSeconds(15), cancellationToken);

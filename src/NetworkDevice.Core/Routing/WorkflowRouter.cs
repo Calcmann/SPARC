@@ -35,6 +35,20 @@ public static class WorkflowRouter
             (DeviceManufacturer.Hpe, DeviceSeries.Msr954, WorkflowType.FirmwareRecovery) =>
                 "HPE MSR954 — Recuperação de Imagem Flash via BootWare Ethernet TFTP",
 
+            (DeviceManufacturer.Hpe, DeviceSeries.Msr930, WorkflowType.Provisioning) =>
+                "HPE MSR930 — Provisionamento Canônico Comware 7",
+            (DeviceManufacturer.Hpe, DeviceSeries.Msr930, WorkflowType.PasswordRecovery) =>
+                "HPE MSR930 — Recuperação de Acesso via BootWare (Skip Config/Auth)",
+            (DeviceManufacturer.Hpe, DeviceSeries.Msr930, WorkflowType.FirmwareRecovery) =>
+                "HPE MSR930 — Recuperação de Imagem Flash via BootWare Ethernet TFTP",
+
+            (DeviceManufacturer.Hpe, DeviceSeries.Msr1002, WorkflowType.Provisioning) =>
+                "HPE MSR1002 — Provisionamento Canônico Comware 7",
+            (DeviceManufacturer.Hpe, DeviceSeries.Msr1002, WorkflowType.PasswordRecovery) =>
+                "HPE MSR1002 — Recuperação de Acesso via BootWare (Skip Config/Auth)",
+            (DeviceManufacturer.Hpe, DeviceSeries.Msr1002, WorkflowType.FirmwareRecovery) =>
+                "HPE MSR1002 — Recuperação de Imagem Flash via BootWare Ethernet TFTP",
+
             (DeviceManufacturer.Cisco, DeviceSeries.Series1900, WorkflowType.Provisioning) =>
                 "Cisco Série 1900 — Provisionamento Canônico Cisco IOS",
             (DeviceManufacturer.Cisco, DeviceSeries.Series1900, WorkflowType.PasswordRecovery) =>
@@ -48,6 +62,13 @@ public static class WorkflowRouter
                 "Cisco ISR 921 — Recuperação de Senha ROMMON com Interrupção Ctrl+C",
             (DeviceManufacturer.Cisco, DeviceSeries.Isr921, WorkflowType.FirmwareRecovery) =>
                 "Cisco ISR 921 — Recuperação de IOS ISR921 via ROMMON",
+
+            (DeviceManufacturer.Cisco, DeviceSeries.Isr841, WorkflowType.Provisioning) =>
+                "Cisco Série 800 / C841M — Provisionamento Canônico Cisco IOS",
+            (DeviceManufacturer.Cisco, DeviceSeries.Isr841, WorkflowType.PasswordRecovery) =>
+                "Cisco Série 800 / C841M — Recuperação de Senha ROMMON com Interrupção Break",
+            (DeviceManufacturer.Cisco, DeviceSeries.Isr841, WorkflowType.FirmwareRecovery) =>
+                "Cisco Série 800 / C841M — Recuperação de IOS C841 via ROMMON",
 
             _ => $"{manufacturer} {series} — {workflow}"
         };

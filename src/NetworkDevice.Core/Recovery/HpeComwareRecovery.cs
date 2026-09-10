@@ -62,9 +62,9 @@ public sealed class HpeComwareRecovery
         @"(?i)(?:\[Y/N\]|\?)\s*$",
         RegexOptions.Compiled);
 
-    private static readonly Regex ComwarePrompt = new(
-        @"(?i)(?:^<[A-Za-z0-9_\-\.]+>|^\[[A-Za-z0-9_\-\.]+\])",
-        RegexOptions.Compiled);
+    internal static readonly Regex ComwarePrompt = new(
+        @"^(?!\s*<[0-9]>)(?!\s*<EXTEND)(?!\s*<BASIC)(?!\s*<MAIN)(?!\s*<BOOT)(?!\s*<ETHERNET)(?!\s*<FILE)(?!\s*<Storage)\s*(?:<[A-Za-z0-9_\-\.]+>|\[[A-Za-z0-9_\-\.]+\])\s*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private static readonly Regex PressReturnPrompt = new(
         @"(?i)(?:press\s+enter\s+to\s+continue|press\s+enter\s+to\s+get\s+started|press\s+return\s+to\s+get\s+started|Line\s+con0\s+is\s+available|Before\s+pressing\s+ENTER)",
@@ -112,6 +112,10 @@ public sealed class HpeComwareRecovery
 
         try
         {
+            // Envia \r\n para despertar a console
+            await session.WriteLineAsync(string.Empty, ct);
+            await Task.Delay(200, ct);
+
             // Envia 'return' para sair de qualquer sub-menu (ex: [HPE-luser-manage-EBT]) antes de verificar o prompt
             await session.WriteLineAsync("return", ct);
             await Task.Delay(300, ct);
@@ -122,11 +126,14 @@ public sealed class HpeComwareRecovery
                     new StopCondition.LineRegex("prompt", ComwarePrompt),
                     new StopCondition.LineRegex("menu", BootWareMenuPrompt),
                     new StopCondition.LineRegex("password", BootWarePasswordPrompt),
-                    new StopCondition.LineRegex("login", OsLoginPrompt)
+                    new StopCondition.LineRegex("login", OsLoginPrompt),
+                    new StopCondition.Contains("<HPE", "<HPE"),
+                    new StopCondition.Contains("[HPE", "[HPE")
                 },
-                TimeSpan.FromSeconds(3),
+                TimeSpan.FromSeconds(4),
                 ct);
 
+            var outStr = preCheck.Output;
             if (preCheck.Matched is StopCondition.LineRegex preMatch)
             {
                 if (preMatch.Name == "prompt")
@@ -142,6 +149,13 @@ public sealed class HpeComwareRecovery
                     menuCaptured = true;
                     menuText = preCheck.Output;
                 }
+            }
+            else if (ComwarePrompt.IsMatch(outStr) || outStr.Contains("<HPE", StringComparison.OrdinalIgnoreCase) || outStr.Contains("[HPE", StringComparison.OrdinalIgnoreCase))
+            {
+                await ProgressAsync("[OK] Equipamento HPE acessível sem senha (prompt aberto). Executando reset direto via CLI...");
+                await ExecuteDirectHpeCliResetAsync(session, ct);
+                ProgressUpdated?.Invoke(100, "1/6 Zerar Configuração Concluído", "HPE zerado diretamente via CLI com sucesso.");
+                return true;
             }
         }
         catch (SessionTimeoutException)
@@ -358,7 +372,9 @@ public sealed class HpeComwareRecovery
             new StopCondition.LineRegex("menu", BootWareMenuPrompt),
             new StopCondition.Contains("fail", "Loading images fails"),
             new StopCondition.Contains("not_exist", "The image does not exist!"),
-            new StopCondition.Contains("boot_fail", "Loading boot image fails")
+            new StopCondition.Contains("boot_fail", "Loading boot image fails"),
+            new StopCondition.Contains("app_not_exist", "The main application file does not exist"),
+            new StopCondition.Contains("app_boot_fail", "Booting App fails")
         };
 
         var bootDeadline = DateTime.UtcNow.AddMinutes(7);
@@ -386,13 +402,76 @@ public sealed class HpeComwareRecovery
 
             var outText = res.Output;
 
-            // Se detectar ausência de imagem na Flash, solicita o firmware e realiza gravação via TFTP
+// Se detectar ausência de imagem na Flash, solicita o firmware e realiza gravação via TFTP
             if (outText.Contains("Loading images fails", StringComparison.OrdinalIgnoreCase) ||
                 outText.Contains("The image does not exist", StringComparison.OrdinalIgnoreCase) ||
                 outText.Contains("Loading boot image fails", StringComparison.OrdinalIgnoreCase) ||
-                outText.Contains("Image program does not exist", StringComparison.OrdinalIgnoreCase))
+                outText.Contains("Image program does not exist", StringComparison.OrdinalIgnoreCase) ||
+                outText.Contains("The main application file does not exist", StringComparison.OrdinalIgnoreCase) ||
+                outText.Contains("Booting App fails", StringComparison.OrdinalIgnoreCase))
             {
                 await ProgressAsync("\n[⚠️ ALERTA] Memória Flash sem imagem de sistema operacional (ausência de firmware detectada).");
+                if (requestFirmwareFile != null && tftpDownloader != null)
+                {
+                    await ProgressAsync("[*] Solicitando pacote de firmware (.ipe / .bin) para gravação via BootWare TFTP...");
+                    var fwFile = await requestFirmwareFile(ct);
+                    if (!string.IsNullOrEmpty(fwFile) && File.Exists(fwFile))
+                    {
+                        var tftpOk = await tftpDownloader(
+                            session,
+                            ethernetOption,
+                            fwFile,
+                            hostIpAddress ?? "200.182.245.18",
+                            routerIpAddress ?? "200.182.245.17",
+                            subnetMask ?? "255.255.255.240",
+                            ct);
+
+                        if (tftpOk)
+                        {
+                            await HpeBootWareStateMachine.EnsureExtendedBootWareAsync(session, _progress, ct);
+                            await ProgressAsync("[*] Disparando inicialização do sistema pós-gravação (Opção 1 - Boot System)...");
+                            await Task.Delay(1500, ct);
+                            try { await session.WaitForAsync(new StopCondition[] { new StopCondition.Contains("enter your choice", "enter your choice") }, TimeSpan.FromMilliseconds(500), ct); } catch { }
+                            await HpeBootWareStateMachine.ExecuteOptionAsync(session, HpeMenuState.ExtendedBootWare, bootOption, "Boot System", _progress, ct);
+                            try
+                            {
+                                await session.WaitForAsync(
+                                    new StopCondition[]
+                                    {
+                                        new StopCondition.Contains("Starting to get", "Starting to get"),
+                                        new StopCondition.Contains("System image is starting", "System image is starting"),
+                                        new StopCondition.Contains("Booting Normal", "Booting Normal"),
+                                        new StopCondition.Contains("Loading", "Loading"),
+                                        new StopCondition.Contains("does not exist", "does not exist"),
+                                        new StopCondition.Contains("choice(0-9)", "choice(0-9)")
+                                    },
+                                    TimeSpan.FromSeconds(5), ct);
+                            }
+                            catch { }
+                            bootSw.Restart();
+                            continue;
+                        }
+                    }
+                }
+
+                throw new DeviceSessionException("A memória Flash do HPE não possui firmware válido (imagem ausente) e a recuperação não pôde ser realizada.");
+            }
+
+            // Se o roteador retornou ao menu BootWare, o boot falhou (firmware ausente/corrompido).
+            // Vai DIRETO para recuperação via TFTP em vez de reenviar '1' infinitamente.
+            // Mas se o boot foi enviado há menos de 30s, o menu pode ser prompt estale do buffer
+            if (outText.Contains("choice(0-9)", StringComparison.OrdinalIgnoreCase) ||
+                outText.Contains("<EXTENDED-BOOTWARE MENU>", StringComparison.OrdinalIgnoreCase) ||
+                outText.Contains("Enter your choice", StringComparison.OrdinalIgnoreCase) ||
+                (res.Matched is StopCondition.LineRegex lrMenu && lrMenu.Name == "menu"))
+            {
+                if (bootSw.Elapsed.TotalSeconds < 30)
+                {
+                    // Menu detectado logo após o boot — pode ser prompt estale, aguarda
+                    await Task.Delay(2000, ct);
+                    continue;
+                }
+                await ProgressAsync("\n[⚠️ BootWare] Boot falhou — o equipamento retornou ao menu de recuperação. Iniciando recuperação de firmware via TFTP...");
                 if (requestFirmwareFile != null && tftpDownloader != null)
                 {
                     await ProgressAsync("[*] Solicitando pacote de firmware (.ipe / .bin) para gravação via BootWare TFTP...");
@@ -419,18 +498,31 @@ public sealed class HpeComwareRecovery
                     }
                 }
 
-                throw new DeviceSessionException("A memória Flash do HPE não possui firmware válido (imagem ausente) e a recuperação não pôde ser realizada.");
+                throw new DeviceSessionException("A memória Flash do HPE não possui firmware válido (imagem ausente) e a recuperação via TFTP não pôde ser realizada.");
             }
 
-            // Se o roteador ainda estiver ou retornou ao menu BootWare, reenvia '1' (Boot System) imediatamente
-            if (outText.Contains("choice(0-9)", StringComparison.OrdinalIgnoreCase) ||
-                outText.Contains("<EXTENDED-BOOTWARE MENU>", StringComparison.OrdinalIgnoreCase) ||
-                outText.Contains("Enter your choice", StringComparison.OrdinalIgnoreCase) ||
-                (res.Matched is StopCondition.LineRegex lrMenu && lrMenu.Name == "menu"))
+            // BootWare countdown "Press Ctrl+B" — não é menu, apenas continua
+            if (outText.Contains("Press Ctrl+B", StringComparison.OrdinalIgnoreCase) &&
+                !outText.Contains("Enter your choice", StringComparison.OrdinalIgnoreCase))
             {
-                await ProgressAsync("[*] [BootWare] Menu detectado durante a inicialização — enviando '1' (Boot System)...");
-                await session.WriteLineAsync("1", ct);
-                await Task.Delay(1000, ct);
+                await Task.Delay(500, ct);
+                continue;
+            }
+
+            // BootWare desatualizado — atualiza automaticamente
+            if (outText.Contains("Extended BootWare Version is not equal", StringComparison.OrdinalIgnoreCase) ||
+                outText.Contains("updating? [Y/N]", StringComparison.OrdinalIgnoreCase))
+            {
+                await ProgressAsync("[*] BootWare desatualizado detectado — confirmando atualização (Y)...");
+                await session.WriteLineAsync("Y", ct);
+                await Task.Delay(2000, ct);
+                continue;
+            }
+
+            if (outText.Contains("System is rebooting", StringComparison.OrdinalIgnoreCase) ||
+                outText.Contains("BootWare updated", StringComparison.OrdinalIgnoreCase))
+            {
+                await Task.Delay(2000, ct);
                 continue;
             }
 
@@ -721,22 +813,41 @@ public sealed class HpeComwareRecovery
         if (Regex.IsMatch(prompt, @"\<[^\r\n>]+\>\s*$"))
             return true;
 
+        // Se o prompt atual não foi registrado com certeza, envia Enter para sondar estado atual sem gerar Unrecognized Command
+        try
+        {
+            var probe = await session.SendCommandAsync(string.Empty, TimeSpan.FromSeconds(3), ct);
+            if (Regex.IsMatch(probe.Trim(), @"\<[^\r\n>]+\>\s*$"))
+                return true;
+        }
+        catch { }
+
         for (int i = 0; i < 4; i++)
         {
-            await session.WriteLineAsync("return", ct);
-            await Task.Delay(300, ct);
+            var curr = (session.CurrentPrompt ?? string.Empty).Trim();
+            if (curr.Contains("[", StringComparison.Ordinal) || curr.EndsWith("]"))
+            {
+                await session.WriteLineAsync("return", ct);
+                await Task.Delay(300, ct);
+            }
+            else
+            {
+                await session.WriteLineAsync(string.Empty, ct);
+                await Task.Delay(300, ct);
+            }
 
             var res = await session.WaitForAsync(
                 new StopCondition[]
                 {
                     new StopCondition.LineRegex("user-view", new Regex(@"\<[^\r\n>]+\>\s*$", RegexOptions.Compiled)),
-                    new StopCondition.LineRegex("sys-view", new Regex(@"\[[^\r\n\]]+\]\s*$", RegexOptions.Compiled))
+                    new StopCondition.LineRegex("sys-view", new Regex(@"\[[^\r\n\]]+\]\s*$", RegexOptions.Compiled)),
+                    new StopCondition.Prompt()
                 },
                 TimeSpan.FromSeconds(2),
                 ct);
 
             var outText = res.Output.Trim();
-            if (Regex.IsMatch(outText, @"\<[^\r\n>]+\>\s*$"))
+            if (Regex.IsMatch(outText, @"\<[^\r\n>]+\>\s*$") || (session.CurrentPrompt != null && Regex.IsMatch(session.CurrentPrompt.Trim(), @"\<[^\r\n>]+\>\s*$")))
             {
                 if (progress != null)
                     await progress("[*] Retornado com sucesso à visualização de usuário raiz do HPE (<HPE>).");
@@ -840,17 +951,15 @@ public static class HpeBootWareStateMachine
 
         var tail = text.Length > 600 ? text.Substring(text.Length - 600) : text;
 
-        if (Regex.IsMatch(tail, @"(?i)(?:^<[A-Za-z0-9_\-\.]+>|^\[[A-Za-z0-9_\-\.]+\])\s*$"))
-            return (HpeMenuState.ComwareCli, "<HPE>");
-
         if (Regex.IsMatch(tail, @"(?i)\[Y/N\]\s*[:?]?\s*$"))
             return (HpeMenuState.ConfirmYesNo, "[Y/N]");
 
         if (tail.Contains("Enter file No", StringComparison.OrdinalIgnoreCase))
             return (HpeMenuState.FileSelection, "Enter file No.:");
 
-        // 1. EXTENDED BOOTWARE (Menu Principal 0-9) - Verificar antes para não casar com "<3> Enter Ethernet SubMenu"
+        // 1. EXTENDED BOOTWARE (Menu Principal 0-9)
         if (tail.Contains("<EXTENDED-BOOTWARE MENU>", StringComparison.OrdinalIgnoreCase) ||
+            tail.Contains("<EXTEND-BOOTWARE MENU>", StringComparison.OrdinalIgnoreCase) ||
             tail.Contains("<BASIC BOOT MENU>", StringComparison.OrdinalIgnoreCase) ||
             tail.Contains("<MAIN MENU>", StringComparison.OrdinalIgnoreCase) ||
             tail.Contains("choice(0-9)", StringComparison.OrdinalIgnoreCase) ||
@@ -898,6 +1007,13 @@ public static class HpeBootWareStateMachine
             tail.Contains("Target File Name", StringComparison.OrdinalIgnoreCase))
         {
             return (HpeMenuState.EthernetSubMenu, "Ethernet Parameters");
+        }
+
+        // 6. COMWARE CLI (Prompt Real de Sistema)
+        var lastLine = tail.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.Trim() ?? string.Empty;
+        if (HpeComwareRecovery.ComwarePrompt.IsMatch(lastLine) && !lastLine.Contains("MENU", StringComparison.OrdinalIgnoreCase))
+        {
+            return (HpeMenuState.ComwareCli, lastLine);
         }
 
         return (HpeMenuState.Unknown, string.Empty);

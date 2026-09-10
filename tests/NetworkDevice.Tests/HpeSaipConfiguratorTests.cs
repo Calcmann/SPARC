@@ -104,6 +104,56 @@ return
     }
 
     [Fact]
+    public void GenerateCommands_ProducesComware5Syntax_WhenIsComware5True()
+    {
+        var cmds = HpeSaipConfigurator.GenerateCommands(SampleCircuit, "GigabitEthernet0/0", "GigabitEthernet0/1", isComware5: true);
+
+        // System view & Interface
+        Assert.Contains("system-view", cmds);
+        Assert.Contains("interface GigabitEthernet0/0", cmds);
+        Assert.Contains("ip address 201.90.204.22 255.255.255.252", cmds);
+        Assert.Contains("interface GigabitEthernet0/1", cmds);
+        Assert.Contains("ip address 200.182.245.17 255.255.255.240", cmds);
+
+        // Rota Default canônica
+        Assert.Contains("ip route-static 0.0.0.0 0.0.0.0 201.90.204.21", cmds);
+
+        // Usuário EBT Comware 5 (sem "class manage")
+        Assert.Contains("local-user EBT", cmds);
+        Assert.DoesNotContain(cmds, c => c.Contains("class manage", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("password simple PRO1ANPRO1AN", cmds);
+        Assert.Contains("service-type telnet", cmds);
+        Assert.Contains("user privilege level 3", cmds);
+        Assert.Contains("authorization-attribute level 3", cmds);
+
+        // Telnet server
+        Assert.Contains("telnet server enable", cmds);
+        Assert.Contains("protocol inbound telnet", cmds);
+
+        // Comware 5 usa "user-interface" em vez de "line"
+        Assert.Contains("user-interface vty 0 4", cmds);
+        Assert.Contains("user-interface aux 0", cmds);
+        Assert.DoesNotContain(cmds, c => c.Contains("line vty 0 63", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(cmds, c => c.Contains("line con 0", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("user privilege level 3", cmds);
+
+        // Persistência canônica
+        Assert.Contains("save safely force", cmds);
+    }
+
+    [Fact]
+    public void IsComware5_DetectsComware5Versions()
+    {
+        Assert.True(HpeSaipConfigurator.IsComware5("Comware Software, Version 5.20.106, Release 2514P14"));
+        Assert.True(HpeSaipConfigurator.IsComware5("HPE Comware Platform Software\nComware Software, Version 5.20.106, Release 2514P14"));
+        Assert.True(HpeSaipConfigurator.IsComware5("Comware Version 5.20"));
+
+        Assert.False(HpeSaipConfigurator.IsComware5("Comware Software, Version 7.10, Release 1234"));
+        Assert.False(HpeSaipConfigurator.IsComware5(""));
+        Assert.False(HpeSaipConfigurator.IsComware5(null));
+    }
+
+    [Fact]
     public void HpeProvisioningValidator_EvaluatesPassReportAccurately()
     {
         var report = new HpeValidationReport();
@@ -143,5 +193,20 @@ GE0/1                10.0.0.1             UP       UP
         Assert.Contains(report.Items, i => i.Name == "WAN IP" && i.Status == HpeValidationStatus.Fail);
         Assert.Contains(report.Items, i => i.Name == "LAN IP" && i.Status == HpeValidationStatus.Fail);
         Assert.Contains(report.Items, i => i.Name == "Rota Default" && i.Status == HpeValidationStatus.Fail);
+    }
+
+    [Fact]
+    public void HpeProvisioningValidator_AuditLocalUser_Comware5_Level3Role()
+    {
+        var report = new HpeValidationReport();
+
+        // Comware 5 usa "user privilege level 3" dentro do local-user
+        HpeProvisioningValidator.AuditLocalUser(report,
+            "local-user EBT\n password simple PRO1ANPRO1AN\n service-type telnet\n user privilege level 3",
+            "",
+            "service-type telnet");
+
+        Assert.Equal(HpeValidationStatus.Pass, report.OverallStatus);
+        Assert.All(report.Items, item => Assert.Equal(HpeValidationStatus.Pass, item.Status));
     }
 }

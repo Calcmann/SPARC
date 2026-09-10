@@ -12,8 +12,11 @@ public enum DeviceSeries
 {
     Unknown = 0,
     Msr954,
+    Msr930,
+    Msr1002,
     Series1900,
     Isr921,
+    Isr841,
     Generic
 }
 

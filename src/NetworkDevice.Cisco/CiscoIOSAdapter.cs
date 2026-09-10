@@ -218,8 +218,33 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
         Func<string, Task>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        var cleanLan = lanInterface.Replace(" ", ""); // GigabitEthernet0/1
-        var cleanWan = cleanLan.EndsWith("0/1") ? cleanLan.Replace("0/1", "0/0") : "GigabitEthernet0/0";
+        var cleanLan = lanInterface.Replace(" ", ""); // ex: GigabitEthernet0/5, GigabitEthernet5, GigabitEthernet0/1
+        var cleanWan = cleanLan.Contains("0/5") ? "GigabitEthernet0/4" :
+                       cleanLan.Contains("5") ? "GigabitEthernet4" :
+                       cleanLan.Contains("0/4") ? "GigabitEthernet0/5" :
+                       cleanLan.Contains("4") ? "GigabitEthernet5" :
+                       cleanLan.EndsWith("0/1") ? cleanLan.Replace("0/1", "0/0") : "GigabitEthernet0/0";
+
+        var displayLan = cleanLan.Contains("0/5") ? "GigabitEthernet0/5 (GE 0/5 / Porta 5 - LAN)" :
+                         cleanLan.Contains("5") ? "GigabitEthernet 5 (GE 5 / Porta 5 - LAN)" :
+                         cleanLan.Contains("0/4") ? "GigabitEthernet0/4 (GE 0/4 / Porta 4 - LAN)" :
+                         cleanLan.Contains("4") ? "GigabitEthernet 4 (GE 4 / Porta 4 - LAN)" :
+                         cleanLan.Contains("0/1") ? "GigabitEthernet 0/1 (GE 0/1 / LAN)" :
+                         $"{lanInterface} (LAN)";
+
+        var shortLan = cleanLan.Contains("0/5") ? "GE 0/5" :
+                       cleanLan.Contains("5") ? "GE 5" :
+                       cleanLan.Contains("0/4") ? "GE 0/4" :
+                       cleanLan.Contains("4") ? "GE 4" :
+                       cleanLan.Contains("0/1") ? "GE 0/1" :
+                       cleanLan;
+
+        var shortWan = cleanWan.Contains("0/4") ? "GE 0/4" :
+                       cleanWan.Contains("4") ? "GE 4" :
+                       cleanWan.Contains("0/5") ? "GE 0/5" :
+                       cleanWan.Contains("5") ? "GE 5" :
+                       cleanWan.Contains("0/0") ? "GE 0/0" :
+                       cleanWan;
 
         for (var attempt = 1; attempt <= 15; attempt++)
         {
@@ -238,17 +263,17 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
             if (isWanUp && !isLanUp)
             {
                 if (progress is not null)
-                    await progress($"[CRÍTICA DE PORTA] Cabo de rede detectado na porta {cleanWan} (WAN/ROMMON) ao invés da porta LAN ({lanInterface})!");
+                    await progress($"[CRÍTICA DE PORTA] Cabo de rede detectado na porta {cleanWan} (WAN) ao invés da porta LAN ({lanInterface})!");
 
                 if (requestOperatorAction is not null && attempt == 1)
                 {
                     await requestOperatorAction(
-                        "❌ CABO DE REDE CONECTADO NA PORTA INCORRETA (GE 0/0)!\n\n" +
-                        "O cabo Ethernet está conectado na porta GigabitEthernet 0/0 (WAN / ROMMON).\n\n" +
-                        "👉 POR FAVOR, ALTERE O CABO DE REDE PARA A PORTA:\n" +
-                        "🟢 GigabitEthernet 0/1 (GE 0/1 / LAN do Cliente)\n\n" +
-                        "Todos os procedimentos no Cisco IOS (Upgrade, Provisionamento, Testes ICMP e Banda) são executados EXCLUSIVAMENTE pela porta LAN (GE 0/1).\n\n" +
-                        "Clique em OK após conectar na porta GE 0/1.",
+                        $"❌ CABO DE REDE CONECTADO NA PORTA INCORRETA ({shortWan})!\n\n" +
+                        $"O cabo Ethernet está conectado na porta {cleanWan} (WAN / Uplink).\n\n" +
+                        $"👉 POR FAVOR, ALTERE O CABO DE REDE PARA A PORTA:\n" +
+                        $"🟢 {displayLan}\n\n" +
+                        $"Todos os procedimentos no Cisco IOS (Upgrade, Provisionamento, Testes ICMP e Banda) são executados EXCLUSIVAMENTE pela porta LAN ({shortLan}).\n\n" +
+                        $"Clique em OK após conectar na porta {shortLan}.",
                         cancellationToken);
                 }
             }
@@ -260,11 +285,11 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
                 if (requestOperatorAction is not null && attempt == 1)
                 {
                     await requestOperatorAction(
-                        "⚠️ NENHUM CABO DETECTADO NA PORTA LAN (GE 0/1)!\n\n" +
-                        "O link físico da porta GigabitEthernet 0/1 está DOWN.\n\n" +
-                        "👉 Conecte o cabo de rede Ethernet do seu notebook na porta:\n" +
-                        "🟢 GigabitEthernet 0/1 (GE 0/1 / LAN)\n\n" +
-                        "Clique em OK após conectar o cabo na porta GE 0/1.",
+                        $"⚠️ NENHUM CABO DETECTADO NA PORTA LAN ({shortLan})!\n\n" +
+                        $"O link físico da porta {lanInterface} está DOWN.\n\n" +
+                        $"👉 Conecte o cabo de rede Ethernet do seu notebook na porta:\n" +
+                        $"🟢 {displayLan}\n\n" +
+                        $"Clique em OK após conectar o cabo na porta {shortLan}.",
                         cancellationToken);
                 }
             }

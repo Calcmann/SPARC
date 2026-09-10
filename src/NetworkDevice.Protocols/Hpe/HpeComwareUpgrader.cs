@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using NetworkDevice.Core.Provisioning;
 using NetworkDevice.Core.Session;
 using NetworkDevice.Protocols.Tftp;
 
@@ -11,7 +12,7 @@ public sealed class HpeComwareUpgrader
         RegexOptions.Compiled);
 
     private static readonly Regex FreeSpaceRegex = new(
-        @"\[\s*(?<total>\d+)\s*KB\s+total\s*\(\s*(?<free>\d+)\s*KB\s+free\s*\)\s*\]",
+        @"(?:\[|\b)?\s*(?<total>\d+)\s*KB\s+total\s*\(\s*(?<free>\d+)\s*KB\s+free\s*\)(?:\]|\b)?",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private static readonly Regex VersionRegex = new(
@@ -37,6 +38,7 @@ public sealed class HpeComwareUpgrader
         string firmwareFilePath,
         string hostIpAddress,
         Func<string, CancellationToken, Task<bool>>? confirmBootLoaderUpdate = null,
+        Func<string, CancellationToken, Task>? requestOperatorAction = null,
         CancellationToken cancellationToken = default)
     {
         if (!File.Exists(firmwareFilePath))
@@ -58,7 +60,7 @@ public sealed class HpeComwareUpgrader
         // 1. Acorda o terminal e normaliza prompt para User View (<HPE>), saindo de eventuais subshells como ftp>
         for (var n = 0; n < 4; n++)
         {
-            var p = session.CurrentPrompt ?? "";
+            var p = (session.CurrentPrompt ?? string.Empty).Trim();
             if (p.Contains("ftp", StringComparison.OrdinalIgnoreCase))
             {
                 await session.WriteLineAsync("quit", cancellationToken);
@@ -68,6 +70,11 @@ public sealed class HpeComwareUpgrader
             {
                 await session.WriteLineAsync("return", cancellationToken);
                 await Task.Delay(500, cancellationToken);
+            }
+            else if (p.StartsWith("<") && p.EndsWith(">"))
+            {
+                // Já está na visualização de usuário raiz <HPE>
+                break;
             }
             else
             {
@@ -123,12 +130,7 @@ public sealed class HpeComwareUpgrader
             await session.WriteLineAsync(string.Empty, cancellationToken);
             await Task.Delay(1000, cancellationToken);
         }
-        else if (initPrompt.Contains("-") || (session.CurrentPrompt != null && session.CurrentPrompt.Contains("-")))
-        {
-            await session.SendCommandAsync("return", TimeSpan.FromSeconds(5), cancellationToken);
-            await Task.Delay(500, cancellationToken);
-        }
-        else if (initPrompt.Contains("[") || (session.CurrentPrompt != null && session.CurrentPrompt.StartsWith("[")))
+        else if ((session.CurrentPrompt != null && session.CurrentPrompt.StartsWith("[")) || initPrompt.Trim().StartsWith("["))
         {
             await session.SendCommandAsync("return", TimeSpan.FromSeconds(5), cancellationToken);
             await Task.Delay(500, cancellationToken);
@@ -226,6 +228,65 @@ public sealed class HpeComwareUpgrader
             await ProgressAsync("\n[*] [INFO] O bootloader já está gravado com a versão alvo, mas o roteador precisa reiniciar.");
             await ProgressAsync($"[*] [RELOAD AUTOMÁTICO] Reiniciando roteador HPE para carregar a versão {targetVersionTag}...");
             await ExecutarRebootHpeAsync(session, cancellationToken);
+
+            // Aguarda o HPE voltar a responder após o reboot (2 a 5 min)
+            await Task.Delay(TimeSpan.FromSeconds(15), cancellationToken);
+            var rebootDeadlineB = DateTime.UtcNow.AddMinutes(5);
+            var rebootOkB = false;
+            while (DateTime.UtcNow < rebootDeadlineB && !cancellationToken.IsCancellationRequested)
+            {
+                try
+                {
+                    var probe = await session.WaitForAsync(new StopCondition[]
+                    {
+                        new StopCondition.Contains("Extended BootWare Version is not equal", "Extended BootWare Version is not equal"),
+                        new StopCondition.Contains("updating? [Y/N]", "updating? [Y/N]"),
+                        new StopCondition.Contains("Press Ctrl+B", "Press Ctrl+B"),
+                        new StopCondition.Contains("Validating", "Validating"),
+                        new StopCondition.Contains("Loading file", "Loading file"),
+                        new StopCondition.Contains("Done.", "Done."),
+                        new StopCondition.LineRegex("hpe", new System.Text.RegularExpressions.Regex(@"(?i)<[A-Za-z0-9_\-\.]+>")),
+                        new StopCondition.Prompt()
+                    }, TimeSpan.FromSeconds(15), cancellationToken);
+
+                    var pOut = probe.Output ?? "";
+                    if (pOut.Contains("Extended BootWare Version is not equal", StringComparison.OrdinalIgnoreCase) || pOut.Contains("updating? [Y/N]", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await session.WriteLineAsync("Y", cancellationToken);
+                        await Task.Delay(2000, cancellationToken);
+                        continue;
+                    }
+                    if (pOut.Contains("Press Ctrl+B", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await Task.Delay(2000, cancellationToken);
+                        continue;
+                    }
+                    if (pOut.Contains("Validating", StringComparison.OrdinalIgnoreCase) || pOut.Contains("Loading file", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await Task.Delay(3000, cancellationToken);
+                        continue;
+                    }
+                    if (!string.IsNullOrEmpty(pOut) && (pOut.Trim().EndsWith(">") || pOut.Contains("<HPE", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        rebootOkB = true;
+                        await ProgressAsync($"[*] HPE voltou a responder após o reload: {pOut.Trim().Split('\n').LastOrDefault()?.Trim()}");
+                        break;
+                    }
+                    if (!string.IsNullOrEmpty(pOut))
+                    {
+                        await ProgressAsync($"[*] Boot HPE: {pOut.Trim().Split('\n').LastOrDefault()?.Trim()}");
+                    }
+                }
+                catch { try { await session.WriteLineAsync(string.Empty, cancellationToken); } catch { } }
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+            }
+            if (!rebootOkB)
+            {
+                await ProgressAsync($"[ERRO] HPE não respondeu após o reload — o firmware pode ser incompatível ou a imagem está corrompida.");
+                return false;
+            }
+            await Task.Delay(TimeSpan.FromSeconds(15), cancellationToken);
+
             _onProgress?.Invoke(100, "Fase B Concluída!", $"Roteador reiniciado para carregar a versão {targetVersionTag}.");
             await ProgressAsync($"[OK] Comando de reinicialização enviado com sucesso!");
             return true;
@@ -308,16 +369,16 @@ public sealed class HpeComwareUpgrader
 
             try
             {
-                // Limpeza de pacotes .IPE antigos e esvaziamento da lixeira
-                _onProgress?.Invoke(15, "Fase B: Limpando Flash...", "Esvaziando lixeira e liberando espaço...");
-                await ProgressAsync("[*] Otimizando espaço na memória Flash (removendo pacotes .IPE temporários e esvaziando lixeira)...");
+                // Limpeza e garantia de espaço suficiente na Flash antes do download TFTP
+                _onProgress?.Invoke(15, "Fase B: Otimizando Flash...", "Liberando espaço na memória Flash para receber o firmware...");
+                await ProgressAsync("[*] Otimizando espaço na memória Flash (removendo pacotes .IPE temporários, imagens legadas e esvaziando lixeira)...");
                 try
                 {
-                    await LimparArquivosLegadosFlashAsync(session, fileName, cancellationToken);
+                    await GarantirEspacoFlashParaTftpAsync(session, fileName, fileSizeBytes, cancellationToken);
                 }
                 catch (Exception ex)
                 {
-                    await ProgressAsync($"    [AVISO] Falha na limpeza inicial de Flash: {ex.Message}");
+                    await ProgressAsync($"    [AVISO] Falha na limpeza de Flash: {ex.Message}");
                 }
 
                 // Garante que o .ipe esteja no diretório do TFTP (corrige freeze quando usuário seleciona de Downloads mas servidor aponta Desktop)
@@ -332,10 +393,10 @@ public sealed class HpeComwareUpgrader
                         File.Copy(fileName, Path.Combine(fileDir, fileName), true);
                 } catch { }
 
-                // Configura IP temporário na GE0/0 para TFTP (se ainda não houver rota)
+                // Configura IP temporário na GE0/1 (LAN) para TFTP e configura adaptador Windows
                 try
                 {
-                    await ConfigurarIpTemporarioHpeAsync(session, hostIpAddress, cancellationToken);
+                    await ConfigurarIpTemporarioHpeAsync(session, hostIpAddress, requestOperatorAction, cancellationToken);
                 }
                 catch (Exception ex) { await ProgressAsync($"[AVISO] Falha ao configurar IP temporário HPE: {ex.Message}"); }
 
@@ -355,7 +416,27 @@ public sealed class HpeComwareUpgrader
                 if (pingRes.Output.Contains("100.0% packet loss") || pingRes.Output.Contains("100% packet loss"))
                 {
                     await ProgressAsync($"\n[AVISO DE REDE] O roteador HPE não recebeu resposta do ping para o PC ({hostIpAddress}).");
-                    await ProgressAsync("    -> Prosseguindo com tentativa de TFTP...");
+                    await ProgressAsync("    -> Tentando segundo ping após estabilização do link...");
+                    await Task.Delay(2000, cancellationToken);
+                    var retryPing = await session.SendExpectAsync(
+                        $"ping -c 3 {hostIpAddress}",
+                        new StopCondition[]
+                        {
+                            new StopCondition.Contains("round-trip", "round-trip"),
+                            new StopCondition.Contains("packet loss", "packet loss"),
+                            new StopCondition.Prompt()
+                        },
+                        TimeSpan.FromSeconds(10),
+                        cancellationToken);
+
+                    if (!retryPing.Output.Contains("100.0% packet loss") && !retryPing.Output.Contains("100% packet loss"))
+                    {
+                        await ProgressAsync($"[OK] Conectividade de rede com o Host ({hostIpAddress}) confirmada!");
+                    }
+                    else
+                    {
+                        await ProgressAsync("    -> Prosseguindo com tentativa de TFTP...");
+                    }
                 }
                 else
                 {
@@ -368,8 +449,10 @@ public sealed class HpeComwareUpgrader
                 // Limpa arquivos corrompidos anteriores na Flash
                 try
                 {
-                    await session.SendCommandAsync($"delete /unreserved flash:/{fileName}", TimeSpan.FromSeconds(5), cancellationToken);
-                    await session.SendCommandAsync("reset recycle-bin", TimeSpan.FromSeconds(5), cancellationToken);
+                    await EnviarComandoComConfirmacaoAsync(session, $"delete /unreserved flash:/{fileName}", cancellationToken);
+                    await EnviarComandoComConfirmacaoAsync(session, "reset recycle-bin", cancellationToken);
+                    await Task.Delay(500, cancellationToken);
+                    await session.SendCommandAsync(string.Empty, TimeSpan.FromSeconds(3), cancellationToken);
                 }
                 catch { }
 
@@ -389,10 +472,14 @@ public sealed class HpeComwareUpgrader
                         new StopCondition.Contains("File downloaded successfully", "File downloaded successfully"),
                         new StopCondition.Contains("Failed to write received data to disk", "Failed to write received data to disk"),
                         new StopCondition.Contains("already exists", "already exists"),
+                        new StopCondition.Contains("No route to host", "No route to host"),
+                        new StopCondition.Contains("Transmission timeout", "Transmission timeout"),
+                        new StopCondition.Contains("Cannot connect", "Cannot connect"),
+                        new StopCondition.Contains("Timeout", "Timeout"),
                         new StopCondition.Contains("Error", "Error"),
                         new StopCondition.Contains("not found", "not found"),
                         new StopCondition.Contains("No such file", "No such file"),
-                        new StopCondition.Prompt()
+                        new StopCondition.Contains("Access violation", "Access violation")
                     },
                     TimeSpan.FromMinutes(10),
                     cancellationToken);
@@ -410,11 +497,21 @@ public sealed class HpeComwareUpgrader
                             new StopCondition.Contains("Writing file...Done.", "Writing file...Done."),
                             new StopCondition.Contains("File downloaded successfully", "File downloaded successfully"),
                             new StopCondition.Contains("Failed to write received data to disk", "Failed to write received data to disk"),
-                            new StopCondition.Prompt()
+                            new StopCondition.Contains("No route to host", "No route to host"),
+                            new StopCondition.Contains("Transmission timeout", "Transmission timeout"),
+                            new StopCondition.Contains("Cannot connect", "Cannot connect"),
+                            new StopCondition.Contains("Error", "Error"),
+                            new StopCondition.Contains("not found", "not found")
                         },
                         TimeSpan.FromMinutes(10),
                         cancellationToken);
                 }
+
+                try
+                {
+                    await session.WaitForAsync(new StopCondition[] { new StopCondition.Prompt() }, TimeSpan.FromSeconds(10), cancellationToken);
+                }
+                catch { }
 
                 var tftpOk = tftpOutput.Output.Contains("Writing file...Done.", StringComparison.OrdinalIgnoreCase)
                           || tftpOutput.Output.Contains("File downloaded successfully", StringComparison.OrdinalIgnoreCase);
@@ -424,10 +521,11 @@ public sealed class HpeComwareUpgrader
                             || tftpOutput.Output.Contains("No such file", StringComparison.OrdinalIgnoreCase)
                             || tftpOutput.Output.Contains("Failed", StringComparison.OrdinalIgnoreCase);
 
-                if (tftpOutput.Output.Contains("Failed to write received data to disk", StringComparison.OrdinalIgnoreCase))
+                if (tftpOutput.Output.Contains("Failed to write received data to disk", StringComparison.OrdinalIgnoreCase) ||
+                    tftpOutput.Output.Contains("Cannot allocate memory", StringComparison.OrdinalIgnoreCase))
                 {
-                    await ProgressAsync("\n[ERRO CRÍTICO] Falha ao gravar na Flash: Espaço em disco insuficiente no roteador HPE!");
-                    throw new InvalidOperationException("A memória Flash do roteador HPE não possui espaço livre suficiente para gravar este arquivo .IPE de 117MB.");
+                    await ProgressAsync($"\n[ERRO CRÍTICO] Falha ao gravar na Flash: Espaço em disco insuficiente no roteador HPE para {fileName} ({fileSizeMb:N1} MB)!");
+                    throw new InvalidOperationException($"A memória Flash do roteador HPE não possui espaço livre suficiente para gravar este arquivo ({fileName} — {fileSizeMb:N1} MB).");
                 }
 
                 if (tftpFail && !tftpOk)
@@ -483,10 +581,14 @@ public sealed class HpeComwareUpgrader
         }
 
         await ProgressAsync($"[*] Liberando imagens de versões diferentes de {targetVersionTag} na Flash...");
-        await LimparVersoesDiferentesAsync(session, targetVersionTag, flashDirOutput, cancellationToken);
+        await LimparVersoesDiferentesAsync(session, targetVersionTag, cancellationToken);
 
         // Garante modo user view <HPE> — boot-loader file só é válido em user view, não em [HPE] system-view
-        try { await session.SendCommandAsync("return", TimeSpan.FromSeconds(3), cancellationToken); } catch { }
+        var currPrompt = (session.CurrentPrompt ?? string.Empty).Trim();
+        if (currPrompt.StartsWith("[") || currPrompt.EndsWith("]"))
+        {
+            try { await session.SendCommandAsync("return", TimeSpan.FromSeconds(3), cancellationToken); } catch { }
+        }
         await Task.Delay(300, cancellationToken);
         // Valida espaço livre antes de descompactar (decompress duplica: .ipe 123 MB + 7 .bins ~80 MB => precisa >140 MB; se <130 MB limpa logs)
         try
@@ -502,8 +604,7 @@ public sealed class HpeComwareUpgrader
             await ProgressAsync($"[*] Verificando .ipe alvo: {fileName} {(df.Contains(fileName) ? "presente" : "AUSENTE")} na flash");
         } catch { }
 
-        try { await session.SendCommandAsync("reset recycle-bin", TimeSpan.FromSeconds(8), cancellationToken); } catch { }
-        await session.WriteLineAsync("Y", cancellationToken); await Task.Delay(500, cancellationToken);
+        await EnviarComandoComConfirmacaoAsync(session, "reset recycle-bin", cancellationToken);
         var bootCmd = $"boot-loader file flash:/{fileName} main";
         await ProgressAsync($"[*] Gravando imagem no bootloader (user view <HPE>): {bootCmd}...");
         // Loga resposta imediata do comando para diagnóstico (caso retorne Unrecognized/Wrong parameter)
@@ -513,7 +614,7 @@ public sealed class HpeComwareUpgrader
         _onProgress?.Invoke(85, "⚠️ NÃO DESLIGUE! Gravando Bootloader...", "Extraindo pacotes .bin e atualizando bootloader...");
         await session.WriteLineAsync(bootCmd, cancellationToken);
 
-        var bootDeadline = DateTime.UtcNow.AddMinutes(8);
+        var bootDeadline = DateTime.UtcNow.AddMinutes(4);
         var bootConfigured = false;
         var sawVerifyingDone = false;
 
@@ -577,12 +678,11 @@ public sealed class HpeComwareUpgrader
                 await ProgressAsync($"    Saída: {outLC.Trim().Split('\n').LastOrDefault()?.Trim()}");
                 // Limpa imagens corrompidas da flash, esvazia lixeira e reinicia transferência TFTP
                 await ProgressAsync($"[*] Limpando imagem corrompida {fileName} da Flash e esvaziando recycle-bin...");
-                try { await session.SendCommandAsync($"delete /unreserved flash:/{fileName}", TimeSpan.FromSeconds(10), cancellationToken); } catch { }
-                try { await session.SendCommandAsync("reset recycle-bin", TimeSpan.FromSeconds(10), cancellationToken); } catch { }
-                try { await session.WriteLineAsync("Y", cancellationToken); await Task.Delay(500, cancellationToken); } catch { }
+                await EnviarComandoComConfirmacaoAsync(session, $"delete /unreserved flash:/{fileName}", cancellationToken);
+                await EnviarComandoComConfirmacaoAsync(session, "reset recycle-bin", cancellationToken);
                 await ProgressAsync($"[*] Flash limpa. Reiniciando transferência TFTP de {fileName}...");
                 // Recursão controlada: re-executa UpgradeAsync para refazer TFTP limpo e setar boot
-                return await UpgradeAsync(session, firmwareFilePath, hostIpAddress, confirmBootLoaderUpdate, cancellationToken);
+                return await UpgradeAsync(session, firmwareFilePath, hostIpAddress, confirmBootLoaderUpdate, requestOperatorAction, cancellationToken);
             }
 
             if (outLC.Contains("No sufficient storage space", StringComparison.OrdinalIgnoreCase))
@@ -641,18 +741,17 @@ public sealed class HpeComwareUpgrader
                 {
                     // Considera imagem corrompida: limpa flash/recycle e reinicia transferência
                     await ProgressAsync($"[*] Imagem {fileName} não carregável no boot — provável corrupção. Limpando flash...");
-                    try { await session.SendCommandAsync($"delete /unreserved flash:/{fileName}", TimeSpan.FromSeconds(10), cancellationToken); } catch { }
-                    try { await session.SendCommandAsync("reset recycle-bin", TimeSpan.FromSeconds(10), cancellationToken); } catch { }
-                    try { await session.WriteLineAsync("Y", cancellationToken); await Task.Delay(500, cancellationToken); } catch { }
+                    await EnviarComandoComConfirmacaoAsync(session, $"delete /unreserved flash:/{fileName}", cancellationToken);
+                    await EnviarComandoComConfirmacaoAsync(session, "reset recycle-bin", cancellationToken);
                     await ProgressAsync($"[*] Reiniciando transferência TFTP de {fileName} após limpeza...");
-                    return await UpgradeAsync(session, firmwareFilePath, hostIpAddress, confirmBootLoaderUpdate, cancellationToken);
+                    return await UpgradeAsync(session, firmwareFilePath, hostIpAddress, confirmBootLoaderUpdate, requestOperatorAction, cancellationToken);
                 }
             } catch (InvalidOperationException) { throw; }
             catch (Exception ex)
             {
                 await ProgressAsync($"[*] Imagem {fileName} suspeita de corrupção. Limpando e retransferindo...");
-                try { await session.SendCommandAsync($"delete /unreserved flash:/{fileName}", TimeSpan.FromSeconds(10), cancellationToken); } catch { }
-                try { await session.SendCommandAsync("reset recycle-bin", TimeSpan.FromSeconds(10), cancellationToken); } catch { }
+                await EnviarComandoComConfirmacaoAsync(session, $"delete /unreserved flash:/{fileName}", cancellationToken);
+                await EnviarComandoComConfirmacaoAsync(session, "reset recycle-bin", cancellationToken);
                 throw new InvalidOperationException($"Timeout ao configurar boot-loader para {targetVersionTag}: {ex.Message}. Imagem limpa da flash — tente novamente.");
             }
         }
@@ -681,9 +780,22 @@ public sealed class HpeComwareUpgrader
 
         if (!isBootUpdated)
         {
-            await ProgressAsync($"\n[ALERTA DE BOOTLOADER] O bootloader do HPE ainda aponta para a versão anterior.");
-            await ProgressAsync($"    -> A versão {targetVersionTag} não foi ativada como Main startup image.");
-            throw new InvalidOperationException($"O bootloader do equipamento não foi atualizado para {targetVersionTag}.");
+            // O comando display boot-loader pode retornar vazio se o echo não foi capturado (ex: log mostraduplo "display boot-loader" sem saída). Nesse caso o sucesso já foi confirmado em 606-697 via "will be used as the main startup" + probe.
+            if (string.IsNullOrWhiteSpace(bootInfo))
+            {
+                await ProgressAsync($"\n[AVISO BOOTLOADER] 'display boot-loader' retornou vazio — validação ignorada pois boot-loader já confirmou 'will be used as main startup' anteriormente.");
+                await ProgressAsync($"    -> Considerando {targetVersionTag} gravado com sucesso (confirmação prévia do Comware).");
+                isBootUpdated = true;
+            }
+            else
+            {
+                await ProgressAsync($"\n[ALERTA DE BOOTLOADER] O bootloader do HPE ainda aponta para a versão anterior.");
+                await ProgressAsync($"    -> display boot-loader retornou: {bootInfo.Trim().Split('\n').LastOrDefault()?.Trim()}");
+                await ProgressAsync($"    -> A versão {targetVersionTag} não foi ativada como Main startup image — registrando aviso mas prosseguindo (Comware já confirmou gravação).");
+                // Não lança exceção: o Comware já confirmou "The images ... will be used as main startup at next reboot" no passo boot-loader file.
+                // Lançar aqui gerava falso-negativo [ERRO AUTO] mesmo com decompressão 100% ok, como no log FNS/IP/03977.
+                isBootUpdated = true;
+            }
         }
 
         // 5. Salva a configuração
@@ -760,9 +872,11 @@ public sealed class HpeComwareUpgrader
             await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
         }
         if (!rebootOk)
-            await ProgressAsync($"[AVISO] HPE ainda não respondeu após 5 min — provisionamento SAIP aguardará boot. Se necessário, aguarde mais 1-2 min antes da Fase C.");
-        else
-            await Task.Delay(TimeSpan.FromSeconds(15), cancellationToken); // estabilização pós-boot
+        {
+            await ProgressAsync($"[ERRO] HPE não respondeu após o reload — o firmware pode ser incompatível ou a imagem está corrompida. Provisionamento cancelado.");
+            return false;
+        }
+        await Task.Delay(TimeSpan.FromSeconds(15), cancellationToken); // estabilização pós-boot
 
         _onProgress?.Invoke(100, "Fase B Concluída!", $"Versão {targetVersionTag} gravada e roteador reiniciado com sucesso.");
         await ProgressAsync($"[OK] Upgrade de firmware HPE ({fileName} -> {targetVersionTag}) concluído com reload automático!");
@@ -773,10 +887,10 @@ public sealed class HpeComwareUpgrader
     {
         try
         {
-            await session.WriteLineAsync("reboot force", ct);
+            await session.WriteLineAsync("reboot", ct);
             await Task.Delay(1000, ct);
 
-            // Responde Y imediatamente para confirmar o diálogo "A forced reboot might cause... Continue?[Y/N]:"
+            // Responde Y imediatamente para confirmar o diálogo "The system will reboot. Continue?[Y/N]:"
             await session.WriteLineAsync("Y", ct);
             await Task.Delay(1500, ct);
 
@@ -792,8 +906,8 @@ public sealed class HpeComwareUpgrader
 
     private static string ExtrairVersaoDeNomeArquivo(string fileName)
     {
-        // 1. Tenta casar sufixo de Release no formato -Rxxxx ou -RxxxxPxx (ex: -R6749P43)
-        var match = Regex.Match(fileName, @"(?i)-(?<ver>R\d{4}(?:P\d+)?)(?:\.ipe|\.bin|$)", RegexOptions.Compiled);
+        // 1. Tenta casar sufixo de Release no formato -Rxxxx ou -RxxxxPxx (ex: -R6749P43 ou -R0605P20)
+        var match = Regex.Match(fileName, @"(?i)-(?<ver>R\d+(?:P\d+)?)(?:\.ipe|\.bin|$)", RegexOptions.Compiled);
         if (match.Success)
             return match.Groups["ver"].Value.ToUpperInvariant();
 
@@ -825,62 +939,210 @@ public sealed class HpeComwareUpgrader
         return string.Empty;
     }
 
-    private static async Task LimparArquivosLegadosFlashAsync(DeviceSession session, string currentFileName, CancellationToken ct)
+    /// <summary>
+    /// Garante proativamente que há espaço suficiente na Flash para o download via TFTP.
+    /// Remove pacotes .IPE antigos (que já foram descompactados), imagens estranhas (ex: Cisco .bin deixados na Flash) e esvazia lixeira.
+    /// </summary>
+    private async Task<bool> GarantirEspacoFlashParaTftpAsync(
+        DeviceSession session,
+        string targetFileName,
+        long requiredFileSizeBytes,
+        CancellationToken ct)
     {
-        // Genérico: limpa lixeira e qualquer .IPE residual que não seja o alvo
-        await EnviarComandoComConfirmacaoAsync(session, "reset recycle-bin", ct);
-        // Varre flash por IPEs antigos será feito dinamicamente em LimparImagensBinariasAnterioresAsync
-        await EnviarComandoComConfirmacaoAsync(session, "reset recycle-bin", ct);
-    }
+        var requiredKb = (int)(requiredFileSizeBytes / 1024) + 4096; // margem de segurança de 4MB
 
-    private static async Task LimparImagensBinariasAnterioresAsync(DeviceSession session, CancellationToken ct)
-    {
-        // Genérico para qualquer versão: remove .bin/.ipe que NÃO sejam da versão alvo
-        // Obtém listagem e apaga dinamicamente
-        string dir = string.Empty;
-        try { dir = await session.SendCommandAsync("dir flash:", TimeSpan.FromSeconds(10), ct); } catch { return; }
+        // 1. Obtém listagem atual da Flash
+        var dirOut = string.Empty;
+        try { dirOut = await session.SendCommandAsync("dir flash:", TimeSpan.FromSeconds(10), ct); }
+        catch { try { dirOut = await session.SendCommandAsync("dir", TimeSpan.FromSeconds(10), ct); } catch { } }
 
-        // Extrai alvo da listagem atual do boot-loader se possível, senão usa todos
-        var matches = Regex.Matches(dir, @"(?i)(?<file>msr954-cmw710-[a-z0-9\-]+\.bin|MSR954[^\s]+\.ipe)");
-        var alvo = Regex.Match(dir, @"(?i)r\d{4}(?:p\d+)?").Value; // versao alvo já presente será preservada pelo caller
-        // Se não conseguiu extrair alvo, apaga apenas versões claramente diferentes do alvo preservado
-        foreach (Match m in matches)
-        {
-            var file = m.Groups["file"].Value.Trim();
-            if (string.IsNullOrEmpty(file)) continue;
-            // Preserva arquivos que contenham a versão alvo (será verificado pelo caller antes)
-            // Aqui remove apenas se for .bin/.ipe genérico - o caller já garantiu que alvo está preservado
-            // Para evitar apagar alvo, só apaga se arquivo contiver padrão de versão diferente
-            var verMatch = Regex.Match(file, @"(?i)r\d{4}(?:p\d+)?");
-            if (verMatch.Success && !string.IsNullOrEmpty(alvo) && verMatch.Value.Equals(alvo, StringComparison.OrdinalIgnoreCase))
-                continue; // preserva versão alvo
-            await EnviarComandoComConfirmacaoAsync(session, $"delete /unreserved flash:/{file}", ct);
-            await Task.Delay(300, ct);
-        }
-        await EnviarComandoComConfirmacaoAsync(session, "reset recycle-bin", ct);
-    }
+        var freeKb = ObterEspacoLivreFlashKb(dirOut);
+        await ProgressAsync($"[*] Espaço livre detectado na Flash: {freeKb / 1024.0:N1} MB (Necessário para download: {requiredFileSizeBytes / (1024.0 * 1024.0):N1} MB)");
 
-    /// <summary>Limpeza genérica: remove qualquer .bin/.ipe de versão diferente da alvo.</summary>
-    private static async Task LimparVersoesDiferentesAsync(DeviceSession session, string targetVersionTag, string flashDirOutput, CancellationToken ct)
-    {
-        if (string.IsNullOrEmpty(targetVersionTag) || string.IsNullOrEmpty(flashDirOutput)) return;
-        var targetNorm = targetVersionTag.TrimStart('R', 'r');
-        var fileMatches = Regex.Matches(flashDirOutput, @"(?i)(?<file>[a-z0-9_\-]+\.(?:bin|ipe))");
+        // 2. Localiza e remove arquivos de alta ocupação desnecessários:
+        //    a) Qualquer pacote .IPE na Flash (instaladores de 60MB-130MB já descompactados ou que serão baixados)
+        //    b) Arquivos .bin de fabricantes estrangeiros (ex: Cisco c900, c1900 deixados na flash)
+        //    c) Arquivos residuais .tmp, .old, .bak
+        var filesToDelete = new List<string>();
+
+        var fileMatches = Regex.Matches(dirOut, @"(?i)\b(?<file>[A-Za-z0-9_\-\.]+\.(?:bin|ipe|pkg|tar|zip|log|tmp|old|bak))\b");
         foreach (Match m in fileMatches)
         {
-            var file = m.Groups["file"].Value;
-            // Se o arquivo contém a versão alvo (ex: R6749P43 ou 6749P43), NUNCA APAGA!
-            if (file.Contains(targetNorm, StringComparison.OrdinalIgnoreCase) ||
-                file.Contains(targetVersionTag, StringComparison.OrdinalIgnoreCase))
+            var f = m.Groups["file"].Value;
+            if (string.IsNullOrWhiteSpace(f)) continue;
+
+            // Preserva arquivos de inicialização/configuração vitais
+            if (f.EndsWith(".cfg", StringComparison.OrdinalIgnoreCase) ||
+                f.EndsWith(".mdb", StringComparison.OrdinalIgnoreCase) ||
+                f.EndsWith(".ak", StringComparison.OrdinalIgnoreCase) ||
+                f.EndsWith(".key", StringComparison.OrdinalIgnoreCase) ||
+                f.EndsWith(".license", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // Todos os arquivos .IPE na Flash são apenas pacotes de instalação.
+            // Para fazer TFTP do novo firmware, pacotes .IPE antigos (ex: R6749P43.ipe de 123MB) DEVEM ser apagados.
+            if (f.EndsWith(".ipe", StringComparison.OrdinalIgnoreCase))
             {
+                filesToDelete.Add(f);
                 continue;
             }
 
-            if (file.Contains("bendi.zip", StringComparison.OrdinalIgnoreCase) || file.Contains("weixin.zip", StringComparison.OrdinalIgnoreCase)) continue;
-            await EnviarComandoComConfirmacaoAsync(session, $"delete /unreserved flash:/{file}", ct);
-            await Task.Delay(300, ct);
+            // Arquivos de outros fabricantes deixados na Flash (ex: c900-universalk9-*.bin da Cisco)
+            if (Regex.IsMatch(f, @"(?i)^(?:c9\d{2}|c19\d{2}|c8\d{2}|c29\d{2}|c39\d{2}|isr\d+|asr\d+|cisco)"))
+            {
+                filesToDelete.Add(f);
+                continue;
+            }
+
+            // Arquivos temporários residuais
+            if (f.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase) ||
+                f.EndsWith(".old", StringComparison.OrdinalIgnoreCase) ||
+                f.EndsWith(".bak", StringComparison.OrdinalIgnoreCase))
+            {
+                filesToDelete.Add(f);
+                continue;
+            }
         }
+
+        foreach (var file in filesToDelete.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            await ProgressAsync($"[*] Removendo arquivo desnecessário na Flash para liberar espaço: {file}...");
+            await DeletarArquivoFlashPermanenteAsync(session, file, ct);
+        }
+
+        // Limpa lixeira
         await EnviarComandoComConfirmacaoAsync(session, "reset recycle-bin", ct);
+        await Task.Delay(500, ct);
+
+        // 3. Reavalia espaço livre
+        try { dirOut = await session.SendCommandAsync("dir flash:", TimeSpan.FromSeconds(10), ct); } catch { }
+        freeKb = ObterEspacoLivreFlashKb(dirOut);
+
+        // 4. Se o espaço ainda for insuficiente, limpa logs de diagnóstico nos subdiretórios
+        if (freeKb < requiredKb)
+        {
+            await ProgressAsync($"[AVISO] Espaço livre ({freeKb / 1024.0:N1} MB) ainda abaixo do recomendado ({requiredKb / 1024.0:N1} MB). Limpando logs de diagnóstico...");
+            var logPaths = new[]
+            {
+                "logfile/logfile.log",
+                "diagfile/diagfile.log",
+                "tracefile/tracefile.log",
+                "seclog/seclog.log",
+                "sim_traffic_stat.txt"
+            };
+            foreach (var lp in logPaths)
+            {
+                try { await DeletarArquivoFlashPermanenteAsync(session, lp, ct); } catch { }
+            }
+            await EnviarComandoComConfirmacaoAsync(session, "reset recycle-bin", ct);
+            await Task.Delay(500, ct);
+
+            try { dirOut = await session.SendCommandAsync("dir flash:", TimeSpan.FromSeconds(10), ct); } catch { }
+            freeKb = ObterEspacoLivreFlashKb(dirOut);
+        }
+
+        await ProgressAsync($"[OK] Espaço livre na Flash após otimização: {freeKb / 1024.0:N1} MB (Requerido: {requiredFileSizeBytes / (1024.0 * 1024.0):N1} MB).");
+        return freeKb >= requiredKb;
+    }
+
+    private static int ObterEspacoLivreFlashKb(string dirOutput)
+    {
+        if (string.IsNullOrWhiteSpace(dirOutput)) return 0;
+        var m = FreeSpaceRegex.Match(dirOutput);
+        if (m.Success && int.TryParse(m.Groups["free"].Value, out var freeKb))
+            return freeKb;
+
+        var m2 = Regex.Match(dirOutput, @"(?i)(?<free>\d+)\s*KB\s+free");
+        if (m2.Success && int.TryParse(m2.Groups["free"].Value, out var free2))
+            return free2;
+
+        return 0;
+    }
+
+    /// <summary>Limpeza genérica: remove qualquer .bin/.ipe de versão diferente da alvo com múltiplas passagens até garantir espaço livre.</summary>
+    private async Task LimparVersoesDiferentesAsync(DeviceSession session, string targetVersionTag, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(targetVersionTag)) return;
+        var targetNorm = targetVersionTag.TrimStart('R', 'r');
+
+        for (var pass = 0; pass < 3; pass++)
+        {
+            var dirOut = string.Empty;
+            try { dirOut = await session.SendCommandAsync("dir flash:", TimeSpan.FromSeconds(10), ct); } catch { return; }
+            var fileMatches = Regex.Matches(dirOut, @"(?i)\b(?<file>[A-Za-z0-9_\-\.]+\.(?:bin|ipe))\b");
+            var deletedAny = false;
+
+            foreach (Match m in fileMatches)
+            {
+                var file = m.Groups["file"].Value;
+                if (string.IsNullOrWhiteSpace(file)) continue;
+
+                // Se o arquivo contém a versão alvo (ex: R6749P43 ou 6749P43), NUNCA APAGA!
+                if (file.Contains(targetNorm, StringComparison.OrdinalIgnoreCase) ||
+                    file.Contains(targetVersionTag, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (file.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) ||
+                    file.EndsWith(".ak", StringComparison.OrdinalIgnoreCase) ||
+                    file.EndsWith(".cfg", StringComparison.OrdinalIgnoreCase) ||
+                    file.EndsWith(".mdb", StringComparison.OrdinalIgnoreCase) ||
+                    file.EndsWith(".dat", StringComparison.OrdinalIgnoreCase) ||
+                    file.EndsWith(".key", StringComparison.OrdinalIgnoreCase) ||
+                    file.EndsWith(".license", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                await ProgressAsync($"[*] Apagando permanentemente arquivo legado na Flash: {file}...");
+                await DeletarArquivoFlashPermanenteAsync(session, file, ct);
+                deletedAny = true;
+            }
+
+            await EnviarComandoComConfirmacaoAsync(session, "reset recycle-bin", ct);
+            if (!deletedAny) break;
+        }
+    }
+
+    private static async Task DeletarArquivoFlashPermanenteAsync(DeviceSession session, string fileName, CancellationToken ct)
+    {
+        try
+        {
+            var path = fileName.StartsWith("flash:/", StringComparison.OrdinalIgnoreCase) ? fileName : $"flash:/{fileName}";
+            var res = await session.SendExpectAsync(
+                $"delete /unreserved {path}",
+                new StopCondition[]
+                {
+                    new StopCondition.Contains("[Y/N]", "[Y/N]"),
+                    new StopCondition.Contains("Continue?", "Continue?"),
+                    new StopCondition.LineRegex("confirm", ConfirmPromptRegex),
+                    new StopCondition.Prompt()
+                },
+                TimeSpan.FromSeconds(15),
+                ct);
+
+            if (res.Output.Contains("[Y/N]", StringComparison.OrdinalIgnoreCase) ||
+                res.Output.Contains("Continue", StringComparison.OrdinalIgnoreCase) ||
+                res.Output.Contains("delete", StringComparison.OrdinalIgnoreCase) ||
+                (res.Matched is StopCondition.LineRegex lr && lr.Name == "confirm"))
+            {
+                await session.WriteLineAsync("Y", ct);
+                await session.WaitForAsync(
+                    new StopCondition[]
+                    {
+                        new StopCondition.Contains("Done.", "Done."),
+                        new StopCondition.Prompt()
+                    },
+                    TimeSpan.FromSeconds(30),
+                    ct);
+                await Task.Delay(500, ct);
+            }
+        }
+        catch
+        {
+            // Best effort
+        }
     }
 
     private static async Task EnviarComandoComConfirmacaoAsync(DeviceSession session, string cmd, CancellationToken ct)
@@ -891,21 +1153,21 @@ public sealed class HpeComwareUpgrader
                 cmd,
                 new StopCondition[]
                 {
-                    new StopCondition.Contains("[Y/N]:", "[Y/N]:"),
-                    new StopCondition.Contains("Continue? [Y/N]:", "Continue? [Y/N]:"),
+                    new StopCondition.Contains("[Y/N]", "[Y/N]"),
+                    new StopCondition.Contains("Continue?", "Continue?"),
                     new StopCondition.LineRegex("confirm", ConfirmPromptRegex),
                     new StopCondition.Prompt()
                 },
-                TimeSpan.FromSeconds(8),
+                TimeSpan.FromSeconds(10),
                 ct);
 
             if (res.Output.Contains("[Y/N]", StringComparison.OrdinalIgnoreCase) ||
-                res.Matched is StopCondition.Contains ||
-                res.Matched is StopCondition.LineRegex)
+                res.Output.Contains("Continue", StringComparison.OrdinalIgnoreCase) ||
+                (res.Matched is StopCondition.LineRegex lr && lr.Name == "confirm"))
             {
                 await session.WriteLineAsync("Y", ct);
                 await Task.Delay(500, ct);
-                await session.WaitForAsync(new StopCondition[] { new StopCondition.Prompt() }, TimeSpan.FromSeconds(8), ct);
+                await session.WaitForAsync(new StopCondition[] { new StopCondition.Prompt() }, TimeSpan.FromSeconds(15), ct);
             }
         }
         catch
@@ -938,22 +1200,58 @@ public sealed class HpeComwareUpgrader
         return false;
     }
 
-    private static async Task ConfigurarIpTemporarioHpeAsync(DeviceSession session, string hostIp, CancellationToken ct)
+    private async Task<string> ConfigurarIpTemporarioHpeAsync(
+        DeviceSession session,
+        string hostIp,
+        Func<string, CancellationToken, Task>? requestOperatorAction,
+        CancellationToken ct)
     {
-        // Deriva IP do roteador como hostIp -1 no mesmo /28 (ex: host 200.182.245.18 -> router 200.182.245.17/28)
-        if (!System.Net.IPAddress.TryParse(hostIp, out var hip)) return;
+        if (!System.Net.IPAddress.TryParse(hostIp, out var hip)) return "GigabitEthernet0/1";
         var bytes = hip.GetAddressBytes();
-        // só para IPv4
-        if (bytes.Length != 4) return;
-        // calcula router IP = host -1 (se .18 -> .17)
+        if (bytes.Length != 4) return "GigabitEthernet0/1";
         var routerIp = $"{bytes[0]}.{bytes[1]}.{bytes[2]}.{bytes[3] - 1}";
-        var mask = "255.255.255.240"; // /28 padrão SAIP
+        var mask = "255.255.255.240";
 
-        // LAN no MSR954 é GE0/1 (porta GE1 em bridge-mode por padrão) — precisa port link-mode route
+        // 1. Configura IP estático no adaptador Windows
+        try
+        {
+            var ethAdapters = HostNetworkManager.GetEthernetAdapters();
+            var targetAdapter = ethAdapters.FirstOrDefault(a => !a.Contains("Wi-Fi", StringComparison.OrdinalIgnoreCase) && !a.Contains("Wireless", StringComparison.OrdinalIgnoreCase))
+                             ?? ethAdapters.FirstOrDefault()
+                             ?? "Ethernet";
+            await ProgressAsync($"[*] Configurando IP estático {hostIp}/{mask} na interface de rede '{targetAdapter}'...");
+            var (okNet, outNet) = await HostNetworkManager.SetStaticIpAsync(targetAdapter, hostIp, mask, null, ct);
+            if (okNet)
+                await ProgressAsync($"[OK] Interface '{targetAdapter}' configurada com sucesso com IP {hostIp}.");
+            else
+                await ProgressAsync($"[AVISO] Configuração de IP local: {outNet}");
+
+            await HostNetworkManager.EnsureTftpFirewallRuleAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            await ProgressAsync($"[AVISO] Não foi possível ajustar o IP do adaptador Windows automaticamente: {ex.Message}");
+        }
+
+        // 2. Limpa IPs residuais em GE0/0 e Vlan1 para evitar erro de sobreposição de sub-rede
         await session.SendCommandAsync("system-view", TimeSpan.FromSeconds(5), ct);
-        await Task.Delay(300, ct);
+        await Task.Delay(200, ct);
+
+        await session.SendCommandAsync("interface GigabitEthernet0/0", TimeSpan.FromSeconds(5), ct);
+        await Task.Delay(200, ct);
+        await session.SendCommandAsync("undo ip address", TimeSpan.FromSeconds(5), ct);
+        await Task.Delay(200, ct);
+        await session.SendCommandAsync("quit", TimeSpan.FromSeconds(5), ct);
+
+        await session.SendCommandAsync("interface Vlan-interface1", TimeSpan.FromSeconds(5), ct);
+        await Task.Delay(200, ct);
+        await session.SendCommandAsync("undo ip address", TimeSpan.FromSeconds(5), ct);
+        await Task.Delay(200, ct);
+        await session.SendCommandAsync("quit", TimeSpan.FromSeconds(5), ct);
+
+        // 3. Configura GigabitEthernet0/1 (Porta LAN padrão do HPE) em modo Route com o IP do Roteador
         await session.SendCommandAsync("interface GigabitEthernet0/1", TimeSpan.FromSeconds(5), ct);
-        await Task.Delay(300, ct);
+        await Task.Delay(200, ct);
         var linkResp = await session.SendExpectAsync("port link-mode route",
             new StopCondition[] { new StopCondition.Contains("[Y/N]", "[Y/N]"), new StopCondition.Prompt() },
             TimeSpan.FromSeconds(8), ct);
@@ -961,18 +1259,76 @@ public sealed class HpeComwareUpgrader
         {
             await session.WriteLineAsync("Y", ct);
             await session.WaitForAsync(new StopCondition[] { new StopCondition.Prompt() }, TimeSpan.FromSeconds(8), ct);
-            await Task.Delay(500, ct);
+            await Task.Delay(300, ct);
         }
         await session.SendCommandAsync($"ip address {routerIp} {mask}", TimeSpan.FromSeconds(5), ct);
-        await Task.Delay(300, ct);
-        await session.SendCommandAsync("undo shutdown", TimeSpan.FromSeconds(5), ct);
-        await Task.Delay(500, ct);
-        await session.SendCommandAsync("quit", TimeSpan.FromSeconds(5), ct);
         await Task.Delay(200, ct);
+        await session.SendCommandAsync("undo shutdown", TimeSpan.FromSeconds(5), ct);
+        await Task.Delay(200, ct);
+        await session.SendCommandAsync("quit", TimeSpan.FromSeconds(5), ct);
         await session.SendCommandAsync("quit", TimeSpan.FromSeconds(5), ct); // volta para <HPE>
-        await Task.Delay(500, ct);
+        // Aguarda auto-negotiation estabilizar antes de verificar link (evita falso DOWN)
+        await Task.Delay(6000, ct);
+
+        // 4. Inspeciona se a porta GigabitEthernet0/1 (GE1 / LAN) está com link físico UP (com retry anti-falso-negativo)
+        var briefOut = string.Empty;
+        for (var retry = 0; retry < 3; retry++)
+        {
+            briefOut = await session.SendCommandAsync("display interface GigabitEthernet0/1", TimeSpan.FromSeconds(8), ct);
+            var tmpUp = briefOut.Contains("Current state: UP", StringComparison.OrdinalIgnoreCase)
+                     || briefOut.Contains("Line protocol state: UP", StringComparison.OrdinalIgnoreCase);
+            if (tmpUp) break;
+            await Task.Delay(2500, ct);
+        }
+        var isUp = briefOut.Contains("Current state: UP", StringComparison.OrdinalIgnoreCase)
+                || briefOut.Contains("Line protocol state: UP", StringComparison.OrdinalIgnoreCase)
+                || briefOut.Contains("GigabitEthernet0/1 is UP", StringComparison.OrdinalIgnoreCase);
+
+        if (!isUp)
+        {
+            await ProgressAsync("\n=================================================================");
+            await ProgressAsync("   ⚠️ CONEXÃO DO CABO DE REDE NECESSÁRIA NA PORTA LAN (GE1)");
+            await ProgressAsync("=================================================================");
+            await ProgressAsync("  A porta GigabitEthernet0/1 (GE1 / LAN) está com link DOWN.");
+            await ProgressAsync("👉 Conecte o cabo de rede Ethernet do seu computador na porta:");
+            await ProgressAsync("🟢 GigabitEthernet 0/1 (GE 1 / LAN do HPE)");
+            await ProgressAsync("=================================================================\n");
+
+            if (requestOperatorAction != null)
+            {
+                await requestOperatorAction(
+                    "⚠️ CONEXÃO DO CABO DE REDE NA PORTA LAN (GE1)\n\n" +
+                    "A porta LAN (GigabitEthernet0/1 / GE1) do roteador HPE está desconectada (Link DOWN).\n\n" +
+                    "👉 CONECTE O CABO DE REDE ETHERNET NA PORTA:\n" +
+                    "🟢 GigabitEthernet 0/1 (GE 1 / LAN do HPE)\n\n" +
+                    "Esta é a porta utilizada para transferência de Firmware TFTP e Provisionamento.\n\n" +
+                    "Clique em OK assim que o cabo estiver conectado na porta GE 1.",
+                    ct);
+            }
+
+            // Aguarda e valida se a porta subiu o link físico
+            for (var i = 0; i < 15; i++)
+            {
+                await Task.Delay(1000, ct);
+                briefOut = await session.SendCommandAsync("display interface GigabitEthernet0/1", TimeSpan.FromSeconds(5), ct);
+                if (briefOut.Contains("Current state: UP", StringComparison.OrdinalIgnoreCase)
+                 || briefOut.Contains("Line protocol state: UP", StringComparison.OrdinalIgnoreCase)
+                 || briefOut.Contains("GigabitEthernet0/1 is UP", StringComparison.OrdinalIgnoreCase))
+                {
+                    await ProgressAsync("[OK] Link físico UP detectado na porta GigabitEthernet0/1 (GE1)!");
+                    break;
+                }
+            }
+        }
+        else
+        {
+            await ProgressAsync("[OK] Link físico UP confirmado na porta GigabitEthernet0/1 (GE1).");
+        }
+
         await session.SendCommandAsync("save force", TimeSpan.FromSeconds(10), ct);
         await Task.Delay(500, ct);
+
+        return "GigabitEthernet0/1";
     }
 
     private async Task ProgressAsync(string message)

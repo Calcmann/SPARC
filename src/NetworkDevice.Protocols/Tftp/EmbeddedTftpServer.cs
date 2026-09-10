@@ -129,17 +129,22 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
 
         using var transferSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp)
         {
-            ReceiveBufferSize = 4 * 1024 * 1024,
-            SendBufferSize = 4 * 1024 * 1024,
+            ReceiveBufferSize = 8 * 1024 * 1024,
+            SendBufferSize = 8 * 1024 * 1024,
             ReceiveTimeout = 2000,
             SendTimeout = 2000
         };
+
+        const int SioUdpConnReset = -1744830452;
+        try { transferSocket.IOControl(SioUdpConnReset, new byte[] { 0 }, null); } catch { }
+
         transferSocket.Bind(new IPEndPoint(IPAddress.Any, 0)); // Porta efêmera dedicada
+        try { transferSocket.Connect(clientEp); } catch { }
 
         if (!File.Exists(fullPath))
         {
             LogMessage?.Invoke($"[TFTP] Arquivo não encontrado: {fullPath}");
-            SendError(transferSocket, clientEp, 1, "File not found");
+            SendError(transferSocket, 1, "File not found");
             return;
         }
 
@@ -147,11 +152,10 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
         {
             var fileInfo = new FileInfo(fullPath);
             var totalBytes = fileInfo.Length;
-            using var fileStream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read, 512 * 1024);
+            using var fileStream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read, 1024 * 1024);
             LogMessage?.Invoke($"[TFTP] Roteador {clientEp.Address} conectado! Iniciando envio de '{cleanFilename}' ({totalBytes / (1024.0 * 1024.0):F1} MB)...");
 
             var ackBuffer = new byte[516];
-            EndPoint remoteAckEp = new IPEndPoint(clientEp.Address, clientEp.Port);
 
             var hasOptions = (blkSize != DefaultBlockSize) || (windowSize > 1) || tsizeRequested;
 
@@ -162,10 +166,10 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
             }
             else
             {
-                var proposeBlk = Math.Min(blkSize, 1468);
+                var proposeBlk = Math.Min(blkSize, 8192);
                 var proposeWin = windowSize;
-                SendOAck(transferSocket, clientEp, proposeBlk, proposeWin > 1 ? proposeWin : (int?)null, totalBytes, tsizeRequested);
-                var oackAck = ReceiveAckSync(transferSocket, ref remoteAckEp, 0, ackBuffer, 2000, ct);
+                SendOAck(transferSocket, proposeBlk, proposeWin > 1 ? proposeWin : (int?)null, totalBytes, tsizeRequested);
+                var oackAck = ReceiveAckSync(transferSocket, 0, ackBuffer, 2000, ct);
                 if (oackAck)
                 {
                     blkSize = proposeBlk;
@@ -205,9 +209,9 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
                 var ackOk = false;
                 for (var retry = 0; retry < 8; retry++)
                 {
-                    transferSocket.SendTo(dataPacket, 0, dataPacket.Length, SocketFlags.None, clientEp);
+                    transferSocket.Send(dataPacket, SocketFlags.None);
 
-                    if (ReceiveAckSync(transferSocket, ref remoteAckEp, blockNumber, ackBuffer, 2000, ct))
+                    if (ReceiveAckSync(transferSocket, blockNumber, ackBuffer, 2000, ct))
                     {
                         ackOk = true;
                         break;
@@ -238,7 +242,6 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
 
     private static bool ReceiveAckSync(
         Socket socket,
-        ref EndPoint expectedEp,
         ushort expectedBlock,
         byte[] buffer,
         int timeoutMs,
@@ -250,7 +253,7 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
         {
             try
             {
-                var received = socket.ReceiveFrom(buffer, SocketFlags.None, ref expectedEp);
+                var received = socket.Receive(buffer, SocketFlags.None);
                 if (received >= 4 && buffer[0] == 0 && buffer[1] == OpCodeAck)
                 {
                     var block = (ushort)((buffer[2] << 8) | buffer[3]);
@@ -298,7 +301,7 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
         return (filename, mode, blkSize, windowSize, tsize);
     }
 
-    private static void SendOAck(Socket socket, IPEndPoint ep, int? blkSize, int? windowSize, long totalBytes, bool includeTsize)
+    private static void SendOAck(Socket socket, int? blkSize, int? windowSize, long totalBytes, bool includeTsize)
     {
         var sb = new StringBuilder();
         if (blkSize.HasValue)
@@ -326,10 +329,10 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
         packet[1] = OpCodeOAck;
         Array.Copy(payload, 0, packet, 2, payload.Length);
 
-        socket.SendTo(packet, 0, packet.Length, SocketFlags.None, ep);
+        socket.Send(packet, SocketFlags.None);
     }
 
-    private static void SendError(Socket socket, IPEndPoint ep, ushort errorCode, string errorMessage)
+    private static void SendError(Socket socket, ushort errorCode, string errorMessage)
     {
         var msgBytes = Encoding.ASCII.GetBytes(errorMessage + "\0");
         var packet = new byte[4 + msgBytes.Length];
@@ -339,7 +342,7 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
         packet[3] = (byte)(errorCode & 0xFF);
         Array.Copy(msgBytes, 0, packet, 4, msgBytes.Length);
 
-        socket.SendTo(packet, 0, packet.Length, SocketFlags.None, ep);
+        socket.Send(packet, SocketFlags.None);
     }
 
     public async ValueTask DisposeAsync()

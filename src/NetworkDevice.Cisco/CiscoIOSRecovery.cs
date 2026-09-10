@@ -124,31 +124,40 @@ public sealed class CiscoIOSRecovery
             return;
         }
 
-        // 2) Equipamento bloqueado por senha (PasswordLocked): Inicia o agendador e solicita reload
+        // 2) Equipamento bloqueado por senha (PasswordLocked): Solicita reload, limpa buffers e inicia o agendador de interrupção
         await ProgressAsync("Equipamento bloqueado por senha ou não inicializado. Iniciando processo de quebra via ROMMON...", cancellationToken);
 
+        stateMachine.TransitionTo(RecoveryState.WaitingReload, "Solicitando reload do equipamento...");
+        if (requestReload is not null)
+        {
+            var reloadInstruction = _profile.RequiresManualIntervention && !string.IsNullOrEmpty(_profile.ManualInterventionPrompt)
+                ? _profile.ManualInterventionPrompt
+                : _profile.Method == BootInterruptMethod.CtrlC
+                    ? "Desligue e religue (reload / power-cycle) o equipamento agora na chave de energia ou cabo de força (aguarde 5 segundos desligado). O software enviará pulsos contínuos de Ctrl+C para interceptar o ROMMON. Clique em OK assim que o equipamento for religado."
+                    : "Desligue e religue (reload / power-cycle) o equipamento agora na chave de energia ou cabo de força (aguarde 5 segundos desligado). O software enviará pulsos contínuos de Break para interceptar o ROMMON. Clique em OK assim que o equipamento for religado.";
+
+            await ProgressAsync($"Solicitando reload do equipamento ({_profile.Name})...", cancellationToken);
+            await requestReload(reloadInstruction, cancellationToken);
+        }
+        else
+        {
+            await ProgressAsync($"Solicitado reload do equipamento. Monitorando boot...", cancellationToken);
+        }
+
+        // Limpa buffers residuais do terminal antes de ligar o monitor de boot
+        try
+        {
+            var drainBuf = new byte[2048];
+            while (await session.Transport.ReadAsync(drainBuf, cancellationToken) > 0) { }
+        }
+        catch { }
+
+        await ProgressAsync($"Iniciando pulsos de interrupção ({_profile.Name}) e aguardando ROMMON...", cancellationToken);
         using var interruptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var interruptTask = stateMachine.RunInterruptPhaseAsync(interruptCts.Token);
 
         try
         {
-            stateMachine.TransitionTo(RecoveryState.WaitingReload, "Solicitando reload do equipamento...");
-            if (requestReload is not null)
-            {
-                var reloadInstruction = _profile.RequiresManualIntervention && !string.IsNullOrEmpty(_profile.ManualInterventionPrompt)
-                    ? _profile.ManualInterventionPrompt
-                    : _profile.Method == BootInterruptMethod.CtrlC
-                        ? "Desligue e religue (reload / power-cycle) o equipamento agora na chave de energia ou cabo de força. O agendador de interrupção (Ctrl+C) JÁ ESTÁ ATIVO e capturará o ROMMON durante o boot. Clique em OK assim que o equipamento for religado."
-                        : "Desligue e religue (reload / power-cycle) o equipamento agora na chave de energia ou cabo de força. O agendador de interrupção (Break) JÁ ESTÁ ATIVO e capturará o ROMMON durante o boot. Clique em OK assim que o equipamento for religado.";
-
-                await ProgressAsync($"Solicitando reload do equipamento ({_profile.Name} — interrupções já ativas)...", cancellationToken);
-                await requestReload(reloadInstruction, cancellationToken);
-            }
-            else
-            {
-                await ProgressAsync($"Solicitado reload do equipamento. Monitorando boot...", cancellationToken);
-            }
-
             // 3) Aguarda a conclusão da interrupção
             var rommonPrompt = await interruptTask;
             var capturedRommonKind = RommonSwitchPrompt.IsMatch(rommonPrompt) ? RommonKind.Switch : RommonKind.Router;
@@ -200,48 +209,77 @@ public sealed class CiscoIOSRecovery
                 return (DeviceAccessState.AlreadyInRommon, RommonKind.Router);
 
             // 2. Diálogo de Inicialização — responde "no" + ENTER para forçar início e verifica logs
-            if (rawOutput.Contains("initial configuration dialog", StringComparison.OrdinalIgnoreCase) || rawOutput.Contains("System Configuration Dialog", StringComparison.OrdinalIgnoreCase))
+            if (rawOutput.Contains("initial configuration dialog", StringComparison.OrdinalIgnoreCase) ||
+                rawOutput.Contains("System Configuration Dialog", StringComparison.OrdinalIgnoreCase) ||
+                rawOutput.Contains("[yes/no]", StringComparison.OrdinalIgnoreCase))
             {
-                await ProgressAsync("Detectado diálogo de configuração inicial. Respondendo 'no' + ENTER...", ct);
+                await ProgressAsync("Detectado diálogo de configuração inicial. Respondendo 'no'...", ct);
                 await session.WriteLineAsync("no", ct);
                 await Task.Delay(800, ct);
-                await session.WriteLineAsync(string.Empty, ct); // ENTER para forçar "Press RETURN to get started"
-                await Task.Delay(800, ct);
-                // Verifica o que o IOS retornou após "no"
+
                 try
                 {
                     var after = await session.WaitForAsync(
                         new StopCondition[]
                         {
+                            new StopCondition.LineRegex("autoinstall", new Regex(@"(?i)terminate\s+autoinstall.*\[yes(?:/no)?\]|\[yes\]:")),
                             new StopCondition.LineRegex("press-return", PressReturnPrompt),
                             new StopCondition.LineRegex("prompt-priv", new Regex(@"#\s*$")),
                             new StopCondition.LineRegex("prompt-user", new Regex(@">\s*$")),
                             new StopCondition.LineRegex("any", new Regex(@"\S"))
-                        }, TimeSpan.FromSeconds(4), ct);
+                        }, TimeSpan.FromSeconds(5), ct);
+
                     rawOutput += "\n" + after.Output;
-                    tail = rawOutput.Replace("\r", "").Replace("\n", " ").Trim();
-                    await ProgressAsync($"Após 'no': {Truncate(tail)}", ct);
-                    if (after.Output.Contains("Press RETURN", StringComparison.OrdinalIgnoreCase))
+                    if (after.Output.Contains("terminate autoinstall", StringComparison.OrdinalIgnoreCase) || after.Output.Contains("[yes]:", StringComparison.OrdinalIgnoreCase))
                     {
-                        await session.WriteLineAsync(string.Empty, ct);
-                        await Task.Delay(500, ct);
+                        await session.WriteLineAsync("yes", ct);
+                        await Task.Delay(600, ct);
                     }
-                } catch { }
+
+                    await session.WriteLineAsync(string.Empty, ct);
+                    await Task.Delay(400, ct);
+
+                    var promptCheck = await session.WaitForAsync(
+                        new StopCondition[]
+                        {
+                            new StopCondition.LineRegex("prompt-priv", new Regex(@"#\s*$")),
+                            new StopCondition.LineRegex("prompt-user", new Regex(@">\s*$")),
+                            new StopCondition.LineRegex("press-return", PressReturnPrompt),
+                            new StopCondition.LineRegex("password", new Regex(@"(?i)(?:user|username|login|password|user access verification|secret)\s*[:?]"))
+                        }, TimeSpan.FromSeconds(4), ct);
+
+                    rawOutput += "\n" + promptCheck.Output;
+                    tail = rawOutput.Replace("\r", "").Replace("\n", " ").Trim();
+                    await ProgressAsync($"Após resposta ao diálogo inicial: {Truncate(tail)}", ct);
+                }
+                catch { }
             }
             else if (rawOutput.Contains("Press RETURN to get started", StringComparison.OrdinalIgnoreCase))
             {
                 await session.WriteLineAsync(string.Empty, ct);
                 await Task.Delay(500, ct);
+                try
+                {
+                    var promptCheck = await session.WaitForAsync(
+                        new StopCondition[]
+                        {
+                            new StopCondition.LineRegex("prompt-priv", new Regex(@"#\s*$")),
+                            new StopCondition.LineRegex("prompt-user", new Regex(@">\s*$"))
+                        }, TimeSpan.FromSeconds(3), ct);
+                    rawOutput += "\n" + promptCheck.Output;
+                    tail = rawOutput.Replace("\r", "").Replace("\n", " ").Trim();
+                }
+                catch { }
             }
 
             // 3. Prompt aberto com # (Privilegiado)
-            if (tail.EndsWith("#"))
+            if (tail.EndsWith("#") || Regex.IsMatch(tail, @"[^\r\n]+#\s*$"))
             {
                 return (DeviceAccessState.UnlockedPrompt, null);
             }
 
             // 4. Prompt de usuário (>) -> Testa se enable é livre
-            if (tail.EndsWith(">"))
+            if (tail.EndsWith(">") || Regex.IsMatch(tail, @"[^\r\n]+>\s*$"))
             {
                 await session.WriteLineAsync("enable", ct);
                 try
@@ -257,7 +295,7 @@ public sealed class CiscoIOSRecovery
                         ct);
 
                     var enableTail = enableResult.Output.Replace("\r", "").Replace("\n", " ").Trim();
-                    if (enableTail.EndsWith("#"))
+                    if (enableTail.EndsWith("#") || Regex.IsMatch(enableTail, @"[^\r\n]+#\s*$"))
                     {
                         return (DeviceAccessState.UnlockedPrompt, null);
                     }
@@ -317,40 +355,55 @@ public sealed class CiscoIOSRecovery
 
     public static async Task<bool> EnsurePrivilegedExecViewAsync(DeviceSession session, ProgressHandler? progress = null, CancellationToken ct = default)
     {
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < 5; i++)
         {
-            // Envia 'end' (ou Ctrl+Z) para sair de qualquer sub-menu / (config-if) / (config) direto para Privileged EXEC #
-            await session.WriteLineAsync("end", ct);
-            await Task.Delay(300, ct);
+            // Envia ENTER limpo para sondar o prompt atual
+            await session.WriteLineAsync(string.Empty, ct);
+            await Task.Delay(250, ct);
 
             var res = await session.WaitForAsync(
                 new StopCondition[]
                 {
-                    new StopCondition.LineRegex("priv-prompt", new Regex(@"[^\(\r\n]+#\s*$", RegexOptions.Compiled)),
+                    new StopCondition.LineRegex("press-return", PressReturnPrompt),
                     new StopCondition.LineRegex("config-prompt", new Regex(@"\([^\)\r\n]+\)#\s*$", RegexOptions.Compiled)),
-                    new StopCondition.LineRegex("user-prompt", new Regex(@"[^\r\n]+>\s*$", RegexOptions.Compiled))
+                    new StopCondition.LineRegex("priv-prompt", new Regex(@"[^\(\r\n]+#\s*$", RegexOptions.Compiled)),
+                    new StopCondition.LineRegex("user-prompt", new Regex(@"[^\r\n]+>\s*$", RegexOptions.Compiled)),
+                    new StopCondition.Prompt()
                 },
-                TimeSpan.FromSeconds(2),
+                TimeSpan.FromSeconds(3),
                 ct);
 
             var outText = res.Output.Trim();
+
+            if (outText.Contains("Press RETURN", StringComparison.OrdinalIgnoreCase))
+            {
+                await session.WriteLineAsync(string.Empty, ct);
+                await Task.Delay(300, ct);
+                continue;
+            }
+
+            // Se estiver em modo de configuração (ex: Router(config)# ou Router(config-if)#)
+            if (Regex.IsMatch(outText, @"\([^\)\r\n]+\)#\s*$"))
+            {
+                await session.WriteLineAsync("end", ct);
+                await Task.Delay(400, ct);
+                continue;
+            }
+
             // Se estiver em prompt não-config terminado em # (ex: Router#)
-            if (Regex.IsMatch(outText, @"^[^\(\r\n]+#\s*$"))
+            if (Regex.IsMatch(outText, @"[^\(\r\n]+#\s*$"))
             {
                 if (progress != null && i > 0)
                     await progress("[*] Retornado com sucesso ao menu privilegiado do Cisco (Privileged EXEC #).");
                 return true;
             }
 
-            if (outText.Contains("(", StringComparison.Ordinal) && outText.EndsWith("#"))
-            {
-                await session.WriteLineAsync("exit", ct);
-                await Task.Delay(300, ct);
-            }
-            else if (outText.EndsWith(">"))
+            // Se estiver em modo de usuário (ex: Router>)
+            if (Regex.IsMatch(outText, @"[^\r\n]+>\s*$"))
             {
                 await session.WriteLineAsync("enable", ct);
-                await Task.Delay(300, ct);
+                await Task.Delay(400, ct);
+                continue;
             }
         }
         return false;
@@ -358,35 +411,23 @@ public sealed class CiscoIOSRecovery
 
     private async Task ExecuteDirectCliResetAsync(DeviceSession session, CancellationToken ct)
     {
-        // Garante que o equipamento saiu de qualquer sub-menu / (config) e está no modo privilegiado raiz (#)
+        // Garante que o equipamento está no modo privilegiado raiz (#)
         await EnsurePrivilegedExecViewAsync(session, _progress, ct);
 
-        // Garante modo privilegiado (enable) antes de comandos administrativos
-        if (session.Mode is not (ExecMode.PrivilegedExec or ExecMode.GlobalConfig) && (session.CurrentPrompt == null || !session.CurrentPrompt.EndsWith("#")))
-        {
-            await ProgressAsync("Entrando em modo privilegiado (enable)...", ct);
-            await session.WriteLineAsync("enable", ct);
-            await Task.Delay(300, ct);
-            await WaitForPromptAsync(session, ct);
-        }
-
-        await session.WriteLineAsync("end", ct);
-        await Task.Delay(200, ct);
-
-        await ProgressAsync("Apagando configuração e removendo senha antiga (write erase)...", ct);
-        await SendConfirmAsync(session, "write erase", EraseConfirm, waitForPrompt: true, ct);
-
-        await ProgressAsync("Garantindo config-register 0x2102 (boot normal)...", ct);
+        // Desativa lookup DNS para evitar travamentos com "Translating... domain server" e garante config-register 0x2102
         await session.WriteLineAsync("configure terminal", ct);
+        await WaitForPromptAsync(session, ct);
+        await session.WriteLineAsync("no ip domain-lookup", ct);
         await WaitForPromptAsync(session, ct);
         await session.WriteLineAsync("config-register 0x2102", ct);
         await WaitForPromptAsync(session, ct);
         await session.WriteLineAsync("end", ct);
         await WaitForPromptAsync(session, ct);
 
-        await ProgressAsync("Salvando configuração limpa (write memory)...", ct);
-        await session.WriteLineAsync("write memory", ct);
-        await WaitForPromptAsync(session, ct);
+        await ProgressAsync("Apagando configuração e removendo senha antiga (write erase)...", ct);
+        await SendConfirmAsync(session, "write erase", EraseConfirm, waitForPrompt: true, ct);
+
+        await ProgressAsync("Configuração limpa e registrador 0x2102 garantido.", ct);
     }
 
     private async Task<RommonKind> RunRecoveryStepsAsync(
@@ -471,8 +512,7 @@ public sealed class CiscoIOSRecovery
                         new StopCondition.LineRegex("dialog", BootDialogPrompt),
                         new StopCondition.LineRegex("autoinstall", new Regex(@"(?i)terminate\s+autoinstall|autoinstall")),
                         new StopCondition.LineRegex("press-return", PressReturnPrompt),
-                        new StopCondition.LineRegex("cisco-prompt", new Regex(@"(?i)^[A-Za-z0-9_.+()/-]+[>#]")),
-                        new StopCondition.Prompt()
+                        new StopCondition.LineRegex("cisco-prompt", new Regex(@"^[A-Za-z0-9_.-]+[>#]\s*$", RegexOptions.Compiled))
                     },
                     TimeSpan.FromSeconds(3),
                     ct);
@@ -502,11 +542,6 @@ public sealed class CiscoIOSRecovery
                         await ProgressAsync("[OK] Prompt do Cisco IOS detectado. Console pronto.", ct);
                         return;
                     }
-                }
-                else if (result.Matched is StopCondition.Prompt)
-                {
-                    await ProgressAsync("[OK] Prompt do Cisco IOS detectado. Console pronto.", ct);
-                    return;
                 }
             }
             catch (SessionTimeoutException)

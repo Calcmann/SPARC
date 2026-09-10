@@ -42,19 +42,18 @@ public static class SaipParser
         if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
             throw new FileNotFoundException($"Arquivo de Ficha SAIP não encontrado: {filePath}");
 
-        string text;
-        var ext = Path.GetExtension(filePath).ToLowerInvariant();
+        var text = await CarregarTextoAsync(filePath, cancellationToken);
+        return ParseText(text);
+    }
 
+    public static async Task<string> CarregarTextoAsync(string filePath, CancellationToken cancellationToken = default)
+    {
+        var ext = Path.GetExtension(filePath).ToLowerInvariant();
         if (ext == ".pdf")
         {
-            text = await Task.Run(() => ExtractTextFromPdf(filePath), cancellationToken);
+            return await Task.Run(() => ExtractTextFromPdf(filePath), cancellationToken);
         }
-        else
-        {
-            text = await File.ReadAllTextAsync(filePath, Encoding.UTF8, cancellationToken);
-        }
-
-        return ParseText(text);
+        return await File.ReadAllTextAsync(filePath, Encoding.UTF8, cancellationToken);
     }
 
     /// <summary>Valida se a ficha contém os IPs obrigatórios para provisionamento.</summary>

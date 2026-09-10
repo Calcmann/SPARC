@@ -168,6 +168,27 @@ public sealed class HpeSaipConfigurator
         return undos;
     }
 
+    public static string NormalizeInterfaceName(string iface)
+    {
+        if (string.IsNullOrWhiteSpace(iface)) return "GigabitEthernet0/0";
+        var trimmed = iface.Trim();
+        if (trimmed.StartsWith("GE", StringComparison.OrdinalIgnoreCase) && !trimmed.StartsWith("GigabitEthernet", StringComparison.OrdinalIgnoreCase))
+        {
+            return "GigabitEthernet" + trimmed.Substring(2);
+        }
+        return trimmed;
+    }
+
+    /// <summary>
+    /// Detecta se o equipamento roda Comware 5.x (MSR930/MSR931) ou Comware 7.x.
+    /// </summary>
+    public static bool IsComware5(string displayVersionOutput)
+    {
+        if (string.IsNullOrWhiteSpace(displayVersionOutput)) return false;
+        return displayVersionOutput.Contains("Version 5.", StringComparison.OrdinalIgnoreCase)
+            || displayVersionOutput.Contains("Comware Software, Version 5", StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>
     /// Detecta os nomes exatos das interfaces WAN (GE0) e LAN (GE1) no HPE Comware.
     /// </summary>
@@ -183,7 +204,7 @@ public sealed class HpeSaipConfigurator
         }
 
         if (ifaces.Count == 0)
-            return (preferredWan, preferredLan);
+            return (NormalizeInterfaceName(preferredWan), NormalizeInterfaceName(preferredLan));
 
         // WAN (GE 0)
         string resolvedWan = preferredWan;
@@ -207,21 +228,26 @@ public sealed class HpeSaipConfigurator
         else if (ifaces.Count > 1)
             resolvedLan = ifaces[1];
 
-        return (resolvedWan, resolvedLan);
+        return (NormalizeInterfaceName(resolvedWan), NormalizeInterfaceName(resolvedLan));
     }
 
     /// <summary>
-    /// Gera a lista de comandos CLI HPE Comware para provisionamento da Ficha SAIP com sintaxe determinística Comware 7.
+    /// Gera os comandos de CLI HPE Comware para provisionamento da Ficha SAIP.
     /// </summary>
+    /// <param name="circuit">Dados do circuito SAIP.</param>
+    /// <param name="wanInterface">Nome da interface WAN (ex.: GigabitEthernet0/0).</param>
+    /// <param name="lanInterface">Nome da interface LAN (ex.: GigabitEthernet0/1).</param>
+    /// <param name="isComware5">Se true, gera sintaxe Comware 5.x (MSR930/MSR931). Caso contrário, Comware 7.x.</param>
     public static IReadOnlyList<string> GenerateCommands(
         SaipCircuitData circuit,
         string wanInterface = "GigabitEthernet0/0",
-        string lanInterface = "GigabitEthernet0/1")
+        string lanInterface = "GigabitEthernet0/1",
+        bool isComware5 = false)
     {
         var wanDesc = SanitizeDescription(circuit.DesignacaoIp ?? circuit.NumeroOts ?? "LINK");
         var lanDesc = SanitizeDescription(circuit.ClienteRazaoSocial);
 
-        return new List<string>
+        var cmds = new List<string>
         {
             "system-view",
 
@@ -243,33 +269,72 @@ public sealed class HpeSaipConfigurator
 
             // 3. Rota Default Canônica (Única sintaxe)
             $"ip route-static 0.0.0.0 0.0.0.0 {circuit.WanGateway}",
+        };
 
-            // 4. Usuário e Acesso Remoto Telnet (EBT / PRO1ANPRO1AN) - Padrão Comware 7
-            "telnet server enable",
-            "undo password-control enable",
-            "local-user EBT class manage",
-            "password simple PRO1ANPRO1AN",
-            "service-type telnet",
-            "authorization-attribute user-role network-admin",
-            "quit",
+        if (isComware5)
+        {
+            // Comware 5.x (MSR930/MSR931)
+            cmds.AddRange(new[]
+            {
+                "telnet server enable",
+                "undo password-control enable",
+                "local-user EBT",
+                "password simple PRO1ANPRO1AN",
+                "service-type telnet",
+                "user privilege level 3",
+                "authorization-attribute level 3",
+                "quit",
 
-            // Console Serial (CON 0)
-            "line con 0",
-            "authentication-mode none",
-            "user-role network-admin",
-            "quit",
+                // Console Serial (aux 0) - Comware 5
+                "user-interface aux 0",
+                "authentication-mode none",
+                "user privilege level 3",
+                "quit",
 
-            // Linha VTY Telnet (Comware 7 - HPE MSR 954)
-            "line vty 0 63",
-            "authentication-mode scheme",
-            "user-role network-admin",
-            "protocol inbound telnet",
-            "quit",
+                // Linha VTY Telnet (Comware 5 - user-interface)
+                "user-interface vty 0 4",
+                "authentication-mode scheme",
+                "user privilege level 3",
+                "protocol inbound telnet",
+                "quit",
+            });
+        }
+        else
+        {
+            // Comware 7.x (HPE MSR 954 e superiores)
+            cmds.AddRange(new[]
+            {
+                "telnet server enable",
+                "undo password-control enable",
+                "local-user EBT class manage",
+                "password simple PRO1ANPRO1AN",
+                "service-type telnet",
+                "authorization-attribute user-role network-admin",
+                "quit",
 
+                // Console Serial (CON 0) - Comware 7
+                "line con 0",
+                "authentication-mode none",
+                "user-role network-admin",
+                "quit",
+
+                // Linha VTY Telnet (Comware 7 - line vty)
+                "line vty 0 63",
+                "authentication-mode scheme",
+                "user-role network-admin",
+                "protocol inbound telnet",
+                "quit",
+            });
+        }
+
+        cmds.AddRange(new[]
+        {
             // 5. Salvar Configuração Canônica
             "return",
             "save safely force"
-        };
+        });
+
+        return cmds;
     }
 
     /// <summary>
@@ -282,7 +347,17 @@ public sealed class HpeSaipConfigurator
         string lanInterface = "GigabitEthernet0/1",
         CancellationToken cancellationToken = default)
     {
-        await ProgressAsync($"[*] [AUTO] HPE MSR954 identificado ({circuit.DesignacaoIp ?? circuit.NumeroOts})...");
+        await ProgressAsync($"[*] [AUTO] HPE Comware identificado ({circuit.DesignacaoIp ?? circuit.NumeroOts})...");
+
+        // Detecta versão do Comware (5.x para MSR930/MSR931, 7.x para modelos superiores)
+        bool isComware5 = false;
+        try
+        {
+            var versionOutput = await session.SendCommandAsync("display version", TimeSpan.FromSeconds(10), cancellationToken);
+            isComware5 = IsComware5(versionOutput);
+            await ProgressAsync(isComware5 ? "[OK] Comware 5.x detectado (MSR930/MSR931) — sintaxe compatível" : "[OK] Comware 7.x detectado — sintaxe padrão");
+        }
+        catch { }
 
         // 1. Valida User View / System View inicial
         await EnsureUserViewAsync(session, _progress, cancellationToken);
@@ -380,6 +455,8 @@ public sealed class HpeSaipConfigurator
         await session.SendCommandAsync($"ip address {circuit.LanIp} {circuit.LanSubnetMask}", TimeSpan.FromSeconds(5), cancellationToken);
         await session.SendCommandAsync("undo shutdown", TimeSpan.FromSeconds(5), cancellationToken);
         await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
+        // Aguarda convergência física do link após undo shutdown / port link-mode route (auto-negotiation 2-5s)
+        await Task.Delay(6000, cancellationToken);
         await ProgressAsync("[OK] LAN configurada");
 
         // 6. Rota Default Canônica
@@ -387,39 +464,91 @@ public sealed class HpeSaipConfigurator
         await session.SendCommandAsync($"ip route-static 0.0.0.0 0.0.0.0 {circuit.WanGateway}", TimeSpan.FromSeconds(5), cancellationToken);
         await ProgressAsync("[OK] Rota default configurada");
 
-        // 7. Usuário EBT (Comware 7)
+        // 7. Usuário EBT (sintaxe específica por versão do Comware)
         await EnsureSystemViewAsync(session, _progress, cancellationToken);
-        await session.SendCommandAsync("undo password-control enable", TimeSpan.FromSeconds(5), cancellationToken);
-        await session.SendCommandAsync("local-user EBT class manage", TimeSpan.FromSeconds(5), cancellationToken);
-        var passResp = await session.SendCommandAsync("password simple PRO1ANPRO1AN", TimeSpan.FromSeconds(5), cancellationToken);
-        if (passResp.Contains("Wrong parameter", StringComparison.OrdinalIgnoreCase) || passResp.Contains("%", StringComparison.OrdinalIgnoreCase))
+        try { await session.SendCommandAsync("undo password-control enable", TimeSpan.FromSeconds(5), cancellationToken); } catch { }
+
+        if (isComware5)
         {
-            await session.SendCommandAsync("password simple PRO1AN", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("local-user EBT", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("password simple PRO1ANPRO1AN", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("service-type telnet", TimeSpan.FromSeconds(5), cancellationToken);
+            var privResp = await session.SendCommandAsync("user privilege level 3", TimeSpan.FromSeconds(5), cancellationToken);
+            if (privResp.Contains("%", StringComparison.OrdinalIgnoreCase) || privResp.Contains("Unrecognized", StringComparison.OrdinalIgnoreCase))
+            {
+                await session.SendCommandAsync("authorization-attribute level 3", TimeSpan.FromSeconds(5), cancellationToken);
+            }
+            await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
         }
-        await session.SendCommandAsync("service-type telnet", TimeSpan.FromSeconds(5), cancellationToken);
-        await session.SendCommandAsync("authorization-attribute user-role network-admin", TimeSpan.FromSeconds(5), cancellationToken);
-        await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
+        else
+        {
+            var userResp = await session.SendCommandAsync("local-user EBT class manage", TimeSpan.FromSeconds(5), cancellationToken);
+            if (userResp.Contains("%", StringComparison.OrdinalIgnoreCase) || userResp.Contains("Too many parameters", StringComparison.OrdinalIgnoreCase) || userResp.Contains("Wrong parameter", StringComparison.OrdinalIgnoreCase))
+            {
+                await session.SendCommandAsync("local-user EBT", TimeSpan.FromSeconds(5), cancellationToken);
+            }
+            var passResp = await session.SendCommandAsync("password simple PRO1AN", TimeSpan.FromSeconds(5), cancellationToken);
+            if (passResp.Contains("Wrong parameter", StringComparison.OrdinalIgnoreCase) || passResp.Contains("%", StringComparison.OrdinalIgnoreCase) || passResp.Contains("Ambiguous", StringComparison.OrdinalIgnoreCase))
+            {
+                await session.SendCommandAsync("password simple PRO1ANPRO1AN", TimeSpan.FromSeconds(5), cancellationToken);
+            }
+            await session.SendCommandAsync("service-type telnet", TimeSpan.FromSeconds(5), cancellationToken);
+            var authResp = await session.SendCommandAsync("authorization-attribute user-role network-admin", TimeSpan.FromSeconds(5), cancellationToken);
+            if (authResp.Contains("%", StringComparison.OrdinalIgnoreCase) || authResp.Contains("Unrecognized", StringComparison.OrdinalIgnoreCase))
+            {
+                await session.SendCommandAsync("authorization-attribute level 3", TimeSpan.FromSeconds(5), cancellationToken);
+            }
+            await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
+        }
         await ProgressAsync("[OK] Usuário EBT configurado");
 
-        // 8. Telnet Server e Linhas VTY
+        // 8. Telnet Server e Linhas VTY (sintaxe específica por versão do Comware)
         await EnsureSystemViewAsync(session, _progress, cancellationToken);
         await session.SendCommandAsync("telnet server enable", TimeSpan.FromSeconds(5), cancellationToken);
 
-        await session.SendCommandAsync("line con 0", TimeSpan.FromSeconds(5), cancellationToken);
-        await session.SendCommandAsync("authentication-mode none", TimeSpan.FromSeconds(5), cancellationToken);
-        await session.SendCommandAsync("user-role network-admin", TimeSpan.FromSeconds(5), cancellationToken);
-        await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
-
-        var vtyResp = await session.SendCommandAsync("line vty 0 63", TimeSpan.FromSeconds(5), cancellationToken);
-        if (IsError(vtyResp))
+        if (isComware5)
         {
-            await EnsureSystemViewAsync(session, _progress, cancellationToken);
+            await session.SendCommandAsync("user-interface aux 0", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("authentication-mode none", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("user privilege level 3", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
+
             await session.SendCommandAsync("user-interface vty 0 4", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("authentication-mode scheme", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("user privilege level 3", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("protocol inbound telnet", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
         }
-        await session.SendCommandAsync("authentication-mode scheme", TimeSpan.FromSeconds(5), cancellationToken);
-        await session.SendCommandAsync("user-role network-admin", TimeSpan.FromSeconds(5), cancellationToken);
-        await session.SendCommandAsync("protocol inbound telnet", TimeSpan.FromSeconds(5), cancellationToken);
-        await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
+        else
+        {
+            var conResp = await session.SendCommandAsync("line con 0", TimeSpan.FromSeconds(5), cancellationToken);
+            if (conResp.Contains("%", StringComparison.OrdinalIgnoreCase) || conResp.Contains("Unrecognized", StringComparison.OrdinalIgnoreCase))
+            {
+                await session.SendCommandAsync("user-interface aux 0", TimeSpan.FromSeconds(5), cancellationToken);
+            }
+            await session.SendCommandAsync("authentication-mode none", TimeSpan.FromSeconds(5), cancellationToken);
+            var conRoleResp = await session.SendCommandAsync("user-role network-admin", TimeSpan.FromSeconds(5), cancellationToken);
+            if (conRoleResp.Contains("%", StringComparison.OrdinalIgnoreCase))
+            {
+                await session.SendCommandAsync("user privilege level 3", TimeSpan.FromSeconds(5), cancellationToken);
+            }
+            await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
+
+            var vtyResp = await session.SendCommandAsync("line vty 0 63", TimeSpan.FromSeconds(5), cancellationToken);
+            if (IsError(vtyResp))
+            {
+                await EnsureSystemViewAsync(session, _progress, cancellationToken);
+                await session.SendCommandAsync("user-interface vty 0 4", TimeSpan.FromSeconds(5), cancellationToken);
+            }
+            await session.SendCommandAsync("authentication-mode scheme", TimeSpan.FromSeconds(5), cancellationToken);
+            var vtyRoleResp = await session.SendCommandAsync("user-role network-admin", TimeSpan.FromSeconds(5), cancellationToken);
+            if (vtyRoleResp.Contains("%", StringComparison.OrdinalIgnoreCase))
+            {
+                await session.SendCommandAsync("user privilege level 3", TimeSpan.FromSeconds(5), cancellationToken);
+            }
+            await session.SendCommandAsync("protocol inbound telnet", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
+        }
         await ProgressAsync("[OK] Telnet habilitado");
 
         // 9. Persistência Canônica (save safely force)
@@ -504,6 +633,9 @@ public sealed class HpeSaipConfigurator
         var cleanLan = lanInterface.Replace(" ", "");
         var cleanWan = cleanLan.EndsWith("0/1") ? cleanLan.Replace("0/1", "0/0") : "GigabitEthernet0/0";
 
+        // Janela de estabilização pós undo shutdown: evita falso DOWN se verificado logo em sequência
+        await Task.Delay(3000, cancellationToken);
+
         for (var attempt = 1; attempt <= 15; attempt++)
         {
             var output = await session.SendCommandAsync("display ip interface brief", TimeSpan.FromSeconds(8), cancellationToken);
@@ -518,13 +650,20 @@ public sealed class HpeSaipConfigurator
                 return true;
             }
 
-            if (requestOperatorAction != null)
+            // Só notifica operador após 2 tentativas (evita falso negativo durante auto-negotiation)
+            if (requestOperatorAction != null && attempt >= 3)
             {
                 var msg = isWanUp
-                    ? $"[ATENÇÃO] O cabo de rede está conectado na porta GE0 (WAN / recovery).\n\n" +
-                      $"Por favor, MUDE O CABO DE REDE para a porta GE1 (LAN / Porta 1) para dar continuidade aos testes de conectividade e banda."
-                    : $"[ATENÇÃO] Nenhuma porta de rede ativa detectada.\n\n" +
-                      $"Por favor, CONECTE O CABO DE REDE na porta GE1 (LAN / Porta 1) do roteador HPE.";
+                    ? $"[ATENÇÃO] O cabo do laptop está conectado na porta GE0 (WAN / recovery).\n\n" +
+                      $"Por favor, conecte os cabos de rede nas portas correspondentes:\n" +
+                      $"👉 Conecte a porta GE1 (LAN / Porta 1) no Laptop/PC (para os testes de conectividade e banda);\n" +
+                      $"👉 Conecte a porta GE0 (WAN / Porta 0) no Acesso / Link da Operadora (WAN).\n\n" +
+                      $"Clique em OK após realizar as conexões."
+                    : $"[ATENÇÃO] Link físico não detectado na porta LAN (GE1).\n\n" +
+                      $"Por favor, conecte os cabos de rede nas portas correspondentes:\n" +
+                      $"👉 Conecte a porta GE1 (LAN / Porta 1) no Laptop/PC (para os testes de conectividade e banda);\n" +
+                      $"👉 Conecte a porta GE0 (WAN / Porta 0) no Acesso / Link da Operadora (WAN).\n\n" +
+                      $"Clique em OK após realizar as conexões.";
 
                 await requestOperatorAction(msg, cancellationToken);
             }

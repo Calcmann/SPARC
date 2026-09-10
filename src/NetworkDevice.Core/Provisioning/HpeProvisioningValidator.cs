@@ -267,14 +267,18 @@ public sealed class HpeProvisioningValidator
             report.Add("Usuário EBT", HpeValidationStatus.Fail, "local-user EBT", "Ausente", "Usuário EBT não encontrado na configuração.");
         }
 
-        var hasAdminRole = roleCfg.Contains("network-admin", StringComparison.OrdinalIgnoreCase);
+        var hasAdminRole = roleCfg.Contains("network-admin", StringComparison.OrdinalIgnoreCase)
+                        || userCfg.Contains("level 3", StringComparison.OrdinalIgnoreCase)
+                        || roleCfg.Contains("level 3", StringComparison.OrdinalIgnoreCase)
+                        || roleCfg.Contains("level-3", StringComparison.OrdinalIgnoreCase);
         if (hasAdminRole)
         {
-            report.Add("Perfil de Acesso (Role)", HpeValidationStatus.Pass, "network-admin", "network-admin", "Papel administrativo network-admin atribuído.");
+            var roleName = (userCfg.Contains("level 3", StringComparison.OrdinalIgnoreCase) || roleCfg.Contains("level", StringComparison.OrdinalIgnoreCase)) ? "level-3 (admin)" : "network-admin";
+            report.Add("Perfil de Acesso (Role)", HpeValidationStatus.Pass, "admin", roleName, "Papel administrativo de gestão atribuído.");
         }
         else
         {
-            report.Add("Perfil de Acesso (Role)", HpeValidationStatus.Warn, "network-admin", roleCfg.Trim(), "Papel network-admin não confirmado explicitamente.");
+            report.Add("Perfil de Acesso (Role)", HpeValidationStatus.Warn, "admin", roleCfg.Trim(), "Papel de gestão não confirmado explicitamente.");
         }
 
         var hasTelnet = serviceCfg.Contains("telnet", StringComparison.OrdinalIgnoreCase);

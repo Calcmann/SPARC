@@ -9,6 +9,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Interop;
+using System.Windows.Input;
 using System.Windows.Media;
 using Microsoft.Win32;
 using NetworkDevice.Cisco;
@@ -21,6 +22,7 @@ using NetworkDevice.Core.Provisioning;
 using NetworkDevice.Core.Recovery;
 using NetworkDevice.Core.Routing;
 using NetworkDevice.Core.Session;
+using NetworkDevice.Core.Validation;
 using NetworkDevice.Protocols.Hpe;
 using NetworkDevice.Protocols.Serial;
 
@@ -51,7 +53,7 @@ public partial class MainWindow : Window
     private bool _serialOk;
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
-        CbModeloRoteadorInicial.SelectedIndex = -1;
+        CbModeloRoteadorInicial.SelectedIndex = 0;
         CbInterrupt.SelectedIndex = -1;
         _serialOk = false;
         AtualizarPortas();
@@ -178,8 +180,106 @@ public partial class MainWindow : Window
 
     private bool _syncingCombos;
 
+    private void SelecionarModeloNoCombo(string targetTagOrPattern)
+    {
+        if (string.IsNullOrWhiteSpace(targetTagOrPattern)) return;
+
+        foreach (var cb in new[] { CbModeloRoteadorInicial, CbInterrupt })
+        {
+            if (cb == null) continue;
+            bool selected = false;
+            foreach (ComboBoxItem it in cb.Items)
+            {
+                var tag = it.Tag?.ToString() ?? "";
+                var content = it.Content?.ToString() ?? "";
+                if (tag.Equals(targetTagOrPattern, StringComparison.OrdinalIgnoreCase) ||
+                    (!string.IsNullOrEmpty(tag) && tag.Contains(targetTagOrPattern, StringComparison.OrdinalIgnoreCase)) ||
+                    content.Contains(targetTagOrPattern, StringComparison.OrdinalIgnoreCase))
+                {
+                    cb.SelectedItem = it;
+                    selected = true;
+                    break;
+                }
+            }
+
+            // Fallback: se buscou hpe.msr.ctrl-b ou hpe genérico e não encontrou exato, seleciona o HPE 954
+            if (!selected && targetTagOrPattern.Contains("hpe", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (ComboBoxItem it in cb.Items)
+                {
+                    var tag = it.Tag?.ToString() ?? "";
+                    if (tag.Contains("hpe.msr954", StringComparison.OrdinalIgnoreCase) ||
+                        tag.Contains("hpe.msr", StringComparison.OrdinalIgnoreCase) ||
+                        tag.Contains("954", StringComparison.OrdinalIgnoreCase))
+                    {
+                        cb.SelectedItem = it;
+                        break;
+                    }
+                }
+            }
+        }
+
+        RevalidarFirmwareCarregadoAoMudarModelo();
+    }
+
+    private DeviceSeries ObterSerieAtualSelecionadaOuDetectada()
+    {
+        var item = CbModeloRoteadorInicial?.SelectedItem as ComboBoxItem;
+        var tag = item?.Tag?.ToString() ?? "";
+        if (string.IsNullOrEmpty(tag))
+        {
+            var profile = CbInterrupt?.SelectedItem as BootInterruptProfile;
+            tag = profile?.Id ?? "";
+        }
+
+        if (tag.Contains("1002", StringComparison.OrdinalIgnoreCase) || tag.Contains("1003", StringComparison.OrdinalIgnoreCase) || tag.Contains("1000", StringComparison.OrdinalIgnoreCase) || tag.Contains("100x", StringComparison.OrdinalIgnoreCase)) return DeviceSeries.Msr1002;
+        if (tag.Contains("930", StringComparison.OrdinalIgnoreCase) || tag.Contains("931", StringComparison.OrdinalIgnoreCase) || tag.Contains("935", StringComparison.OrdinalIgnoreCase)) return DeviceSeries.Msr930;
+        if (tag.Contains("954", StringComparison.OrdinalIgnoreCase) || tag.Contains("958", StringComparison.OrdinalIgnoreCase)) return DeviceSeries.Msr954;
+        if (tag.Contains("1900", StringComparison.OrdinalIgnoreCase) || tag.Contains("1921", StringComparison.OrdinalIgnoreCase) || tag.Contains("1941", StringComparison.OrdinalIgnoreCase) || tag.Contains("1905", StringComparison.OrdinalIgnoreCase)) return DeviceSeries.Series1900;
+        if (tag.Contains("900", StringComparison.OrdinalIgnoreCase) || tag.Contains("921", StringComparison.OrdinalIgnoreCase) || tag.Contains("c900", StringComparison.OrdinalIgnoreCase)) return DeviceSeries.Isr921;
+        if (tag.Contains("841", StringComparison.OrdinalIgnoreCase) || tag.Contains("800", StringComparison.OrdinalIgnoreCase) || tag.Contains("c841", StringComparison.OrdinalIgnoreCase) || tag.Contains("c800", StringComparison.OrdinalIgnoreCase)) return DeviceSeries.Isr841;
+        return DeviceSeries.Unknown;
+    }
+
+    private bool ValidarEBloquearFirmwareIncompativel(string? filePath, bool mostrarAlertaModal = true)
+    {
+        if (string.IsNullOrWhiteSpace(filePath)) return true;
+
+        var serie = ObterSerieAtualSelecionadaOuDetectada();
+        var res = FirmwareCompatibilityValidator.Validate(serie, filePath);
+        if (!res.IsCompatible)
+        {
+            if (mostrarAlertaModal)
+            {
+                MessageBox.Show(this,
+                    $"{res.ErrorMessage}\n\n" +
+                    $"👉 Formato esperado para este modelo: {res.ExpectedFormatDescription}\n\n" +
+                    "A seleção foi BLOQUEADA para proteger a integridade do equipamento.",
+                    "Firmware Incompatível Bloqueado — SPARC",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+            EscreverLinha($"\n[BLOQUEIO DE SEGURANÇA] Firmware '{Path.GetFileName(filePath)}' rejeitado: {res.ErrorMessage}");
+            return false;
+        }
+        return true;
+    }
+
+    private void RevalidarFirmwareCarregadoAoMudarModelo()
+    {
+        if (!string.IsNullOrEmpty(_selectedIosBinPath) && !ValidarEBloquearFirmwareIncompativel(_selectedIosBinPath, mostrarAlertaModal: false))
+        {
+            var oldFw = Path.GetFileName(_selectedIosBinPath);
+            _selectedIosBinPath = null;
+            if (TxtFirmwareAutoInfo != null) TxtFirmwareAutoInfo.Text = "Nenhum arquivo selecionado";
+            if (TxtIosImageInfo != null) TxtIosImageInfo.Text = "Nenhum arquivo selecionado";
+            EscreverLinha($"\n[AVISO DE COMPATIBILIDADE] O firmware '{oldFw}' foi desmarcado por ser incompatível com o novo modelo selecionado.");
+        }
+    }
+
     private void CbModeloRoteadorInicial_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        RevalidarFirmwareCarregadoAoMudarModelo();
         AtualizarBotaoProsseguir();
         if (_syncingCombos || CbInterrupt is null || CbModeloRoteadorInicial is null)
             return;
@@ -213,6 +313,7 @@ public partial class MainWindow : Window
         {
             _syncingCombos = false;
         }
+        RevalidarFirmwareCarregadoAoMudarModelo();
         AtualizarBotaoProsseguir();
     }
 
@@ -231,8 +332,8 @@ public partial class MainWindow : Window
         var modeloOk = CbModeloRoteadorInicial?.SelectedIndex > 0;
         var modoManual = RbModoManual?.IsChecked == true;
         bool insumoOk = _loadedSaipCircuit != null;
-        var auto = RbExecAuto?.IsChecked == true;
-        var firmwareObrigatorio = auto && (ChkAtualizarFirmwareAuto?.IsChecked == true);
+        bool auto = true; // Modo Automático é o padrão (sem seleção de modo na tela inicial)
+        var firmwareObrigatorio = _isRommonOrBootwareDetected || (auto && (ChkAtualizarFirmwareAuto?.IsChecked == true));
         var firmwareOk = !firmwareObrigatorio || (!string.IsNullOrEmpty(_selectedIosBinPath) && System.IO.File.Exists(_selectedIosBinPath));
         var ok = _serialOk && modeloOk && insumoOk && firmwareOk;
         BtnAvancarParaEsteira.IsEnabled = ok;
@@ -341,7 +442,7 @@ public partial class MainWindow : Window
         {
             CardChkModelo.Background = modeloOk ? brushVerdeBg : brushVermelhoBg;
             CardChkModelo.BorderBrush = modeloOk ? brushVerdeBorder : brushVermelhoBorder;
-            TxtChkModeloIcon.Text = modeloOk ? "🟢 1. Modelo OK" : "🔴 1. Modelo";
+            TxtChkModeloIcon.Text = modeloOk ? "🟢 1a. Modelo OK" : "🔴 1a. Modelo";
             TxtChkModeloIcon.Foreground = modeloOk ? brushVerdeTxt : brushVermelhoTxt;
             var item = CbModeloRoteadorInicial?.SelectedItem as ComboBoxItem;
             TxtChkModeloSub.Text = modeloOk ? (item?.Content?.ToString()?.Replace("🖧", "")?.Trim() ?? "Selecionado") : "Pendente: selecione";
@@ -351,7 +452,7 @@ public partial class MainWindow : Window
         {
             CardChkSerial.Background = serialOk ? brushVerdeBg : brushVermelhoBg;
             CardChkSerial.BorderBrush = serialOk ? brushVerdeBorder : brushVermelhoBorder;
-            TxtChkSerialIcon.Text = serialOk ? "🟢 2. Serial OK" : "🔴 2. Serial";
+            TxtChkSerialIcon.Text = serialOk ? "🟢 1b. Serial OK" : "🔴 1b. Status Serial";
             TxtChkSerialIcon.Foreground = serialOk ? brushVerdeTxt : brushVermelhoTxt;
             var porta = CbPorta?.Text?.Trim();
             TxtChkSerialSub.Text = serialOk ? $"Porta {porta} validada" : "Pendente: clique Testar";
@@ -361,7 +462,7 @@ public partial class MainWindow : Window
         {
             CardChkDados.Background = insumoOk ? brushVerdeBg : brushVermelhoBg;
             CardChkDados.BorderBrush = insumoOk ? brushVerdeBorder : brushVermelhoBorder;
-            TxtChkDadosIcon.Text = insumoOk ? "🟢 3. Circuito OK" : "🔴 3. Ficha SAIP";
+            TxtChkDadosIcon.Text = insumoOk ? "🟢 2. Ficha SAIP OK" : "🔴 2. Ficha SAIP";
             TxtChkDadosIcon.Foreground = insumoOk ? brushVerdeTxt : brushVermelhoTxt;
             TxtChkDadosSub.Text = insumoOk ? (_loadedSaipCircuit?.DesignacaoIp ?? "Circuito carregado") : (modoManual ? "Pendente: aplicar IPs" : "Pendente: selecione SAIP");
         }
@@ -374,7 +475,7 @@ public partial class MainWindow : Window
                 {
                     CardChkFirmware.Background = brushCinzaBg;
                     CardChkFirmware.BorderBrush = brushCinzaBorder;
-                    TxtChkFirmwareIcon.Text = "⚪ 4. Firmware";
+                    TxtChkFirmwareIcon.Text = "⚪ 3. Firmware";
                     TxtChkFirmwareIcon.Foreground = brushCinzaTxt;
                     TxtChkFirmwareSub.Text = "Desmarcado (Atualização Pulada)";
                 }
@@ -382,7 +483,7 @@ public partial class MainWindow : Window
                 {
                     CardChkFirmware.Background = firmwareOk ? brushVerdeBg : brushVermelhoBg;
                     CardChkFirmware.BorderBrush = firmwareOk ? brushVerdeBorder : brushVermelhoBorder;
-                    TxtChkFirmwareIcon.Text = firmwareOk ? "🟢 4. Firmware OK" : "🔴 4. Firmware";
+                    TxtChkFirmwareIcon.Text = firmwareOk ? "🟢 3. Firmware OK" : "🔴 3. Firmware";
                     TxtChkFirmwareIcon.Foreground = firmwareOk ? brushVerdeTxt : brushVermelhoTxt;
                     TxtChkFirmwareSub.Text = firmwareOk ? Path.GetFileName(_selectedIosBinPath) : "Pendente: selecione .ipe/.bin";
                 }
@@ -391,7 +492,7 @@ public partial class MainWindow : Window
             {
                 CardChkFirmware.Background = brushCinzaBg;
                 CardChkFirmware.BorderBrush = brushCinzaBorder;
-                TxtChkFirmwareIcon.Text = "⚪ 4. Firmware";
+                TxtChkFirmwareIcon.Text = "⚪ 3. Firmware";
                 TxtChkFirmwareIcon.Foreground = brushCinzaTxt;
                 TxtChkFirmwareSub.Text = "Opcional (Modo Passo a Passo)";
             }
@@ -431,7 +532,7 @@ public partial class MainWindow : Window
         BtnAvancarParaEsteira.ToolTip = concluidas == totalEtapas ? "Pronto para iniciar" : TxtAlertaProsseguir?.Text;
     }
 
-    private void ConfigurarBotaoTestarTerminal(bool habilitado, string texto, string corBgHex = "#881337", string corFgHex = "#FFFFFF")
+    private void ConfigurarBotaoTestarTerminal(bool habilitado, string texto, string corBgHex = "#B91C1C", string corFgHex = "#FFFFFF")
     {
         Dispatcher.Invoke(() =>
         {
@@ -463,7 +564,7 @@ public partial class MainWindow : Window
     {
         if (BtnTestarAvaliarInicial != null && !BtnTestarAvaliarInicial.IsEnabled && BtnTestarAvaliarInicial.Content?.ToString() == "preencha dados para seguir")
         {
-            ConfigurarBotaoTestarTerminal(true, "🔌🔍 Testar Conexão e Avaliar", "#881337", "#FFFFFF");
+            ConfigurarBotaoTestarTerminal(true, "🔌 Testar Conexão", "#B91C1C", "#FFFFFF");
         }
 
         if (_syncingCombos || CbPorta is null || CbPortaInicial is null)
@@ -472,8 +573,21 @@ public partial class MainWindow : Window
         _syncingCombos = true;
         try
         {
-            CbPorta.Text = CbPortaInicial.Text;
-            CbPorta.SelectedItem = CbPortaInicial.SelectedItem;
+            // Lê o SelectedItem PRIMEIRO: no clique do dropdown o SelectionChanged
+            // dispara antes do WPF sincronizar o Text editável (que ainda tem o valor antigo).
+            var sel = CbPortaInicial.SelectedItem;
+            var selText = (sel as ComboBoxItem)?.Content?.ToString()
+                          ?? sel?.ToString()
+                          ?? CbPortaInicial.Text?.Trim();
+
+            if (!string.IsNullOrEmpty(selText))
+            {
+                // Garante exibição nos dois combos (texto + seleção)
+                CbPortaInicial.Text = selText;
+                CbPorta.Text = selText;
+                var idx = CbPorta.Items.IndexOf(selText);
+                if (idx >= 0) CbPorta.SelectedIndex = idx;
+            }
         }
         finally
         {
@@ -489,8 +603,21 @@ public partial class MainWindow : Window
         _syncingCombos = true;
         try
         {
-            CbPortaInicial.Text = CbPorta.Text;
-            CbPortaInicial.SelectedItem = CbPorta.SelectedItem;
+            // Lê o SelectedItem PRIMEIRO: no clique do dropdown o SelectionChanged
+            // dispara antes do WPF sincronizar o Text editável (que ainda tem o valor antigo).
+            var sel = CbPorta.SelectedItem;
+            var selText = (sel as ComboBoxItem)?.Content?.ToString()
+                          ?? sel?.ToString()
+                          ?? CbPorta.Text?.Trim();
+
+            if (!string.IsNullOrEmpty(selText))
+            {
+                // Garante exibição nos dois combos (texto + seleção)
+                CbPorta.Text = selText;
+                CbPortaInicial.Text = selText;
+                var idx = CbPortaInicial.Items.IndexOf(selText);
+                if (idx >= 0) CbPortaInicial.SelectedIndex = idx;
+            }
         }
         finally
         {
@@ -584,14 +711,14 @@ public partial class MainWindow : Window
             if (_serialTestCts == localCts) _serialTestCts = null;
             if (BtnTestarAvaliarInicial != null && BtnTestarAvaliarInicial.Content?.ToString() != "preencha dados para seguir" && BtnTestarAvaliarInicial.Content?.ToString() != "Aguarde...")
             {
-                BtnTestarAvaliarInicial.Content = "🔌🔍 Testar Conexão e Avaliar";
-                BtnTestarAvaliarInicial.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#881337"));
+                BtnTestarAvaliarInicial.Content = "🔌 Testar Conexão";
+                BtnTestarAvaliarInicial.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#B91C1C"));
                 BtnTestarAvaliarInicial.Foreground = new SolidColorBrush(Colors.White);
                 BtnTestarAvaliarInicial.IsEnabled = true;
             }
             if (BtnAvaliarEquipamentoTop != null && BtnAvaliarEquipamentoTop.Content?.ToString() != "preencha dados para seguir" && BtnAvaliarEquipamentoTop.Content?.ToString() != "Aguarde...")
             {
-                BtnAvaliarEquipamentoTop.Content = "🔌🔍 Testar e Avaliar";
+                BtnAvaliarEquipamentoTop.Content = "🔌 Testar Conexão";
                 BtnAvaliarEquipamentoTop.Foreground = new SolidColorBrush(Colors.White);
                 BtnAvaliarEquipamentoTop.IsEnabled = true;
             }
@@ -642,6 +769,70 @@ public partial class MainWindow : Window
 
                     var current = rxAccumulator.ToString();
 
+                    // Se estiver em diálogo de configuração inicial do Cisco (System Configuration Dialog), responde 'no'
+                    if (Regex.IsMatch(current, @"(?i)(?:initial\s+configuration\s+dialog|basic\s+management\s+setup).*(?:\[yes/no\]|\[yes/no\]:|\?)") ||
+                        Regex.IsMatch(current, @"(?i)\[yes/no\]:\s*$"))
+                    {
+                        rxAccumulator.Clear();
+                        EscreverLinha("[>] Diálogo de configuração inicial Cisco detectado. Enviando 'no'...");
+                        await transport.WriteAsync(Encoding.UTF8.GetBytes("no\r\n"), ct);
+                        await Task.Delay(400, ct);
+                        nextProbe = DateTime.UtcNow.AddSeconds(2);
+                        continue;
+                    }
+
+                    // Se estiver em confirmação de encerramento do autoinstall do Cisco, responde 'yes'
+                    if (Regex.IsMatch(current, @"(?i)terminate\s+autoinstall.*(?:\[yes(?:/no)?\]|\[yes\]:|\?)") ||
+                        Regex.IsMatch(current, @"(?i)\[yes\]:\s*$"))
+                    {
+                        rxAccumulator.Clear();
+                        EscreverLinha("[>] Confirmação de encerramento de autoinstall Cisco detectada. Enviando 'yes'...");
+                        await transport.WriteAsync(Encoding.UTF8.GetBytes("yes\r\n"), ct);
+                        await Task.Delay(400, ct);
+                        nextProbe = DateTime.UtcNow.AddSeconds(2);
+                        continue;
+                    }
+
+                    // Se estiver em prompt 'Press ENTER to get started' ou 'Line con0 is available' (HPE Comware) ou 'Press RETURN to get started' (Cisco IOS), envia Enter
+                    if (Regex.IsMatch(current, @"(?i)Press\s+(?:ENTER|RETURN)\s+to\s+get\s+started") ||
+                        current.Contains("Line con0 is available", StringComparison.OrdinalIgnoreCase))
+                    {
+                        rxAccumulator.Clear();
+                        await transport.WriteAsync(Encoding.UTF8.GetBytes("\r\n"), ct);
+                        await Task.Delay(300, ct);
+                        nextProbe = DateTime.UtcNow.AddSeconds(2);
+                        continue;
+                    }
+
+                    // Se estiver no assistente de configuração inicial Cisco (Cenário 6), envia 'no' para liberar console
+                    if (current.Contains("initial configuration dialog?", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("[yes/no]:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        rxAccumulator.Clear();
+                        EscreverLinha("[>] Assistente de configuração inicial detectado. Enviando 'no' para liberar console...");
+                        await transport.WriteAsync(Encoding.UTF8.GetBytes("no\r\n"), ct);
+                        await Task.Delay(400, ct);
+                        await transport.WriteAsync(Encoding.UTF8.GetBytes("\r\n"), ct);
+                        nextProbe = DateTime.UtcNow.AddSeconds(2);
+                        continue;
+                    }
+
+                    // Se estiver em Auto-Configuration HPE (Cenário 6), envia Ctrl+C e 'Y' para liberar console
+                    if (current.Contains("Automatic configuration is running", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("CTRL_C to break", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("terminate automatic configuration", StringComparison.OrdinalIgnoreCase))
+                    {
+                        rxAccumulator.Clear();
+                        EscreverLinha("[>] Auto-Configuration HPE detectada. Enviando CTRL+C e 'Y' para liberar console...");
+                        await transport.WriteAsync(new byte[] { 0x03 }, ct);
+                        await Task.Delay(200, ct);
+                        await transport.WriteAsync(Encoding.UTF8.GetBytes("Y\r\n"), ct);
+                        await Task.Delay(300, ct);
+                        await transport.WriteAsync(Encoding.UTF8.GetBytes("\r\n"), ct);
+                        nextProbe = DateTime.UtcNow.AddSeconds(2);
+                        continue;
+                    }
+
                     // Se estiver em tela de copyright do BootWare, sai com 'q'
                     if (Regex.IsMatch(current, @"(?i)Please\s+enter\s+q/Q\s+to\s+quit"))
                     {
@@ -663,7 +854,7 @@ public partial class MainWindow : Window
                         continue;
                     }
 
-                    // Se já capturou um prompt reconhecível de senha, modo de usuário, rommon ou bootware, finaliza imediatamente com sucesso
+                    // Se já capturou um prompt reconhecível de senha, modo de usuário, rommon ou bootware (ou falha de imagem), finaliza imediatamente com sucesso
                     if (Regex.IsMatch(current, @"(?i)(?:Password|Username|login|User Access Verification)\s*[:?]") ||
                         Regex.IsMatch(current, @"[\<\[][^\r\n]+[\>\]]\s*$") ||
                         Regex.IsMatch(current, @"[^\r\n]+[>#]\s*$") ||
@@ -671,17 +862,30 @@ public partial class MainWindow : Window
                         current.Contains("EXTENDED-BOOTWARE", StringComparison.OrdinalIgnoreCase) ||
                         current.Contains("BASIC BOOT MENU", StringComparison.OrdinalIgnoreCase) ||
                         current.Contains("BootWare", StringComparison.OrdinalIgnoreCase) ||
-                        current.Contains("rommon", StringComparison.OrdinalIgnoreCase))
+                        current.Contains("rommon", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("Loading images fails", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("The image does not exist", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("Loading boot image fails", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("The main application file does not exist", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("Booting App fails", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("bad checksum", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("checksum failed", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("cannot determine first executable", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("No bootable image found", StringComparison.OrdinalIgnoreCase))
                     {
                         break;
                     }
                 }
                 else
                 {
-                    // Se nenhum byte novo foi recebido e passou o intervalo de sondagem, reenvia Enter para acordar console
+                    // Se nenhum byte novo foi recebido e passou o intervalo de sondagem, reenvia Enter para acordar console (exceto se em diálogo)
                     if (DateTime.UtcNow >= nextProbe)
                     {
-                        await transport.WriteAsync(Encoding.UTF8.GetBytes("\r\n"), ct);
+                        var cur = rxAccumulator.ToString();
+                        if (!cur.EndsWith("[yes/no]:", StringComparison.OrdinalIgnoreCase) && !cur.EndsWith("[yes]:", StringComparison.OrdinalIgnoreCase))
+                        {
+                            await transport.WriteAsync(Encoding.UTF8.GetBytes("\r\n"), ct);
+                        }
                         nextProbe = DateTime.UtcNow.AddSeconds(2.5);
                     }
                 }
@@ -723,10 +927,75 @@ public partial class MainWindow : Window
             var prompt = rxAccumulator.ToString().Trim();
             if (string.IsNullOrEmpty(prompt)) prompt = "(dados seriais recebidos)";
 
+            // Se o buffer recebido não terminar em prompt nem em login (:), envia CRLF para acordar console e capturar o prompt
+            if (!Regex.IsMatch(prompt, @"[>#:]\s*$") && !prompt.EndsWith("]") && !prompt.EndsWith(">"))
+            {
+                try
+                {
+                    await transport.WriteAsync(Encoding.UTF8.GetBytes("\r\n"), ct);
+                    await Task.Delay(350, ct);
+                    var wakeBuf = new byte[2048];
+                    var wakeRead = await transport.ReadAsync(wakeBuf, ct);
+                    if (wakeRead > 0)
+                    {
+                        var wakeOut = Encoding.UTF8.GetString(wakeBuf, 0, wakeRead).Replace("\uFFFD", "");
+                        rxAccumulator.Append("\n" + wakeOut);
+                        prompt += "\n" + wakeOut;
+                    }
+                }
+                catch { }
+            }
+
+            // Se estiver em prompt Cisco aberto (Router> / Router# / cisco>), faz consulta rápida de versão/modelo
+            if ((Regex.IsMatch(prompt, @"(?i)(?:^|[\r\n])[A-Za-z0-9_\-\.]+>\s*$") ||
+                 Regex.IsMatch(prompt, @"(?i)(?:^|[\r\n])[A-Za-z0-9_\-\.]+#\s*$")) &&
+                !prompt.Contains("<") && !prompt.Contains("["))
+            {
+                try
+                {
+                    await transport.WriteAsync(Encoding.UTF8.GetBytes("show version | include (?:[Cc]isco|[Cc]92[0-9]|19[0-9][0-9]|ISR|Processor)\r\n"), ct);
+                    await Task.Delay(400, ct);
+                    var verBuf = new byte[2048];
+                    var verRead = await transport.ReadAsync(verBuf, ct);
+                    if (verRead > 0)
+                    {
+                        var verOut = Encoding.UTF8.GetString(verBuf, 0, verRead).Replace("\uFFFD", "");
+                        rxAccumulator.Append("\n" + verOut);
+                        prompt += "\n" + verOut;
+                    }
+                }
+                catch { }
+            }
+            // Se estiver em prompt HPE aberto (<HPE>, [HPE], <HP>, <H3C>), faz consulta rápida de display version
+            else if (Regex.IsMatch(prompt, @"[\<\[][^\r\n>\]]+[\>\]]\s*$") ||
+                     prompt.Contains("<HPE>", StringComparison.OrdinalIgnoreCase) ||
+                     prompt.Contains("[HPE]", StringComparison.OrdinalIgnoreCase) ||
+                     prompt.Contains("<H3C>", StringComparison.OrdinalIgnoreCase) ||
+                     prompt.Contains("<HP>", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    await transport.WriteAsync(Encoding.UTF8.GetBytes("display version\r\n"), ct);
+                    await Task.Delay(500, ct);
+                    var verBuf = new byte[4096];
+                    var verRead = await transport.ReadAsync(verBuf, ct);
+                    if (verRead > 0)
+                    {
+                        var verOut = Encoding.UTF8.GetString(verBuf, 0, verRead).Replace("\uFFFD", "");
+                        rxAccumulator.Append("\n" + verOut);
+                        prompt += "\n" + verOut;
+                    }
+                }
+                catch { }
+            }
+
             var userTag = (CbModeloRoteadorInicial.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "";
-            var userSeries = userTag.Contains("954") ? DeviceSeries.Msr954 :
+            var userSeries = userTag.Contains("1002") || userTag.Contains("1003") || userTag.Contains("1000") ? DeviceSeries.Msr1002 :
+                             userTag.Contains("954") ? DeviceSeries.Msr954 :
+                             userTag.Contains("930") ? DeviceSeries.Msr930 :
                              userTag.Contains("1900") ? DeviceSeries.Series1900 :
                              userTag.Contains("900") || userTag.Contains("921") ? DeviceSeries.Isr921 :
+                             userTag.Contains("841") || userTag.Contains("800") ? DeviceSeries.Isr841 :
                              DeviceSeries.Unknown;
 
             var detector = new DeviceDetector();
@@ -752,34 +1021,121 @@ public partial class MainWindow : Window
                     TxtSerialTestStatus.Text = $"🟡 {modeName}";
                     TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D97706"));
 
+                    if (ChkAtualizarFirmwareAuto != null)
+                    {
+                        ChkAtualizarFirmwareAuto.IsChecked = true;
+                        if (BtnSelecionarFirmwareAuto != null)
+                            BtnSelecionarFirmwareAuto.IsEnabled = true;
+                    }
+
+                    // Discrimina modelo específico usando regexes de alta precisão
+                    var is1900 = detection.Series == DeviceSeries.Series1900
+                              || DeviceDetector.Cisco1900ModelRegex.IsMatch(prompt)
+                              || userSeries == DeviceSeries.Series1900;
+
+                    var is921 = !is1900 && (
+                                detection.Series == DeviceSeries.Isr921
+                             || DeviceDetector.Cisco900ModelRegex.IsMatch(prompt)
+                             || userSeries == DeviceSeries.Isr921);
+
+                    var is841 = !is1900 && !is921 && (
+                                detection.Series == DeviceSeries.Isr841
+                             || DeviceDetector.Cisco841ModelRegex.IsMatch(prompt)
+                             || userSeries == DeviceSeries.Isr841);
+
+                    var isHpe1002 = detection.Series == DeviceSeries.Msr1002
+                                 || DeviceDetector.Hpe1002ModelRegex.IsMatch(prompt)
+                                 || userSeries == DeviceSeries.Msr1002;
+
+                    var isHpe930 = !isHpe1002 && (
+                                   detection.Series == DeviceSeries.Msr930
+                                || DeviceDetector.Hpe930ModelRegex.IsMatch(prompt)
+                                || userSeries == DeviceSeries.Msr930);
+
+                    var isHpe954 = !isHpe1002 && !isHpe930 && (
+                                   detection.Series == DeviceSeries.Msr954
+                                || DeviceDetector.Hpe954ModelRegex.IsMatch(prompt)
+                                || userSeries == DeviceSeries.Msr954);
+
+                    string especificoNome;
+                    string fwExemplo;
+                    string portaTftp;
+
                     if (isHpe)
                     {
-                        foreach (var cb in new[] { CbModeloRoteadorInicial, CbInterrupt })
-                        {
-                            if (cb == null) continue;
-                            foreach (ComboBoxItem it in cb.Items)
-                            {
-                                var t = it.Tag?.ToString() ?? it.Content?.ToString() ?? "";
-                                if (t.Contains("hpe", StringComparison.OrdinalIgnoreCase) || t.Contains("954", StringComparison.OrdinalIgnoreCase) || t.Contains("msr", StringComparison.OrdinalIgnoreCase))
-                                { cb.SelectedItem = it; break; }
-                            }
-                        }
+                        especificoNome = isHpe1002 ? "HPE MSR 1002 / 1003" :
+                                         isHpe930 ? "HPE MSR 930" :
+                                         isHpe954 ? "HPE MSR 954" : "HPE Comware / MSR (Selecione o Modelo no Passo 1)";
+                        fwExemplo = isHpe1002 ? "msr1000-cmw710-*.ipe ou *.bin" :
+                                    isHpe930 ? "msr930-cmw710-*.ipe" :
+                                    isHpe954 ? "msr954-cmw710-*.ipe ou *.bin" : "*.ipe / *.bin";
+                        portaTftp = "GigabitEthernet0/0 (GE 0)";
+                        if (isHpe1002) SelecionarModeloNoCombo("hpe.msr1002.ctrl-b");
+                        else if (isHpe930) SelecionarModeloNoCombo("hpe.msr930.ctrl-b");
+                        else if (isHpe954) SelecionarModeloNoCombo("hpe.msr954.ctrl-b");
+                    }
+                    else if (is1900)
+                    {
+                        especificoNome = "Cisco Série 1900 (1905/1921/1941)";
+                        fwExemplo = "c1900-universalk9-mz*.bin";
+                        portaTftp = "GigabitEthernet 0/0 (Porta 0 / GE 0/0)";
+                        SelecionarModeloNoCombo("cisco.c1900.break");
+                    }
+                    else if (is921)
+                    {
+                        especificoNome = "Cisco Série 900 / C921-4P";
+                        fwExemplo = "c900-universalk9-mz*.bin";
+                        portaTftp = "GigabitEthernet 4 (Porta 4 / GE 4)";
+                        SelecionarModeloNoCombo("cisco.c900.ctrl-c");
+                    }
+                    else if (is841)
+                    {
+                        especificoNome = "Cisco Série 800 / C841M";
+                        fwExemplo = "c841-universalk9-mz*.bin / c800-*.bin";
+                        portaTftp = "GigabitEthernet 4 (Porta 4 / GE 4)";
+                        SelecionarModeloNoCombo("cisco.c841.break");
+                    }
+                    else
+                    {
+                        especificoNome = "Cisco IOS";
+                        fwExemplo = "*.bin";
+                        portaTftp = "Porta WAN / TFTP";
                     }
 
                     if (TxtChkSerialIcon != null && TxtChkSerialSub != null)
                     {
-                        TxtChkSerialIcon.Text = $"🟢 2. Serial ({modeName})";
-                        TxtChkSerialSub.Text = $"{porta} (Menu {modeName} Ativo)";
+                        TxtChkSerialIcon.Text = $"🟢 1b. Serial ({modeName})";
+                        TxtChkSerialSub.Text = $"{porta} ({especificoNome})";
                     }
 
                     EscreverLinha($"\n=================================================================");
-                    EscreverLinha($"   📢 ROTEADOR DETECTADO EM MODO {modeName.ToUpper()}");
+                    EscreverLinha($"   📢 {especificoNome.ToUpper()} DETECTADO EM MODO {modeName.ToUpper()}");
                     EscreverLinha($"=================================================================");
                     EscreverLinha($"  Porta Serial : {porta} @ {baud} bps");
-                    EscreverLinha($"  Estado       : 🟡 Menu {modeName} Ativo");
-                    EscreverLinha($"  Diagnóstico  : Roteador em menu de inicialização/recuperação.");
-                    EscreverLinha($"👉 O SPARC executará o zeramento ou recuperação diretamente via {modeName}.\n");
-                    EscreverLinha("👉 Prossiga selecionando o Modelo (Passo 1), carregando a Ficha SAIP (Passo 2) e opcionalmente o Firmware (Passo 3).\n");
+                    EscreverLinha($"  Equipamento  : 🖧 {especificoNome}");
+                    EscreverLinha($"  Estado       : 🟡 Menu {modeName} Ativo (Sem Sistema Operacional)");
+                    EscreverLinha($"  Porta TFTP   : 🔴 {portaTftp}");
+                    EscreverLinha($"  Firmware     : Padrão {fwExemplo}");
+                    EscreverLinha($"  ⚠️ Limpeza   : O processo apagará/ignorará configurações e senhas");
+                    EscreverLinha($"                 anteriores na memória para prevenir bloqueios de acesso.");
+                    EscreverLinha($"👉 A RECUPERAÇÃO DE FIRMWARE É OBRIGATÓRIA.");
+                    EscreverLinha($"👉 Selecione o Modelo (Passo 1), carregue a Ficha SAIP (Passo 2) e selecione o arquivo de Firmware ({fwExemplo}) no Passo 3.\n");
+
+                    MessageBox.Show(this,
+                        $"EQUIPAMENTO DETECTADO: {especificoNome.ToUpper()}\n" +
+                        $"MODO: {modeName.ToUpper()}\n\n" +
+                        $"• O roteador foi identificado no menu de inicialização {modeName}.\n" +
+                        $"• Não há sistema operacional em execução na memória Flash/RAM.\n\n" +
+                        $"⚠️ AVISO IMPORTANTE — LIMPEZA E RECUPERAÇÃO:\n" +
+                        $"• A recuperação de firmware gravará uma nova imagem limpa do sistema operacional.\n" +
+                        $"• Para prevenir travas por senhas anteriores desconhecidas, quaisquer configurações e senhas residuais na memória serão APAGADAS/IGNORADAS no processo.\n\n" +
+                        $"👉 AÇÕES NECESSÁRIAS:\n" +
+                        $"1. Conecte o cabo de rede na porta {portaTftp} para a transferência TFTP.\n" +
+                        $"2. Selecione a imagem de firmware compatível ({fwExemplo}) no Passo 3.\n" +
+                        $"3. Clique em 'INICIAR PROVISIONAMENTO AUTOMÁTICO' para iniciar a recuperação.",
+                        $"Recuperação e Limpeza — {especificoNome}",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
                 }
                 else if (isPasswordLocked)
                 {
@@ -829,7 +1185,7 @@ public partial class MainWindow : Window
                             if (authDlg.ShowDialog() != true)
                             {
                                 // Operador cancelou o diálogo
-                                ConfigurarBotaoTestarTerminal(true, "🔌🔍 Testar Conexão e Avaliar", "#881337", "#FFFFFF");
+                                ConfigurarBotaoTestarTerminal(true, "🔌 Testar Conexão", "#B91C1C", "#FFFFFF");
                                 AtualizarBotaoProsseguir();
                                 break;
                             }
@@ -841,12 +1197,33 @@ public partial class MainWindow : Window
                                 TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626"));
                                 if (TxtChkSerialIcon != null && TxtChkSerialSub != null)
                                 {
-                                    TxtChkSerialIcon.Text = "🟢 2. Serial (Com Senha)";
+                                    TxtChkSerialIcon.Text = "🟢 1b. Serial (Com Senha)";
                                     TxtChkSerialSub.Text = $"{porta} (Requer Zeramento)";
                                 }
                                 ConfigurarBotaoTestarTerminal(false, "preencha dados para seguir", "#FEF2F2", "#DC2626");
                                 EscreverLinha("[*] Operador optou pelo zeramento de fábrica automatizado (alternativa de zerar a configuração).");
-                                EscreverLinha("👉 Prossiga selecionando o Modelo (Passo 1), carregando a Ficha SAIP (Passo 2) e opcionalmente o Firmware (Passo 3).\n");
+                                EscreverLinha("👉 AÇÃO NECESSÁRIA: Selecione o Modelo exato do Equipamento no Passo 1a.");
+                                EscreverLinha("👉 Em seguida, carregue a Ficha SAIP (Passo 2) e clique em 'INICIAR PROVISIONAMENTO AUTOMÁTICO'.\n");
+
+                                MessageBox.Show(this,
+                                    "🔒 ZERAMENTO DE CONFIGURAÇÃO SELECIONADO\n\n" +
+                                    "Como o equipamento está protegido por senha, o modelo exato precisa ser indicado pelo operador no Passo 1a.\n\n" +
+                                    "👉 POR FAVOR, SELECIONE O MODELO NO PASSO 1a:\n" +
+                                    "   • HPE MSR 954 / 958 (BootWare Ctrl+B)\n" +
+                                    "   • HPE MSR 930 / 931 / 935 (BootWare Ctrl+B)\n" +
+                                    "   • Cisco Série 1900 / 1921 / 1941 / 1905 (ROMMON Break)\n" +
+                                    "   • Cisco Série 900 / C921-4P (ROMMON Ctrl+C)\n" +
+                                    "   • Cisco Série 800 / C841M (ROMMON Break)\n\n" +
+                                    "Após selecionar o modelo correto e carregar a Ficha SAIP, clique em 'INICIAR PROVISIONAMENTO AUTOMÁTICO'.",
+                                    "Selecione o Modelo — Passo 1a",
+                                    MessageBoxButton.OK,
+                                    MessageBoxImage.Information);
+
+                                if (CbModeloRoteadorInicial != null)
+                                {
+                                    CbModeloRoteadorInicial.Focus();
+                                }
+
                                 AtualizarBotaoProsseguir();
                                 break;
                             }
@@ -884,7 +1261,7 @@ public partial class MainWindow : Window
                                     TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#16A34A"));
                                     if (TxtChkSerialIcon != null && TxtChkSerialSub != null)
                                     {
-                                        TxtChkSerialIcon.Text = "🟢 2. Serial (Autenticado)";
+                                        TxtChkSerialIcon.Text = "🟢 1b. Serial (Autenticado)";
                                         TxtChkSerialSub.Text = $"{porta} (Zeramento Pulado)";
                                     }
                                     EscreverLinha("[OK] Autenticação realizada com sucesso! Acesso ao console concedido sem necessidade de zeramento.\n");
@@ -893,7 +1270,7 @@ public partial class MainWindow : Window
                                     EscreverLinha("[*] Coletando inventário e avaliando equipamento pós-login...");
                                     await ExecutarAvaliacaoPosLoginAsync(porta, baud);
 
-                                    ConfigurarBotaoTestarTerminal(true, "🔌🔍 Testar Conexão e Avaliar", "#881337", "#FFFFFF");
+                                    ConfigurarBotaoTestarTerminal(true, "🔌 Testar Conexão", "#B91C1C", "#FFFFFF");
                                     AtualizarBotaoProsseguir();
                                     break;
                                 }
@@ -916,11 +1293,66 @@ public partial class MainWindow : Window
                 {
                     TxtSerialTestStatus.Text = "✅ Serial OK";
                     TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#16A34A"));
+
+                    string especificoNome;
+                    if (isHpe)
+                    {
+                        var isHpe1002 = detection.Series == DeviceSeries.Msr1002
+                                     || DeviceDetector.Hpe1002ModelRegex.IsMatch(prompt)
+                                     || userSeries == DeviceSeries.Msr1002;
+
+                        var isHpe930 = !isHpe1002 && (
+                                       detection.Series == DeviceSeries.Msr930
+                                    || prompt.Contains("930", StringComparison.OrdinalIgnoreCase)
+                                    || prompt.Contains("MSR930", StringComparison.OrdinalIgnoreCase)
+                                    || userSeries == DeviceSeries.Msr930);
+
+                        especificoNome = isHpe1002 ? "HPE MSR 1002 / 1003" :
+                                         isHpe930 ? "HPE MSR 930" : "HPE MSR 954";
+                    }
+                    else if (isCisco)
+                    {
+                        var is1900 = detection.Series == DeviceSeries.Series1900
+                                  || DeviceDetector.Cisco1900ModelRegex.IsMatch(prompt)
+                                  || userSeries == DeviceSeries.Series1900;
+
+                        var is921 = !is1900 && (
+                                    detection.Series == DeviceSeries.Isr921
+                                 || DeviceDetector.Cisco900ModelRegex.IsMatch(prompt)
+                                 || userSeries == DeviceSeries.Isr921);
+
+                        var is841 = !is1900 && !is921 && (
+                                    detection.Series == DeviceSeries.Isr841
+                                 || DeviceDetector.Cisco841ModelRegex.IsMatch(prompt)
+                                 || userSeries == DeviceSeries.Isr841);
+
+                        especificoNome = is1900 ? "Cisco Série 1900 (1905/1921/1941)" :
+                                         is921 ? "Cisco Série 900 / C921-4P" :
+                                         is841 ? "Cisco Série 800 / C841M" :
+                                         "Cisco IOS";
+                    }
+                    else
+                    {
+                        especificoNome = "Roteador";
+                    }
+
+                    EscreverLinha($"\n=================================================================");
+                    EscreverLinha($"   🟢 CONEXÃO SERIAL VALIDADA COM SUCESSO (ACESSO LIVRE)");
+                    EscreverLinha($"=================================================================");
+                    EscreverLinha($"  Porta Serial : {porta} @ {baud} bps");
+                    EscreverLinha($"  Equipamento  : 🖧 {especificoNome}");
+                    EscreverLinha($"  Estado       : ✅ Terminal Operacional Aberto (Sem Senha)");
+                    EscreverLinha($"[*] Iniciando coleta automática de inventário e avaliação do equipamento...\n");
+
+                    Dispatcher.BeginInvoke(new Action(async () =>
+                    {
+                        await ExecutarAvaliacaoPosLoginAsync(porta, baud);
+                    }));
                 }
 
                 if (CardChkSerial != null && TxtChkSerialIcon != null && TxtChkSerialSub != null)
                 {
-                    TxtChkSerialIcon.Text = isPasswordLocked ? (_skipFactoryReset ? "🟢 2. Serial (Autenticado)" : "🟢 2. Serial (Com Senha)") : "🟢 2. Cabo Serial";
+                    TxtChkSerialIcon.Text = isPasswordLocked ? (_skipFactoryReset ? "🟢 1b. Serial (Autenticado)" : "🟢 1b. Serial (Com Senha)") : "🟢 1b. Status Serial";
                     TxtChkSerialSub.Text = isPasswordLocked ? (_skipFactoryReset ? $"{porta} (Zeramento Pulado)" : $"{porta} (Requer Zeramento)") : $"{porta} @ {baud} OK";
                     CardChkSerial.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F0FDF4"));
                     CardChkSerial.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#BBF7D0"));
@@ -928,28 +1360,51 @@ public partial class MainWindow : Window
 
                 if (isHpe)
                 {
-                    foreach (var cb in new[] { CbModeloRoteadorInicial, CbInterrupt })
-                    {
-                        if (cb == null) continue;
-                        foreach (ComboBoxItem it in cb.Items)
-                        {
-                            var t = it.Tag?.ToString() ?? it.Content?.ToString() ?? "";
-                            if (t.Contains("hpe", StringComparison.OrdinalIgnoreCase) || t.Contains("954", StringComparison.OrdinalIgnoreCase) || t.Contains("msr", StringComparison.OrdinalIgnoreCase))
-                            { cb.SelectedItem = it; break; }
-                        }
-                    }
+                    var isHpe1002 = detection.Series == DeviceSeries.Msr1002
+                                 || DeviceDetector.Hpe1002ModelRegex.IsMatch(prompt)
+                                 || userSeries == DeviceSeries.Msr1002;
+
+                    var isHpe930 = !isHpe1002 && (
+                                   detection.Series == DeviceSeries.Msr930
+                                || DeviceDetector.Hpe930ModelRegex.IsMatch(prompt)
+                                || userSeries == DeviceSeries.Msr930);
+
+                    var isHpe954 = !isHpe1002 && !isHpe930 && (
+                                   detection.Series == DeviceSeries.Msr954
+                                || DeviceDetector.Hpe954ModelRegex.IsMatch(prompt)
+                                || userSeries == DeviceSeries.Msr954);
+
+                    if (isHpe1002) SelecionarModeloNoCombo("hpe.msr1002.ctrl-b");
+                    else if (isHpe930) SelecionarModeloNoCombo("hpe.msr930.ctrl-b");
+                    else if (isHpe954) SelecionarModeloNoCombo("hpe.msr954.ctrl-b");
                 }
                 else if (isCisco)
                 {
-                    foreach (var cb in new[] { CbModeloRoteadorInicial, CbInterrupt })
+                    var is1900 = detection.Series == DeviceSeries.Series1900
+                              || DeviceDetector.Cisco1900ModelRegex.IsMatch(prompt)
+                              || userSeries == DeviceSeries.Series1900;
+
+                    var is921 = !is1900 && (
+                                detection.Series == DeviceSeries.Isr921
+                             || DeviceDetector.Cisco900ModelRegex.IsMatch(prompt)
+                             || userSeries == DeviceSeries.Isr921);
+
+                    var is841 = !is1900 && !is921 && (
+                                detection.Series == DeviceSeries.Isr841
+                             || DeviceDetector.Cisco841ModelRegex.IsMatch(prompt)
+                             || userSeries == DeviceSeries.Isr841);
+
+                    if (is1900)
                     {
-                        if (cb == null) continue;
-                        foreach (ComboBoxItem it in cb.Items)
-                        {
-                            var t = it.Tag?.ToString() ?? it.Content?.ToString() ?? "";
-                            if (t.Contains("cisco", StringComparison.OrdinalIgnoreCase) || t.Contains("1941", StringComparison.OrdinalIgnoreCase) || t.Contains("2911", StringComparison.OrdinalIgnoreCase))
-                            { cb.SelectedItem = it; break; }
-                        }
+                        SelecionarModeloNoCombo("cisco.c1900.break");
+                    }
+                    else if (is921)
+                    {
+                        SelecionarModeloNoCombo("cisco.c900.ctrl-c");
+                    }
+                    else if (is841)
+                    {
+                        SelecionarModeloNoCombo("cisco.c841.break");
                     }
                 }
 
@@ -1154,291 +1609,144 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task ExecutarAvaliacaoPosLoginAsync(string porta, int baud)
+    private async Task ExecutarAvaliacaoPosLoginAsync(string porta, int baud, int maxTentativas = 3)
     {
-        SerialTransport? transport = null;
-        DeviceSession? session = null;
-        try
+        Dispatcher.Invoke(() =>
         {
-            transport = new SerialTransport(porta, baud, readTimeout: TimeSpan.FromMilliseconds(400));
-            session = new DeviceSession(transport, new SessionOptions
-            {
-                PromptMatcher = RegexPromptMatcher.Universal(),
-                ConnectTimeout = TimeSpan.FromSeconds(6),
-                CommandTimeout = TimeSpan.FromSeconds(10)
-            });
-            session.RawOutput += OnRawOutput;
-            RegistrarSessaoAtiva(session, porta, baud);
+            ConfigurarBotaoTestarTerminal(false, "Aguarde...", "#FEF2F2", "#DC2626");
+            TxtSerialTestStatus.Text = "⏳ Avaliando...";
+            TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D97706"));
+        });
 
-            await session.ConnectAsync(CancellationToken.None);
+        // Aguarda liberação da COM pelo teste serial anterior (Dispose do SerialPort
+        // não libera instantaneamente — 1º clique falhava aqui com "porta em uso").
+        await Task.Delay(700);
 
-            var prompt = session.CurrentPrompt ?? "";
-            var isHpe = prompt.StartsWith("<") || prompt.StartsWith("[") || prompt.Contains("HPE", StringComparison.OrdinalIgnoreCase);
+        var avaliacaoOk = false;
+        Exception? ultimoErro = null;
 
-            if (isHpe)
-            {
-                await AvaliarEquipamentoHpeAsync(session, CancellationToken.None);
-            }
-            else
-            {
-                await AvaliarEquipamentoCiscoAsync(session, CancellationToken.None);
-            }
-        }
-        catch (Exception ex)
+        for (var tentativa = 1; tentativa <= maxTentativas && !avaliacaoOk; tentativa++)
         {
-            EscreverLinha($"[AVISO] Não foi possível obter inventário completo pós-login: {ex.Message}");
-        }
-        finally
-        {
-            if (session != null)
+            if (tentativa > 1)
             {
-                session.RawOutput -= OnRawOutput;
-                try { await session.DisposeAsync(); } catch { }
-            }
-            if (transport != null)
-            {
-                try { await transport.DisposeAsync(); } catch { }
-            }
-        }
-    }
-
-    private async void BtnAvaliarEquipamento_Click(object sender, RoutedEventArgs e)
-    {
-        var porta = CbPortaInicial?.Text?.Trim();
-        if (string.IsNullOrEmpty(porta) || porta == "(nenhuma)")
-            porta = CbPorta?.Text?.Trim();
-
-        if (string.IsNullOrEmpty(porta) || porta == "(nenhuma)")
-        {
-            MessageBox.Show("Selecione a porta serial do equipamento (ex: COM1 ou COM4) antes de iniciar a avaliação.", "Aviso", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        var baud = int.TryParse(CbBaud?.Text, out var b) ? b : 9600;
-        SetBusy(true);
-        _cts = new CancellationTokenSource();
-        var ct = _cts.Token;
-
-        try
-        {
-            AtualizarProgresso(10, "Avaliando Equipamento...", $"Conectando em {porta} @ {baud} bps...");
-            EscreverLinha("\n================================================================================");
-            EscreverLinha("               🔍 AVALIAÇÃO E DIAGNÓSTICO DO EQUIPAMENTO CONECTADO              ");
-            EscreverLinha("================================================================================");
-            EscreverLinha($"  Porta Serial : {porta} @ {baud} bps");
-            EscreverLinha($"  Data / Hora  : {DateTime.Now:dd/MM/yyyy HH:mm:ss}\n");
-
-            var sessionOptions = new SessionOptions
-            {
-                PromptMatcher = RegexPromptMatcher.Universal(),
-                CommandTimeout = TimeSpan.FromSeconds(15),
-                ConnectTimeout = TimeSpan.FromSeconds(20)
-            };
-
-            var transport = new SerialTransport(porta, baud);
-            await using var session = new DeviceSession(transport, sessionOptions);
-            session.RawOutput += OnRawOutput;
-            RegistrarSessaoAtiva(session, porta, baud);
-
-            await session.ConnectAsync(ct);
-
-            // Diagnóstico HPE BootWare: detecta menu BootWare, contagem regressiva Ctrl+B ou Flash vazia
-            var initPrompt = session.CurrentPrompt ?? "";
-            var isBootWare = initPrompt.Contains("EXTENDED-BOOTWARE", StringComparison.OrdinalIgnoreCase)
-                || initPrompt.Contains("BOOTWARE", StringComparison.OrdinalIgnoreCase)
-                || initPrompt.Contains("BootWare Operation Menu", StringComparison.OrdinalIgnoreCase)
-                || initPrompt.Contains("BASIC BOOT MENU", StringComparison.OrdinalIgnoreCase)
-                || initPrompt.Contains("BOOT MENU", StringComparison.OrdinalIgnoreCase)
-                || initPrompt.Contains("<MAIN MENU>", StringComparison.OrdinalIgnoreCase)
-                || System.Text.RegularExpressions.Regex.IsMatch(initPrompt, @"(?i)Enter\s+your\s+choice")
-                || System.Text.RegularExpressions.Regex.IsMatch(initPrompt, @"(?i)choice\s*\(\s*0\s*-\s*[0-9]\s*\)")
-                || System.Text.RegularExpressions.Regex.IsMatch(initPrompt, @"(?i)choice\s*:")
-                || System.Text.RegularExpressions.Regex.IsMatch(initPrompt, @"(?i)The\s+image\s+does\s+not\s+exist")
-                || System.Text.RegularExpressions.Regex.IsMatch(initPrompt, @"(?i)Loading\s+images\s+fails")
-                || System.Text.RegularExpressions.Regex.IsMatch(initPrompt, @"(?i)Loading\s+boot\s+image\s+fails")
-                || initPrompt.Contains("Enter Ethernet SubMenu", StringComparison.OrdinalIgnoreCase)
-                || initPrompt.Contains("Modify Ethernet Parameter", StringComparison.OrdinalIgnoreCase);
-
-            if (isBootWare)
-            {
-                EscreverLinha("\n==================================================================================");
-                EscreverLinha("   📢 ROTEADOR HPE DETECTADO NO MENU DE RECUPERAÇÃO (BOOTWARE)");
-                EscreverLinha("==================================================================================");
-                EscreverLinha($"  Porta Serial       : {porta} @ {baud} bps");
-                EscreverLinha("  Estado de Acesso   : 🟡 Menu de Recuperação BootWare Ativo");
-                EscreverLinha("  Diagnóstico        : Roteador HPE MSR 954 em modo bootloader (sem firmware válido na Flash ou aguardando recuperação).");
-                EscreverLinha("  Ação Automática    : Será realizado o processo de RECUPERAÇÃO / ATUALIZAÇÃO do firmware via BootWare TFTP.");
-                EscreverLinha("  Insumos Utilizados : Ficha SAIP (faixa LAN) + Pacote de Firmware (.ipe/.bin) + Porta GE0.");
-                EscreverLinha("==================================================================================\n");
-
                 Dispatcher.Invoke(() =>
                 {
-                    TxtSerialTestStatus.Text = "🟡 HPE no Menu de Recuperação (BootWare)";
+                    TxtSerialTestStatus.Text = $"⏳ Reavaliando... ({tentativa}/{maxTentativas})";
                     TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D97706"));
-
-                    foreach (var cb in new[] { CbModeloRoteadorInicial, CbInterrupt })
-                    {
-                        if (cb == null) continue;
-                        foreach (ComboBoxItem it in cb.Items)
-                        {
-                            var t = it.Tag?.ToString() ?? it.Content?.ToString() ?? "";
-                            if (t.Contains("hpe", StringComparison.OrdinalIgnoreCase) || t.Contains("954", StringComparison.OrdinalIgnoreCase) || t.Contains("msr", StringComparison.OrdinalIgnoreCase))
-                            { cb.SelectedItem = it; break; }
-                        }
-                    }
                 });
+                EscreverLinha($"[*] Nova tentativa de avaliação em 2s... ({tentativa}/{maxTentativas})");
+                await Task.Delay(2000);
+            }
 
-                var temSaip = _loadedSaipCircuit != null;
-                var temFirmware = !string.IsNullOrWhiteSpace(_selectedIosBinPath) && File.Exists(_selectedIosBinPath);
-                var lanBlock = _loadedSaipCircuit?.LanBlockNetwork ?? "";
-                var lanIp = _loadedSaipCircuit?.LanIp ?? "";
-                var hostLanIp = _loadedSaipCircuit?.HostLanIp ?? "";
-                var lanMask = _loadedSaipCircuit?.LanSubnetMask ?? "";
-                var fwName = temFirmware ? Path.GetFileName(_selectedIosBinPath) : "";
-
-                var msg = $"📢 ROTEADOR HPE DETECTADO NO MENU DE RECUPERAÇÃO (BOOTWARE)\n\n" +
-                          $"Um roteador HPE foi detectado no menu de recuperação (BootWare).\n" +
-                          $"Será realizado o processo de RECUPERAÇÃO / ATUALIZAÇÃO do firmware via TFTP.\n\n" +
-                          $"📋 STATUS DOS INSUMOS:\n" +
-                          $"  • Ficha SAIP: {(temSaip ? $"✅ Carregada — Faixa LAN {lanBlock}/{_loadedSaipCircuit!.LanCidr} (CPE: {lanIp} | Host PC: {hostLanIp} | Mask: {lanMask})" : "❌ PENDENTE — Carregue a Ficha SAIP")}\n" +
-                          $"  • Pacote Firmware: {(temFirmware ? $"✅ Selecionado ({fwName})" : "❌ PENDENTE — Selecione o arquivo .ipe / .bin")}\n" +
-                          $"  • Cabo de Rede: Conecte na porta GE0 do HPE 954 (porta ativa no BootWare)\n\n" +
-                          $"{(temSaip && temFirmware ? "Deseja iniciar a RECUPERAÇÃO / ATUALIZAÇÃO do firmware agora?" : "👉 Carregue a Ficha SAIP e selecione o firmware para iniciar a recuperação.")}";
-
-                AtualizarProgresso(100, "HPE BootWare Detectado", "Roteador HPE no menu de recuperação (pronto para recuperação/atualização).");
-
-                if (temSaip && temFirmware)
+            SerialTransport? transport = null;
+            DeviceSession? session = null;
+            try
+            {
+                transport = new SerialTransport(porta, baud, readTimeout: TimeSpan.FromMilliseconds(400));
+                session = new DeviceSession(transport, new SessionOptions
                 {
-                    var resp = MessageBox.Show(msg, "SPARC — Recuperação/Atualização de Firmware HPE", MessageBoxButton.YesNo, MessageBoxImage.Question);
-                    if (resp == MessageBoxResult.Yes)
-                    {
-                        var ok = await ExecutarBootWareTftpDownloadAsync(session, "3", _selectedIosBinPath!, hostLanIp, lanIp, lanMask, ct);
-                        if (ok)
-                        {
-                            AtualizarProgresso(100, "Firmware HPE Gravado!", "Recuperação/Atualização concluída com sucesso via BootWare.");
-                            MessageBox.Show(
-                                "✅ PROCESSO DE RECUPERAÇÃO/ATUALIZAÇÃO CONCLUÍDO COM SUCESSO!\n\n" +
-                                "O firmware foi transferido e gravado na memória Flash do HPE 954.\n\n" +
-                                "👉 AÇÃO OBRIGATÓRIA:\n" +
-                                "Desconecte o cabo de rede da porta GE0 e CONECTE NA PORTA GE1 (LAN Cliente) para prosseguir com os testes e provisionamento.",
-                                "SPARC — Recuperação HPE Concluída",
-                                MessageBoxButton.OK, MessageBoxImage.Information);
-                        }
-                    }
-                }
-                else
-                {
-                    MessageBox.Show(msg, "SPARC — Insumos Pendentes para Recuperação", MessageBoxButton.OK, MessageBoxImage.Warning);
-                }
-                return;
-            }
+                    PromptMatcher = RegexPromptMatcher.Universal(),
+                    ConnectTimeout = TimeSpan.FromSeconds(10),
+                    CommandTimeout = TimeSpan.FromSeconds(10)
+                });
+                session.RawOutput += OnRawOutput;
+                RegistrarSessaoAtiva(session, porta, baud);
 
-            // 1. Diagnóstico do Estado de Acesso / Senha / ROMMON (Cisco / Outros)
-            AtualizarProgresso(25, "Diagnosticando Estado de Acesso...", "Verificando terminal e senha...");
-            var ciscoRecovery = new CiscoIOSRecovery();
-            var (accessState, rommonKind) = await ciscoRecovery.DiagnoseAccessStateAsync(session, ct);
+                await session.ConnectAsync(CancellationToken.None);
 
-            string accessDesc;
-            bool isOpen = false;
-            switch (accessState)
-            {
-                case DeviceAccessState.AlreadyInRommon:
-                    accessDesc = $"🚨 MODO ROMMON / BOOTLOADER ({rommonKind}) — Sem Firmware ou em Recuperação";
-                    break;
-                case DeviceAccessState.UnlockedPrompt:
-                    accessDesc = "🟢 PROMPT ABERTO / SEM SENHA — Acesso Direto Liberado (Modo Privilegiado)";
-                    isOpen = true;
-                    break;
-                case DeviceAccessState.PasswordLocked:
-                    accessDesc = "🔒 PROTEGIDO POR SENHA — Requer quebra/zeramento na Fase 1 (Break/ROMMON)";
-                    break;
-                default:
-                    accessDesc = "❓ ESTADO NÃO IDENTIFICADO";
-                    break;
-            }
-
-            EscreverLinha($"  🔑 Estado de Acesso : {accessDesc}");
-
-            if (accessState == DeviceAccessState.AlreadyInRommon)
-            {
-                EscreverLinha("  ------------------------------------------------------------------------------");
-                EscreverLinha("  💡 Diagnóstico      : Equipamento no bootloader ROMMON (sem imagem de boot carregada).");
-                EscreverLinha("  💡 Ação Recomendada: Conectar o cabo na porta GE 0/0 e executar a Fase 2 (Firmware TFTP).");
-                EscreverLinha("================================================================================\n");
-
-                AtualizarProgresso(100, "Avaliação Concluída!", "Equipamento em modo ROMMON.");
-                MessageBox.Show(
-                    $"Equipamento conectado em {porta} está em MODO ROMMON / BOOTLOADER ({rommonKind}).\n\n" +
-                    "• Flash vazia ou sem imagem de boot configurada.\n" +
-                    "• Recomendação: Conecte o cabo na porta GE 0/0 e execute a Fase 2 (Atualização de Firmware via TFTP).",
-                    "Diagnóstico do Equipamento — SPARC",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
-                return;
-            }
-
-            // Se o prompt estiver aberto, coleta inventário completo e configuração existente
-            if (isOpen)
-            {
-                AtualizarProgresso(50, "Coletando Inventário do Sistema...", "Consultando versão, hardware e interfaces...");
-
-                var promptStr = session.CurrentPrompt ?? "";
-                var isHpe = promptStr.StartsWith("<") || promptStr.StartsWith("[") || promptStr.Contains("HPE", StringComparison.OrdinalIgnoreCase);
+                var prompt = session.CurrentPrompt ?? "";
+                var isHpe = prompt.StartsWith("<") || prompt.StartsWith("[") || prompt.Contains("HPE", StringComparison.OrdinalIgnoreCase);
 
                 if (isHpe)
                 {
-                    await AvaliarEquipamentoHpeAsync(session, ct);
+                    await AvaliarEquipamentoHpeAsync(session, CancellationToken.None);
                 }
                 else
                 {
-                    await AvaliarEquipamentoCiscoAsync(session, ct);
+                    await AvaliarEquipamentoCiscoAsync(session, CancellationToken.None);
+                }
+
+                avaliacaoOk = true;
+            }
+            catch (Exception ex)
+            {
+                ultimoErro = ex;
+                EscreverLinha($"[AVISO] Tentativa {tentativa}/{maxTentativas} de avaliação falhou: {ex.Message}");
+            }
+            finally
+            {
+                if (session != null)
+                {
+                    session.RawOutput -= OnRawOutput;
+                    try { await session.DisposeAsync(); } catch { }
+                }
+                if (transport != null)
+                {
+                    try { await transport.DisposeAsync(); } catch { }
+                }
+            }
+        }
+
+        Dispatcher.Invoke(() =>
+        {
+            if (avaliacaoOk)
+            {
+                ConfigurarBotaoTestarTerminal(true, "🔌 Testar Conexão", "#B91C1C", "#FFFFFF");
+                if (TxtSerialTestStatus.Text.StartsWith("⏳"))
+                {
+                    TxtSerialTestStatus.Text = "✅ Avaliado";
+                    TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#16A34A"));
                 }
             }
             else
             {
-                EscreverLinha("  ------------------------------------------------------------------------------");
-                EscreverLinha("  💡 Diagnóstico      : Equipamento com senha configurada no console/enable.");
-                EscreverLinha("  💡 Ação Recomendada: Executar a Fase 1 (Zerar Configuração) para quebrar a senha via Break/ROMMON.");
-                EscreverLinha("  ⚠️ ATENÇÃO          : Toda a configuração existente será APAGADA e os dados atuais serão PERDIDOS!");
-                EscreverLinha("================================================================================\n");
-
-                AtualizarProgresso(100, "Avaliação Concluída!", "Equipamento protegido por senha.");
-                MessageBox.Show(
-                    $"Equipamento conectado em {porta} está PROTEGIDO POR SENHA.\n\n" +
-                    "• O CLI exige usuário/senha ou enable com senha restrita.\n" +
-                    "• Recomendação: Execute a Fase 1 (Zerar Configuração) na esteira para quebrar a senha via Break/ROMMON e restaurar o config-register para 0x2102.\n\n" +
-                    "⚠️ ALERTA DE PERDA DE DADOS:\n" +
-                    "Ao executar o zeramento ou provisionamento, toda a configuração existente no equipamento será COMPLETAMENTE APAGADA e os dados configurados serão PERDIDOS.",
-                    "Diagnóstico do Equipamento — SPARC",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Warning);
+                // Status intermediário honesto: não marca "Avaliado" quando o inventário falhou.
+                EscreverLinha($"[AVISO] Não foi possível obter inventário completo após {maxTentativas} tentativas: {ultimoErro?.Message}");
+                EscreverLinha("👉 Aguarde 5s (estabilização do console) e clique em 'Testar Conexão' novamente.");
+                TxtSerialTestStatus.Text = "⚠️ Avaliação incompleta — testar novamente";
+                TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D97706"));
+                ConfigurarBotaoTestarTerminal(true, "🔌 Testar Conexão", "#B91C1C", "#FFFFFF");
             }
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            EscreverLinha($"\n[FALHA NA AVALIAÇÃO] {ex.Message}");
-            AtualizarProgresso(0, "Falha na avaliação", ex.Message);
-            MessageBox.Show($"Não foi possível avaliar o equipamento na porta {porta}:\n\n{ex.Message}", "Erro de Comunicação Serial", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-        finally
-        {
-            _cts?.Dispose();
-            _cts = null;
-            SetBusy(false);
-        }
+            AtualizarBotaoProsseguir();
+        });
     }
 
     private async Task AvaliarEquipamentoCiscoAsync(DeviceSession session, CancellationToken ct)
     {
+        try
+        {
+            var p = session.CurrentPrompt ?? "";
+            if (p.Trim().EndsWith(">"))
+            {
+                await session.SendCommandAsync("enable", TimeSpan.FromSeconds(5), ct);
+            }
+        }
+        catch { }
+
         try { await session.SendCommandAsync("terminal length 0", TimeSpan.FromSeconds(5), ct); } catch { }
+        try { await session.SendCommandAsync("terminal width 512", TimeSpan.FromSeconds(5), ct); } catch { }
 
         // 1. show version
         var showVer = await session.SendCommandAsync("show version", TimeSpan.FromSeconds(15), ct);
 
-        var modelMatch = Regex.Match(showVer, @"(?im)^\s*cisco\s+([A-Za-z0-9\-\/]+).+processor");
-        if (!modelMatch.Success) modelMatch = Regex.Match(showVer, @"(?im)^\s*Model number\s*:\s*(\S+)");
-        var modelo = modelMatch.Success ? modelMatch.Groups[1].Value.Trim() : "Cisco (modelo não parseado)";
+        var modelMatch = Regex.Match(showVer, @"(?im)\bcisco\s+([A-Za-z0-9\-\/_]+)\s*\(");
+        if (!modelMatch.Success) modelMatch = Regex.Match(showVer, @"(?im)\bcisco\s+([A-Za-z0-9\-\/_]+)\s+with");
+        if (!modelMatch.Success) modelMatch = Regex.Match(showVer, @"(?im)^\s*(?:cisco\s+)?Model\s+number\s*:\s*(\S+)");
+        if (!modelMatch.Success) modelMatch = Regex.Match(showVer, @"(?im)\bPID\s*:\s*(\S+)");
+        if (!modelMatch.Success) modelMatch = Regex.Match(showVer, @"(?im)\bPID\s+str\s*:\s*(\S+)");
+        if (!modelMatch.Success) modelMatch = Regex.Match(showVer, @"(?im)^\s*cisco\s+([A-Za-z0-9\-\/_]+)");
+        var modelo = modelMatch.Success ? modelMatch.Groups[1].Value.Trim() : "Cisco";
+
+        var is1900 = DeviceDetector.Cisco1900ModelRegex.IsMatch(modelo)
+                  || DeviceDetector.Cisco1900ModelRegex.IsMatch(showVer);
+
+        var is921 = !is1900 && (
+                     DeviceDetector.Cisco900ModelRegex.IsMatch(modelo)
+                  || DeviceDetector.Cisco900ModelRegex.IsMatch(showVer));
+
+        var is841 = !is1900 && !is921 && (
+                     DeviceDetector.Cisco841ModelRegex.IsMatch(modelo)
+                  || DeviceDetector.Cisco841ModelRegex.IsMatch(showVer));
 
         var iosVerMatch = Regex.Match(showVer, @"(?im)Version\s+([0-9\.\(\)A-Za-z]+),");
         var iosVer = iosVerMatch.Success ? iosVerMatch.Groups[1].Value.Trim() : "Desconhecida";
@@ -1453,8 +1761,16 @@ public partial class MainWindow : Window
         var uptimeMatch = Regex.Match(showVer, @"(?im)uptime is\s+(.+)");
         var uptime = uptimeMatch.Success ? uptimeMatch.Groups[1].Value.Trim() : "—";
 
-        // 2. dir flash:
+        // 2. dir flash: / dir sdflash: / dir
         var dirFlash = await session.SendCommandAsync("dir flash:", TimeSpan.FromSeconds(15), ct);
+        if (dirFlash.Contains("% Invalid", StringComparison.OrdinalIgnoreCase))
+        {
+            dirFlash = await session.SendCommandAsync("dir sdflash:", TimeSpan.FromSeconds(15), ct);
+            if (dirFlash.Contains("% Invalid", StringComparison.OrdinalIgnoreCase))
+            {
+                dirFlash = await session.SendCommandAsync("dir", TimeSpan.FromSeconds(15), ct);
+            }
+        }
         var binMatches = Regex.Matches(dirFlash, @"(?im)\b(\S+\.bin)\b");
         var binFiles = binMatches.Select(m => m.Groups[1].Value).Distinct().ToList();
         var flashFreeMatch = Regex.Match(dirFlash, @"(?im)([0-9]+)\s+bytes\s+free");
@@ -1502,18 +1818,22 @@ public partial class MainWindow : Window
         EscreverLinha($"  📊 Situação do Aparelho: {(isZerado ? "🟢 TOTALMENTE ZERADO (Pronto para provisionamento direto)" : "🟡 POSSUI CONFIGURAÇÃO PRÉVIA (Recomenda-se zerar na Fase 1 ou sobregravar)")}");
         Dispatcher.Invoke(() =>
         {
-            if (modelo.Contains("900", StringComparison.OrdinalIgnoreCase) || modelo.Contains("921", StringComparison.OrdinalIgnoreCase))
+            if (is841)
             {
-                if (CbModeloRoteadorInicial != null) CbModeloRoteadorInicial.SelectedIndex = 3;
+                SelecionarModeloNoCombo("cisco.c841.break");
             }
-            else
+            else if (is921)
             {
-                if (CbModeloRoteadorInicial != null) CbModeloRoteadorInicial.SelectedIndex = 2;
+                SelecionarModeloNoCombo("cisco.c900.ctrl-c");
+            }
+            else if (is1900)
+            {
+                SelecionarModeloNoCombo("cisco.c1900.break");
             }
 
             if (CardChkModelo != null && TxtChkModeloIcon != null && TxtChkModeloSub != null)
             {
-                TxtChkModeloIcon.Text = "🟢 1. Modelo";
+                TxtChkModeloIcon.Text = "🟢 1a. Modelo";
                 TxtChkModeloSub.Text = $"Cisco {modelo}";
             }
         });
@@ -1541,11 +1861,11 @@ public partial class MainWindow : Window
         // 1. display version
         var dispVer = await session.SendCommandAsync("display version", TimeSpan.FromSeconds(15), ct);
 
-        var modelMatch = Regex.Match(dispVer, @"(?im)^\s*HPE\s+([A-Za-z0-9\-\/ ]+)uptime");
-        if (!modelMatch.Success) modelMatch = Regex.Match(dispVer, @"(?im)HPE\s+([A-Za-z0-9\-\/]+)");
+        var modelMatch = Regex.Match(dispVer, @"(?im)^\s*HP(?:E)?\s+([A-Za-z0-9\-\/ ]+)uptime");
+        if (!modelMatch.Success) modelMatch = Regex.Match(dispVer, @"(?im)HP(?:E)?\s+([A-Za-z0-9\-\/]+)");
         var modelo = modelMatch.Success ? modelMatch.Groups[1].Value.Trim() : "HPE Comware";
 
-        var comwareVerMatch = Regex.Match(dispVer, @"(?im)HPE Comware Software,\s*Version\s*([0-9\.\, A-Za-z]+),");
+        var comwareVerMatch = Regex.Match(dispVer, @"(?im)HP(?:E)? Comware Software,\s*Version\s*([0-9\.\, A-Za-z]+),");
         var comwareVer = comwareVerMatch.Success ? comwareVerMatch.Groups[1].Value.Trim() : "Comware 7";
 
         var releaseMatch = Regex.Match(dispVer, @"(?im)Release\s*([0-9A-Za-z]+)");
@@ -1601,11 +1921,14 @@ public partial class MainWindow : Window
         EscreverLinha($"  📊 Situação do Aparelho: {(isZerado ? "🟢 TOTALMENTE ZERADO (Pronto para provisionamento direto)" : "🟡 POSSUI CONFIGURAÇÃO PRÉVIA (Recomenda-se zerar na Fase 1 ou sobregravar)")}");
         Dispatcher.Invoke(() =>
         {
-            if (CbModeloRoteadorInicial != null) CbModeloRoteadorInicial.SelectedIndex = 1;
+            var isHpe1002 = modelo.Contains("1002", StringComparison.OrdinalIgnoreCase) || modelo.Contains("1003", StringComparison.OrdinalIgnoreCase) || modelo.Contains("1000", StringComparison.OrdinalIgnoreCase);
+            var isHpe930 = !isHpe1002 && (modelo.Contains("930", StringComparison.OrdinalIgnoreCase) || modelo.Contains("931", StringComparison.OrdinalIgnoreCase) || modelo.Contains("935", StringComparison.OrdinalIgnoreCase));
+            SelecionarModeloNoCombo(isHpe1002 ? "hpe.msr1002.ctrl-b" :
+                                    isHpe930 ? "hpe.msr930.ctrl-b" : "hpe.msr954.ctrl-b");
 
             if (CardChkModelo != null && TxtChkModeloIcon != null && TxtChkModeloSub != null)
             {
-                TxtChkModeloIcon.Text = "🟢 1. Modelo";
+                TxtChkModeloIcon.Text = "🟢 1a. Modelo";
                 TxtChkModeloSub.Text = $"HPE {modelo}";
             }
         });
@@ -1635,38 +1958,55 @@ public partial class MainWindow : Window
         if (TxtSerialTestStatus != null) { TxtSerialTestStatus.Text = ""; }
         AtualizarBotaoProsseguir();
 
-        var selecionada = CbPorta.Text;
-        var portas = SerialPort.GetPortNames();
+        // Preserva a seleção atual (prioriza o combo visível da tela inicial)
+        var selecionada = CbPortaInicial?.Text?.Trim();
+        if (string.IsNullOrEmpty(selecionada))
+            selecionada = CbPorta.Text?.Trim();
 
-        CbPorta.Items.Clear();
-        if (CbPortaInicial is not null)
-            CbPortaInicial.Items.Clear();
+        var portas = SerialPort.GetPortNames()
+            .OrderBy(p => int.TryParse(p.Replace("COM", ""), out var n) ? n : 0)
+            .ToArray();
 
-        foreach (var porta in portas)
+        _syncingCombos = true;
+        try
         {
-            CbPorta.Items.Add(porta);
+            CbPorta.Items.Clear();
             if (CbPortaInicial is not null)
-                CbPortaInicial.Items.Add(porta);
-        }
+                CbPortaInicial.Items.Clear();
 
-        if (!string.IsNullOrEmpty(selecionada) && CbPorta.Items.Contains(selecionada))
-        {
-            CbPorta.Text = selecionada;
-            if (CbPortaInicial is not null)
-                CbPortaInicial.Text = selecionada;
+            foreach (var porta in portas)
+            {
+                CbPorta.Items.Add(porta);
+                if (CbPortaInicial is not null)
+                    CbPortaInicial.Items.Add(porta);
+            }
+
+            // Restaura a porta anterior se ainda existir, senão COM1, senão a primeira.
+            // Define SelectedIndex + Text nos dois combos para a caixa exibir o valor.
+            string? restaurar = null;
+            if (!string.IsNullOrEmpty(selecionada) && CbPorta.Items.Contains(selecionada))
+                restaurar = selecionada;
+            else if (CbPorta.Items.Contains("COM1"))
+                restaurar = "COM1";
+            else if (CbPorta.Items.Count > 0)
+                restaurar = CbPorta.Items[0]?.ToString();
+
+            if (!string.IsNullOrEmpty(restaurar))
+            {
+                var idx = CbPorta.Items.IndexOf(restaurar);
+                if (idx >= 0) CbPorta.SelectedIndex = idx;
+                CbPorta.Text = restaurar;
+                if (CbPortaInicial is not null)
+                {
+                    var idxIni = CbPortaInicial.Items.IndexOf(restaurar);
+                    if (idxIni >= 0) CbPortaInicial.SelectedIndex = idxIni;
+                    CbPortaInicial.Text = restaurar;
+                }
+            }
         }
-        else if (CbPorta.Items.Contains("COM1"))
+        finally
         {
-            CbPorta.Text = "COM1";
-            if (CbPortaInicial is not null)
-                CbPortaInicial.Text = "COM1";
-        }
-        else if (CbPorta.Items.Count > 0)
-        {
-            var first = CbPorta.Items[0]?.ToString();
-            CbPorta.Text = first;
-            if (CbPortaInicial is not null)
-                CbPortaInicial.Text = first;
+            _syncingCombos = false;
         }
     }
 
@@ -1703,44 +2043,50 @@ public partial class MainWindow : Window
 
     #region Insumo do Circuito (Opção 1 SAIP / Opção 2 Manual) & Firmware
 
-    private void CardModoSemiAuto_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    private void MainWindow_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
-        if (RbExecSemiAuto != null) RbExecSemiAuto.IsChecked = true;
+        var isCtrl = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
+        var isShift = (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
+
+        if (isCtrl && isShift && (e.Key == Key.V || e.Key == Key.A || e.Key == Key.T))
+        {
+            e.Handled = true;
+            if (BtnSemiAutoAtalho != null)
+            {
+                bool jaVisivel = BtnSemiAutoAtalho.Visibility == Visibility.Visible;
+                BtnSemiAutoAtalho.Visibility = jaVisivel ? Visibility.Collapsed : Visibility.Visible;
+                if (!jaVisivel && StatusTexto != null)
+                    StatusTexto.Content = "⚙️ OPÇÕES AVANÇADAS DISPONÍVEL — Clique no botão abaixo ou Ctrl+Shift+V.";
+            }
+        }
     }
 
-    private void CardModoAutomatico_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    private void BtnSemiAutoAtalho_Click(object sender, RoutedEventArgs e)
     {
-        if (RbExecAuto != null) RbExecAuto.IsChecked = true;
+        GridTelaInicial.Visibility = Visibility.Collapsed;
+        GridEsteiraPrincipal.Visibility = Visibility.Visible;
+        Width = 1300;
+        MinWidth = 1240;
+        WindowState = WindowState.Normal;
+        if (TxtCircuitoAtivoTitulo != null)
+            TxtCircuitoAtivoTitulo.Text = "⚙️ OPÇÕES AVANÇADAS — Esteira Manual / Passo a Passo";
+        if (StatusTexto != null)
+            StatusTexto.Content = "⚙️ OPÇÕES AVANÇADAS — Esteira em execução.";
+        EscreverLinha("\n=================================================================");
+        EscreverLinha("  ⚙️ OPÇÕES AVANÇADAS (via atalho Ctrl+Shift+V)");
+        EscreverLinha("=================================================================\n");
     }
 
-    private void ModoExecucao_Changed(object sender, RoutedEventArgs e)
+    private void BtnVoltarPaginaPrincipal_Click(object sender, RoutedEventArgs e)
     {
-        var auto = RbExecAuto?.IsChecked == true;
-
-        if (CardModoAutomatico != null)
-        {
-            CardModoAutomatico.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(auto ? "#D97706" : "#CBD5E1"));
-            CardModoAutomatico.BorderThickness = new Thickness(auto ? 2 : 1);
-        }
-
-        if (CardModoSemiAuto != null)
-        {
-            CardModoSemiAuto.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(auto ? "#CBD5E1" : "#881337"));
-            CardModoSemiAuto.BorderThickness = new Thickness(auto ? 1 : 2);
-        }
-
-        if (PanelFirmwareObrigatorio != null)
-            PanelFirmwareObrigatorio.Visibility = auto ? Visibility.Visible : Visibility.Collapsed;
-
-        if (BtnAvancarParaEsteira != null)
-            BtnAvancarParaEsteira.Content = auto ? "⚡ INICIAR PROVISIONAMENTO AUTOMÁTICO" : "🚀 INICIAR PROVISIONAMENTO SEMI-AUTOMÁTICO";
-
-        if (TxtDescricaoBotaoAcao != null)
-            TxtDescricaoBotaoAcao.Text = auto
-                ? "O SPARC executará as 7 etapas em sequência. Acompanhe o progresso na esteira."
-                : "Você acompanhará cada etapa e poderá validar/intervir quando necessário.";
-
-        AtualizarBotaoProsseguir();
+        GridEsteiraPrincipal.Visibility = Visibility.Collapsed;
+        GridTelaInicial.Visibility = Visibility.Visible;
+        Width = 1060;
+        MinWidth = 920;
+        if (StatusTexto != null)
+            StatusTexto.Content = "Pronto para iniciar.";
+        if (TxtCircuitoAtivoTitulo != null && _loadedSaipCircuit != null)
+            TxtCircuitoAtivoTitulo.Text = $"CIRCUITO: {_loadedSaipCircuit.DesignacaoIp} - {_loadedSaipCircuit.ClienteRazaoSocial}";
     }
 
     private void BtnSelecionarFirmwareAuto_Click(object sender, RoutedEventArgs e)
@@ -1752,13 +2098,18 @@ public partial class MainWindow : Window
         };
         if (dlg.ShowDialog() == true)
         {
+            if (!ValidarEBloquearFirmwareIncompativel(dlg.FileName, mostrarAlertaModal: true))
+            {
+                return;
+            }
+
             _selectedIosBinPath = dlg.FileName;
             var fi = new System.IO.FileInfo(dlg.FileName);
             var sizeMb = (fi.Length / (1024.0 * 1024.0)).ToString("N1");
             TxtFirmwareAutoInfo.Text = $"{System.IO.Path.GetFileName(dlg.FileName)} ({sizeMb} MB)";
             if (TxtIosImageInfo != null) TxtIosImageInfo.Text = TxtFirmwareAutoInfo.Text;
             AtualizarBotaoProsseguir();
-            EscreverLinha($"[*] Firmware modo automático: {System.IO.Path.GetFileName(dlg.FileName)} ({sizeMb} MB)");
+            EscreverLinha($"[*] Firmware modo automático validado: {System.IO.Path.GetFileName(dlg.FileName)} ({sizeMb} MB)");
         }
     }
 
@@ -1766,6 +2117,7 @@ public partial class MainWindow : Window
     {
         GridModoAutomatico.Visibility = Visibility.Collapsed;
         GridTelaInicial.Visibility = Visibility.Visible;
+        if (BtnSemiAutoAtalho != null) BtnSemiAutoAtalho.Visibility = Visibility.Collapsed;
     }
 
     private void RbModoInsumo_Checked(object sender, RoutedEventArgs e)
@@ -1890,11 +2242,27 @@ public partial class MainWindow : Window
             else erros.Add("• Ficha SAIP não carregada — clique em 📂 Selecionar Arquivo SAIP.");
         }
 
-        var isAuto = RbExecAuto?.IsChecked == true;
-        var firmwareObrigatorio = isAuto && ChkAtualizarFirmwareAuto?.IsChecked == true;
+        var isAuto = true; // Modo Automático é o padrão
+        var firmwareObrigatorio = _isRommonOrBootwareDetected || (isAuto && ChkAtualizarFirmwareAuto?.IsChecked == true);
         if (firmwareObrigatorio && (string.IsNullOrEmpty(_selectedIosBinPath) || !System.IO.File.Exists(_selectedIosBinPath)))
         {
-            erros.Add("• Atualização de Firmware selecionada: selecione o arquivo (.ipe/.bin) ou desmarque a opção.");
+            if (_isRommonOrBootwareDetected)
+            {
+                erros.Add("• Equipamento em modo ROMMON / BootWare (sem SO): é OBRIGATÓRIO selecionar a imagem de Firmware (.bin / .ipe) no Passo 3 para recuperar o equipamento.");
+            }
+            else
+            {
+                erros.Add("• Atualização de Firmware selecionada: selecione o arquivo (.ipe/.bin) ou desmarque a opção.");
+            }
+        }
+        else if (!string.IsNullOrEmpty(_selectedIosBinPath))
+        {
+            var serie = ObterSerieAtualSelecionadaOuDetectada();
+            var resFw = FirmwareCompatibilityValidator.Validate(serie, _selectedIosBinPath);
+            if (!resFw.IsCompatible)
+            {
+                erros.Add($"• Firmware incompatível: {resFw.ErrorMessage}");
+            }
         }
 
         if (erros.Count > 0)
@@ -1956,7 +2324,6 @@ public partial class MainWindow : Window
         // Reset
         for (int i = 1; i <= 7; i++) SetEtapa(i, $"○ {i}. " + new[] { "Zerar Configuração", "Atualizar Firmware", "Provisionar Equipamento", "Configurar IP de Teste", "Testar Conectividade (ICMP)", "Testar Acesso Remoto (Telnet)", "Testar Banda" }[i-1] + " — aguardando", "#64748B");
         Progresso(0, "Modo automático — iniciando verificação...");
-        AbrirOuFocarCliDiagnosticWindow();
         BtnAutoCancelar.Visibility = Visibility.Visible; BtnAutoVoltar.Visibility = Visibility.Collapsed;
 
         // Garante que o modo automático importe o mesmo sistema de análise de boot do modo padrão (HPE BootWare Ctrl+B)
@@ -1973,7 +2340,7 @@ public partial class MainWindow : Window
 
         try
         {
-            var firmwareDesejado = ChkAtualizarFirmwareAuto?.IsChecked == true;
+            var firmwareDesejado = _isRommonOrBootwareDetected || (ChkAtualizarFirmwareAuto?.IsChecked == true);
 
             if (isHpe)
             {
@@ -1986,18 +2353,29 @@ public partial class MainWindow : Window
                 else
                 {
                     SetEtapa(1, "⏳ 1. Zerar Configuração — em execução", "#D97706");
-                    Progresso(5, "1/7 Zerar Configuração / Reset...");
-                    LogAuto(">>> [AUTO 1/7] HPE MSR954 — Zerar Configuração e Quebra de Senha");
+                    var serieAtual = ObterSerieAtualSelecionadaOuDetectada();
+                    var modeloAuto = serieAtual == DeviceSeries.Msr1002 ? "HPE MSR 1002 / 1003" :
+                                     serieAtual == DeviceSeries.Msr930 ? "HPE MSR 930" :
+                                     serieAtual == DeviceSeries.Msr954 ? "HPE MSR 954" : "HPE Comware";
+                    LogAuto($">>> [AUTO 1/7] {modeloAuto} — Zerar Configuração e Quebra de Senha");
                     await ExecutarZerarConfigAsync(porta, baud, ct);
                     SetEtapa(1, "✅ 1. Zerar Configuração — OK", "#16A34A");
                     Progresso(20, "1/7 OK");
                 }
 
-                if (firmwareDesejado && !string.IsNullOrEmpty(_selectedIosBinPath) && File.Exists(_selectedIosBinPath))
+                // Reavalia se o equipamento caiu no BootWare após Fase 1
+                if (_isRommonOrBootwareDetected) firmwareDesejado = true;
+
+                if (firmwareDesejado)
                 {
+                    if (string.IsNullOrEmpty(_selectedIosBinPath) || !File.Exists(_selectedIosBinPath))
+                    {
+                        throw new InvalidOperationException("Equipamento em modo BootWare (sem SO): selecione o arquivo de Firmware (.ipe / .bin) no Passo 3 para realizar a recuperação.");
+                    }
+
                     SetEtapa(2, "⏳ 2. Atualizar Firmware — em execução", "#D97706");
                     Progresso(25, "2/7 Atualizar Firmware...");
-                    LogAuto(">>> [AUTO 2/7] Atualizar Firmware HPE via TFTP");
+                    LogAuto(">>> [AUTO 2/7] Atualizar / Recuperar Firmware HPE via TFTP");
                     var hostIp = _loadedSaipCircuit?.HostLanIp ?? ObterIpLocalParaTftp() ?? "200.182.245.18";
                     await ExecutarUpgradeFirmwareAsync(porta, baud, hostIp, ct);
                     SetEtapa(2, "✅ 2. Atualizar Firmware — OK", "#16A34A");
@@ -2028,11 +2406,19 @@ public partial class MainWindow : Window
                     Progresso(18, "1/7 OK");
                 }
 
-                if (firmwareDesejado && !string.IsNullOrEmpty(_selectedIosBinPath) && File.Exists(_selectedIosBinPath))
+                // Reavalia se o equipamento caiu no ROMMON após Fase 1
+                if (_isRommonOrBootwareDetected) firmwareDesejado = true;
+
+                if (firmwareDesejado)
                 {
+                    if (string.IsNullOrEmpty(_selectedIosBinPath) || !File.Exists(_selectedIosBinPath))
+                    {
+                        throw new InvalidOperationException("Equipamento em modo ROMMON (sem SO): selecione o arquivo de Firmware (.bin) no Passo 3 para realizar a recuperação via TFTP.");
+                    }
+
                     SetEtapa(2, "⏳ 2. Atualizar Firmware — em execução", "#D97706");
                     Progresso(22, "2/7 Atualizar Firmware...");
-                    LogAuto(">>> [AUTO 2/7] Atualizar Firmware Cisco");
+                    LogAuto(">>> [AUTO 2/7] Atualizar / Recuperar Firmware Cisco via TFTP (ROMMON)");
                     var hostIp = _loadedSaipCircuit?.HostLanIp ?? ObterIpLocalParaTftp() ?? "127.0.0.1";
                     await ExecutarUpgradeFirmwareAsync(porta, baud, hostIp, ct);
                     SetEtapa(2, "✅ 2. Atualizar Firmware — OK", "#16A34A");
@@ -2212,13 +2598,13 @@ public partial class MainWindow : Window
             WanCidr: wanCidr,
             WanGateway: wanGateway,
             WanSubnetMask: wanMask,
-            WanInterface: "GigabitEthernet 0/0",
+            WanInterface: modelo.Contains("921", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet 5" : modelo.Contains("954", StringComparison.OrdinalIgnoreCase) || modelo.Contains("HPE", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet0/0" : "GigabitEthernet 0/0",
             LanIp: lanIp,
             LanCidr: lanCidr,
             LanBlockNetwork: lanBlock,
             LanSubnetMask: lanMask,
             HostLanIp: hostLanIp,
-            LanInterface: "GigabitEthernet 0/1",
+            LanInterface: modelo.Contains("921", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet 4" : modelo.Contains("954", StringComparison.OrdinalIgnoreCase) || modelo.Contains("HPE", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet0/1" : "GigabitEthernet 0/1",
             Step1ZerarOk: step1Ok,
             Step2FirmwareOk: step2Ok,
             FirmwareNome: Path.GetFileName(_selectedIosBinPath),
@@ -2360,13 +2746,13 @@ public partial class MainWindow : Window
                 WanCidr: _loadedSaipCircuit?.WanCidr ?? 30,
                 WanGateway: _loadedSaipCircuit?.WanGateway,
                 WanSubnetMask: _loadedSaipCircuit?.WanSubnetMask,
-                WanInterface: "GigabitEthernet 0/0",
+                WanInterface: modelo.Contains("921", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet 5" : modelo.Contains("954", StringComparison.OrdinalIgnoreCase) || modelo.Contains("HPE", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet0/0" : "GigabitEthernet 0/0",
                 LanIp: _loadedSaipCircuit?.LanIp,
                 LanCidr: _loadedSaipCircuit?.LanCidr ?? 28,
                 LanBlockNetwork: _loadedSaipCircuit?.LanBlockNetwork,
                 LanSubnetMask: _loadedSaipCircuit?.LanSubnetMask,
                 HostLanIp: _loadedSaipCircuit?.HostLanIp,
-                LanInterface: "GigabitEthernet 0/1",
+                LanInterface: modelo.Contains("921", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet 4" : modelo.Contains("954", StringComparison.OrdinalIgnoreCase) || modelo.Contains("HPE", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet0/1" : "GigabitEthernet 0/1",
                 Step1ZerarOk: true,
                 Step2FirmwareOk: true,
                 FirmwareNome: Path.GetFileName(_selectedIosBinPath),
@@ -2402,6 +2788,9 @@ public partial class MainWindow : Window
         GridEsteiraPrincipal.Visibility = Visibility.Collapsed;
         GridModoAutomatico.Visibility = Visibility.Collapsed;
         GridTelaInicial.Visibility = Visibility.Visible;
+        Width = 1060;
+        MinWidth = 920;
+        if (BtnSemiAutoAtalho != null) BtnSemiAutoAtalho.Visibility = Visibility.Collapsed;
     }
 
     public static string CidrToSubnetMask(int cidr)
@@ -2438,19 +2827,7 @@ public partial class MainWindow : Window
         {
             try
             {
-                // Valida formato antes de aceitar: exige IPs necessários
-                var rawText = await Task.Run(async () =>
-                {
-                    var ext = Path.GetExtension(dlg.FileName).ToLowerInvariant();
-                    if (ext == ".pdf")
-                    {
-                        using var doc = UglyToad.PdfPig.PdfDocument.Open(dlg.FileName);
-                        var sb = new System.Text.StringBuilder();
-                        foreach (var p in doc.GetPages()) sb.AppendLine(p.Text);
-                        return sb.ToString();
-                    }
-                    return await File.ReadAllTextAsync(dlg.FileName);
-                });
+                var rawText = await SaipParser.CarregarTextoAsync(dlg.FileName);
                 var (ok, motivo) = SaipParser.Validar(rawText);
                 if (!ok)
                 {
@@ -2535,37 +2912,13 @@ public partial class MainWindow : Window
 
         if (dlg.ShowDialog() == true)
         {
-            var ext = Path.GetExtension(dlg.FileName).ToLowerInvariant();
-            var fileName = Path.GetFileName(dlg.FileName);
-
-            // CRÍTICA DE FORMATO DE ARQUIVO
-            if (isCisco && ext != ".bin")
+            if (!ValidarEBloquearFirmwareIncompativel(dlg.FileName, mostrarAlertaModal: true))
             {
-                var msgCritica = "❌ CRÍTICA DE FORMATO — CISCO IOS:\n\n" +
-                                 $"O arquivo selecionado '{fileName}' possui extensão '{ext}'.\n\n" +
-                                 "• Roteadores Cisco (Série 1900 / 900 / ISR) aceitam EXCLUSIVAMENTE arquivos no formato executável .BIN (exemplo: c1900-universalk9-mz.SPA.158-3.M7.bin).\n" +
-                                 "• Arquivos .ipe, .tar, .zip ou .iso NÃO são aceitos pelo bootloader ROMMON da Cisco.\n\n" +
-                                 "Por favor, selecione um arquivo de firmware .bin válido.";
-
-                MessageBox.Show(msgCritica, "Formato de Firmware Incompatível (Cisco)", MessageBoxButton.OK, MessageBoxImage.Error);
-                EscreverLinha($"\n[CRÍTICA DE FORMATO] Arquivo '{fileName}' rejeitado. Para Cisco, o firmware deve ser obrigatoriamente .bin");
                 return;
             }
-            else if (isHpe && ext != ".ipe" && ext != ".bin")
-            {
-                var msgCritica = "⚠ CRÍTICA DE FORMATO — HPE COMWARE:\n\n" +
-                                 $"O arquivo selecionado '{fileName}' possui extensão '{ext}'.\n\n" +
-                                 "• Equipamentos HPE MSR (954 / 958) utilizam pacotes integrados no formato .IPE (Image Package Executable, ex.: MSR954-CMW710-R6749P43.ipe).\n" +
-                                 "• Arquivos de outros formatos não contêm a estrutura de componentes necessária para a recuperação via BootWare.\n\n" +
-                                 "Deseja manter este arquivo mesmo assim?";
 
-                var respCritica = MessageBox.Show(msgCritica, "Aviso de Formato HPE", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-                if (respCritica != MessageBoxResult.Yes)
-                {
-                    EscreverLinha($"\n[CRÍTICA DE FORMATO] Seleção cancelada pelo operador para escolher um pacote HPE .ipe válido.");
-                    return;
-                }
-            }
+            var ext = Path.GetExtension(dlg.FileName).ToLowerInvariant();
+            var fileName = Path.GetFileName(dlg.FileName);
 
             _selectedIosBinPath = dlg.FileName;
             var fi = new FileInfo(dlg.FileName);
@@ -2669,9 +3022,14 @@ public partial class MainWindow : Window
 
         if (isHpe)
         {
-            AtualizarProgresso(10, "HPE MSR954 — Zerar Configuração / Reset...", "Verificando console e estado de acesso...");
+            var isHpe1002 = profile.Id.Contains("1002", StringComparison.OrdinalIgnoreCase) || profile.Name.Contains("1002", StringComparison.OrdinalIgnoreCase) || (profileTag?.Contains("1002", StringComparison.OrdinalIgnoreCase) == true);
+            var isHpe930 = profile.Id.Contains("930", StringComparison.OrdinalIgnoreCase) || profile.Name.Contains("930", StringComparison.OrdinalIgnoreCase) || (profileTag?.Contains("930", StringComparison.OrdinalIgnoreCase) == true);
+            var isHpe954 = profile.Id.Contains("954", StringComparison.OrdinalIgnoreCase) || profile.Name.Contains("954", StringComparison.OrdinalIgnoreCase) || (profileTag?.Contains("954", StringComparison.OrdinalIgnoreCase) == true);
+            var modeloHpe = isHpe1002 ? "HPE MSR 1002 / 1003" : isHpe930 ? "HPE MSR 930" : isHpe954 ? "HPE MSR 954" : "HPE Comware / MSR";
+
+            AtualizarProgresso(10, $"{modeloHpe} — Zerar Configuração / Reset...", "Verificando console e estado de acesso...");
             EscreverLinha($"\n=================================================================");
-            EscreverLinha($"   🧹 HPE MSR954 — ZERAR CONFIGURAÇÃO EM {porta} @ {baud} BAUD");
+            EscreverLinha($"   🧹 {modeloHpe.ToUpperInvariant()} — ZERAR CONFIGURAÇÃO EM {porta} @ {baud} BAUD");
             EscreverLinha($"=================================================================");
         }
         else
@@ -2730,17 +3088,37 @@ public partial class MainWindow : Window
             if (session.Mode == ExecMode.Rommon ||
                 session.CurrentPrompt?.Trim().StartsWith("rommon", StringComparison.OrdinalIgnoreCase) == true)
             {
-                EscreverLinha("[*] Equipamento identificado em MODO ROMMON (sem firmware na Flash).");
+                _isRommonOrBootwareDetected = true;
+                Dispatcher.Invoke(() =>
+                {
+                    if (ChkAtualizarFirmwareAuto != null)
+                    {
+                        ChkAtualizarFirmwareAuto.IsChecked = true;
+                        if (BtnSelecionarFirmwareAuto != null)
+                            BtnSelecionarFirmwareAuto.IsEnabled = true;
+                    }
+                    AtualizarBotaoProsseguir();
+                });
+
+                var is921 = profile.Id.Contains("921", StringComparison.OrdinalIgnoreCase)
+                         || profile.Id.Contains("c900", StringComparison.OrdinalIgnoreCase)
+                         || profile.Family.Contains("900", StringComparison.OrdinalIgnoreCase);
+
+                var rommonPort = is921 ? "GigabitEthernet 4 (GE 4 / Porta 4)" : "GigabitEthernet 0/0 (GE 0/0 / Porta 0)";
+                var rommonShort = is921 ? "GE 4" : "GE 0/0";
+                var lanPort = is921 ? "GE 5 - LAN" : "GE 0/1 - LAN";
+
+                EscreverLinha($"[*] Equipamento identificado em MODO ROMMON (sem firmware na Flash).");
                 await NotificarConexaoCaboAsync(
                     "⚠️ ROTEADOR CISCO EM MODO ROMMON (SEM FIRMWARE)\n\n" +
                     "O equipamento foi identificado em modo de recuperação ROMMON.\n\n" +
                     "👉 CONECTE O CABO DE REDE ETHERNET NA PORTA:\n" +
-                    "🔴 GigabitEthernet 0/0 (GE 0/0 / Porta 0)\n\n" +
+                    $"🔴 {rommonPort}\n\n" +
                     "Esta é a única porta Ethernet habilitada no hardware para a transferência TFTP via ROMMON.\n\n" +
-                    "(Após a gravação do firmware e inicialização do Cisco IOS, o sistema solicitará a troca do cabo para a porta GE 0/1 - LAN).",
+                    $"(Após a gravação do firmware e inicialização do Cisco IOS, o sistema solicitará a troca do cabo para a porta {lanPort}).",
                     ct);
 
-                AtualizarProgresso(100, "Fase A Concluída!", "Equipamento em ROMMON pronto para carga de firmware TFTP na porta GE 0/0.");
+                AtualizarProgresso(100, "Fase A Concluída!", $"Equipamento em ROMMON pronto para carga de firmware TFTP na porta {rommonShort}.");
                 return;
             }
 
@@ -2770,17 +3148,22 @@ public partial class MainWindow : Window
     {
         AtualizarProgresso(35, "[2/6] Configurando Parâmetros Ethernet...", "Enviando Opção 5 (Modify Ethernet Parameter)...");
         EscreverLinha($"\n[ETHERNET PARAMETER SET] Configurando GE0 no BootWare...");
+        // Drena buffer de comandos estale antes de enviar '5'
+        await Task.Delay(500, ct);
+        try { await session.WaitForAsync(new StopCondition[] { new StopCondition.LineRegex("choice", new Regex("choice")) }, TimeSpan.FromMilliseconds(500), ct); } catch { }
         await session.WriteLineAsync("5", ct);
 
+        // Ordem real que o BootWare HPE MSR93x apresenta os campos no ETHERNET PARAMETER SET:
+        // Protocol → Load File Name → Target File Name → Server IP → Local IP → Subnet Mask → Gateway → File Name
         var fields = new (string Name, string Label, Regex Pattern, string Value)[]
         {
             ("protocol", "Protocol", new Regex(@"(?i)protocol\s*\(f(?:tp|rom)\s+or\s+tftp\)\s*[:?]"), "TFTP"),
+            ("loadfile", "Load File Name", new Regex(@"(?i)load\s+file\s+name\s*[:?]"), fileName),
+            ("targetfile", "Target File Name", new Regex(@"(?i)target\s+file\s+name\s*[:?]"), fileName),
             ("serverip", "Server IP Address", new Regex(@"(?i)server\s+ip\s*(?:address)?\s*[:?]"), hostIp),
             ("localip", "Router IP Address", new Regex(@"(?i)(?:switch\s*/\s*router|switch|router|local)\s+ip\s*(?:address)?\s*[:?]"), routerIp),
             ("subnet", "Subnet Mask", new Regex(@"(?i)(?:subnet\s+mask|mask)\s*[:?]"), subnetMask),
             ("gateway", "Gateway IP Address", new Regex(@"(?i)gateway\s+ip\s*(?:address)?\s*[:?]"), "0.0.0.0"),
-            ("loadfile", "Load File Name", new Regex(@"(?i)load\s+file\s+name\s*[:?]"), fileName),
-            ("targetfile", "Target File Name", new Regex(@"(?i)target\s+file\s+name\s*[:?]"), fileName),
             ("filename", "File Name", new Regex(@"(?i)file\s+name\s*[:?]"), fileName)
         };
 
@@ -2821,6 +3204,7 @@ public partial class MainWindow : Window
                 }
                 else
                 {
+                    // Já estamos dentro do ETHERNET PARAMETER SET — apenas Enter para confirmar valor atual
                     await session.WriteLineAsync(string.Empty, ct);
                 }
                 await Task.Delay(250, ct);
@@ -2831,7 +3215,7 @@ public partial class MainWindow : Window
             {
                 if (lr.Name == "choice")
                 {
-                    if (filledCount >= 3)
+                    if (filledCount >= 4)
                     {
                         AtualizarProgresso(45, "[2/6] Parâmetros Ethernet Configurados!", "Menu Ethernet pronto para gravação.");
                         EscreverLinha("[ETHERNET PARAMETER SET] ✅ Todos os parâmetros configurados com sucesso.");
@@ -2971,22 +3355,37 @@ public partial class MainWindow : Window
 
             var (state, _) = HpeBootWareStateMachine.DetectState(probe.Output);
 
+            await InstruirOperadorAsync(
+                "⚠️ CONEXÃO DO CABO DE REDE - BOOTWARE TFTP\n\n" +
+                "O roteador HPE está em modo de recuperação BootWare (sem firmware).\n\n" +
+                "👉 CONECTE O CABO DE REDE ETHERNET NA PORTA:\n" +
+                "🔴 GE0 (Porta 0 / WAN - GigabitEthernet0/0)\n\n" +
+                "Esta é a única porta habilitada pelo BootWare para transferência Ethernet TFTP.\n\n" +
+                "Clique em OK assim que o cabo estiver conectado na porta GE0.",
+                ct);
+
             if (state == HpeMenuState.ExtendedBootWare)
             {
                 AtualizarProgresso(30, "[1/6] Entrando no Ethernet SubMenu...", "Selecionando Opção 3 no menu BootWare...");
                 EscreverLinha($"[*] [1/6] Entrando no Ethernet SubMenu (Opção {ethernetOption})...");
                 await session.WriteLineAsync(ethernetOption, ct);
 
-                // Aguarda rigorosamente a confirmação de entrada no Ethernet SubMenu
-                await session.WaitForAsync(
-                    new StopCondition[]
-                    {
-                        new StopCondition.Contains("choice(0-5)", "choice(0-5)"),
-                        new StopCondition.Contains("<Enter Ethernet SubMenu>", "<Enter Ethernet SubMenu>"),
-                        new StopCondition.Contains("Modify Ethernet Parameter", "Modify Ethernet Parameter")
-                    },
-                    TimeSpan.FromSeconds(5),
-                    ct);
+                try
+                {
+                    await session.WaitForAsync(
+                        new StopCondition[]
+                        {
+                            new StopCondition.Contains("choice(0-5)", "choice(0-5)"),
+                            new StopCondition.Contains("<Enter Ethernet SubMenu>", "<Enter Ethernet SubMenu>"),
+                            new StopCondition.Contains("Modify Ethernet Parameter", "Modify Ethernet Parameter")
+                        },
+                        TimeSpan.FromSeconds(5),
+                        ct);
+                }
+                catch
+                {
+                    EscreverLinha("[AVISO] Confirmação de entrada no Ethernet SubMenu não recebida — tentando prosseguir mesmo assim...");
+                }
             }
             else if (state == HpeMenuState.EthernetSubMenu)
             {
@@ -2994,16 +3393,13 @@ public partial class MainWindow : Window
             }
             else
             {
-                EscreverLinha("[*] Sincronizando navegação no BootWare...");
-                await session.WriteLineAsync("0", ct);
-                try
+                EscreverLinha("[*] Sincronizando navegação no BootWare — assegurando menu principal...");
+                var ensured = await HpeBootWareStateMachine.EnsureExtendedBootWareAsync(session, EscreverLinhaAsync, ct);
+                if (!ensured)
                 {
-                    await session.WaitForAsync(
-                        new StopCondition[] { new StopCondition.Contains("choice(0-9)", "choice(0-9)"), new StopCondition.Contains("BOOTWARE", "BOOTWARE") },
-                        TimeSpan.FromSeconds(3),
-                        ct);
+                    EscreverLinha("[ERRO] Não foi possível retornar ao menu principal do BootWare para configurar o TFTP.");
+                    return false;
                 }
-                catch { }
 
                 await session.WriteLineAsync(ethernetOption, ct);
                 try
@@ -3013,7 +3409,10 @@ public partial class MainWindow : Window
                         TimeSpan.FromSeconds(4),
                         ct);
                 }
-                catch { }
+                catch
+                {
+                    EscreverLinha("[AVISO] Confirmação de entrada no Ethernet SubMenu não recebida — tentando prosseguir mesmo assim...");
+                }
             }
 
             // [2/6] Modifica Parâmetros de Rede (Opção 5 - Modify Ethernet Parameter)
@@ -3054,27 +3453,36 @@ public partial class MainWindow : Window
 
             // [4/6] Aguarda a gravação na Flash com rastreamento de pacotes
             AtualizarProgresso(70, "[4/6] Gravando Firmware na Flash...", "Aguardando gravação e descompressão de pacotes na Flash...");
-            var deadlineFlash = DateTime.UtcNow.AddMinutes(8);
+            var deadlineFlash = DateTime.UtcNow.AddMinutes(4);
             var finishedFlash = false;
             var decompressedPackages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             while (DateTime.UtcNow < deadlineFlash && !ct.IsCancellationRequested && !finishedFlash)
             {
-                var flashWait = await session.WaitForAsync(
-                    new StopCondition[]
-                    {
-                        new StopCondition.Contains("Writing file to Flash...Done.", "Writing file to Flash...Done."),
-                        new StopCondition.Contains("is self-decompressing", "is self-decompressing"),
-                        new StopCondition.Contains("Saving file flash:", "Saving file flash:"),
-                        new StopCondition.Contains("Set as main boot image? [Y/N]:", "Set as main boot image? [Y/N]:"),
-                        new StopCondition.Contains("Something wrong with the file", "Something wrong with the file"),
-                        new StopCondition.Contains("Loading file fails", "Loading file fails"),
-                        new StopCondition.Contains("choice(0-5)", "choice(0-5)")
-                    },
-                    TimeSpan.FromSeconds(5),
-                    ct);
-
-                var outText = flashWait.Output;
+                string outText;
+                try
+                {
+                    var flashWait = await session.WaitForAsync(
+                        new StopCondition[]
+                        {
+                            new StopCondition.Contains("Writing file to Flash...Done.", "Writing file to Flash...Done."),
+                            new StopCondition.Contains("is self-decompressing", "is self-decompressing"),
+                            new StopCondition.Contains("Saving file flash:", "Saving file flash:"),
+                            new StopCondition.Contains("Set as main boot image? [Y/N]:", "Set as main boot image? [Y/N]:"),
+                            new StopCondition.Contains("Something wrong with the file", "Something wrong with the file"),
+                            new StopCondition.Contains("Loading file fails", "Loading file fails"),
+                            new StopCondition.Contains("choice(0-5)", "choice(0-5)")
+                        },
+                        TimeSpan.FromSeconds(6),
+                        ct);
+                    outText = flashWait.Output;
+                }
+                catch (SessionTimeoutException)
+                {
+                    // Durante transferência TFTP (Loading...), o BootWare emite pontos sem quebras de linha ou prompts.
+                    // Continua o loop normalmente aguardando a conclusão dentro do deadline.
+                    continue;
+                }
 
                 if (outText.Contains("Something wrong with the file", StringComparison.OrdinalIgnoreCase) ||
                     outText.Contains("Loading file fails", StringComparison.OrdinalIgnoreCase))
@@ -3084,7 +3492,7 @@ public partial class MainWindow : Window
                 }
 
                 // Identifica qual pacote interno do .ipe está sendo processado
-                var pkgMatch = Regex.Match(outText, @"(?i)(?:msr954-cmw710-([a-z0-9_\-]+)-[a-z0-9_\-]+\.bin|Saving\s+file\s+flash:/([a-z0-9_\-\.]+))");
+                var pkgMatch = Regex.Match(outText, @"(?i)(?:msr[0-9x]+-cmw710-([a-z0-9_\-]+)-[a-z0-9_\-]+\.bin|Saving\s+file\s+flash:/([a-z0-9_\-\.]+))");
                 if (pkgMatch.Success)
                 {
                     var pkgName = pkgMatch.Groups[1].Success ? pkgMatch.Groups[1].Value.ToUpperInvariant() : pkgMatch.Groups[2].Value;
@@ -3219,6 +3627,12 @@ public partial class MainWindow : Window
 
             if (dlg.ShowDialog() == true)
             {
+                if (!ValidarEBloquearFirmwareIncompativel(dlg.FileName, mostrarAlertaModal: true))
+                {
+                    tcs.SetResult(null);
+                    return;
+                }
+
                 _selectedIosBinPath = dlg.FileName;
                 var fi = new FileInfo(dlg.FileName);
                 var fileName = Path.GetFileName(dlg.FileName);
@@ -3294,8 +3708,8 @@ public partial class MainWindow : Window
         var sessionOptions = new SessionOptions
         {
             PromptMatcher = RegexPromptMatcher.Universal(),
-            CommandTimeout = TimeSpan.FromSeconds(35),
-            ConnectTimeout = TimeSpan.FromSeconds(50)
+            CommandTimeout = TimeSpan.FromSeconds(60),
+            ConnectTimeout = TimeSpan.FromSeconds(120)
         };
 
         var transport = new SerialTransport(porta, baud);
@@ -3305,6 +3719,18 @@ public partial class MainWindow : Window
         await session.ConnectAsync(ct);
 
         var promptStr = session.CurrentPrompt ?? "";
+        if (session.Mode == ExecMode.Rommon ||
+            promptStr.Trim().StartsWith("rommon", StringComparison.OrdinalIgnoreCase) ||
+            promptStr.StartsWith("switch:", StringComparison.OrdinalIgnoreCase) ||
+            promptStr.Contains("<BOOTWARE", StringComparison.OrdinalIgnoreCase) ||
+            promptStr.Contains("BootWare", StringComparison.OrdinalIgnoreCase))
+        {
+            _isRommonOrBootwareDetected = true;
+            throw new InvalidOperationException(
+                "O equipamento se encontra em modo ROMMON / BootWare (sem sistema operacional carregado). " +
+                "É OBRIGATÓRIO executar a recuperação de firmware (Fase 2) antes de realizar o provisionamento da Ficha SAIP.");
+        }
+
         var profileTag = (CbInterrupt.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "";
         var isHpe = profileTag.Contains("hpe", StringComparison.OrdinalIgnoreCase)
                  || profileTag.Contains("msr", StringComparison.OrdinalIgnoreCase)
@@ -3313,6 +3739,17 @@ public partial class MainWindow : Window
                  || promptStr.Contains("HPE", StringComparison.OrdinalIgnoreCase)
                  || promptStr.Contains("MSR", StringComparison.OrdinalIgnoreCase)
                  || promptStr.Contains("Comware", StringComparison.OrdinalIgnoreCase);
+
+        var is921 = profileTag.Contains("921", StringComparison.OrdinalIgnoreCase)
+                 || profileTag.Contains("c900", StringComparison.OrdinalIgnoreCase)
+                 || promptStr.Contains("921", StringComparison.OrdinalIgnoreCase)
+                 || promptStr.Contains("c900", StringComparison.OrdinalIgnoreCase);
+
+        var is841 = profileTag.Contains("841", StringComparison.OrdinalIgnoreCase)
+                 || profileTag.Contains("c841", StringComparison.OrdinalIgnoreCase)
+                 || profileTag.Contains("c800", StringComparison.OrdinalIgnoreCase)
+                 || promptStr.Contains("841", StringComparison.OrdinalIgnoreCase)
+                 || promptStr.Contains("c800", StringComparison.OrdinalIgnoreCase);
 
         if (isHpe)
         {
@@ -3324,9 +3761,29 @@ public partial class MainWindow : Window
             // Valida automaticamente via 'display ip interface brief' se o técnico conectou o cabo na porta LAN (GE1 / GigabitEthernet0/1)
             await HpeSaipConfigurator.EnforceLanPortConnectedAsync(session, "GigabitEthernet0/1", NotificarConexaoCaboAsync, EscreverLinhaAsync, ct);
         }
+        else if (is841)
+        {
+            EscreverLinha($"[*] Equipamento identificado como Cisco Série 800 / C841M (Prompt detectado: '{promptStr}').");
+            AtualizarProgresso(50, "Fase C: Configurando Cisco Série 800 / C841M...", $"WAN GE0/4 ({_loadedSaipCircuit.WanIp}), LAN GE0/5 ({_loadedSaipCircuit.LanIp})...");
+            var ciscoConfig = new CiscoSaipConfigurator(EscreverLinhaAsync);
+            await ciscoConfig.ApplyConfigAsync(session, _loadedSaipCircuit, "GigabitEthernet0/4", "GigabitEthernet0/5", ct);
+
+            // Valida se o técnico conectou o cabo na porta LAN (GE 0/5 / GigabitEthernet0/5) antes de prosseguir
+            await CiscoIOSAdapter.EnforceLanPortConnectedAsync(session, "GigabitEthernet0/5", NotificarConexaoCaboAsync, EscreverLinhaAsync, ct);
+        }
+        else if (is921)
+        {
+            EscreverLinha($"[*] Equipamento identificado como Cisco Série 900 / C921-4P (Prompt detectado: '{promptStr}').");
+            AtualizarProgresso(50, "Fase C: Configurando Cisco Série 900 / C921-4P...", $"WAN GE4 ({_loadedSaipCircuit.WanIp}), LAN GE5 ({_loadedSaipCircuit.LanIp})...");
+            var ciscoConfig = new CiscoSaipConfigurator(EscreverLinhaAsync);
+            await ciscoConfig.ApplyConfigAsync(session, _loadedSaipCircuit, "GigabitEthernet 4", "GigabitEthernet 5", ct);
+
+            // Valida se o técnico conectou o cabo na porta LAN (GE5 / GigabitEthernet 5) antes de prosseguir
+            await CiscoIOSAdapter.EnforceLanPortConnectedAsync(session, "GigabitEthernet 5", NotificarConexaoCaboAsync, EscreverLinhaAsync, ct);
+        }
         else
         {
-            EscreverLinha($"[*] Equipamento identificado como Cisco IOS (Prompt detectado: '{promptStr}').");
+            EscreverLinha($"[*] Equipamento identificado como Cisco Série 1900 / G2 (Prompt detectado: '{promptStr}').");
             AtualizarProgresso(50, "Fase C: Configurando Cisco...", $"WAN GE0/0 ({_loadedSaipCircuit.WanIp}), LAN GE0/1 ({_loadedSaipCircuit.LanIp})...");
             var ciscoConfig = new CiscoSaipConfigurator(EscreverLinhaAsync);
             await ciscoConfig.ApplyConfigAsync(session, _loadedSaipCircuit, "GigabitEthernet 0/0", "GigabitEthernet 0/1", ct);
@@ -3635,17 +4092,27 @@ public partial class MainWindow : Window
                 {
                     return await Dispatcher.InvokeAsync(() =>
                         MessageBox.Show(msg + "\n\nDeseja atualizar o boot-loader agora?", "Boot-loader desatualizado", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes);
-                }, ct);
+                },
+                InstruirOperadorAsync,
+                ct);
         }
         else
         {
+            var is921 = profileTag.Contains("921", StringComparison.OrdinalIgnoreCase)
+                     || profileTag.Contains("c900", StringComparison.OrdinalIgnoreCase);
+
+            var is841 = profileTag.Contains("841", StringComparison.OrdinalIgnoreCase)
+                     || profileTag.Contains("c841", StringComparison.OrdinalIgnoreCase)
+                     || profileTag.Contains("c800", StringComparison.OrdinalIgnoreCase);
+
             var routerIp = _loadedSaipCircuit?.LanIp ?? "200.182.245.17";
             var subnetMask = _loadedSaipCircuit?.LanSubnetMask ?? "255.255.255.240";
-            var lanInterface = "GigabitEthernet 0/1";
+            var lanInterface = is841 ? "GigabitEthernet0/5" : is921 ? "GigabitEthernet 5" : "GigabitEthernet 0/1";
             var adapter = CbAdaptadorRede?.Text?.Trim();
 
-            EscreverLinha($"[*] Equipamento identificado como Cisco IOS para upgrade de firmware ({fileName}).");
-            AtualizarProgresso(22, "Fase B: Gravando IOS Cisco...", "Iniciando transferência TFTP...");
+            var modeloNome = is841 ? "Cisco Série 800 / C841M" : is921 ? "Cisco Série 900 / C921-4P" : "Cisco Série 1900 / G2";
+            EscreverLinha($"[*] Equipamento identificado como {modeloNome} para upgrade de firmware ({fileName}) via LAN ({lanInterface}).");
+            AtualizarProgresso(22, $"Fase B: Gravando IOS {modeloNome}...", "Iniciando transferência TFTP...");
             var ciscoUpgrader = new CiscoIOSUpgrader(EscreverLinhaAsync, AtualizarProgresso);
             success = await ciscoUpgrader.UpgradeAsync(session, _selectedIosBinPath, hostIp, routerIp, subnetMask, lanInterface, null, adapter, InstruirOperadorAsync, ct);
         }
@@ -4239,7 +4706,36 @@ public partial class MainWindow : Window
 
     private Task InstruirOperadorAsync(string instrucao, CancellationToken ct)
     {
-        return InstruirReinicioEquipamentoAsync(instrucao, ct);
+        if (string.IsNullOrWhiteSpace(instrucao)) return Task.CompletedTask;
+
+        var isReinicio = instrucao.Contains("Desligue", StringComparison.OrdinalIgnoreCase)
+                      || instrucao.Contains("Religue", StringComparison.OrdinalIgnoreCase)
+                      || instrucao.Contains("Reinicie", StringComparison.OrdinalIgnoreCase)
+                      || instrucao.Contains("power cycle", StringComparison.OrdinalIgnoreCase)
+                      || instrucao.Contains("tomada", StringComparison.OrdinalIgnoreCase);
+
+        if (isReinicio)
+        {
+            return InstruirReinicioEquipamentoAsync(instrucao, ct);
+        }
+
+        // Para instruções de operação em tempo de execução (ex.: troca de porta Ethernet, cabo LAN, etc.)
+        EscreverLinha($"\n=================================================================");
+        EscreverLinha("                📢 INSTRUÇÃO PARA O OPERADOR                     ");
+        EscreverLinha("=================================================================");
+        EscreverLinha(instrucao);
+        EscreverLinha("=================================================================\n");
+
+        Dispatcher.Invoke(() =>
+        {
+            MessageBox.Show(
+                instrucao,
+                "SPARC — Instrução ao Operador",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        });
+
+        return Task.CompletedTask;
     }
 
     private void BtnCancelar_Click(object sender, RoutedEventArgs e)
