@@ -1,9 +1,25 @@
 using System.Diagnostics;
+using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 
 namespace NetworkDevice.Core.Provisioning;
+
+public sealed record AdapterSnapshot(
+    string AdapterName,
+    DateTime CapturedAtUtc,
+    bool DhcpEnabled,
+    string? IpAddress,
+    string? SubnetMask,
+    string? Gateway,
+    List<string> DnsServers)
+{
+    public string Descrever() => DhcpEnabled
+        ? $"DHCP automático{(string.IsNullOrWhiteSpace(IpAddress) ? "" : $" (atual {IpAddress})")}"
+        : $"Fixo {IpAddress ?? "?"} / {SubnetMask ?? "?"} gw {Gateway ?? "-"} dns {(DnsServers.Count > 0 ? string.Join(",", DnsServers) : "-")}";
+}
 
 public class WindowsHostNetworkService : IHostNetworkService
 {
@@ -110,14 +126,24 @@ public static class HostNetworkManager
 
     /// <summary>
     /// Configura endereço IP estático no adaptador de rede do Windows via netsh com DNS 1.1.1.1 e 8.8.8.8.
+    /// Antes da primeira alteração, salva snapshot da configuração anterior (ver EnsureSnapshot).
     /// </summary>
     public static async Task<(bool success, string output)> SetStaticIpAsync(
         string adapterName,
         string ipAddress,
         string subnetMask,
         string? gateway = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlyList<string>? dnsServers = null,
+        bool isRestore = false)
     {
+        try { EnsureSnapshot(adapterName); } catch { }
+        if (!isRestore)
+        {
+            lock (_snapLock) { _lastApplied[adapterName] = (ipAddress, subnetMask); }
+        }
+        NetLog($"SetStaticIp adapter='{adapterName}' ip={ipAddress} mask={subnetMask} gw={gateway ?? "-"} restore={isRestore}");
+
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             return (true, $"[Aviso] Configuração automática de IP via netsh suportada no Windows. IP: {ipAddress}, Máscara: {subnetMask}, Gateway: {gateway}, DNS: 1.1.1.1 e 8.8.8.8");
@@ -140,14 +166,16 @@ public static class HostNetworkManager
             return (false, $"Falha ao configurar IP na interface '{adapterName}': {ipOutput}");
         }
 
-        // Configuração de DNS Primário (1.1.1.1) e Secundário (8.8.8.8)
-        var cmdDns1 = $"interface ip set dns name=\"{adapterName}\" static 1.1.1.1 primary";
+        // Configuração de DNS (restauração usa os originais; provisionamento usa 1.1.1.1 e 8.8.8.8)
+        var dns1 = dnsServers is { Count: > 0 } && !string.IsNullOrWhiteSpace(dnsServers[0]) ? dnsServers[0]! : "1.1.1.1";
+        var dns2 = dnsServers is { Count: > 1 } && !string.IsNullOrWhiteSpace(dnsServers[1]) ? dnsServers[1]! : "8.8.8.8";
+        var cmdDns1 = $"interface ip set dns name=\"{adapterName}\" static {dns1} primary";
         await RunNetshAsync(cmdDns1, cancellationToken);
 
-        var cmdDns2 = $"interface ip add dns name=\"{adapterName}\" 8.8.8.8 index=2";
+        var cmdDns2 = $"interface ip add dns name=\"{adapterName}\" {dns2} index=2";
         await RunNetshAsync(cmdDns2, cancellationToken);
 
-        return (true, $"IP: {ipAddress}, Máscara: {subnetMask}, Gateway: {gateway ?? "N/A"}, DNS Primário: 1.1.1.1, DNS Secundário: 8.8.8.8 aplicados com sucesso.");
+        return (true, $"IP: {ipAddress}, Máscara: {subnetMask}, Gateway: {gateway ?? "N/A"}, DNS Primário: {dns1}, DNS Secundário: {dns2} aplicados com sucesso.");
     }
 
     /// <summary>
@@ -169,6 +197,280 @@ public static class HostNetworkManager
         await RunNetshAsync(cmdDns, cancellationToken);
 
         return (true, $"Interface '{adapterName}' retornada para DHCP (IP e DNS automáticos).");
+    }
+
+    public static string SnapshotDirectory =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "SPARC", "netbackup");
+
+    private static readonly HashSet<string> _snapshotted = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, (string ip, string mask)> _lastApplied = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly object _snapLock = new();
+
+    /// <summary>Log persistente do fluxo de rede (fatos, não adivinhação).</summary>
+    public static void NetLog(string message)
+    {
+        try
+        {
+            Directory.CreateDirectory(SnapshotDirectory);
+            File.AppendAllText(Path.Combine(SnapshotDirectory, "restore.log"),
+                $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}\n");
+        }
+        catch { }
+    }
+
+    /// <summary>True se ESTA sessão alterou alguma placa (restauração na saída faz sentido).</summary>
+    public static bool NeedsRestoreOnExit
+    {
+        get { lock (_snapLock) { return _lastApplied.Count > 0; } }
+    }
+
+    private static string SnapshotPath(string adapterName, string? directory = null)
+    {
+        var safe = string.Concat(adapterName.Select(ch => char.IsLetterOrDigit(ch) ? ch : '_'));
+        if (string.IsNullOrWhiteSpace(safe)) safe = "adapter";
+        return Path.Combine(directory ?? SnapshotDirectory, safe + "__latest.json");
+    }
+
+    /// <summary>
+    /// Captura a configuração atual do adaptador (IP/máscara/gateway/DNS/DHCP). Retorna null se sem IPv4.
+    /// </summary>
+    public static AdapterSnapshot? CaptureSnapshot(string adapterName)
+    {
+        try
+        {
+            var ni = NetworkInterface.GetAllNetworkInterfaces()
+                .FirstOrDefault(n => n.Name.Equals(adapterName, StringComparison.OrdinalIgnoreCase));
+            if (ni == null) return null;
+            var props = ni.GetIPProperties();
+            var uni = props.UnicastAddresses
+                .FirstOrDefault(a => a.Address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(a.Address));
+            if (uni == null) return null;
+            string? mask = null;
+            try { mask = PrefixLengthToMask(uni.PrefixLength); } catch { }
+            var gw = props.GatewayAddresses
+                .FirstOrDefault(g => g.Address.AddressFamily == AddressFamily.InterNetwork)?.Address.ToString();
+            var dns = props.DnsAddresses
+                .Where(d => d.AddressFamily == AddressFamily.InterNetwork)
+                .Select(d => d.ToString()).Distinct().ToList();
+            var dhcp = true;
+            try { dhcp = props.GetIPv4Properties().IsDhcpEnabled; } catch { }
+            return new AdapterSnapshot(adapterName, DateTime.UtcNow, dhcp, uni.Address.ToString(), mask, gw, dns);
+        }
+        catch { return null; }
+    }
+
+    internal static string PrefixLengthToMask(int prefixLength)
+    {
+        uint m = prefixLength <= 0 ? 0u : prefixLength >= 32 ? 0xFFFFFFFFu : 0xFFFFFFFFu << (32 - prefixLength);
+        var b = BitConverter.GetBytes(m);
+        if (BitConverter.IsLittleEndian) Array.Reverse(b);
+        return $"{b[0]}.{b[1]}.{b[2]}.{b[3]}";
+    }
+
+    internal static void SaveSnapshot(AdapterSnapshot snap, string? directory = null)
+    {
+        var dir = directory ?? SnapshotDirectory;
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(SnapshotPath(snap.AdapterName, dir),
+            JsonSerializer.Serialize(snap, new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    internal static AdapterSnapshot? LoadSnapshot(string adapterName, string? directory = null)
+    {
+        try
+        {
+            var path = SnapshotPath(adapterName, directory);
+            if (!File.Exists(path)) return null;
+            return JsonSerializer.Deserialize<AdapterSnapshot>(File.ReadAllText(path));
+        }
+        catch { return null; }
+    }
+
+    /// <summary>
+    /// Garante snapshot do estado ORIGINAL: usa o salvo em disco se existir (nunca sobrescreve um
+    /// original com valores já alterados pelo SPARC); senão captura e salva o atual.
+    /// Chamado automaticamente antes de qualquer SetStaticIpAsync.
+    /// </summary>
+    public static AdapterSnapshot? EnsureSnapshot(string adapterName)
+    {
+        if (string.IsNullOrWhiteSpace(adapterName)) return null;
+        try
+        {
+            lock (_snapLock)
+            {
+                var saved = LoadSnapshot(adapterName);
+                if (saved != null)
+                {
+                    _snapshotted.Add(adapterName);
+                    NetLog($"EnsureSnapshot '{adapterName}': usando salvo em disco ({saved.Descrever()})");
+                    return saved;
+                }
+                var cur = CaptureSnapshot(adapterName);
+                if (cur != null)
+                {
+                    SaveSnapshot(cur);
+                    _snapshotted.Add(adapterName);
+                    NetLog($"EnsureSnapshot '{adapterName}': capturado novo ({cur.Descrever()})");
+                }
+                else
+                {
+                    NetLog($"EnsureSnapshot '{adapterName}': sem IPv4 para capturar");
+                }
+                return cur;
+            }
+        }
+        catch { return null; }
+    }
+
+    public static AdapterSnapshot? LoadLatestSnapshot(string adapterName)
+    {
+        try { return LoadSnapshot(adapterName); } catch { return null; }
+    }
+
+    /// <summary>Snapshot mais recente entre todos os adaptadores (para oferta de restauração).</summary>
+    public static AdapterSnapshot? LoadLatestAny()
+    {
+        try
+        {
+            var dir = SnapshotDirectory;
+            if (!Directory.Exists(dir)) return null;
+            AdapterSnapshot? best = null;
+            foreach (var f in Directory.GetFiles(dir, "*__latest.json"))
+            {
+                try
+                {
+                    var s = JsonSerializer.Deserialize<AdapterSnapshot>(File.ReadAllText(f));
+                    if (s != null && (best == null || s.CapturedAtUtc > best.CapturedAtUtc)) best = s;
+                }
+                catch { }
+            }
+            return best;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>True se a config atual do adaptador já equivale ao snapshot (nada a restaurar).</summary>
+    public static bool ConfigEqualsSnapshot(string adapterName, AdapterSnapshot snap)
+    {
+        try
+        {
+            var cur = CaptureSnapshot(adapterName);
+            if (cur == null) return false;
+            return cur.DhcpEnabled == snap.DhcpEnabled
+                && string.Equals(cur.IpAddress ?? "", snap.IpAddress ?? "", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(cur.SubnetMask ?? "", snap.SubnetMask ?? "", StringComparison.OrdinalIgnoreCase);
+        }
+        catch { return false; }
+    }
+
+    /// <summary>
+    /// True se o snapshot tem o IP que o próprio SPARC aplicou (captura tardia, inválido como "original").
+    /// Compara com o último IP aplicado nesta sessão e com o IP aplicado informado (ex: HostLanIp da ficha).
+    /// </summary>
+    public static bool SnapshotEhSparc(AdapterSnapshot snap, string? sparcAppliedIp)
+    {
+        if (snap.DhcpEnabled || string.IsNullOrWhiteSpace(snap.IpAddress)) return false;
+        lock (_snapLock)
+        {
+            if (_lastApplied.TryGetValue(snap.AdapterName, out var a) &&
+                string.Equals(a.ip, snap.IpAddress, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return !string.IsNullOrWhiteSpace(sparcAppliedIp) &&
+               string.Equals(sparcAppliedIp.Trim(), snap.IpAddress, StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static void InvalidateSnapshot(string adapterName)
+    {
+        try
+        {
+            var path = SnapshotPath(adapterName);
+            if (File.Exists(path)) File.Delete(path);
+        }
+        catch { }
+        lock (_snapLock) { _snapshotted.Remove(adapterName); }
+    }
+
+    /// <summary>
+    /// Restauração SILENCIOSA (sem nenhum popup): volta a placa ao estado anterior ao SPARC.
+    /// Sem snapshot confiável, volta para DHCP e registra tudo no log retornado.
+    /// Ao final, anexa o status ATUAL da placa para conferência no terminal.
+    /// </summary>
+    public static async Task<(bool success, string log)> RestoreLastAsync(
+        string? preferredAdapter, string? sparcAppliedIp, CancellationToken cancellationToken = default)
+    {
+        var (ok, log, adapter, dhcpPath) = await RestoreLastCoreAsync(preferredAdapter, sparcAppliedIp, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(adapter))
+        {
+            try { await Task.Delay(dhcpPath ? 4000 : 1200, cancellationToken); } catch { }
+            try
+            {
+                var st = CaptureSnapshot(adapter);
+                log += $"\n[REDE] Status atual da placa '{adapter}': {(st != null ? st.Descrever() : "não lido — confira com ipconfig")}";
+            }
+            catch { }
+        }
+        return (ok, log);
+    }
+
+    private static async Task<(bool success, string log, string? adapter, bool dhcpPath)> RestoreLastCoreAsync(
+        string? preferredAdapter, string? sparcAppliedIp, CancellationToken cancellationToken = default)
+    {
+        AdapterSnapshot? snap = null;
+        if (!string.IsNullOrWhiteSpace(preferredAdapter))
+            snap = LoadLatestSnapshot(preferredAdapter);
+        snap ??= LoadLatestAny();
+        var adapter = snap?.AdapterName ?? preferredAdapter;
+
+        if (snap == null)
+        {
+            if (string.IsNullOrWhiteSpace(adapter))
+            {
+                NetLog("Restore: sem snapshot e sem adaptador — nada a fazer.");
+                return (false, "[REDE] Sem snapshot e sem adaptador — nada a restaurar.", null, false);
+            }
+            var (okDhcp, outDhcp) = await SetDhcpAsync(adapter, cancellationToken);
+            NetLog($"Restore: sem snapshot, DHCP em '{adapter}' ok={okDhcp}: {outDhcp}");
+            return (okDhcp, $"[REDE] Sem snapshot confiável da placa '{adapter}' — aplicada volta para DHCP.\n[REDE] {outDhcp}", adapter, true);
+        }
+
+        // Ordem importa: primeiro invalida snapshot SPARC-made (mesmo que o atual seja igual a ele),
+        // senão o poison congela tudo em no-op para sempre.
+        if (!snap.DhcpEnabled && SnapshotEhSparc(snap, sparcAppliedIp))
+        {
+            InvalidateSnapshot(snap.AdapterName);
+            var (okDhcp, outDhcp) = await SetDhcpAsync(snap.AdapterName, cancellationToken);
+            NetLog($"Restore: snapshot SPARC-made descartado em '{snap.AdapterName}', DHCP ok={okDhcp}: {outDhcp}");
+            return (okDhcp,
+                $"[REDE] Snapshot da placa '{snap.AdapterName}' era inválido (capturado após alteração do próprio SPARC) — descartado.\n" +
+                $"[REDE] Placa voltada para DHCP.\n[REDE] {outDhcp}", snap.AdapterName, true);
+        }
+
+        if (ConfigEqualsSnapshot(snap.AdapterName, snap))
+        {
+            NetLog($"Restore: '{snap.AdapterName}' já está na original — no-op.");
+            return (true, $"[REDE] Placa '{snap.AdapterName}' já está na configuração original ({snap.Descrever()}) — nada a fazer.", snap.AdapterName, false);
+        }
+
+        var (ok, outMsg) = await RestoreSnapshotAsync(snap, cancellationToken);
+        NetLog($"Restore: snapshot aplicado em '{snap.AdapterName}' ok={ok}: {outMsg}");
+        return (ok, (ok ? "[REDE] Placa restaurada para a configuração anterior: " : "[REDE][FALHA] ") + outMsg, snap.AdapterName, snap.DhcpEnabled);
+    }
+    /// <summary>
+    /// Restaura um snapshot válido (DHCP volta a DHCP; fixo reaplica IP/máscara/gateway/DNS).
+    /// Não atualiza o marcador de último aplicado (para não invalidar o próprio snapshot).
+    /// </summary>
+    public static async Task<(bool success, string output)> RestoreSnapshotAsync(
+        AdapterSnapshot snap, CancellationToken cancellationToken = default)
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            return (true, "[Aviso] Restauração automática de rede suportada no Windows.");
+        if (snap.DhcpEnabled)
+            return await SetDhcpAsync(snap.AdapterName, cancellationToken);
+        if (string.IsNullOrWhiteSpace(snap.IpAddress) || string.IsNullOrWhiteSpace(snap.SubnetMask))
+            return (false, "Snapshot sem IP fixo válido para restaurar.");
+        return await SetStaticIpAsync(snap.AdapterName, snap.IpAddress, snap.SubnetMask,
+            snap.Gateway, cancellationToken, snap.DnsServers, isRestore: true);
     }
 
     public static async Task EnsureTftpFirewallRuleAsync(CancellationToken ct = default)

@@ -12,6 +12,13 @@ public sealed class CiscoSaipConfigurator
 
     private readonly Func<string, Task>? _progress;
 
+    /// <summary>
+    /// Opção secreta (atalho Ctrl+Shift+V, checkbox default desligado): quando true, o
+    /// provisionamento aplica NAT overload de LAB e o mantém (a limpeza 4b reseta as
+    /// interfaces, então o NAT precisa fazer parte do template).
+    /// </summary>
+    public bool IncluirNatLab { get; set; }
+
     public CiscoSaipConfigurator(Func<string, Task>? progress = null)
     {
         _progress = progress;
@@ -65,12 +72,13 @@ public sealed class CiscoSaipConfigurator
     public static IReadOnlyList<string> GenerateCommands(
         SaipCircuitData circuit,
         string wanInterface = "GigabitEthernet 4",
-        string lanInterface = "GigabitEthernet 5")
+        string lanInterface = "GigabitEthernet 5",
+        bool incluirNatLab = false)
     {
         var wanDesc = SanitizeDescription(circuit.DesignacaoIp ?? circuit.NumeroOts ?? "LINK");
         var lanDesc = SanitizeDescription(circuit.ClienteRazaoSocial);
 
-        return new List<string>
+        var cmds = new List<string>
         {
             "configure terminal",
             "no ip domain-lookup",
@@ -98,7 +106,29 @@ public sealed class CiscoSaipConfigurator
 
             // 3. Rota Default (Gateway)
             $"ip route 0.0.0.0 0.0.0.0 {circuit.WanGateway}",
+        };
 
+        // 3b. NAT overload de LAB (opção secreta, default desligado): reaplica as
+        // designações inside/outside DEPOIS do reset das interfaces, então sobrevive à esteira.
+        if (incluirNatLab)
+        {
+            var wildcard = WildcardFromMask(circuit.LanSubnetMask, circuit.LanCidr);
+            var lanNet = string.IsNullOrWhiteSpace(circuit.LanBlockNetwork) ? circuit.LanIp : circuit.LanBlockNetwork;
+            cmds.AddRange(new[]
+            {
+                $"interface {wanInterface}",
+                "ip nat outside",
+                "exit",
+                $"interface {lanInterface}",
+                "ip nat inside",
+                "exit",
+                $"access-list 1 permit {lanNet} {wildcard}",
+                $"ip nat inside source list 1 interface {wanInterface} overload",
+            });
+        }
+
+        cmds.AddRange(new[]
+        {
             // 4. Usuário e Acesso Remoto Telnet (EBT / PRO1AN)
             "enable secret PRO1AN",
             "username EBT privilege 15 secret PRO1AN",
@@ -127,7 +157,27 @@ public sealed class CiscoSaipConfigurator
             "logging console",
             "end",
             "write memory"
-        };
+        });
+
+        return cmds;
+    }
+
+    public static string WildcardFromMask(string mask, int cidr)
+    {
+        string? candidate = mask;
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            try
+            {
+                var oct = candidate.Split('.');
+                if (oct.Length == 4)
+                    return string.Join(".", oct.Select(o => (255 - int.Parse(o.Trim())).ToString()));
+            }
+            catch { }
+            try { candidate = IpCalculator.CidrToSubnetMask(cidr); }
+            catch { break; }
+        }
+        return "0.0.0.7";
     }
 
     /// <summary>
@@ -237,7 +287,9 @@ public sealed class CiscoSaipConfigurator
         await Task.Delay(300, cancellationToken);
 
         // 5. Lista de comandos a serem aplicados com cadência otimizada e segura de 200ms
-        var commands = GenerateCommands(circuit, wanInterface, lanInterface);
+        var commands = GenerateCommands(circuit, wanInterface, lanInterface, IncluirNatLab);
+        if (IncluirNatLab)
+            await ProgressAsync("[*] Opção secreta NAT (LAB) ATIVA: inside/outside + overload serão aplicados.");
 
         await ProgressAsync("[*] Aplicando comandos no roteador (cadência: 200ms por comando)...");
         foreach (var cmd in commands)

@@ -40,6 +40,26 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        // Restauração silenciosa da placa ao sair (cobre todos os caminhos, inclusive fases avulsas).
+        // Só age se ESTA sessão alterou a placa; tudo registrado em netbackup\restore.log.
+        try
+        {
+            if (NetworkDevice.Core.Provisioning.HostNetworkManager.NeedsRestoreOnExit)
+            {
+                NetworkDevice.Core.Provisioning.HostNetworkManager.NetLog("Saida do app: restaurando rede...");
+                // Task.Run: evita deadlock do .Wait() com a UI thread (continuations no pool).
+                var t = System.Threading.Tasks.Task.Run(
+                    () => NetworkDevice.Core.Provisioning.HostNetworkManager.RestoreLastAsync(null, null));
+                if (t.Wait(TimeSpan.FromSeconds(90)))
+                    NetworkDevice.Core.Provisioning.HostNetworkManager.NetLog("Saida: " + t.Result.log.Replace("\n", " | "));
+                else
+                    NetworkDevice.Core.Provisioning.HostNetworkManager.NetLog("Saida: timeout na restauracao.");
+            }
+        }
+        catch (Exception ex)
+        {
+            try { NetworkDevice.Core.Provisioning.HostNetworkManager.NetLog("Saida excecao: " + ex.Message); } catch { }
+        }
         try { _singleInstance?.ReleaseMutex(); _singleInstance?.Dispose(); } catch { }
         base.OnExit(e);
     }

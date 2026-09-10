@@ -1,7 +1,7 @@
 # Gera a variante BETA (time-bomb + node-locking + chave 30d + ofuscacao) em EXE UNICO,
 # a partir de uma COPIA isolada em TEMP. Nao altera C:\SPARC\src.
 # Padrao: framework-dependent single-file (~20 MB, exige .NET 8 instalado - igual ao exe padrao).
-param([int]$Dias = 30, [string]$Tag = "", [switch]$SelfContained, [switch]$SemOfuscacao)
+param([int]$Dias = 30, [string]$Tag = "", [switch]$FrameworkDependent, [switch]$SemOfuscacao)
 
 $ErrorActionPreference = "Stop"
 $running = Get-Process -Name "SPARC-Beta-Testes" -ErrorAction SilentlyContinue
@@ -20,7 +20,7 @@ $tmp = Join-Path ([IO.Path]::GetTempPath()) "sparc-beta-build"
 
 if ([string]::IsNullOrWhiteSpace($Tag)) { $Tag = "BETA-TESTES-" + (Get-Date).ToString("yyyyMMdd") }
 $expiresIso = ([DateTime]::UtcNow.AddDays($Dias)).ToString("yyyy-MM-ddTHH:mm:ssZ")
-if ($SelfContained) { $sc = "true" } else { $sc = "false" }
+if ($FrameworkDependent) { $sc = "false" } else { $sc = "true" }
 
 Write-Host "== [1/6] Chaves RSA..."
 New-Item -ItemType Directory -Force -Path $keysDir | Out-Null
@@ -66,7 +66,7 @@ $uiProj = "$tmp\src\NetworkDevice.UI\NetworkDevice.UI.csproj"
 & dotnet build $uiProj -c Release -r win-x64 --self-contained $sc /p:DebugType=none
 if ($LASTEXITCODE -ne 0) { throw "build da copia falhou" }
 $binDir = "$tmp\src\NetworkDevice.UI\bin\Release\net8.0-windows\win-x64"
-if ($SelfContained) {
+if (-not $FrameworkDependent) {
     & dotnet publish $uiProj -c Release -r win-x64 --self-contained $sc /p:PublishSingleFile=true /p:DebugType=none -o (Join-Path $tmp "pre")
     if ($LASTEXITCODE -ne 0) { throw "pre-publish falhou" }
 }
@@ -149,5 +149,6 @@ $mb = [math]::Round((Get-Item $final).Length / 1MB, 1)
 
 Write-Host ""
 Write-Host "BETA PRONTA: $final ($mb MB)"
-Write-Host "Tag: $Tag | Build valido ate (UTC): $expiresIso | Ofuscado: $(-not $SemOfuscacao)"
+$expiresLocal = ([DateTime]::Parse($expiresIso).ToUniversalTime()).ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+Write-Host "Tag: $Tag | Build valido ate: $expiresLocal (horario local) | Ofuscado: $(-not $SemOfuscacao)"
 Write-Host "Base C:\SPARC\src: INTACTA (verifique com git status)."

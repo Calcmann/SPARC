@@ -3,12 +3,9 @@
 Tudo aqui vive em `C:\SPARC\beta\` + saida em `C:\SPARC\dist-beta\`.
 Nada em `C:\SPARC\src\` e modificado por este fluxo.
 
-## Gerar o exe unico (padrao: framework-dependent, ~20 MB)
+## Gerar o exe unico (padrao: autocontido ~168 MB, sem dependencias)
 powershell -ExecutionPolicy Bypass -File C:\SPARC\beta\Build-Beta.ps1 -Dias 30
-Saida: `C:\SPARC\dist-beta\SPARC-Beta-Testes.exe` (single-file, precisa do .NET 8 instalado - igual ao exe padrao de 16 MB).
-
-## Exe autocontido (notebook sem .NET, ~170 MB)
-powershell -ExecutionPolicy Bypass -File C:\SPARC\beta\Build-Beta.ps1 -Dias 30 -SelfContained
+Saida: `C:\SPARC\dist-beta\SPARC-Beta-Testes.exe` (single-file, roda em notebook sem .NET).
 
 ## Pular ofuscacao (debug da beta)
 powershell -ExecutionPolicy Bypass -File C:\SPARC\beta\Build-Beta.ps1 -Dias 30 -SemOfuscacao

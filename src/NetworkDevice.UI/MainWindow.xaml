@@ -106,13 +106,13 @@
 
                             <DockPanel VerticalAlignment="Center" LastChildFill="True">
                                 <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
-                                    <Button x:Name="BtnTestarAvaliarInicial" Content="🔌 Testar Conexão" Padding="12,6" Margin="0,0,14,0" FontSize="12" FontWeight="Bold" Background="#B91C1C" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnTestarAvaliar_Click" ToolTip="Testa a porta serial e avalia situação do equipamento (senha, modelo, versão, flash e configuração)" />
+                                    <Button x:Name="BtnTestarAvaliarInicial" Content="🔌 Testar Conexão Porta Serial" Padding="12,6" Margin="0,0,14,0" FontSize="12" FontWeight="Bold" Background="#B91C1C" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnTestarAvaliar_Click" ToolTip="Testa a porta serial e avalia situação do equipamento (senha, modelo, versão, flash e configuração)" />
                                     <TextBlock Text="Porta:" FontWeight="Black" FontSize="13.5" Foreground="#EE1C25" VerticalAlignment="Center" Margin="0,0,5,0" />
                                     <ComboBox x:Name="CbPortaInicial" Width="85" IsEditable="True" SelectionChanged="CbPortaInicial_SelectionChanged" />
                                     <Button Content="🔄" Padding="4,5" Margin="3,0,0,0" ToolTip="Atualizar portas COM" Click="BtnAtualizarPortas_Click" />
                                     <TextBlock x:Name="TxtSerialTestStatus" Text="" VerticalAlignment="Center" Margin="10,0,16,0" FontSize="11" FontWeight="SemiBold" Foreground="#4ADE80" MaxWidth="160" />
                                 </StackPanel>
-                                <ComboBox x:Name="CbModeloRoteadorInicial" SelectedIndex="0" FontSize="13" FontWeight="Bold" Padding="6,8" VerticalAlignment="Center" SelectionChanged="CbModeloRoteadorInicial_SelectionChanged">
+                                <ComboBox x:Name="CbModeloRoteadorInicial" SelectedIndex="0" FontSize="13" FontWeight="Bold" Padding="6,8" VerticalAlignment="Center" SelectionChanged="CbModeloRoteadorInicial_SelectionChanged" PreviewMouseLeftButtonDown="CbModeloRoteadorInicial_PreviewMouseLeftButtonDown" ToolTip="Clique em qualquer ponto do campo para abrir a lista">
                                     <ComboBoxItem Content="— Selecione o modelo do equipamento —" Tag="" IsEnabled="False" />
                                     <ComboBoxItem Content="🖧 HPE MSR 954 / 958 (Ctrl+B @ 9600 - BootWare)" Tag="hpe.msr954.ctrl-b" />
                                     <ComboBoxItem Content="🖧 HPE MSR 930 / 931 / 935 (Ctrl+B @ 9600 - BootWare)" Tag="hpe.msr930.ctrl-b" />
@@ -279,7 +279,7 @@
                                 <Border x:Name="CardChkSerial" Grid.Column="1" Background="#3B1818" BorderBrush="#52525B" BorderThickness="1" CornerRadius="6" Padding="6,4" Margin="2,0,2,0">
                                     <StackPanel>
                                         <TextBlock x:Name="TxtChkSerialIcon" Text="🔴 1b. Status Serial" FontWeight="Black" FontSize="12.5" Foreground="#FCA5A5" />
-                                        <TextBlock x:Name="TxtChkSerialSub" Text="Clique 'Testar Conexão'" FontSize="11" Foreground="#A1A1AA" Margin="0,1,0,0" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock x:Name="TxtChkSerialSub" Text="Clique 'Testar Conexão Porta Serial'" FontSize="11" Foreground="#A1A1AA" Margin="0,1,0,0" TextTrimming="CharacterEllipsis" />
                                     </StackPanel>
                                 </Border>
 
@@ -322,6 +322,12 @@
                             Padding="14,8" Background="#B91C1C" Foreground="White" BorderThickness="0" FontWeight="Black" FontSize="15" Cursor="Hand"
                             HorizontalAlignment="Stretch" Click="BtnSemiAutoAtalho_Click" IsEnabled="True" Visibility="Collapsed"
                             ToolTip="Atalho: Ctrl+Shift+V — Acessa a esteira em modo passo a passo" />
+
+                    <!-- OPÇÃO SECRETA NAT (LAB) — mesmo atalho, default DESLIGADA -->
+                    <CheckBox x:Name="ChkNatLab" Content="🌐 Habilitar NAT overload (LAB) — mantém NAT após provisionar"
+                            Foreground="#FCA5A5" FontSize="12" FontWeight="Bold" Margin="0,4,0,0"
+                            HorizontalAlignment="Center" Visibility="Collapsed" IsChecked="False"
+                            ToolTip="Opção secreta (Ctrl+Shift+V). Quando marcada, a esteira Cisco aplica ip nat inside/outside + overload e não o remove." />
 
                     <!-- MANUAL -->
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,3,0,2">
@@ -369,6 +375,7 @@
                         <Button x:Name="BtnAutoCancelar" Content="✖ Cancelar" Padding="14,6" Background="#B91C1C" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnCancelar_Click" />
                         <Button x:Name="BtnAutoAbrirPdf" Content="📄 Visualizar Relatório PDF" Padding="14,6" Margin="8,0,0,0" Background="#B91C1C" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnAutoAbrirPdf_Click" Visibility="Collapsed" />
                         <Button x:Name="BtnAutoExportarPdf" Content="💾 Salvar PDF como..." Padding="12,6" Margin="8,0,0,0" Background="#3F3F46" Foreground="White" BorderThickness="0" Click="BtnAutoExportarPdf_Click" Visibility="Collapsed" />
+                        <Button x:Name="BtnAutoRestaurarRede" Content="↩ Restaurar configuração IP do Windows" Padding="12,6" Margin="8,0,0,0" Background="#0F766E" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnAutoRestaurarRede_Click" Visibility="Collapsed" ToolTip="Volta a placa de rede ao IP/DHCP anterior ao teste (ou mantém para mais testes)" />
                         <Button x:Name="BtnAutoVoltar" Content="← Voltar à Esteira" Padding="14,6" Margin="8,0,0,0" Background="#64748B" Foreground="White" BorderThickness="0" Click="BtnAutoVoltar_Click" Visibility="Collapsed" />
                     </StackPanel>
                     <Border Background="#0A0E14" CornerRadius="6" Margin="0,14,0,0" MaxHeight="200">
@@ -425,7 +432,7 @@
                                 ToolTip="Abre a janela de diagnóstico CLI em tempo real"
                                 Click="BtnAbrirCliDiagnostic_Click" />
 
-                        <Button x:Name="BtnAvaliarEquipamentoTop" Content="🔌 Testar Conexão" Padding="10,6" Margin="0,0,8,0"
+                        <Button x:Name="BtnAvaliarEquipamentoTop" Content="🔌 Testar Conexão Porta Serial" Padding="10,6" Margin="0,0,8,0"
                                 Background="#B91C1C" Foreground="White" BorderThickness="0" FontWeight="Bold" FontSize="13"
                                 ToolTip="Testa conexão serial e avalia situação (senha, modelo, versão, flash e configuração)"
                                 Click="BtnTestarAvaliar_Click" />
@@ -711,6 +718,9 @@
                                     <TextBlock Text="Placa/Interface:" VerticalAlignment="Center" FontWeight="Bold" Foreground="#E4E4E7" Margin="0,0,6,0" FontSize="13.5" />
                                     <ComboBox x:Name="CbAdaptadorRede" Width="200" VerticalAlignment="Center" Margin="0,0,14,0" />
                                     <TextBlock x:Name="TxtHostIpCalculado" Text="Host LAN: - | DNS: 1.1.1.1, 8.8.8.8" VerticalAlignment="Center" FontWeight="Bold" Foreground="#EE1C25" FontSize="13.5" />
+                                    <Button x:Name="BtnRestaurarRedeNotebook" Content="↩ Restaurar rede anterior" Padding="8,2" Margin="10,0,0,0" VerticalAlignment="Center"
+                                            Background="#3F3F46" Foreground="#E4E4E7" BorderThickness="1" BorderBrush="#52525B" Cursor="Hand" FontWeight="Bold"
+                                            Click="BtnRestaurarRedeNotebook_Click" ToolTip="Volta a placa para o IP/DHCP que tinha antes do SPARC alterar" />
                                 </StackPanel>
                                 <TextBlock Text="Configura o IP fixo e servidores DNS (1.1.1.1 / 8.8.8.8) na placa de rede do operador para teste de conectividade." Foreground="#A1A1AA" FontSize="13" />
                             </StackPanel>

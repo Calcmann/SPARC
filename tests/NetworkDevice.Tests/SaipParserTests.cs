@@ -140,4 +140,52 @@ topo      consultas      menu
 
         Assert.Equal("SOLDI PROMOTORA DE VENDAS LTDA", cleaned);
     }
+
+    [Fact]
+    public void GenerateCommands_SemNatPorPadrao()
+    {
+        var data = SaipParser.ParseText(ExemploFichaSaip);
+        var cmds = CiscoSaipConfigurator.GenerateCommands(data, "GigabitEthernet 5", "GigabitEthernet 4");
+
+        Assert.DoesNotContain("ip nat inside", cmds);
+        Assert.DoesNotContain("ip nat outside", cmds);
+        Assert.DoesNotContain("overload", cmds);
+    }
+
+    [Fact]
+    public void GenerateCommands_ComNatLab_IncluiOverload()
+    {
+        var data = new SaipCircuitData
+        {
+            ClienteRazaoSocial = "LAB TESTE",
+            DesignacaoIp = "LAB4G-SP01",
+            NumeroOts = "LAB000001",
+            WanIp = "192.168.10.2",
+            WanCidr = 30,
+            WanSubnetMask = "255.255.255.252",
+            WanGateway = "192.168.10.1",
+            LanBlockNetwork = "10.10.10.0",
+            LanCidr = 29,
+            LanIp = "10.10.10.1",
+            LanSubnetMask = "255.255.255.248",
+            HostLanIp = "10.10.10.2",
+        };
+        var cmds = CiscoSaipConfigurator.GenerateCommands(data, "GigabitEthernet0/4", "GigabitEthernet0/5", incluirNatLab: true);
+
+        Assert.Contains("ip nat outside", cmds);
+        Assert.Contains("ip nat inside", cmds);
+        Assert.Contains("access-list 1 permit 10.10.10.0 0.0.0.7", cmds);
+        Assert.Contains("ip nat inside source list 1 interface GigabitEthernet0/4 overload", cmds);
+        // NAT entra depois da rota default e antes do usuario
+        var cmdList = cmds.ToList();
+        Assert.True(cmdList.IndexOf("ip nat outside") > cmdList.IndexOf("ip route 0.0.0.0 0.0.0.0 192.168.10.1"));
+        Assert.True(cmdList.IndexOf("ip nat outside") < cmdList.IndexOf("username EBT privilege 15 secret PRO1AN"));
+    }
+
+    [Fact]
+    public void WildcardFromMask_InverteMascara()
+    {
+        Assert.Equal("0.0.0.7", CiscoSaipConfigurator.WildcardFromMask("255.255.255.248", 29));
+        Assert.Equal("0.0.0.3", CiscoSaipConfigurator.WildcardFromMask("255.255.255.252", 30));
+    }
 }

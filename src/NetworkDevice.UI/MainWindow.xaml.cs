@@ -297,6 +297,16 @@ public partial class MainWindow : Window
         }
     }
 
+    private void CbModeloRoteadorInicial_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        // O template global do ComboBox só abre pela seta; aqui o clique no campo/texto também abre.
+        if (sender is ComboBox cb && !cb.IsDropDownOpen && cb.IsEnabled)
+        {
+            cb.IsDropDownOpen = true;
+            e.Handled = true;
+        }
+    }
+
     private void CbInterrupt_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         // Em modo padrão (esteira) mantém seleção sincronizada com a primeira tela
@@ -564,7 +574,7 @@ public partial class MainWindow : Window
     {
         if (BtnTestarAvaliarInicial != null && !BtnTestarAvaliarInicial.IsEnabled && BtnTestarAvaliarInicial.Content?.ToString() == "preencha dados para seguir")
         {
-            ConfigurarBotaoTestarTerminal(true, "🔌 Testar Conexão", "#B91C1C", "#FFFFFF");
+            ConfigurarBotaoTestarTerminal(true, "🔌 Testar Conexão Porta Serial", "#B91C1C", "#FFFFFF");
         }
 
         if (_syncingCombos || CbPorta is null || CbPortaInicial is null)
@@ -711,14 +721,14 @@ public partial class MainWindow : Window
             if (_serialTestCts == localCts) _serialTestCts = null;
             if (BtnTestarAvaliarInicial != null && BtnTestarAvaliarInicial.Content?.ToString() != "preencha dados para seguir" && BtnTestarAvaliarInicial.Content?.ToString() != "Aguarde...")
             {
-                BtnTestarAvaliarInicial.Content = "🔌 Testar Conexão";
+                BtnTestarAvaliarInicial.Content = "🔌 Testar Conexão Porta Serial";
                 BtnTestarAvaliarInicial.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#B91C1C"));
                 BtnTestarAvaliarInicial.Foreground = new SolidColorBrush(Colors.White);
                 BtnTestarAvaliarInicial.IsEnabled = true;
             }
             if (BtnAvaliarEquipamentoTop != null && BtnAvaliarEquipamentoTop.Content?.ToString() != "preencha dados para seguir" && BtnAvaliarEquipamentoTop.Content?.ToString() != "Aguarde...")
             {
-                BtnAvaliarEquipamentoTop.Content = "🔌 Testar Conexão";
+                BtnAvaliarEquipamentoTop.Content = "🔌 Testar Conexão Porta Serial";
                 BtnAvaliarEquipamentoTop.Foreground = new SolidColorBrush(Colors.White);
                 BtnAvaliarEquipamentoTop.IsEnabled = true;
             }
@@ -1185,7 +1195,7 @@ public partial class MainWindow : Window
                             if (authDlg.ShowDialog() != true)
                             {
                                 // Operador cancelou o diálogo
-                                ConfigurarBotaoTestarTerminal(true, "🔌 Testar Conexão", "#B91C1C", "#FFFFFF");
+                                ConfigurarBotaoTestarTerminal(true, "🔌 Testar Conexão Porta Serial", "#B91C1C", "#FFFFFF");
                                 AtualizarBotaoProsseguir();
                                 break;
                             }
@@ -1270,7 +1280,7 @@ public partial class MainWindow : Window
                                     EscreverLinha("[*] Coletando inventário e avaliando equipamento pós-login...");
                                     await ExecutarAvaliacaoPosLoginAsync(porta, baud);
 
-                                    ConfigurarBotaoTestarTerminal(true, "🔌 Testar Conexão", "#B91C1C", "#FFFFFF");
+                                    ConfigurarBotaoTestarTerminal(true, "🔌 Testar Conexão Porta Serial", "#B91C1C", "#FFFFFF");
                                     AtualizarBotaoProsseguir();
                                     break;
                                 }
@@ -1432,7 +1442,7 @@ public partial class MainWindow : Window
                 EscreverLinha("=================================================================");
                 EscreverLinha($"  Não foi possível abrir a porta {porta} ({ex.Message}).");
                 EscreverLinha($"  • Motivo Provável: Há outro cliente ou programa aberto usando a porta {porta} (ex: PuTTY, Tera Term, SecureCRT, CMD ou outra janela do SPARC).");
-                EscreverLinha($"  👉 Ação: Feche os outros programas que estejam usando a porta {porta} e clique em 'Testar Conexão' novamente.");
+                EscreverLinha($"  👉 Ação: Feche os outros programas que estejam usando a porta {porta} e clique em 'Testar Conexão Porta Serial' novamente.");
                 EscreverLinha($"  Portas COM detectadas no sistema: {lista2}\n");
 
                 Dispatcher.Invoke(() =>
@@ -1691,7 +1701,7 @@ public partial class MainWindow : Window
         {
             if (avaliacaoOk)
             {
-                ConfigurarBotaoTestarTerminal(true, "🔌 Testar Conexão", "#B91C1C", "#FFFFFF");
+                ConfigurarBotaoTestarTerminal(true, "🔌 Testar Conexão Porta Serial", "#B91C1C", "#FFFFFF");
                 if (TxtSerialTestStatus.Text.StartsWith("⏳"))
                 {
                     TxtSerialTestStatus.Text = "✅ Avaliado";
@@ -1702,10 +1712,10 @@ public partial class MainWindow : Window
             {
                 // Status intermediário honesto: não marca "Avaliado" quando o inventário falhou.
                 EscreverLinha($"[AVISO] Não foi possível obter inventário completo após {maxTentativas} tentativas: {ultimoErro?.Message}");
-                EscreverLinha("👉 Aguarde 5s (estabilização do console) e clique em 'Testar Conexão' novamente.");
+                EscreverLinha("👉 Aguarde 5s (estabilização do console) e clique em 'Testar Conexão Porta Serial' novamente.");
                 TxtSerialTestStatus.Text = "⚠️ Avaliação incompleta — testar novamente";
                 TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D97706"));
-                ConfigurarBotaoTestarTerminal(true, "🔌 Testar Conexão", "#B91C1C", "#FFFFFF");
+                ConfigurarBotaoTestarTerminal(true, "🔌 Testar Conexão Porta Serial", "#B91C1C", "#FFFFFF");
             }
             AtualizarBotaoProsseguir();
         });
@@ -2055,6 +2065,8 @@ public partial class MainWindow : Window
             {
                 bool jaVisivel = BtnSemiAutoAtalho.Visibility == Visibility.Visible;
                 BtnSemiAutoAtalho.Visibility = jaVisivel ? Visibility.Collapsed : Visibility.Visible;
+                if (ChkNatLab != null)
+                    ChkNatLab.Visibility = BtnSemiAutoAtalho.Visibility;
                 if (!jaVisivel && StatusTexto != null)
                     StatusTexto.Content = "⚙️ OPÇÕES AVANÇADAS DISPONÍVEL — Clique no botão abaixo ou Ctrl+Shift+V.";
             }
@@ -2118,6 +2130,7 @@ public partial class MainWindow : Window
         GridModoAutomatico.Visibility = Visibility.Collapsed;
         GridTelaInicial.Visibility = Visibility.Visible;
         if (BtnSemiAutoAtalho != null) BtnSemiAutoAtalho.Visibility = Visibility.Collapsed;
+        if (ChkNatLab != null) ChkNatLab.Visibility = Visibility.Collapsed;
     }
 
     private void RbModoInsumo_Checked(object sender, RoutedEventArgs e)
@@ -2233,7 +2246,7 @@ public partial class MainWindow : Window
     private void BtnAvancarParaEsteira_Click(object sender, RoutedEventArgs e)
     {
         var erros = new List<string>();
-        if (!_serialOk) erros.Add("• Teste de conexão serial pendente — clique em 🔌 Testar Conexão.");
+        if (!_serialOk) erros.Add("• Teste de conexão serial pendente — clique em 🔌 Testar Conexão Porta Serial.");
         if (CbModeloRoteadorInicial.SelectedIndex <= 0) erros.Add("• Modelo do equipamento não selecionado.");
         var modoManual = RbModoManual.IsChecked == true;
         if (_loadedSaipCircuit is null)
@@ -2325,6 +2338,7 @@ public partial class MainWindow : Window
         for (int i = 1; i <= 7; i++) SetEtapa(i, $"○ {i}. " + new[] { "Zerar Configuração", "Atualizar Firmware", "Provisionar Equipamento", "Configurar IP de Teste", "Testar Conectividade (ICMP)", "Testar Acesso Remoto (Telnet)", "Testar Banda" }[i-1] + " — aguardando", "#64748B");
         Progresso(0, "Modo automático — iniciando verificação...");
         BtnAutoCancelar.Visibility = Visibility.Visible; BtnAutoVoltar.Visibility = Visibility.Collapsed;
+        if (BtnAutoRestaurarRede != null) BtnAutoRestaurarRede.Visibility = Visibility.Collapsed;
 
         // Garante que o modo automático importe o mesmo sistema de análise de boot do modo padrão (HPE BootWare Ctrl+B)
         if (CbModeloRoteadorInicial.SelectedIndex > 0 && CbInterrupt.SelectedIndex != CbModeloRoteadorInicial.SelectedIndex - 1)
@@ -2650,6 +2664,7 @@ public partial class MainWindow : Window
         {
             BtnAutoAbrirPdf.Visibility = Visibility.Visible;
             BtnAutoExportarPdf.Visibility = Visibility.Visible;
+            BtnAutoRestaurarRede.Visibility = Visibility.Visible;
 
             if (exibirPopup && !string.IsNullOrEmpty(pdfPath) && File.Exists(pdfPath))
             {
@@ -2691,6 +2706,11 @@ public partial class MainWindow : Window
         {
             MessageBox.Show("Nenhum relatório PDF disponível no momento.", "Relatório PDF", MessageBoxButton.OK, MessageBoxImage.Information);
         }
+    }
+
+    private async void BtnAutoRestaurarRede_Click(object sender, RoutedEventArgs e)
+    {
+        await PerguntarRestauracaoRedeAsync();
     }
 
     private void BtnAutoExportarPdf_Click(object sender, RoutedEventArgs e)
@@ -3766,6 +3786,7 @@ public partial class MainWindow : Window
             EscreverLinha($"[*] Equipamento identificado como Cisco Série 800 / C841M (Prompt detectado: '{promptStr}').");
             AtualizarProgresso(50, "Fase C: Configurando Cisco Série 800 / C841M...", $"WAN GE0/4 ({_loadedSaipCircuit.WanIp}), LAN GE0/5 ({_loadedSaipCircuit.LanIp})...");
             var ciscoConfig = new CiscoSaipConfigurator(EscreverLinhaAsync);
+            ciscoConfig.IncluirNatLab = ChkNatLab?.IsChecked == true;
             await ciscoConfig.ApplyConfigAsync(session, _loadedSaipCircuit, "GigabitEthernet0/4", "GigabitEthernet0/5", ct);
 
             // Valida se o técnico conectou o cabo na porta LAN (GE 0/5 / GigabitEthernet0/5) antes de prosseguir
@@ -3776,6 +3797,7 @@ public partial class MainWindow : Window
             EscreverLinha($"[*] Equipamento identificado como Cisco Série 900 / C921-4P (Prompt detectado: '{promptStr}').");
             AtualizarProgresso(50, "Fase C: Configurando Cisco Série 900 / C921-4P...", $"WAN GE4 ({_loadedSaipCircuit.WanIp}), LAN GE5 ({_loadedSaipCircuit.LanIp})...");
             var ciscoConfig = new CiscoSaipConfigurator(EscreverLinhaAsync);
+            ciscoConfig.IncluirNatLab = ChkNatLab?.IsChecked == true;
             await ciscoConfig.ApplyConfigAsync(session, _loadedSaipCircuit, "GigabitEthernet 4", "GigabitEthernet 5", ct);
 
             // Valida se o técnico conectou o cabo na porta LAN (GE5 / GigabitEthernet 5) antes de prosseguir
@@ -3786,6 +3808,7 @@ public partial class MainWindow : Window
             EscreverLinha($"[*] Equipamento identificado como Cisco Série 1900 / G2 (Prompt detectado: '{promptStr}').");
             AtualizarProgresso(50, "Fase C: Configurando Cisco...", $"WAN GE0/0 ({_loadedSaipCircuit.WanIp}), LAN GE0/1 ({_loadedSaipCircuit.LanIp})...");
             var ciscoConfig = new CiscoSaipConfigurator(EscreverLinhaAsync);
+            ciscoConfig.IncluirNatLab = ChkNatLab?.IsChecked == true;
             await ciscoConfig.ApplyConfigAsync(session, _loadedSaipCircuit, "GigabitEthernet 0/0", "GigabitEthernet 0/1", ct);
 
             // Valida se o técnico conectou o cabo na porta LAN (GE 0/1) antes de prosseguir
@@ -4336,6 +4359,63 @@ public partial class MainWindow : Window
         return result;
     }
 
+    /// <summary>
+    /// Ao concluir: exibe mensagem com antes/atual e dá a opção de restaurar a placa
+    /// ou manter como está para mais testes de navegação/internet. Sem snapshot, silencioso.
+    /// </summary>
+    private async Task PerguntarRestauracaoRedeAsync()
+    {
+        try
+        {
+            var preferida = CbAdaptadorRede?.Text?.Trim();
+            AdapterSnapshot? snap = null;
+            if (!string.IsNullOrEmpty(preferida))
+                snap = HostNetworkManager.LoadLatestSnapshot(preferida);
+            snap ??= HostNetworkManager.LoadLatestAny();
+            if (snap == null) return;
+
+            var atual = HostNetworkManager.CaptureSnapshot(snap.AdapterName);
+            var invalido = !snap.DhcpEnabled && HostNetworkManager.SnapshotEhSparc(snap, _loadedSaipCircuit?.HostLanIp);
+            var antesTxt = invalido ? "sem original confiável (snapshot inválido)" : snap.Descrever();
+            var atualTxt = atual?.Descrever() ?? "?";
+
+            if (!invalido && atual != null &&
+                string.Equals(atual.IpAddress ?? "", snap.IpAddress ?? "", StringComparison.OrdinalIgnoreCase) &&
+                atual.DhcpEnabled == snap.DhcpEnabled)
+            {
+                EscreverLinha($"[REDE] Placa '{snap.AdapterName}' já está na configuração original — nada a oferecer.");
+                return;
+            }
+            if (invalido && atual?.DhcpEnabled == true)
+            {
+                EscreverLinha($"[REDE] Placa '{snap.AdapterName}' já está em DHCP — nada a oferecer.");
+                return;
+            }
+
+            var resp = MessageBox.Show(this,
+                $"Teste concluído.\n\nPlaca '{snap.AdapterName}'\nAntes: {antesTxt}\nAtual: {atualTxt}\n\n" +
+                $"Deseja restaurar a configuração anterior?\nSIM = restaura | NÃO = mantém atual para mais testes de navegação/internet.",
+                "Restaurar rede do notebook", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (resp != MessageBoxResult.Yes)
+            {
+                EscreverLinha("[REDE] Operador optou por MANTER a configuração atual para mais testes.");
+                return;
+            }
+            var (ok, log) = await HostNetworkManager.RestoreLastAsync(preferida, _loadedSaipCircuit?.HostLanIp);
+            foreach (var line in log.Split('\n'))
+                EscreverLinha(line.TrimEnd());
+        }
+        catch (Exception ex)
+        {
+            EscreverLinha($"[REDE][ERRO] {ex.Message}");
+        }
+    }
+
+    private async void BtnRestaurarRedeNotebook_Click(object sender, RoutedEventArgs e)
+    {
+        await PerguntarRestauracaoRedeAsync();
+    }
+
     // FASE G · TESTAR BANDA
     private async void BtnTestarBanda_Click(object sender, RoutedEventArgs e)
     {
@@ -4384,6 +4464,7 @@ public partial class MainWindow : Window
             _cts.Dispose();
             _cts = null;
             SetBusy(false);
+            await PerguntarRestauracaoRedeAsync();
         }
     }
 
@@ -4589,6 +4670,7 @@ public partial class MainWindow : Window
             EscreverLinha("=================================================================\n");
 
             MessageBox.Show("Fluxo da esteira de provisionamento (Fases A → F) concluído com sucesso!\nVerifique os detalhes no terminal.", "Esteira Concluída", MessageBoxButton.OK, MessageBoxImage.Information);
+            await PerguntarRestauracaoRedeAsync();
         }
         catch (OperationCanceledException)
         {

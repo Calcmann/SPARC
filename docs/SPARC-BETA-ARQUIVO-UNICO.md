@@ -40,13 +40,12 @@ Nota: a variante autocontida embute tambem as nativas do WPF (`wpfgfx_cor3`, `Pr
 ## Gerar o exe
 
 ```powershell
-# Padrao: framework-dependent single-file (~13,7 MB) + ofuscacao
+# Padrao: autocontido single-file (~168 MB, sem dependencias)
 powershell -ExecutionPolicy Bypass -File C:\SPARC\beta\Build-Beta.ps1 -Dias 30
-# Completo autocontido (~168 MB)
-powershell -ExecutionPolicy Bypass -File C:\SPARC\beta\Build-Beta.ps1 -Dias 30 -SelfContained
 # Sem ofuscacao (debug)
 powershell -ExecutionPolicy Bypass -File C:\SPARC\beta\Build-Beta.ps1 -Dias 30 -SemOfuscacao
 ```
+(A variante enxuta framework-dependent foi descontinuada para simplificacao.)
 
 Pipeline (6 etapas): chaves RSA -> copia `src` p/ TEMP (sem `bin/obj`) -> injeta guard + config
 (tag/expiracao/chave publica) + hook no `OnStartup` -> `dotnet build -r win-x64` -> Obfuscar
