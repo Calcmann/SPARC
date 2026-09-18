@@ -4,13 +4,11 @@
 param([int]$Dias = 30, [string]$Tag = "", [switch]$FrameworkDependent, [switch]$SemOfuscacao)
 
 $ErrorActionPreference = "Stop"
-$running = Get-Process -Name "SPARC-Beta-Testes" -ErrorAction SilentlyContinue
+$running = Get-Process | Where-Object { $_.ProcessName -like "*SPARC-Beta*" -or $_.ProcessName -eq "NetworkDevice.UI" }
 if ($running) {
-    Write-Host "Beta em execucao - tentando fechar..."
-    $running | ForEach-Object { try { $_.CloseMainWindow() | Out-Null } catch { } }
-    Start-Sleep -Seconds 5
-    $running = Get-Process -Name "SPARC-Beta-Testes" -ErrorAction SilentlyContinue
-    if ($running) { throw "Feche o SPARC-Beta-Testes antes de gerar nova versao (arquivo em uso)." }
+    Write-Host "Processos em execucao - tentando fechar..."
+    $running | ForEach-Object { try { $_.CloseMainWindow() | Out-Null; $_.Kill() } catch { } }
+    Start-Sleep -Seconds 2
 }
 $betaRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $keysDir = Join-Path $betaRoot "keys"
@@ -115,16 +113,18 @@ if (-not $SemOfuscacao) {
         "<Module file=`"" + $binDir + "\NetworkDevice.Core.dll`" />`r`n" +
         "<Module file=`"" + $binDir + "\NetworkDevice.Protocols.dll`" />`r`n" +
         "<Module file=`"" + $binDir + "\NetworkDevice.Cisco.dll`" />`r`n" +
+        "<Module file=`"" + $binDir + "\NetworkDevice.Fortinet.dll`" />`r`n" +
         "<Module file=`"" + $binDir + "\NetworkDevice.UI.dll`">`r`n" +
         "  <SkipType name=`"NetworkDevice.UI.App`" skipFields=`"true`" skipProperties=`"true`" skipMethods=`"true`" skipEvents=`"true`" />`r`n" +
         "  <SkipType name=`"NetworkDevice.UI.MainWindow`" skipFields=`"true`" skipProperties=`"true`" skipMethods=`"true`" skipEvents=`"true`" />`r`n" +
         "  <SkipType name=`"NetworkDevice.UI.CliDiagnosticWindow`" skipFields=`"true`" skipProperties=`"true`" skipMethods=`"true`" skipEvents=`"true`" />`r`n" +
         "  <SkipType name=`"NetworkDevice.UI.PasswordAuthDialog`" skipFields=`"true`" skipProperties=`"true`" skipMethods=`"true`" skipEvents=`"true`" />`r`n" +
+        "  <SkipType name=`"NetworkDevice.UI.FortiGateAutoRecoveryWindow`" skipFields=`"true`" skipProperties=`"true`" skipMethods=`"true`" skipEvents=`"true`" />`r`n" +
         "</Module>`r`n</Obfuscator>`r`n"
     [IO.File]::WriteAllText($xml, $obfXml)
     & $obfExe $xml
     if ($LASTEXITCODE -ne 0) { throw "obfuscar falhou" }
-    foreach ($dll in @("NetworkDevice.Core.dll", "NetworkDevice.Protocols.dll", "NetworkDevice.Cisco.dll", "NetworkDevice.UI.dll")) {
+    foreach ($dll in @("NetworkDevice.Core.dll", "NetworkDevice.Protocols.dll", "NetworkDevice.Cisco.dll", "NetworkDevice.Fortinet.dll", "NetworkDevice.UI.dll")) {
         Copy-Item (Join-Path $obfOut $dll) (Join-Path $binDir $dll) -Force
     }
     $coreBytes = [IO.File]::ReadAllBytes((Join-Path $binDir "NetworkDevice.Core.dll"))
@@ -145,6 +145,10 @@ $built = Join-Path $outDir "NetworkDevice.UI.exe"
 $final = Join-Path $outDir "SPARC-Beta-Testes.exe"
 if (Test-Path $final) { Remove-Item -Force $final }
 Move-Item -LiteralPath $built -Destination $final
+
+# Gera tambem a copia com versao especifica (ex.: SPARC-Beta-Testes-0.7.exe)
+$versionedExe = Join-Path $outDir "SPARC-Beta-Testes-0.7.exe"
+Copy-Item -LiteralPath $final -Destination $versionedExe -Force
 $mb = [math]::Round((Get-Item $final).Length / 1MB, 1)
 
 Write-Host ""
