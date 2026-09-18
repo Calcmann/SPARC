@@ -67,6 +67,39 @@ public class ConnectivityAndBandwidthTests
         Assert.NotNull(adapters);
         Assert.NotEmpty(adapters);
     }
+
+    [Fact]
+    public void HostNetworkManager_GetDedicatedRouterEthernetInterface_ExecutesSafely()
+    {
+        var result = HostNetworkManager.GetDedicatedRouterEthernetInterface();
+        if (result != null)
+        {
+            Assert.False(string.IsNullOrWhiteSpace(result.Name));
+            Assert.True(result.IsPhysicalEthernet);
+            Assert.DoesNotContain("Wi-Fi", result.Name, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Wireless", result.Description, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task BandwidthTestService_UnboundSourceIp_AbortsWithIsolationError()
+    {
+        var logs = new List<string>();
+        var service = new BandwidthTestService(msg =>
+        {
+            logs.Add(msg);
+            return Task.CompletedTask;
+        });
+
+        // IP 198.51.100.254 (TEST-NET-2, não vinculado a nenhuma interface local)
+        var result = await service.RunNativeHttpSpeedTestAsync(
+            testPayloadMegaBytes: 1,
+            sourceIpAddress: "198.51.100.254");
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("ISOLAMENTO", result.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(logs, l => l.Contains("ERRO ISOLAMENTO", StringComparison.OrdinalIgnoreCase));
+    }
 }
 
 public sealed class AvaliacaoBandaTests

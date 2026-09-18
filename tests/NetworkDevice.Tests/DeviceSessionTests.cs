@@ -132,4 +132,48 @@ public class DeviceSessionTests
         Assert.Equal(ExecMode.Rommon, session.Mode);
         Assert.Equal(prompt, session.CurrentPrompt);
     }
+
+    [Fact]
+    public async Task ConnectAsync_WithFortiGateFactoryReset_RotatesPasswordAndSetsNewPassword()
+    {
+        var step = 0;
+        var transport = new ScriptedTransport(
+            cmd =>
+            {
+                if (cmd == "admin") return "Password: ";
+                if (cmd == "CQMR")
+                {
+                    if (step == 0)
+                    {
+                        step++;
+                        return "Login incorrect\r\n\r\nFortiGate-40F login: ";
+                    }
+                    if (step == 1)
+                    {
+                        step++;
+                        return "Please confirm a new password.\r\nConfirm Password: ";
+                    }
+                    return "FortiGate-40F #\r\n";
+                }
+                if (cmd == "")
+                {
+                    return "You are forced to change your password. Please input a new password.\r\nNew Password: ";
+                }
+                return "FortiGate-40F #\r\n";
+            },
+            initialOutput: "FortiGate-40F login: ");
+
+        var options = new SessionOptions
+        {
+            PromptMatcher = RegexPromptMatcher.Universal(),
+            Username = "admin",
+            Password = "CQMR"
+        };
+        await using var session = new DeviceSession(transport, options);
+
+        await session.ConnectAsync();
+
+        Assert.True(session.IsConnected);
+        Assert.Equal("FortiGate-40F #", session.CurrentPrompt);
+    }
 }

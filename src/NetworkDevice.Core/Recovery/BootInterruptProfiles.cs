@@ -218,6 +218,21 @@ public static class BootInterruptProfiles
         OsBootPolicy = OsBootPolicy.Warning
     };
 
+    // Fortinet FortiGate 40F (aditivo — interrupção manual via console; sem envio automático de Break/Ctrl+C).
+    public static readonly BootInterruptProfile FortiGate40F = new()
+    {
+        Id = "fortinet.fgt40f.fortios",
+        Name = "Fortinet FortiGate 40F (FortiOS @ 9600 - Console)",
+        Manufacturer = "Fortinet",
+        Family = "FortiGate 40F",
+        ModelPatterns = new[] { "FGT40F", "FGT-40F", "FortiGate 40F", "FortiGate-40F", "FortiOS", "fortinet.fgt40f", "fortinet.fgt40f.fortios", "fortinet", "fortigate", "fgt" },
+        Method = BootInterruptMethod.None,
+        RequiresManualIntervention = true,
+        ManualInterventionPrompt = "Reinicie o FortiGate com o console conectado (9600 8-N-1) e pressione qualquer tecla / Ctrl+B quando 'Press any key to display configuration menu...' aparecer para acessar o FortiBootLoader ([G] TFTP / [F] format / [B] backup / [Q] boot).",
+        MaxWindow = TimeSpan.FromMinutes(3),
+        OsBootPolicy = OsBootPolicy.Warning
+    };
+
     public static IReadOnlyList<BootInterruptProfile> All { get; } = new[]
     {
         HpeMsr1002,
@@ -230,7 +245,8 @@ public static class BootInterruptProfiles
         CiscoStandardBreak,
         CiscoUniversal,
         CiscoCatalystManualMode,
-        GenericManual
+        GenericManual,
+        FortiGate40F
     };
 
     public static BootInterruptProfile FindById(string? id)
@@ -248,7 +264,14 @@ public static class BootInterruptProfiles
         var byModel = All.FirstOrDefault(p => p.ModelPatterns.Any(m => m.Equals(trimmed, StringComparison.OrdinalIgnoreCase)));
         if (byModel != null) return byModel;
 
-        // 3. Heurística contextual por substrings (priorizando HPE antes de Cisco)
+        // 3. Heurística contextual por substrings (priorizando Fortinet e HPE antes de Cisco)
+        if (trimmed.Contains("forti", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("fgt", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("40f", StringComparison.OrdinalIgnoreCase))
+        {
+            return FortiGate40F;
+        }
+
         if (trimmed.Contains("1002", StringComparison.OrdinalIgnoreCase) ||
             trimmed.Contains("1003", StringComparison.OrdinalIgnoreCase) ||
             trimmed.Contains("1000", StringComparison.OrdinalIgnoreCase))

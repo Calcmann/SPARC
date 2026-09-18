@@ -43,6 +43,12 @@ public partial class MainWindow : Window
     private bool _isBusy;
     private bool _isRommonOrBootwareDetected;
     private bool _skipFactoryReset;
+    private bool _isFortiGateDetected;
+    private bool _firmwareSkippedSameVersion;
+    private string? _detectedFortiOsStatusOut;
+    private string? _detectedFortiOsVersion;
+    private string? _lastFortiResolvedUser;
+    private string? _lastFortiResolvedPass;
     private TripleIcmpResult? _lastIcmpResult;
 
     public MainWindow()
@@ -222,6 +228,9 @@ public partial class MainWindow : Window
         RevalidarFirmwareCarregadoAoMudarModelo();
     }
 
+    private static bool IsTagFortiGate(string tag) =>
+        !string.IsNullOrEmpty(tag) && (tag.Contains("forti", StringComparison.OrdinalIgnoreCase) || tag.Contains("fgt", StringComparison.OrdinalIgnoreCase));
+
     private DeviceSeries ObterSerieAtualSelecionadaOuDetectada()
     {
         var item = CbModeloRoteadorInicial?.SelectedItem as ComboBoxItem;
@@ -238,6 +247,7 @@ public partial class MainWindow : Window
         if (tag.Contains("1900", StringComparison.OrdinalIgnoreCase) || tag.Contains("1921", StringComparison.OrdinalIgnoreCase) || tag.Contains("1941", StringComparison.OrdinalIgnoreCase) || tag.Contains("1905", StringComparison.OrdinalIgnoreCase)) return DeviceSeries.Series1900;
         if (tag.Contains("900", StringComparison.OrdinalIgnoreCase) || tag.Contains("921", StringComparison.OrdinalIgnoreCase) || tag.Contains("c900", StringComparison.OrdinalIgnoreCase)) return DeviceSeries.Isr921;
         if (tag.Contains("841", StringComparison.OrdinalIgnoreCase) || tag.Contains("800", StringComparison.OrdinalIgnoreCase) || tag.Contains("c841", StringComparison.OrdinalIgnoreCase) || tag.Contains("c800", StringComparison.OrdinalIgnoreCase)) return DeviceSeries.Isr841;
+        if (tag.Contains("forti", StringComparison.OrdinalIgnoreCase) || tag.Contains("fgt", StringComparison.OrdinalIgnoreCase)) return DeviceSeries.FortiGate40F;
         return DeviceSeries.Unknown;
     }
 
@@ -343,16 +353,21 @@ public partial class MainWindow : Window
         var modoManual = RbModoManual?.IsChecked == true;
         bool insumoOk = _loadedSaipCircuit != null;
         bool auto = true; // Modo Automático é o padrão (sem seleção de modo na tela inicial)
-        var firmwareObrigatorio = _isRommonOrBootwareDetected || (auto && (ChkAtualizarFirmwareAuto?.IsChecked == true));
-        var firmwareOk = !firmwareObrigatorio || (!string.IsNullOrEmpty(_selectedIosBinPath) && System.IO.File.Exists(_selectedIosBinPath));
+        var querAtualizar = ChkAtualizarFirmwareAuto?.IsChecked == true;
+        var firmwareObrigatorio = _isRommonOrBootwareDetected || querAtualizar;
+        var arquivoValido = !string.IsNullOrEmpty(_selectedIosBinPath) && System.IO.File.Exists(_selectedIosBinPath);
+        var firmwareOk = !firmwareObrigatorio || arquivoValido;
         var ok = _serialOk && modeloOk && insumoOk && firmwareOk;
         BtnAvancarParaEsteira.IsEnabled = ok;
 
         // Atualiza checklist visual expandido de 4 itens e badges de cada passo
-        AtualizarChecklist(_serialOk, modeloOk, insumoOk, firmwareOk, auto, modoManual, firmwareObrigatorio);
+        AtualizarChecklist(_serialOk, modeloOk, insumoOk, firmwareOk, auto, modoManual, firmwareObrigatorio, querAtualizar, arquivoValido);
     }
 
-    private void AtualizarChecklist(bool serialOk, bool modeloOk, bool insumoOk, bool firmwareOk, bool isAuto, bool modoManual, bool firmwareObrigatorio = true)
+    private void AtualizarChecklist(
+        bool serialOk, bool modeloOk, bool insumoOk, bool firmwareOk,
+        bool isAuto, bool modoManual, bool firmwareObrigatorio = true,
+        bool querAtualizar = true, bool arquivoValido = false)
     {
         var brushVerdeTxt = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#15803D"));
         var brushVerdeBg = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F0FDF4"));
@@ -418,18 +433,12 @@ public partial class MainWindow : Window
 
         if (BadgeStep3 != null && TxtBadgeStep3 != null)
         {
-            if (isAuto)
+            if (querAtualizar)
             {
-                if (!firmwareObrigatorio)
+                if (arquivoValido)
                 {
                     BadgeStep3.Background = brushVerdeBg;
-                    TxtBadgeStep3.Text = "🟢 Passo 3 OK (Auto sem Upgrade)";
-                    TxtBadgeStep3.Foreground = brushVerdeTxt;
-                }
-                else if (firmwareOk)
-                {
-                    BadgeStep3.Background = brushVerdeBg;
-                    TxtBadgeStep3.Text = "🟢 Passo 3 OK (Auto + Firmware)";
+                    TxtBadgeStep3.Text = "🟢 Passo 3 OK (Firmware Selecionado)";
                     TxtBadgeStep3.Foreground = brushVerdeTxt;
                 }
                 else
@@ -439,11 +448,17 @@ public partial class MainWindow : Window
                     TxtBadgeStep3.Foreground = brushAmareloTxt;
                 }
             }
+            else if (_isRommonOrBootwareDetected)
+            {
+                BadgeStep3.Background = brushVermelhoBg;
+                TxtBadgeStep3.Text = _isFortiGateDetected ? "🔴 Firmware Obrigatório (BIOS Fortinet)" : "🔴 Firmware Obrigatório (ROMMON/BootWare)";
+                TxtBadgeStep3.Foreground = brushVermelhoTxt;
+            }
             else
             {
-                BadgeStep3.Background = brushVerdeBg;
-                TxtBadgeStep3.Text = "🟢 Passo 3 OK (Semi-Automático)";
-                TxtBadgeStep3.Foreground = brushVerdeTxt;
+                BadgeStep3.Background = brushCinzaBg;
+                TxtBadgeStep3.Text = "⚪ Passo 3 (Atualização Pulada)";
+                TxtBadgeStep3.Foreground = brushCinzaTxt;
             }
         }
 
@@ -479,24 +494,21 @@ public partial class MainWindow : Window
 
         if (CardChkFirmware != null && TxtChkFirmwareIcon != null && TxtChkFirmwareSub != null)
         {
-            if (isAuto)
+            if (querAtualizar)
             {
-                if (!firmwareObrigatorio)
-                {
-                    CardChkFirmware.Background = brushCinzaBg;
-                    CardChkFirmware.BorderBrush = brushCinzaBorder;
-                    TxtChkFirmwareIcon.Text = "⚪ 3. Firmware";
-                    TxtChkFirmwareIcon.Foreground = brushCinzaTxt;
-                    TxtChkFirmwareSub.Text = "Desmarcado (Atualização Pulada)";
-                }
-                else
-                {
-                    CardChkFirmware.Background = firmwareOk ? brushVerdeBg : brushVermelhoBg;
-                    CardChkFirmware.BorderBrush = firmwareOk ? brushVerdeBorder : brushVermelhoBorder;
-                    TxtChkFirmwareIcon.Text = firmwareOk ? "🟢 3. Firmware OK" : "🔴 3. Firmware";
-                    TxtChkFirmwareIcon.Foreground = firmwareOk ? brushVerdeTxt : brushVermelhoTxt;
-                    TxtChkFirmwareSub.Text = firmwareOk ? Path.GetFileName(_selectedIosBinPath) : "Pendente: selecione .ipe/.bin";
-                }
+                CardChkFirmware.Background = arquivoValido ? brushVerdeBg : brushVermelhoBg;
+                CardChkFirmware.BorderBrush = arquivoValido ? brushVerdeBorder : brushVermelhoBorder;
+                TxtChkFirmwareIcon.Text = arquivoValido ? "🟢 3. Firmware OK" : "🔴 3. Firmware";
+                TxtChkFirmwareIcon.Foreground = arquivoValido ? brushVerdeTxt : brushVermelhoTxt;
+                TxtChkFirmwareSub.Text = arquivoValido ? Path.GetFileName(_selectedIosBinPath) : "Pendente: selecione .ipe/.bin";
+            }
+            else if (_isRommonOrBootwareDetected)
+            {
+                CardChkFirmware.Background = brushVermelhoBg;
+                CardChkFirmware.BorderBrush = brushVermelhoBorder;
+                TxtChkFirmwareIcon.Text = "🔴 3. Firmware";
+                TxtChkFirmwareIcon.Foreground = brushVermelhoTxt;
+                TxtChkFirmwareSub.Text = _isFortiGateDetected ? "Obrigatório: FortiGate em modo BIOS" : "Obrigatório: equipamento em ROMMON/BootWare";
             }
             else
             {
@@ -504,7 +516,7 @@ public partial class MainWindow : Window
                 CardChkFirmware.BorderBrush = brushCinzaBorder;
                 TxtChkFirmwareIcon.Text = "⚪ 3. Firmware";
                 TxtChkFirmwareIcon.Foreground = brushCinzaTxt;
-                TxtChkFirmwareSub.Text = "Opcional (Modo Passo a Passo)";
+                TxtChkFirmwareSub.Text = "Desmarcado (Atualização Pulada)";
             }
         }
 
@@ -759,9 +771,24 @@ public partial class MainWindow : Window
 
             var rxBuffer = new byte[2048];
             var rxAccumulator = new StringBuilder();
+            var fullLogAccumulator = new StringBuilder();
             var bytesReceived = false;
 
-            // Envia \r\n para despertar o console e solicitar prompt atual
+            var isFortiSelected = IsTagFortiGate((CbModeloRoteadorInicial?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "");
+            var isFortiConsole = isFortiSelected;
+            var fortiAdminSent = false;
+            var fortiBlankPassSent = false;
+            var fortiNewPassSent = false;
+            var fortiConfirmPassSent = false;
+            var fortiStandardPass = "CQMR";
+            var currentFortiPass = ""; // "" = em branco de fábrica, depois CQMR
+            var fortiCqmrAttempted = false;
+            var fortiAuthenticated = false;
+            var fortiCredentialsExhausted = false;
+
+            // Envia Ctrl+C para abortar qualquer dump/paginação residual e \r\n para solicitar prompt limpo
+            try { await transport.WriteAsync(new byte[] { 0x03 }, ct); } catch { }
+            await Task.Delay(100, ct);
             await transport.WriteAsync(Encoding.UTF8.GetBytes("\r\n"), ct);
 
             var deadline = DateTime.UtcNow.AddSeconds(10);
@@ -775,9 +802,139 @@ public partial class MainWindow : Window
                     bytesReceived = true;
                     var chunk = Encoding.UTF8.GetString(rxBuffer, 0, read).Replace("\uFFFD", "");
                     rxAccumulator.Append(chunk);
+                    fullLogAccumulator.Append(chunk);
                     OnRawOutput(chunk);
 
                     var current = rxAccumulator.ToString();
+
+                    if (!isFortiConsole && (current.Contains("FortiGate", StringComparison.OrdinalIgnoreCase) ||
+                                            current.Contains("FortiOS", StringComparison.OrdinalIgnoreCase) ||
+                                            current.Contains("FGT", StringComparison.OrdinalIgnoreCase) ||
+                                            current.Contains("FOS", StringComparison.OrdinalIgnoreCase) ||
+                                            current.Contains("CTRL+D", StringComparison.OrdinalIgnoreCase) ||
+                                            Regex.IsMatch(current, @"(?i)(?:FortiGate|FGT)[A-Za-z0-9_\-]*\s+login\s*[:?]")))
+                    {
+                        isFortiConsole = true;
+                    }
+
+                    // Se estiver em modo BIOS / sem firmware do FortiGate (FOS boot failed / System halted / CTRL+D)
+                    if (current.Contains("FOS boot failed", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("Neither DEFAULT nor BACKUP", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("Please install valid FOS", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("You may try backup", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("System halted", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("CTRL+D", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("Enter C,R,T,F,I,B,Q,or H:", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("Enter Selection:", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("Reading boot image ... failed", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("FortiBootLoader", StringComparison.OrdinalIgnoreCase))
+                    {
+                        isFortiConsole = true;
+                        break;
+                    }
+
+                    // Se já estiver logado no prompt do FortiGate (# ou $)
+                    if (isFortiConsole && Regex.IsMatch(current, @"(?i)(?:FortiGate|FGT)[A-Za-z0-9_\-]*\s*(?:\([^()\r\n]*\))?\s*[#$]\s*$"))
+                    {
+                        fortiAuthenticated = true;
+                        break;
+                    }
+
+                    // Se FortiOS acusar falha de login, tenta a próxima credencial homologada SPARC
+                    if (isFortiConsole && (current.Contains("Login incorrect", StringComparison.OrdinalIgnoreCase) ||
+                                           current.Contains("Login failed", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        rxAccumulator.Clear();
+                        fortiAdminSent = false;
+                        fortiBlankPassSent = false;
+                        if (!fortiCqmrAttempted)
+                        {
+                            fortiCqmrAttempted = true;
+                            currentFortiPass = "CQMR";
+                            deadline = DateTime.UtcNow.AddSeconds(7);
+                            EscreverLinha("[>] Senha de fábrica não aceita pelo FortiGate. Tentando senha padrão SPARC (CQMR)...");
+                        }
+                        else
+                        {
+                            fortiCredentialsExhausted = true;
+                            EscreverLinha("[!] Credenciais padrão do FortiGate esgotadas (em branco e CQMR). Equipamento possui senha personalizada.");
+                            break;
+                        }
+                        await Task.Delay(200, ct);
+                        await transport.WriteAsync(Encoding.ASCII.GetBytes("\r"), ct);
+                        await Task.Delay(300, ct);
+                        nextProbe = DateTime.UtcNow.AddSeconds(3);
+                        continue;
+                    }
+
+                    // Se estiver em prompt de login do FortiGate (envia admin)
+                    var isFortiLoginPrompt = isFortiConsole && Regex.IsMatch(current, @"(?i)(?:login|username)\s*[:?]");
+                    if (isFortiLoginPrompt && !fortiAdminSent)
+                    {
+                        fortiAdminSent = true;
+                        rxAccumulator.Clear();
+                        deadline = DateTime.UtcNow.AddSeconds(7);
+                        EscreverLinha("[>] Console FortiGate detectado. Enviando usuário 'admin'...");
+                        await Task.Delay(100, ct);
+                        await transport.WriteAsync(Encoding.ASCII.GetBytes("admin\r"), ct);
+                        await Task.Delay(300, ct);
+                        nextProbe = DateTime.UtcNow.AddSeconds(3);
+                        continue;
+                    }
+
+                    // Se FortiGate pedir senha após admin
+                    if (isFortiConsole && fortiAdminSent && !fortiBlankPassSent &&
+                        Regex.IsMatch(current, @"(?i)(?:^|[\s\b])(?:Password|Login\s+password)\s*[:?]") &&
+                        !Regex.IsMatch(current, @"(?i)(?:new|confirm)\s+password"))
+                    {
+                        fortiBlankPassSent = true;
+                        rxAccumulator.Clear();
+                        deadline = DateTime.UtcNow.AddSeconds(7);
+                        if (string.IsNullOrEmpty(currentFortiPass))
+                        {
+                            EscreverLinha("[>] Prompt de senha FortiGate. Enviando senha em branco de fábrica...");
+                            await Task.Delay(150, ct);
+                            await transport.WriteAsync(Encoding.ASCII.GetBytes("\r"), ct);
+                        }
+                        else
+                        {
+                            EscreverLinha($"[>] Prompt de senha FortiGate. Enviando senha ({currentFortiPass})...");
+                            await Task.Delay(150, ct);
+                            await transport.WriteAsync(Encoding.ASCII.GetBytes(currentFortiPass + "\r"), ct);
+                        }
+                        await Task.Delay(300, ct);
+                        nextProbe = DateTime.UtcNow.AddSeconds(3);
+                        continue;
+                    }
+
+                    // Se FortiOS exigir troca obrigatória de nova senha (New Password:)
+                    if (isFortiConsole && Regex.IsMatch(current, @"(?i)(?:new\s+password\s*[:?]|please\s+input\s+a\s+new\s+password|change\s+your\s+password)") && !fortiNewPassSent)
+                    {
+                        fortiNewPassSent = true;
+                        rxAccumulator.Clear();
+                        EscreverLinha($"[>] Troca obrigatória de senha FortiGate detectada. Definindo nova senha padrão ({fortiStandardPass})...");
+                        await Task.Delay(150, ct);
+                        await transport.WriteAsync(Encoding.ASCII.GetBytes(fortiStandardPass + "\r"), ct);
+                        await Task.Delay(300, ct);
+                        nextProbe = DateTime.UtcNow.AddSeconds(3);
+                        continue;
+                    }
+
+                    // Se FortiOS pedir confirmação da nova senha (Confirm Password:)
+                    if (isFortiConsole && Regex.IsMatch(current, @"(?i)(?:confirm|verify|re-?enter)\s+(?:new\s+)?password\s*[:?]") && !fortiConfirmPassSent)
+                    {
+                        fortiConfirmPassSent = true;
+                        rxAccumulator.Clear();
+                        EscreverLinha($"[>] Confirmando nova senha padrão FortiGate ({fortiStandardPass})...");
+                        await Task.Delay(150, ct);
+                        await transport.WriteAsync(Encoding.ASCII.GetBytes(fortiStandardPass + "\r"), ct);
+                        await Task.Delay(300, ct);
+                        await transport.WriteAsync(Encoding.ASCII.GetBytes("\r"), ct);
+                        await Task.Delay(300, ct);
+                        nextProbe = DateTime.UtcNow.AddSeconds(3);
+                        continue;
+                    }
+
 
                     // Se estiver em diálogo de configuração inicial do Cisco (System Configuration Dialog), responde 'no'
                     if (Regex.IsMatch(current, @"(?i)(?:initial\s+configuration\s+dialog|basic\s+management\s+setup).*(?:\[yes/no\]|\[yes/no\]:|\?)") ||
@@ -864,10 +1021,23 @@ public partial class MainWindow : Window
                         continue;
                     }
 
-                    // Se já capturou um prompt reconhecível de senha, modo de usuário, rommon ou bootware (ou falha de imagem), finaliza imediatamente com sucesso
-                    if (Regex.IsMatch(current, @"(?i)(?:Password|Username|login|User Access Verification)\s*[:?]") ||
+                    // Se já capturou um prompt reconhecível de senha, modo de usuário, rommon ou bootware (ou falha de imagem/BIOS), finaliza imediatamente com sucesso
+                    if ((!isFortiConsole && Regex.IsMatch(current, @"(?i)(?:Password|Username|login|User Access Verification)\s*[:?]")) ||
+                        (isFortiConsole && (current.Contains("Login failed", StringComparison.OrdinalIgnoreCase) ||
+                                            current.Contains("Login incorrect", StringComparison.OrdinalIgnoreCase) ||
+                                            current.Contains("Authentication failed", StringComparison.OrdinalIgnoreCase))) ||
+                        Regex.IsMatch(current, @"(?i)(?:FortiGate|FGT)[A-Za-z0-9_\-]*\s*(?:\([^()\r\n]*\))?\s*[#$]\s*$") ||
                         Regex.IsMatch(current, @"[\<\[][^\r\n]+[\>\]]\s*$") ||
                         Regex.IsMatch(current, @"[^\r\n]+[>#]\s*$") ||
+                        current.Contains("FOS boot failed", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("Neither DEFAULT nor BACKUP", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("Please install valid FOS", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("You may try backup", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("System halted", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("CTRL+D", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("Enter C,R,T,F,I,B,Q,or H:", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("Enter Selection:", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("FortiBootLoader", StringComparison.OrdinalIgnoreCase) ||
                         current.Contains("choice", StringComparison.OrdinalIgnoreCase) ||
                         current.Contains("EXTENDED-BOOTWARE", StringComparison.OrdinalIgnoreCase) ||
                         current.Contains("BASIC BOOT MENU", StringComparison.OrdinalIgnoreCase) ||
@@ -935,10 +1105,26 @@ public partial class MainWindow : Window
             }
 
             var prompt = rxAccumulator.ToString().Trim();
+            if (string.IsNullOrEmpty(prompt) || isFortiConsole || prompt.Contains("Verifying password", StringComparison.OrdinalIgnoreCase))
+            {
+                var fullP = fullLogAccumulator.ToString().Trim();
+                if (!string.IsNullOrEmpty(fullP))
+                    prompt = fullP;
+            }
             if (string.IsNullOrEmpty(prompt)) prompt = "(dados seriais recebidos)";
 
-            // Se o buffer recebido não terminar em prompt nem em login (:), envia CRLF para acordar console e capturar o prompt
-            if (!Regex.IsMatch(prompt, @"[>#:]\s*$") && !prompt.EndsWith("]") && !prompt.EndsWith(">"))
+            var isBiosHalt = prompt.Contains("FOS boot failed", StringComparison.OrdinalIgnoreCase) ||
+                             prompt.Contains("Neither DEFAULT nor BACKUP", StringComparison.OrdinalIgnoreCase) ||
+                             prompt.Contains("Please install valid FOS", StringComparison.OrdinalIgnoreCase) ||
+                             prompt.Contains("You may try backup", StringComparison.OrdinalIgnoreCase) ||
+                             prompt.Contains("System halted", StringComparison.OrdinalIgnoreCase) ||
+                             prompt.Contains("CTRL+D", StringComparison.OrdinalIgnoreCase) ||
+                             prompt.Contains("Enter C,R,T,F,I,B,Q,or H:", StringComparison.OrdinalIgnoreCase) ||
+                             prompt.Contains("Enter Selection:", StringComparison.OrdinalIgnoreCase) ||
+                             prompt.Contains("FortiBootLoader", StringComparison.OrdinalIgnoreCase);
+
+            // Se o buffer recebido não terminar em prompt nem em login (:), e não for BIOS em halt, envia CRLF para acordar console e capturar o prompt
+            if (!isBiosHalt && !Regex.IsMatch(prompt, @"[>#:]\s*$") && !prompt.EndsWith("]") && !prompt.EndsWith(">"))
             {
                 try
                 {
@@ -956,16 +1142,34 @@ public partial class MainWindow : Window
                 catch { }
             }
 
-            // Se estiver em prompt Cisco aberto (Router> / Router# / cisco>), faz consulta rápida de versão/modelo
-            if ((Regex.IsMatch(prompt, @"(?i)(?:^|[\r\n])[A-Za-z0-9_\-\.]+>\s*$") ||
-                 Regex.IsMatch(prompt, @"(?i)(?:^|[\r\n])[A-Za-z0-9_\-\.]+#\s*$")) &&
-                !prompt.Contains("<") && !prompt.Contains("["))
+            var isFortiPromptOrSelected = isFortiConsole ||
+                prompt.Contains("FortiGate", StringComparison.OrdinalIgnoreCase) ||
+                prompt.Contains("FGT", StringComparison.OrdinalIgnoreCase) ||
+                prompt.Contains("Fortinet", StringComparison.OrdinalIgnoreCase) ||
+                prompt.Contains("FortiOS", StringComparison.OrdinalIgnoreCase) ||
+                prompt.Contains("FOS", StringComparison.OrdinalIgnoreCase) ||
+                prompt.Contains("CTRL+D", StringComparison.OrdinalIgnoreCase) ||
+                prompt.Contains("config system", StringComparison.OrdinalIgnoreCase) ||
+                prompt.Contains("config firewall", StringComparison.OrdinalIgnoreCase) ||
+                ((CbModeloRoteadorInicial?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "").Contains("forti", StringComparison.OrdinalIgnoreCase);
+
+            var isHpePromptOrSelected = !isFortiPromptOrSelected && (
+                Regex.IsMatch(prompt, @"[\<\[][^\r\n>\]]+[\>\]]\s*$") ||
+                prompt.Contains("<HPE>", StringComparison.OrdinalIgnoreCase) ||
+                prompt.Contains("[HPE]", StringComparison.OrdinalIgnoreCase) ||
+                prompt.Contains("<H3C>", StringComparison.OrdinalIgnoreCase) ||
+                prompt.Contains("<HP>", StringComparison.OrdinalIgnoreCase) ||
+                ((CbModeloRoteadorInicial?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "").Contains("hpe", StringComparison.OrdinalIgnoreCase) ||
+                ((CbModeloRoteadorInicial?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "").Contains("msr", StringComparison.OrdinalIgnoreCase));
+
+            // Se estiver em prompt FortiGate aberto (FortiGate-40F # / $), faz consulta rápida de 'get system status' (NUNCA envia 'show')
+            if (isFortiPromptOrSelected && (prompt.Contains("#") || prompt.Contains("$")))
             {
                 try
                 {
-                    await transport.WriteAsync(Encoding.UTF8.GetBytes("show version | include (?:[Cc]isco|[Cc]92[0-9]|19[0-9][0-9]|ISR|Processor)\r\n"), ct);
+                    await transport.WriteAsync(Encoding.UTF8.GetBytes("get system status\r\n"), ct);
                     await Task.Delay(400, ct);
-                    var verBuf = new byte[2048];
+                    var verBuf = new byte[4096];
                     var verRead = await transport.ReadAsync(verBuf, ct);
                     if (verRead > 0)
                     {
@@ -977,11 +1181,7 @@ public partial class MainWindow : Window
                 catch { }
             }
             // Se estiver em prompt HPE aberto (<HPE>, [HPE], <HP>, <H3C>), faz consulta rápida de display version
-            else if (Regex.IsMatch(prompt, @"[\<\[][^\r\n>\]]+[\>\]]\s*$") ||
-                     prompt.Contains("<HPE>", StringComparison.OrdinalIgnoreCase) ||
-                     prompt.Contains("[HPE]", StringComparison.OrdinalIgnoreCase) ||
-                     prompt.Contains("<H3C>", StringComparison.OrdinalIgnoreCase) ||
-                     prompt.Contains("<HP>", StringComparison.OrdinalIgnoreCase))
+            else if (isHpePromptOrSelected)
             {
                 try
                 {
@@ -998,38 +1198,62 @@ public partial class MainWindow : Window
                 }
                 catch { }
             }
+            // Se estiver em prompt Cisco aberto (Router> / Router# / cisco>), faz consulta rápida de versão/modelo
+            else if (!isFortiPromptOrSelected && !isHpePromptOrSelected &&
+                     (Regex.IsMatch(prompt, @"(?i)(?:^|[\r\n])[A-Za-z0-9_\-\.]+>\s*$") ||
+                      Regex.IsMatch(prompt, @"(?i)(?:^|[\r\n])[A-Za-z0-9_\-\.]+#\s*$")) &&
+                     !prompt.Contains("<") && !prompt.Contains("["))
+            {
+                try
+                {
+                    await transport.WriteAsync(Encoding.UTF8.GetBytes("show version | include (?:[Cc]isco|[Cc]92[0-9]|19[0-9][0-9]|ISR|Processor)\r\n"), ct);
+                    await Task.Delay(400, ct);
+                    var verBuf = new byte[2048];
+                    var verRead = await transport.ReadAsync(verBuf, ct);
+                    if (verRead > 0)
+                    {
+                        var verOut = Encoding.UTF8.GetString(verBuf, 0, verRead).Replace("\uFFFD", "");
+                        rxAccumulator.Append("\n" + verOut);
+                        prompt += "\n" + verOut;
+                    }
+                }
+                catch { }
+            }
 
-            var userTag = (CbModeloRoteadorInicial.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "";
+            var userTag = (CbModeloRoteadorInicial?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "";
             var userSeries = userTag.Contains("1002") || userTag.Contains("1003") || userTag.Contains("1000") ? DeviceSeries.Msr1002 :
                              userTag.Contains("954") ? DeviceSeries.Msr954 :
                              userTag.Contains("930") ? DeviceSeries.Msr930 :
                              userTag.Contains("1900") ? DeviceSeries.Series1900 :
                              userTag.Contains("900") || userTag.Contains("921") ? DeviceSeries.Isr921 :
                              userTag.Contains("841") || userTag.Contains("800") ? DeviceSeries.Isr841 :
+                             userTag.Contains("forti") || userTag.Contains("fgt") ? DeviceSeries.FortiGate40F :
                              DeviceSeries.Unknown;
 
             var detector = new DeviceDetector();
             var detection = detector.ClassifyPrompt(prompt, userSeries);
 
+            var isForti = detection.Manufacturer == DeviceManufacturer.Fortinet || isFortiConsole || userTag.Contains("forti", StringComparison.OrdinalIgnoreCase);
             var isRommon = detection.BootState == BootState.Rommon;
             var isBootware = detection.BootState == BootState.Bootware;
-            var isPasswordLocked = detection.OperatingState == DeviceOperatingState.PasswordProtected;
-            var isHpe = detection.Manufacturer == DeviceManufacturer.Hpe;
-            var isCisco = detection.Manufacturer == DeviceManufacturer.Cisco;
-
             _isRommonOrBootwareDetected = detection.OperatingState == DeviceOperatingState.BootFailure;
+            var isPasswordLocked = !_isRommonOrBootwareDetected && (detection.OperatingState == DeviceOperatingState.PasswordProtected || (isForti && !fortiAuthenticated));
+            var isHpe = detection.Manufacturer == DeviceManufacturer.Hpe;
+            var isCisco = detection.Manufacturer == DeviceManufacturer.Cisco && !isForti;
+            _isFortiGateDetected = isForti;
 
             EscreverLinha($"[OK] Conexão serial física {porta} @ {baud} validada com sucesso!");
 
             Dispatcher.Invoke(() =>
             {
-                _serialOk = true;
-
                 if (_isRommonOrBootwareDetected)
                 {
-                    var modeName = isRommon ? "ROMMON (Cisco)" : "BootWare (HPE)";
-                    TxtSerialTestStatus.Text = $"🟡 {modeName}";
-                    TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D97706"));
+                    _serialOk = true;
+                    var modeName = isForti ? "BIOS / Bootloader (Fortinet)" : (isRommon ? "ROMMON (Cisco)" : "BootWare (HPE)");
+                    TxtSerialTestStatus.Text = isForti ? "🔴 BIOS / Sem Firmware (Fortinet)" : $"🟡 {modeName}";
+                    TxtSerialTestStatus.Foreground = isForti
+                        ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF4444"))
+                        : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D97706"));
 
                     if (ChkAtualizarFirmwareAuto != null)
                     {
@@ -1039,30 +1263,30 @@ public partial class MainWindow : Window
                     }
 
                     // Discrimina modelo específico usando regexes de alta precisão
-                    var is1900 = detection.Series == DeviceSeries.Series1900
+                    var is1900 = !isForti && (detection.Series == DeviceSeries.Series1900
                               || DeviceDetector.Cisco1900ModelRegex.IsMatch(prompt)
-                              || userSeries == DeviceSeries.Series1900;
+                              || userSeries == DeviceSeries.Series1900);
 
-                    var is921 = !is1900 && (
+                    var is921 = !isForti && !is1900 && (
                                 detection.Series == DeviceSeries.Isr921
                              || DeviceDetector.Cisco900ModelRegex.IsMatch(prompt)
                              || userSeries == DeviceSeries.Isr921);
 
-                    var is841 = !is1900 && !is921 && (
+                    var is841 = !isForti && !is1900 && !is921 && (
                                 detection.Series == DeviceSeries.Isr841
                              || DeviceDetector.Cisco841ModelRegex.IsMatch(prompt)
                              || userSeries == DeviceSeries.Isr841);
 
-                    var isHpe1002 = detection.Series == DeviceSeries.Msr1002
+                    var isHpe1002 = !isForti && (detection.Series == DeviceSeries.Msr1002
                                  || DeviceDetector.Hpe1002ModelRegex.IsMatch(prompt)
-                                 || userSeries == DeviceSeries.Msr1002;
+                                 || userSeries == DeviceSeries.Msr1002);
 
-                    var isHpe930 = !isHpe1002 && (
+                    var isHpe930 = !isForti && !isHpe1002 && (
                                    detection.Series == DeviceSeries.Msr930
                                 || DeviceDetector.Hpe930ModelRegex.IsMatch(prompt)
                                 || userSeries == DeviceSeries.Msr930);
 
-                    var isHpe954 = !isHpe1002 && !isHpe930 && (
+                    var isHpe954 = !isForti && !isHpe1002 && !isHpe930 && (
                                    detection.Series == DeviceSeries.Msr954
                                 || DeviceDetector.Hpe954ModelRegex.IsMatch(prompt)
                                 || userSeries == DeviceSeries.Msr954);
@@ -1071,7 +1295,14 @@ public partial class MainWindow : Window
                     string fwExemplo;
                     string portaTftp;
 
-                    if (isHpe)
+                    if (isForti)
+                    {
+                        especificoNome = "Fortinet FortiGate 40F (Modo BIOS / Sem Firmware)";
+                        fwExemplo = "FGT_40F-*.out";
+                        portaTftp = "WAN";
+                        SelecionarModeloNoCombo("fortinet.fortigate.maintainer");
+                    }
+                    else if (isHpe)
                     {
                         especificoNome = isHpe1002 ? "HPE MSR 1002 / 1003" :
                                          isHpe930 ? "HPE MSR 930" :
@@ -1114,49 +1345,93 @@ public partial class MainWindow : Window
 
                     if (TxtChkSerialIcon != null && TxtChkSerialSub != null)
                     {
-                        TxtChkSerialIcon.Text = $"🟢 1b. Serial ({modeName})";
+                        TxtChkSerialIcon.Text = isForti ? "🔴 1a. Fortinet 40F (BIOS/Sem FW)" : $"🟢 1b. Serial ({modeName})";
                         TxtChkSerialSub.Text = $"{porta} ({especificoNome})";
                     }
 
-                    EscreverLinha($"\n=================================================================");
-                    EscreverLinha($"   📢 {especificoNome.ToUpper()} DETECTADO EM MODO {modeName.ToUpper()}");
-                    EscreverLinha($"=================================================================");
-                    EscreverLinha($"  Porta Serial : {porta} @ {baud} bps");
-                    EscreverLinha($"  Equipamento  : 🖧 {especificoNome}");
-                    EscreverLinha($"  Estado       : 🟡 Menu {modeName} Ativo (Sem Sistema Operacional)");
-                    EscreverLinha($"  Porta TFTP   : 🔴 {portaTftp}");
-                    EscreverLinha($"  Firmware     : Padrão {fwExemplo}");
-                    EscreverLinha($"  ⚠️ Limpeza   : O processo apagará/ignorará configurações e senhas");
-                    EscreverLinha($"                 anteriores na memória para prevenir bloqueios de acesso.");
-                    EscreverLinha($"👉 A RECUPERAÇÃO DE FIRMWARE É OBRIGATÓRIA.");
-                    EscreverLinha($"👉 Selecione o Modelo (Passo 1), carregue a Ficha SAIP (Passo 2) e selecione o arquivo de Firmware ({fwExemplo}) no Passo 3.\n");
+                    if (isForti)
+                    {
+                        EscreverLinha($"\n=================================================================");
+                        EscreverLinha($"   🚨 FORTINET FORTIGATE 40F SEM FIRMWARE CARREGADO (MODO BIOS)");
+                        EscreverLinha($"=================================================================");
+                        EscreverLinha($"  Porta Serial : {porta} @ {baud} bps");
+                        EscreverLinha($"  Equipamento  : 🖧 Fortinet FortiGate 40F");
+                        EscreverLinha($"  Estado       : 🔴 Sem Firmware Carregado (Modo BIOS / TFTP)");
+                        EscreverLinha($"  Porta TFTP   : 🔴 EXCLUSIVAMENTE NA PORTA WAN (Única porta viável na BIOS)");
+                        EscreverLinha($"  Firmware     : {fwExemplo} (.out)");
+                        EscreverLinha($"  Informações  : Ficha SAIP (ou IPs) + Imagem de Firmware OBRIGATÓRIAS");
+                        EscreverLinha($"👉 Identificamos que o 40F está sem firmware carregado. Será necessário o processo de recuperação.");
+                        EscreverLinha($"👉 Conecte seu dispositivo via cabo de rede EXCLUSIVAMENTE na porta WAN.");
+                        EscreverLinha($"👉 Carregue as informações do serviço (Ficha SAIP ou IPs) e a imagem de Firmware ({fwExemplo}).\n");
 
-                    MessageBox.Show(this,
-                        $"EQUIPAMENTO DETECTADO: {especificoNome.ToUpper()}\n" +
-                        $"MODO: {modeName.ToUpper()}\n\n" +
-                        $"• O roteador foi identificado no menu de inicialização {modeName}.\n" +
-                        $"• Não há sistema operacional em execução na memória Flash/RAM.\n\n" +
-                        $"⚠️ AVISO IMPORTANTE — LIMPEZA E RECUPERAÇÃO:\n" +
-                        $"• A recuperação de firmware gravará uma nova imagem limpa do sistema operacional.\n" +
-                        $"• Para prevenir travas por senhas anteriores desconhecidas, quaisquer configurações e senhas residuais na memória serão APAGADAS/IGNORADAS no processo.\n\n" +
-                        $"👉 AÇÕES NECESSÁRIAS:\n" +
-                        $"1. Conecte o cabo de rede na porta {portaTftp} para a transferência TFTP.\n" +
-                        $"2. Selecione a imagem de firmware compatível ({fwExemplo}) no Passo 3.\n" +
-                        $"3. Clique em 'INICIAR PROVISIONAMENTO AUTOMÁTICO' para iniciar a recuperação.",
-                        $"Recuperação e Limpeza — {especificoNome}",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Information);
+                        MessageBox.Show(this,
+                            "🚨 FORTINET FORTIGATE 40F — RECUPERAÇÃO DE FIRMWARE NECESSÁRIA\n\n" +
+                            "• Identificamos que o FortiGate 40F está sem firmware carregado na memória Flash.\n" +
+                            "• Será necessário realizar o processo de recuperação via BIOS TFTP para restaurar o sistema operacional.\n\n" +
+                            "🔌 CONEXÃO FÍSICA OBRIGATÓRIA:\n" +
+                            "👉 Conecte seu dispositivo via cabo de rede EXCLUSIVAMENTE na porta WAN do FortiGate 40F.\n" +
+                            "   (A porta WAN é a ÚNICA porta viável reconhecida pela BIOS do FortiGate 40F para download TFTP).\n\n" +
+                            "📋 AÇÕES NECESSÁRIAS:\n" +
+                            "1. Conecte o cabo de rede do computador na porta WAN do FortiGate 40F.\n" +
+                            "2. Carregue as informações do serviço (Ficha SAIP no Passo 2 ou preencha os IPs manualmente).\n" +
+                            "3. Selecione o arquivo de Firmware compatível (FGT_40F-*.out) no Passo 3.\n" +
+                            "4. Clique em 'INICIAR PROVISIONAMENTO AUTOMÁTICO' para iniciar a recuperação.",
+                            "Recuperação de Firmware — FortiGate 40F (Modo BIOS)",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Warning);
+                    }
+                    else
+                    {
+                        EscreverLinha($"\n=================================================================");
+                        EscreverLinha($"   📢 {especificoNome.ToUpper()} DETECTADO EM MODO {modeName.ToUpper()}");
+                        EscreverLinha($"=================================================================");
+                        EscreverLinha($"  Porta Serial : {porta} @ {baud} bps");
+                        EscreverLinha($"  Equipamento  : 🖧 {especificoNome}");
+                        EscreverLinha($"  Estado       : 🟡 Menu {modeName} Ativo (Sem Sistema Operacional)");
+                        EscreverLinha($"  Porta TFTP   : 🔴 {portaTftp}");
+                        EscreverLinha($"  Firmware     : Padrão {fwExemplo}");
+                        EscreverLinha($"  ⚠️ Limpeza   : O processo apagará/ignorará configurações e senhas");
+                        EscreverLinha($"                 anteriores na memória para prevenir bloqueios de acesso.");
+                        EscreverLinha($"👉 A RECUPERAÇÃO DE FIRMWARE É OBRIGATÓRIA.");
+                        EscreverLinha($"👉 Selecione o Modelo (Passo 1), carregue a Ficha SAIP (Passo 2) e selecione o arquivo de Firmware ({fwExemplo}) no Passo 3.\n");
+
+                        MessageBox.Show(this,
+                            $"EQUIPAMENTO DETECTADO: {especificoNome.ToUpper()}\n" +
+                            $"MODO: {modeName.ToUpper()}\n\n" +
+                            $"• O roteador foi identificado no menu de inicialização {modeName}.\n" +
+                            $"• Não há sistema operacional em execução na memória Flash/RAM.\n\n" +
+                            $"⚠️ AVISO IMPORTANTE — LIMPEZA E RECUPERAÇÃO:\n" +
+                            $"• A recuperação de firmware gravará uma nova imagem limpa do sistema operacional.\n" +
+                            $"• Para prevenir travas por senhas anteriores desconhecidas, quaisquer configurações e senhas residuais na memória serão APAGADAS/IGNORADAS no processo.\n\n" +
+                            $"👉 AÇÕES NECESSÁRIAS:\n" +
+                            $"1. Conecte o cabo de rede na porta {portaTftp} para a transferência TFTP.\n" +
+                            $"2. Carregue as informações do serviço (Ficha SAIP no Passo 2 ou configure os IPs do circuito).\n" +
+                            $"3. Selecione a imagem de firmware compatível ({fwExemplo}) no Passo 3.\n" +
+                            $"4. Clique em 'INICIAR PROVISIONAMENTO AUTOMÁTICO' para iniciar a recuperação.",
+                            $"Recuperação e Limpeza — {especificoNome}",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Information);
+                    }
                 }
                 else if (isPasswordLocked)
                 {
-                    var requiresUserAndPass = detection.AccessState == AccessState.UserAndPasswordRequired;
-                    TxtSerialTestStatus.Text = requiresUserAndPass ? "🔒 Requer Login e Senha" : "🔒 Requer Senha";
-                    TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D97706"));
+                    _serialOk = false;
+                    _skipFactoryReset = false;
+                    var requiresUserAndPass = detection.AccessState == AccessState.UserAndPasswordRequired || isForti;
+                    TxtSerialTestStatus.Text = (isForti && fortiCredentialsExhausted) ? "🔒 Senha Desconhecida" : (requiresUserAndPass ? "🔒 Requer Login e Senha" : "🔒 Requer Senha");
+                    TxtSerialTestStatus.Foreground = BrushErro;
 
-                    var devName = isHpe ? "HPE 954" : isCisco ? "Cisco" : "Roteador";
+                    var devName = isForti ? "FortiGate 40F" : isHpe ? "HPE 954" : isCisco ? "Cisco" : "Roteador";
 
                     EscreverLinha("\n=================================================================");
-                    if (requiresUserAndPass)
+                    if (isForti)
+                    {
+                        EscreverLinha("       🔒 FORTINET FORTIGATE 40F COM SENHA DETECTADO");
+                        EscreverLinha("=================================================================");
+                        EscreverLinha("  O FortiGate 40F conectado está solicitando autenticação de console.");
+                        EscreverLinha("  👉 O SPARC testará automaticamente as credenciais de fábrica e padrão.");
+                    }
+                    else if (requiresUserAndPass)
                     {
                         EscreverLinha($"       🔒 {devName.ToUpper()} COM USUÁRIO E SENHA (LOGIN) DETECTADO");
                         EscreverLinha("=================================================================");
@@ -1186,15 +1461,115 @@ public partial class MainWindow : Window
 
                     Dispatcher.BeginInvoke(new Action(async () =>
                     {
+                        if (isForti)
+                        {
+                            bool autoOk = false;
+                            string resolvedUser = "admin";
+                            string resolvedPass = "";
+
+                            if (!fortiCredentialsExhausted)
+                            {
+                                EscreverLinha("[*] [FORTIGATE] Console com autenticação detectado. Testando automaticamente credenciais de fábrica (admin/em branco) e padrão SPARC (CQMR)...");
+                                ConfigurarBotaoTestarTerminal(false, "Autenticando...", "#FEF2F2", "#DC2626");
+                                await Task.Delay(250);
+
+                                // 1. Tenta padrão de fábrica: admin com senha em branco
+                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "admin", "");
+                                resolvedUser = "admin";
+                                resolvedPass = "";
+
+                                // 2. Se falhar, tenta admin com CQMR
+                                if (!autoOk)
+                                {
+                                    autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "admin", "CQMR");
+                                    resolvedUser = "admin";
+                                    resolvedPass = "CQMR";
+                                }
+
+                                // 3. Se falhar, tenta EBT com CQMR
+                                if (!autoOk)
+                                {
+                                    autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "EBT", "CQMR");
+                                    resolvedUser = "EBT";
+                                    resolvedPass = "CQMR";
+                                }
+                            }
+
+                            if (autoOk)
+                            {
+                                _lastFortiResolvedUser = resolvedUser;
+                                _lastFortiResolvedPass = resolvedPass;
+                                _skipFactoryReset = true;
+                                _serialOk = true;
+                                TxtSerialTestStatus.Text = "✅ Autenticado";
+                                TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#16A34A"));
+                                if (TxtChkSerialIcon != null && TxtChkSerialSub != null)
+                                {
+                                    TxtChkSerialIcon.Text = "🟢 1b. Serial (Autenticado)";
+                                    TxtChkSerialSub.Text = $"{porta} (Acesso Fábrica/Padrão)";
+                                    CardChkSerial.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F0FDF4"));
+                                    CardChkSerial.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#BBF7D0"));
+                                }
+                                EscreverLinha($"[OK] [FORTIGATE] Autenticação automática concluída com sucesso (usuário '{resolvedUser}')! Acesso liberado sem necessidade de intervenção manual.\n");
+                                SelecionarModeloNoCombo("fortinet.fgt40f");
+                                ConfigurarBotaoTestarTerminal(true, "🔌 Testar Conexão Porta Serial", "#B91C1C", "#FFFFFF");
+                                AtualizarBotaoProsseguir();
+
+                                await ExecutarAvaliacaoPosLoginAsync(porta, baud);
+                                return;
+                            }
+
+                            // Credenciais esgotadas / senha desconhecida
+                            _serialOk = false;
+                            _skipFactoryReset = false;
+                            TxtSerialTestStatus.Text = "🔒 Senha Desconhecida";
+                            TxtSerialTestStatus.Foreground = BrushErro;
+                            if (TxtChkSerialIcon != null && TxtChkSerialSub != null)
+                            {
+                                TxtChkSerialIcon.Text = "🟡 1b. Serial (Senha Desconhecida)";
+                                TxtChkSerialSub.Text = $"{porta} (Requer Senha ou Quebra)";
+                                CardChkSerial.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FFFBEB"));
+                                CardChkSerial.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FDE68A"));
+                            }
+                            SelecionarModeloNoCombo("fortinet.fgt40f");
+                            ConfigurarBotaoTestarTerminal(true, "🔌 Testar Conexão Porta Serial", "#B91C1C", "#FFFFFF");
+                            AtualizarBotaoProsseguir();
+
+                            EscreverLinha("\n=================================================================");
+                            EscreverLinha("   🔒 [FORTIGATE 40F] SENHA DESCONHECIDA / NÃO HOMOLOGADA");
+                            EscreverLinha("=================================================================");
+                            EscreverLinha("  O FortiGate 40F conectado está protegido por uma senha personalizada");
+                            EscreverLinha("  diferente dos padrões de fábrica e SPARC (em branco e CQMR).");
+                            EscreverLinha("  👉 Não é possível coletar inventário nem provisionar sem autenticação.");
+                            EscreverLinha("  👉 Escolha uma opção no diálogo:");
+                            EscreverLinha("     1. Informar credenciais conhecidas manualmente;");
+                            EscreverLinha("     2. Quebrar senha e zerar configuração de forma autônoma.");
+                            EscreverLinha("=================================================================\n");
+                        }
+
                         string? loginErrorMessage = null;
                         string? lastUser = null;
 
                         while (true)
                         {
-                            var authDlg = new PasswordAuthDialog(requiresUserAndPass, devName, loginErrorMessage, lastUser) { Owner = this };
+                            var authDlg = new PasswordAuthDialog(requiresUserAndPass, devName, loginErrorMessage, lastUser, allowBlankPassword: false, isFortiGate: isForti) { Owner = this };
                             if (authDlg.ShowDialog() != true)
                             {
                                 // Operador cancelou o diálogo
+                                if (isForti)
+                                {
+                                    _serialOk = false;
+                                    TxtSerialTestStatus.Text = "🔒 Senha Desconhecida";
+                                    TxtSerialTestStatus.Foreground = BrushErro;
+                                    if (TxtChkSerialIcon != null && TxtChkSerialSub != null)
+                                    {
+                                        TxtChkSerialIcon.Text = "🟡 1b. Serial (Senha Desconhecida)";
+                                        TxtChkSerialSub.Text = $"{porta} (Requer Senha ou Quebra)";
+                                        CardChkSerial.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FFFBEB"));
+                                        CardChkSerial.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FDE68A"));
+                                    }
+                                    EscreverLinha("[AVISO] Diálogo fechado. FortiGate 40F permanece bloqueado por senha desconhecida.");
+                                }
                                 ConfigurarBotaoTestarTerminal(true, "🔌 Testar Conexão Porta Serial", "#B91C1C", "#FFFFFF");
                                 AtualizarBotaoProsseguir();
                                 break;
@@ -1202,6 +1577,73 @@ public partial class MainWindow : Window
 
                             if (authDlg.Choice == PasswordAuthChoice.FactoryReset)
                             {
+                                if (isForti)
+                                {
+                                    EscreverLinha("\n[*] [FORTIGATE] Operador optou pela quebra de senha e recuperação autônoma.");
+                                    EscreverLinha("👉 Abrindo assistente autônomo do SPARC para monitorar boot e restabelecer acesso...");
+
+                                    var autoRecWin = new FortiGateAutoRecoveryWindow(porta, baud) { Owner = this };
+                                    var res = autoRecWin.ShowDialog();
+
+                                    if (res == true && autoRecWin.Sucesso)
+                                    {
+                                        _lastFortiResolvedUser = "admin";
+                                        _lastFortiResolvedPass = "";
+                                        _skipFactoryReset = true;
+                                        _serialOk = true;
+                                        TxtSerialTestStatus.Text = "✅ Autenticado";
+                                        TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#16A34A"));
+                                        if (TxtChkSerialIcon != null && TxtChkSerialSub != null)
+                                        {
+                                            TxtChkSerialIcon.Text = "🟢 1b. Serial (Autenticado)";
+                                            TxtChkSerialSub.Text = $"{porta} (Acesso Recuperado)";
+                                            CardChkSerial.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F0FDF4"));
+                                            CardChkSerial.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#BBF7D0"));
+                                        }
+                                        EscreverLinha("[OK] [FORTIGATE] Senha restaurada ao padrão de fábrica com sucesso! Prossiga com o provisionamento padrão.\n");
+                                        SelecionarModeloNoCombo("fortinet.fgt40f");
+                                        ConfigurarBotaoTestarTerminal(true, "🔌 Testar Conexão Porta Serial", "#B91C1C", "#FFFFFF");
+                                        AtualizarBotaoProsseguir();
+
+                                        await ExecutarAvaliacaoPosLoginAsync(porta, baud);
+
+                                        MessageBox.Show(
+                                            "✅ Reset de fábrica e acesso liberados com sucesso!\n\n" +
+                                            "A senha do FortiGate 40F foi removida (padrão de fábrica restaurado).\n\n" +
+                                            "👉 AÇÃO NECESSÁRIA PARA O PROVISIONAMENTO:\n" +
+                                            "1. Carregue os dados do circuito (Passo 2 — Ficha SAIP);\n" +
+                                            "2. Selecione ou valide o Firmware (Passo 3, se necessário);\n" +
+                                            "3. Clique em 'INICIAR PROVISIONAMENTO AUTOMÁTICO' para prosseguir.",
+                                            "Reset Concluído — Carregamento de Circuito e Firmware",
+                                            MessageBoxButton.OK,
+                                            MessageBoxImage.Information);
+
+                                        EscreverLinha("\n=================================================================");
+                                        EscreverLinha("👉 AVISO OPERACIONAL: Siga com o carregamento dos dados do");
+                                        EscreverLinha("   circuito (Ficha SAIP) e do firmware para provisionar.");
+                                        EscreverLinha("=================================================================\n");
+                                        break;
+                                    }
+                                    else
+                                    {
+                                        _skipFactoryReset = false;
+                                        _serialOk = true;
+                                        TxtSerialTestStatus.Text = "🔒 Recuperar/Zerar";
+                                        TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626"));
+                                        if (TxtChkSerialIcon != null && TxtChkSerialSub != null)
+                                        {
+                                            TxtChkSerialIcon.Text = "🟢 1b. Serial (Com Senha)";
+                                            TxtChkSerialSub.Text = $"{porta} (Requer Zeramento)";
+                                        }
+                                        ConfigurarBotaoTestarTerminal(false, "preencha dados para seguir", "#FEF2F2", "#DC2626");
+                                        EscreverLinha("[*] [FORTIGATE] Quebra de senha agendada para execução durante o provisionamento automático.");
+                                        EscreverLinha("👉 AÇÃO: Carregue a Ficha SAIP (Passo 2) e clique em 'INICIAR PROVISIONAMENTO AUTOMÁTICO'.\n");
+                                        SelecionarModeloNoCombo("fortinet.fgt40f");
+                                        AtualizarBotaoProsseguir();
+                                        break;
+                                    }
+                                }
+
                                 _skipFactoryReset = false;
                                 TxtSerialTestStatus.Text = "🔒 Zerar Configuração";
                                 TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626"));
@@ -1266,13 +1708,21 @@ public partial class MainWindow : Window
 
                                 if (loginOk)
                                 {
+                                    if (isForti)
+                                    {
+                                        _lastFortiResolvedUser = user;
+                                        _lastFortiResolvedPass = pass;
+                                    }
                                     _skipFactoryReset = true;
+                                    _serialOk = true;
                                     TxtSerialTestStatus.Text = "✅ Autenticado";
                                     TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#16A34A"));
                                     if (TxtChkSerialIcon != null && TxtChkSerialSub != null)
                                     {
                                         TxtChkSerialIcon.Text = "🟢 1b. Serial (Autenticado)";
                                         TxtChkSerialSub.Text = $"{porta} (Zeramento Pulado)";
+                                        CardChkSerial.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F0FDF4"));
+                                        CardChkSerial.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#BBF7D0"));
                                     }
                                     EscreverLinha("[OK] Autenticação realizada com sucesso! Acesso ao console concedido sem necessidade de zeramento.\n");
 
@@ -1293,7 +1743,7 @@ public partial class MainWindow : Window
                                     EscreverLinha($"[AVISO] {credMsg} Acesso negado pelo equipamento em {porta}.");
                                     EscreverLinha("👉 Escolha entre informar uma nova combinação de credenciais ou optar por zerar a configuração de fábrica.\n");
 
-                                    loginErrorMessage = $"❌ {credMsg} Informe nova combinação de credenciais ou opte por zerar a configuração.";
+                                    loginErrorMessage = $"❌ {credMsg} Informe nova combinação de credenciais ou consulte o Guia de Quebra de Senha.";
                                 }
                             }
                         }
@@ -1301,6 +1751,8 @@ public partial class MainWindow : Window
                 }
                 else
                 {
+                    _serialOk = true;
+                    _skipFactoryReset = true;
                     TxtSerialTestStatus.Text = "✅ Serial OK";
                     TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#16A34A"));
 
@@ -1341,6 +1793,10 @@ public partial class MainWindow : Window
                                          is841 ? "Cisco Série 800 / C841M" :
                                          "Cisco IOS";
                     }
+                    else if (isForti)
+                    {
+                        especificoNome = "FortiGate 40F";
+                    }
                     else
                     {
                         especificoNome = "Roteador";
@@ -1362,10 +1818,20 @@ public partial class MainWindow : Window
 
                 if (CardChkSerial != null && TxtChkSerialIcon != null && TxtChkSerialSub != null)
                 {
-                    TxtChkSerialIcon.Text = isPasswordLocked ? (_skipFactoryReset ? "🟢 1b. Serial (Autenticado)" : "🟢 1b. Serial (Com Senha)") : "🟢 1b. Status Serial";
-                    TxtChkSerialSub.Text = isPasswordLocked ? (_skipFactoryReset ? $"{porta} (Zeramento Pulado)" : $"{porta} (Requer Zeramento)") : $"{porta} @ {baud} OK";
-                    CardChkSerial.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F0FDF4"));
-                    CardChkSerial.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#BBF7D0"));
+                    if (isPasswordLocked && !_serialOk)
+                    {
+                        TxtChkSerialIcon.Text = (isForti && fortiCredentialsExhausted) ? "🟡 1b. Serial (Senha Desconhecida)" : "🟡 1b. Serial (Requer Senha)";
+                        TxtChkSerialSub.Text = $"{porta} (Autenticação Pendente)";
+                        CardChkSerial.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FFFBEB"));
+                        CardChkSerial.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FDE68A"));
+                    }
+                    else
+                    {
+                        TxtChkSerialIcon.Text = isPasswordLocked ? (_skipFactoryReset ? "🟢 1b. Serial (Autenticado)" : "🟢 1b. Serial (Com Senha)") : "🟢 1b. Status Serial";
+                        TxtChkSerialSub.Text = isPasswordLocked ? (_skipFactoryReset ? $"{porta} (Zeramento Pulado)" : $"{porta} (Requer Zeramento)") : (isForti ? $"{porta} (Acesso Livre)" : $"{porta} @ {baud} OK");
+                        CardChkSerial.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F0FDF4"));
+                        CardChkSerial.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#BBF7D0"));
+                    }
                 }
 
                 if (isHpe)
@@ -1416,6 +1882,10 @@ public partial class MainWindow : Window
                     {
                         SelecionarModeloNoCombo("cisco.c841.break");
                     }
+                }
+                else if (isForti)
+                {
+                    SelecionarModeloNoCombo("fortinet.fgt40f");
                 }
 
                 AtualizarBotaoProsseguir();
@@ -1499,16 +1969,30 @@ public partial class MainWindow : Window
             var rxAccumulator = new StringBuilder();
             var buf = new byte[1024];
 
-            // 1. Envia Ctrl+C e Enter para cancelar eventual paginação e despertar o terminal
-            await transport.WriteAsync(new byte[] { 0x03 });
-            await Task.Delay(100);
-            await transport.WriteAsync(Encoding.UTF8.GetBytes("\r\n"));
+            // 1. Sondagem rápida para não cancelar com Ctrl+C um prompt já aberto de New Password
+            var initBuf = new byte[512];
+            var initRead = await transport.ReadAsync(initBuf);
+            if (initRead > 0)
+            {
+                rxAccumulator.Append(Encoding.UTF8.GetString(initBuf, 0, initRead));
+            }
+            if (!Regex.IsMatch(rxAccumulator.ToString(), @"(?i)(?:new|confirm)\s+password"))
+            {
+                await transport.WriteAsync(new byte[] { 0x03 });
+                await Task.Delay(100);
+                await transport.WriteAsync(Encoding.UTF8.GetBytes("\r\n"));
+            }
 
             var passwordSent = false;
             var usernameSent = false;
+            var newPasswordSent = false;
+            var confirmPasswordSent = false;
+            var standardPassToSet = !string.IsNullOrWhiteSpace(pass) ? pass.Trim() : "CQMR";
             var sw = Stopwatch.StartNew();
+            long lastProbeMs = 0;
+            var isFortiConsole = rxAccumulator.ToString().Contains("FortiGate", StringComparison.OrdinalIgnoreCase) || username == "admin";
 
-            while (sw.ElapsedMilliseconds < 10000)
+            while (sw.ElapsedMilliseconds < 15000)
             {
                 var r = await transport.ReadAsync(buf);
                 if (r > 0)
@@ -1517,11 +2001,12 @@ public partial class MainWindow : Window
                     rxAccumulator.Append(text);
                     var current = rxAccumulator.ToString();
 
-                    // Sucesso: prompt de shell liberado (<HPE>, [HPE], Router#, Router>, Switch#, etc.)
+                    // Sucesso: prompt de shell liberado (<HPE>, [HPE], Router#, Router>, Switch#, FortiGate-40F #, etc.)
                     if (current.Contains("<HPE", StringComparison.OrdinalIgnoreCase) ||
                         current.Contains("[HPE", StringComparison.OrdinalIgnoreCase) ||
                         Regex.IsMatch(current, @"[\<\[][^\r\n>\]]+[\>\]]\s*$") ||
-                        Regex.IsMatch(current, @"[A-Za-z0-9_\-\.\(\)]+[>#]\s*$"))
+                        Regex.IsMatch(current, @"[A-Za-z0-9_\-\.\(\)]+[>#]\s*$") ||
+                        Regex.IsMatch(current, @"(?i)(?:FortiGate|FGT)[A-Za-z0-9_\-]*\s*(?:\([^()\r\n]*\))?\s*[#$]\s*$"))
                     {
                         EscreverLinha($"[LOGIN CONSOLE] Sucesso! Prompt autenticado detectado: {current.Replace("\r", "").Replace("\n", " | ").Trim()}");
                         return true;
@@ -1550,35 +2035,65 @@ public partial class MainWindow : Window
                     // Se pedir Username / login
                     if ((current.Contains("Username:", StringComparison.OrdinalIgnoreCase) ||
                          current.Contains("login:", StringComparison.OrdinalIgnoreCase) ||
-                         Regex.IsMatch(current, @"(?i)(?:Username|login)\s*[:?]")) && !usernameSent)
+                         Regex.IsMatch(current, @"(?i)(?:^|[\s\b@:])(?:Username|login)\s*[:?]")) && !usernameSent)
                     {
                         usernameSent = true;
                         rxAccumulator.Clear();
                         await Task.Delay(100);
                         var userToSend = string.IsNullOrWhiteSpace(username) ? "admin" : username.Trim();
                         EscreverLinha($"[LOGIN CONSOLE] Prompt de login detectado. Enviando usuário: '{userToSend}'");
-                        await transport.WriteAsync(Encoding.UTF8.GetBytes(userToSend + "\r\n"));
+                        var eol = (isFortiConsole || userToSend == "admin") ? "\r" : "\r\n";
+                        await transport.WriteAsync(Encoding.UTF8.GetBytes(userToSend + eol));
                         await Task.Delay(300);
                         continue;
                     }
 
-                    // Se pedir Password
-                    if (Regex.IsMatch(current, @"(?i)(?:Password|Login\s+password)\s*[:?]") && !passwordSent)
+                    // Se FortiOS exigir troca obrigatória de senha (primeiro login admin de fábrica ou política de senha)
+                    if (Regex.IsMatch(current, @"(?i)(?:new\s+password\s*[:?]|please\s+input\s+a\s+new\s+password|change\s+your\s+password)") && !newPasswordSent)
+                    {
+                        newPasswordSent = true;
+                        rxAccumulator.Clear();
+                        await Task.Delay(150);
+                        EscreverLinha($"[LOGIN CONSOLE] Troca obrigatória de senha FortiGate detectada. Definindo senha padrão ({standardPassToSet})...");
+                        await transport.WriteAsync(Encoding.UTF8.GetBytes(standardPassToSet + "\r"));
+                        await Task.Delay(300);
+                        continue;
+                    }
+
+                    // Se pedir confirmação de nova senha (FortiOS)
+                    if (Regex.IsMatch(current, @"(?i)(?:confirm|verify|re-?enter)\s+(?:new\s+)?password\s*[:?]") && !confirmPasswordSent)
+                    {
+                        confirmPasswordSent = true;
+                        rxAccumulator.Clear();
+                        await Task.Delay(150);
+                        EscreverLinha("[LOGIN CONSOLE] Confirmando nova senha padrão FortiGate...");
+                        await transport.WriteAsync(Encoding.UTF8.GetBytes(standardPassToSet + "\r"));
+                        await Task.Delay(300);
+                        await transport.WriteAsync(Encoding.UTF8.GetBytes("\r"));
+                        await Task.Delay(300);
+                        continue;
+                    }
+
+
+                    // Se pedir Password (inicial)
+                    if (Regex.IsMatch(current, @"(?i)(?:^|[\s\b])(?:Password|Login\s+password)\s*[:?]") &&
+                        !Regex.IsMatch(current, @"(?i)(?:new|confirm)\s+password") &&
+                        !passwordSent)
                     {
                         passwordSent = true;
                         rxAccumulator.Clear();
                         await Task.Delay(150);
                         EscreverLinha("[LOGIN CONSOLE] Prompt de senha detectado. Enviando senha...");
-                        // Envia a senha
-                        await transport.WriteAsync(Encoding.UTF8.GetBytes(pass.Trim() + "\r\n"));
-                        await Task.Delay(400);
-                        // Envia Enter de confirmação caso o equipamento necessite
-                        await transport.WriteAsync(Encoding.UTF8.GetBytes("\r\n"));
+                        // Envia a senha (sem enter extra para não enviar senha vazia no prompt subsequente de New Password)
+                        var passEol = (isFortiConsole || username == "admin") ? "\r" : "\r\n";
+                        await transport.WriteAsync(Encoding.UTF8.GetBytes(pass.Trim() + passEol));
+                        await Task.Delay(300);
                         continue;
                     }
 
-                    // Falha explícita após envio da senha
-                    if (passwordSent && (current.Contains("Login failed", StringComparison.OrdinalIgnoreCase) ||
+                    // Falha explícita após envio da senha (não confunde com New Password / Confirm Password)
+                    var isNewPassPrompt = Regex.IsMatch(current, @"(?i)(?:new|confirm|verify|re-?enter)\s+(?:new\s+)?password|please\s+input\s+a\s+new\s+password|change\s+your\s+password");
+                    if (passwordSent && !isNewPassPrompt && (current.Contains("Login failed", StringComparison.OrdinalIgnoreCase) ||
                                          current.Contains("Wrong password", StringComparison.OrdinalIgnoreCase) ||
                                          current.Contains("Authentication failed", StringComparison.OrdinalIgnoreCase) ||
                                          current.Contains("Authentication failure", StringComparison.OrdinalIgnoreCase) ||
@@ -1588,10 +2103,19 @@ public partial class MainWindow : Window
                                          current.Contains("Login incorrect", StringComparison.OrdinalIgnoreCase) ||
                                          current.Contains("Access denied", StringComparison.OrdinalIgnoreCase) ||
                                          current.Contains("Permission denied", StringComparison.OrdinalIgnoreCase) ||
-                                         (sw.ElapsedMilliseconds > 600 && Regex.IsMatch(current, @"(?i)(?:Password|Login\s+password|Username|login)\s*[:?]"))))
+                                         (sw.ElapsedMilliseconds > 1200 && Regex.IsMatch(current, @"(?i)(?:^|[\s\b])(?:Password|Login\s+password|Username|login)\s*[:?]"))))
                     {
                         EscreverLinha($"[LOGIN CONSOLE] Falha de autenticação reportada pelo equipamento: {current.Replace("\r", "").Replace("\n", " | ").Trim()}");
                         return false;
+                    }
+                    await Task.Delay(50);
+                }
+                else
+                {
+                    if ((confirmPasswordSent || passwordSent) && sw.ElapsedMilliseconds > lastProbeMs + 1200)
+                    {
+                        lastProbeMs = sw.ElapsedMilliseconds;
+                        await transport.WriteAsync(Encoding.UTF8.GetBytes("\r\n"));
                     }
                     await Task.Delay(50);
                 }
@@ -1601,7 +2125,8 @@ public partial class MainWindow : Window
             var isGranted = finalOutput.Contains("<HPE", StringComparison.OrdinalIgnoreCase) ||
                             finalOutput.Contains("[HPE", StringComparison.OrdinalIgnoreCase) ||
                             Regex.IsMatch(finalOutput, @"[\<\[][^\r\n>\]]+[\>\]]") ||
-                            Regex.IsMatch(finalOutput, @"[A-Za-z0-9_\-\.\(\)]+[>#]");
+                            Regex.IsMatch(finalOutput, @"[A-Za-z0-9_\-\.\(\)]+[>#]") ||
+                            Regex.IsMatch(finalOutput, @"(?i)(?:FortiGate|FGT)[A-Za-z0-9_\-]*\s*(?:\([^()\r\n]*\))?\s*[#$]");
 
             return isGranted;
         }
@@ -1652,22 +2177,44 @@ public partial class MainWindow : Window
             DeviceSession? session = null;
             try
             {
+                var isFortiPre = _isFortiGateDetected
+                              || IsTagFortiGate((CbModeloRoteadorInicial?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "");
+
                 transport = new SerialTransport(porta, baud, readTimeout: TimeSpan.FromMilliseconds(400));
                 session = new DeviceSession(transport, new SessionOptions
                 {
                     PromptMatcher = RegexPromptMatcher.Universal(),
                     ConnectTimeout = TimeSpan.FromSeconds(10),
-                    CommandTimeout = TimeSpan.FromSeconds(10)
+                    CommandTimeout = TimeSpan.FromSeconds(10),
+                    Username = isFortiPre ? "admin" : null,
+                    Password = isFortiPre ? "CQMR" : null
                 });
                 session.RawOutput += OnRawOutput;
-                RegistrarSessaoAtiva(session, porta, baud);
+                // Interrompe qualquer dump/paginação residual no console físico antes de negociar prompt
+                try
+                {
+                    await transport.OpenAsync(CancellationToken.None);
+                    await transport.WriteAsync(new byte[] { 0x03 }, CancellationToken.None);
+                    await Task.Delay(100);
+                }
+                catch { }
 
                 await session.ConnectAsync(CancellationToken.None);
 
                 var prompt = session.CurrentPrompt ?? "";
-                var isHpe = prompt.StartsWith("<") || prompt.StartsWith("[") || prompt.Contains("HPE", StringComparison.OrdinalIgnoreCase);
+                var isForti = _isFortiGateDetected
+                           || prompt.Contains("FortiGate", StringComparison.OrdinalIgnoreCase)
+                           || prompt.Contains("FGT", StringComparison.OrdinalIgnoreCase)
+                           || prompt.Contains("FortiOS", StringComparison.OrdinalIgnoreCase)
+                           || IsTagFortiGate((CbModeloRoteadorInicial?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "");
 
-                if (isHpe)
+                var isHpe = !isForti && (prompt.StartsWith("<") || prompt.StartsWith("[") || prompt.Contains("HPE", StringComparison.OrdinalIgnoreCase));
+
+                if (isForti)
+                {
+                    await AvaliarEquipamentoFortinetAsync(session, CancellationToken.None);
+                }
+                else if (isHpe)
                 {
                     await AvaliarEquipamentoHpeAsync(session, CancellationToken.None);
                 }
@@ -1719,6 +2266,153 @@ public partial class MainWindow : Window
             }
             AtualizarBotaoProsseguir();
         });
+    }
+
+    private async Task AvaliarEquipamentoFortinetAsync(DeviceSession session, CancellationToken ct)
+    {
+        // 1. Desabilita paginação (--More--) no console FortiOS
+        try
+        {
+            await session.SendCommandAsync("config system console", TimeSpan.FromSeconds(3), ct);
+            await session.SendCommandAsync("set output standard", TimeSpan.FromSeconds(3), ct);
+            await session.SendCommandAsync("end", TimeSpan.FromSeconds(3), ct);
+        }
+        catch { }
+
+        // 2. get system status
+        var statusOut = await session.SendCommandAsync("get system status", TimeSpan.FromSeconds(15), ct);
+        _detectedFortiOsStatusOut = statusOut;
+
+        var modelMatch = Regex.Match(statusOut, @"(?im)^\s*Model\s*:\s*([^
+
+]+)");
+        var modelo = "FortiGate 40F";
+        if (statusOut.Contains("FortiGate-40F", StringComparison.OrdinalIgnoreCase) || statusOut.Contains("FGT40F", StringComparison.OrdinalIgnoreCase))
+        {
+            modelo = "FortiGate 40F";
+        }
+        else if (modelMatch.Success)
+        {
+            modelo = modelMatch.Groups[1].Value.Trim();
+        }
+
+        var verMatch = Regex.Match(statusOut, @"(?im)^\s*Version\s*:\s*([^
+
+]+)");
+        var fortiVer = verMatch.Success ? verMatch.Groups[1].Value.Trim() : "FortiOS 7.x";
+        _detectedFortiOsVersion = fortiVer;
+
+        var serialMatch = Regex.Match(statusOut, @"(?im)^\s*Serial(?:-Number)?\s*:\s*([A-Za-z0-9]+)");
+        var serialNumber = serialMatch.Success ? serialMatch.Groups[1].Value.Trim() : "—";
+
+        var biosMatch = Regex.Match(statusOut, @"(?im)^\s*BIOS\s+version\s*:\s*([^
+
+]+)");
+        var biosVer = biosMatch.Success ? biosMatch.Groups[1].Value.Trim() : "—";
+
+        var opModeMatch = Regex.Match(statusOut, @"(?im)^\s*Operation\s+Mode\s*:\s*([^
+
+]+)");
+        var opMode = opModeMatch.Success ? opModeMatch.Groups[1].Value.Trim() : "NAT";
+
+        var hostnameMatch = Regex.Match(statusOut, @"(?im)^\s*Hostname\s*:\s*([^
+
+]+)");
+        var hostname = hostnameMatch.Success ? hostnameMatch.Groups[1].Value.Trim() : "FortiGate-40F";
+
+        // 3. Coleta interfaces
+        var ifLines = new List<string>();
+        try
+        {
+            var ifOut = await session.SendCommandAsync("get system interface physical", TimeSpan.FromSeconds(10), ct);
+            ifLines = ifOut.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                .Where(l => l.Contains("up") || l.Contains("down") || l.Contains("1000") || l.Contains("100"))
+                .Select(l => l.Trim())
+                .Take(6)
+                .ToList();
+        }
+        catch { }
+
+        // Exibe painel consolidado no terminal SPARC
+        EscreverLinha($"\n=================================================================");
+        EscreverLinha($"       🛡️ INVENTÁRIO DO EQUIPAMENTO FORTINET FORTIGATE           ");
+        EscreverLinha($"=================================================================");
+        EscreverLinha($"  🏷️ Fabricante / Modelo : Fortinet {modelo}");
+        EscreverLinha($"  🔢 Número de Série     : {serialNumber}");
+        EscreverLinha($"  💾 Versão FortiOS      : {fortiVer}");
+        EscreverLinha($"  ⚙️ Versão BIOS         : {biosVer}");
+        EscreverLinha($"  🌐 Modo de Operação    : {opMode}");
+        EscreverLinha($"  📋 Hostname            : '{hostname}'");
+
+        if (ifLines.Count > 0)
+        {
+            EscreverLinha("\n  🌐 Interfaces Físicas:");
+            foreach (var ifLine in ifLines)
+            {
+                EscreverLinha($"     {ifLine}");
+            }
+        }
+
+        EscreverLinha($"  📊 Situação do Aparelho: 🟢 AUTENTICADO E OPERACIONAL (Pronto para provisionamento)");
+        EscreverLinha($"=================================================================\n");
+
+        // Crítica Preventiva: Se um firmware já estiver selecionado, verifica se a versão já é idêntica
+        if (!string.IsNullOrEmpty(_selectedIosBinPath) && File.Exists(_selectedIosBinPath))
+        {
+            if (NetworkDevice.Fortinet.FortiOsFirmwareVersionInspector.IsSameVersion(
+                statusOut, _selectedIosBinPath, out var currentVer, out var targetVer))
+            {
+                EscreverLinha("=================================================================");
+                EscreverLinha("       ℹ️ FIRMWARE FORTIOS: MESMA VERSÃO JÁ INSTALADA           ");
+                EscreverLinha("=================================================================");
+                EscreverLinha($"  Versão no FortiGate   : {currentVer}");
+                EscreverLinha($"  Versão da Imagem Alvo : {targetVer} ({Path.GetFileName(_selectedIosBinPath)})");
+                EscreverLinha("  -> O equipamento já possui a mesma versão do firmware selecionado.");
+                EscreverLinha("  -> A atualização de firmware (Etapa 2) foi desmarcada automaticamente.");
+                EscreverLinha("=================================================================\n");
+
+                Dispatcher.Invoke(() =>
+                {
+                    if (ChkAtualizarFirmwareAuto != null)
+                        ChkAtualizarFirmwareAuto.IsChecked = false;
+                });
+            }
+        }
+
+        Dispatcher.Invoke(() =>
+        {
+            SelecionarModeloNoCombo("fortinet.fgt40f");
+
+            if (CardChkModelo != null && TxtChkModeloIcon != null && TxtChkModeloSub != null)
+            {
+                TxtChkModeloIcon.Text = "🟢 1a. Modelo";
+                TxtChkModeloSub.Text = $"Fortinet {modelo}";
+            }
+
+            if (CardChkSerial != null && TxtChkSerialIcon != null && TxtChkSerialSub != null)
+            {
+                TxtChkSerialIcon.Text = "🟢 1b. Serial (OK)";
+                TxtChkSerialSub.Text = serialNumber != "—" ? $"{serialNumber}" : "FortiGate Autenticado";
+            }
+
+            AtualizarBotaoProsseguir();
+        });
+
+        MessageBox.Show(
+            $"AVALIAÇÃO DO EQUIPAMENTO FORTINET:\n\n" +
+            $"• Modelo: Fortinet {modelo}\n" +
+            $"• Serial: {serialNumber}\n" +
+            $"• Versão FortiOS: {fortiVer}\n" +
+            $"• BIOS: {biosVer}\n" +
+            $"• Modo: {opMode}\n" +
+            $"• Hostname: {hostname}\n" +
+            $"• Status: 🟢 Equipamento Autenticado e Pronto\n\n" +
+            $"✅ Equipamento pronto para provisionamento direto FortiOS.\n\n" +
+            "⚠️ ALERTA DE CONFIGURAÇÃO:\n" +
+            "Ao prosseguir com o provisionamento, as configurações do circuito serão aplicadas conforme a Ficha SAIP.",
+            "Diagnóstico do Equipamento — SPARC",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
     }
 
     private async Task AvaliarEquipamentoCiscoAsync(DeviceSession session, CancellationToken ct)
@@ -2067,10 +2761,77 @@ public partial class MainWindow : Window
                 BtnSemiAutoAtalho.Visibility = jaVisivel ? Visibility.Collapsed : Visibility.Visible;
                 if (ChkNatLab != null)
                     ChkNatLab.Visibility = BtnSemiAutoAtalho.Visibility;
+                if (BtnRecuperacaoFortinet != null)
+                    BtnRecuperacaoFortinet.Visibility = BtnSemiAutoAtalho.Visibility;
+                if (BtnSimularFortiBiosRecovery != null)
+                    BtnSimularFortiBiosRecovery.Visibility = BtnSemiAutoAtalho.Visibility;
                 if (!jaVisivel && StatusTexto != null)
                     StatusTexto.Content = "⚙️ OPÇÕES AVANÇADAS DISPONÍVEL — Clique no botão abaixo ou Ctrl+Shift+V.";
             }
         }
+    }
+
+    private void BtnSimularFortiBiosRecovery_Click(object sender, RoutedEventArgs e)
+    {
+        _isFortiGateDetected = true;
+        _isRommonOrBootwareDetected = true;
+        SelecionarModeloNoCombo("fortinet.fortigate.maintainer");
+        if (ChkAtualizarFirmwareAuto != null)
+        {
+            ChkAtualizarFirmwareAuto.IsChecked = true;
+            if (BtnSelecionarFirmwareAuto != null)
+                BtnSelecionarFirmwareAuto.IsEnabled = true;
+        }
+
+        if (TxtSerialTestStatus != null)
+        {
+            TxtSerialTestStatus.Text = "🔴 BIOS / Sem Firmware (Fortinet)";
+            TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF4444"));
+        }
+        if (TxtChkSerialIcon != null && TxtChkSerialSub != null)
+        {
+            TxtChkSerialIcon.Text = "🔴 1a. Fortinet 40F (BIOS/Sem FW)";
+            TxtChkSerialSub.Text = "Simulação: FortiBootLoader (TFTP)";
+        }
+
+        AtualizarBotaoProsseguir();
+
+        EscreverLinha("\n=================================================================");
+        EscreverLinha("  🧪 [SIMULAÇÃO] FORTIGATE 40F EM MODO BIOS / SEM FIRMWARE ATIVADO");
+        EscreverLinha("=================================================================");
+        EscreverLinha("  • Estado: DeviceOperatingState.BootFailure (FortiBootLoader)");
+        EscreverLinha("  • Fluxo: WorkflowType.FirmwareRecovery (BIOS TFTP)");
+        EscreverLinha("  • Passo 3 configurado para exigir arquivo de firmware .out.");
+        EscreverLinha("  • A esteira automática e a Fase 2 executarão o fluxo de BIOS TFTP.");
+        EscreverLinha("=================================================================\n");
+
+        MessageBox.Show(
+            "SIMULAÇÃO ATIVADA: FortiGate 40F em Modo BIOS / Sem Firmware\n\n" +
+            "• O sistema configurou a esteira para simular o roteador com firmware corrompido ou ausente.\n" +
+            "• O Passo 3 agora exige a seleção da imagem .out.\n" +
+            "• Ao clicar em 'INICIAR PROVISIONAMENTO AUTOMÁTICO' ou 'Executar Fase 2', o fluxo de recuperação BIOS TFTP será acionado.",
+            "Simulação BIOS TFTP Ativada",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+    }
+
+    private void BtnRecuperacaoFortinet_Click(object sender, RoutedEventArgs e)
+    {
+        var porta = CbPortaInicial?.Text?.Trim();
+        if (string.IsNullOrEmpty(porta)) porta = CbPorta?.Text?.Trim();
+        if (string.IsNullOrEmpty(porta) || porta.StartsWith("Selecione", StringComparison.OrdinalIgnoreCase))
+        {
+            porta = "COM1";
+        }
+        int baud = 9600;
+
+        EscreverLinha("\n=================================================================");
+        EscreverLinha("  🛠️ PAINEL AVANÇADO DE RECUPERAÇÃO FORTINET 40F (Bootloader / BIOS)");
+        EscreverLinha($"  Porta: {porta} @ {baud} baud");
+        EscreverLinha("=================================================================\n");
+
+        var win = new FortiGateAutoRecoveryWindow(porta, baud, initialSerial: null, modoDiretoFormatacao: false) { Owner = this };
+        win.ShowDialog();
     }
 
     private void BtnSemiAutoAtalho_Click(object sender, RoutedEventArgs e)
@@ -2103,10 +2864,15 @@ public partial class MainWindow : Window
 
     private void BtnSelecionarFirmwareAuto_Click(object sender, RoutedEventArgs e)
     {
+        var perfilHw = (CbModeloRoteadorInicial?.SelectedItem as ComboBoxItem)?.Tag?.ToString() 
+                    ?? (CbInterrupt?.SelectedItem as ComboBoxItem)?.Tag?.ToString() 
+                    ?? string.Empty;
+        var isForti = IsTagFortiGate(perfilHw) || _isFortiGateDetected;
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "Selecionar Firmware para Modo Automático (.ipe / .bin)",
-            Filter = "Todos os Firmwares (*.bin;*.ipe;*.pkg)|*.bin;*.ipe;*.pkg|Pacotes HPE Comware (*.ipe)|*.ipe|Imagens Binárias (*.bin)|*.bin|Todos os Arquivos (*.*)|*.*"
+            Title = isForti ? "Selecionar Imagem de Firmware FortiOS (.OUT)" : "Selecionar Firmware para Modo Automático (.ipe / .bin / .out)",
+            Filter = isForti ? "Imagens FortiOS (*.out)|*.out|Todos os Arquivos (*.*)|*.*"
+                   : "Todos os Firmwares (*.bin;*.ipe;*.pkg;*.out)|*.bin;*.ipe;*.pkg;*.out|Imagens FortiOS (*.out)|*.out|Pacotes HPE Comware (*.ipe)|*.ipe|Imagens Binárias (*.bin)|*.bin|Todos os Arquivos (*.*)|*.*"
         };
         if (dlg.ShowDialog() == true)
         {
@@ -2122,6 +2888,37 @@ public partial class MainWindow : Window
             if (TxtIosImageInfo != null) TxtIosImageInfo.Text = TxtFirmwareAutoInfo.Text;
             AtualizarBotaoProsseguir();
             EscreverLinha($"[*] Firmware modo automático validado: {System.IO.Path.GetFileName(dlg.FileName)} ({sizeMb} MB)");
+
+            // Crítica Preventiva de Mesma Versão (FortiOS)
+            if (isForti && !string.IsNullOrWhiteSpace(_detectedFortiOsStatusOut))
+            {
+                if (NetworkDevice.Fortinet.FortiOsFirmwareVersionInspector.IsSameVersion(
+                    _detectedFortiOsStatusOut, dlg.FileName, out var currentVer, out var targetVer))
+                {
+                    EscreverLinha("\n=================================================================");
+                    EscreverLinha("       ℹ️ FIRMWARE FORTIOS: MESMA VERSÃO JÁ INSTALADA           ");
+                    EscreverLinha("=================================================================");
+                    EscreverLinha($"  Versão no FortiGate   : {currentVer}");
+                    EscreverLinha($"  Versão da Imagem Alvo : {targetVer}");
+                    EscreverLinha("  -> A imagem selecionada é idêntica à versão atualmente em execução.");
+                    EscreverLinha("  -> Atualização de firmware dispensada (o processo continuará sem reinstalar).");
+                    EscreverLinha("=================================================================\n");
+
+                    MessageBox.Show(
+                        $"O FortiGate 40F já está executando exatamente esta versão de FortiOS:\n\n" +
+                        $"• Versão no Equipamento: {currentVer}\n" +
+                        $"• Imagem Selecionada: {targetVer}\n\n" +
+                        $"A atualização de firmware é dispensável e foi desmarcada automaticamente para agilizar o provisionamento.",
+                        "Firmware FortiOS Já Atualizado",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+
+                    if (ChkAtualizarFirmwareAuto != null)
+                        ChkAtualizarFirmwareAuto.IsChecked = false;
+
+                    AtualizarBotaoProsseguir();
+                }
+            }
         }
     }
 
@@ -2256,8 +3053,10 @@ public partial class MainWindow : Window
         }
 
         var isAuto = true; // Modo Automático é o padrão
-        var firmwareObrigatorio = _isRommonOrBootwareDetected || (isAuto && ChkAtualizarFirmwareAuto?.IsChecked == true);
-        if (firmwareObrigatorio && (string.IsNullOrEmpty(_selectedIosBinPath) || !System.IO.File.Exists(_selectedIosBinPath)))
+        var querAtualizar = ChkAtualizarFirmwareAuto?.IsChecked == true;
+        var firmwareObrigatorio = _isRommonOrBootwareDetected || querAtualizar;
+        var arquivoExiste = !string.IsNullOrEmpty(_selectedIosBinPath) && System.IO.File.Exists(_selectedIosBinPath);
+        if (firmwareObrigatorio && !arquivoExiste)
         {
             if (_isRommonOrBootwareDetected)
             {
@@ -2268,7 +3067,7 @@ public partial class MainWindow : Window
                 erros.Add("• Atualização de Firmware selecionada: selecione o arquivo (.ipe/.bin) ou desmarque a opção.");
             }
         }
-        else if (!string.IsNullOrEmpty(_selectedIosBinPath))
+        else if (arquivoExiste)
         {
             var serie = ObterSerieAtualSelecionadaOuDetectada();
             var resFw = FirmwareCompatibilityValidator.Validate(serie, _selectedIosBinPath);
@@ -2339,6 +3138,7 @@ public partial class MainWindow : Window
         Progresso(0, "Modo automático — iniciando verificação...");
         BtnAutoCancelar.Visibility = Visibility.Visible; BtnAutoVoltar.Visibility = Visibility.Collapsed;
         if (BtnAutoRestaurarRede != null) BtnAutoRestaurarRede.Visibility = Visibility.Collapsed;
+        if (BtnAutoRetestarBanda != null) BtnAutoRetestarBanda.Visibility = Visibility.Collapsed;
         if (BtnAutoSalvarScript != null) BtnAutoSalvarScript.Visibility = Visibility.Collapsed;
 
         // Garante que o modo automático importe o mesmo sistema de análise de boot do modo padrão (HPE BootWare Ctrl+B)
@@ -2351,13 +3151,105 @@ public partial class MainWindow : Window
         var profileTag = (CbInterrupt.SelectedItem as ComboBoxItem)?.Tag?.ToString()
                       ?? (CbModeloRoteadorInicial.SelectedItem as ComboBoxItem)?.Tag?.ToString();
         var profile = BootInterruptProfiles.FindById(profileTag);
-        var isHpe = profile.Id.Contains("hpe", StringComparison.OrdinalIgnoreCase) || profile.Family.Contains("MSR", StringComparison.OrdinalIgnoreCase);
+        var isForti = profile.Id.Contains("forti", StringComparison.OrdinalIgnoreCase)
+                   || profile.Manufacturer.Contains("Fortinet", StringComparison.OrdinalIgnoreCase)
+                   || IsTagFortiGate(profileTag ?? "")
+                   || _isFortiGateDetected;
+        var isHpe = !isForti && (profile.Id.Contains("hpe", StringComparison.OrdinalIgnoreCase) || profile.Family.Contains("MSR", StringComparison.OrdinalIgnoreCase));
 
         try
         {
-            var firmwareDesejado = _isRommonOrBootwareDetected || (ChkAtualizarFirmwareAuto?.IsChecked == true);
+            var firmwareDesejado = ChkAtualizarFirmwareAuto?.IsChecked == true;
 
-            if (isHpe)
+            if (isForti)
+            {
+                if (_isRommonOrBootwareDetected)
+                {
+                    SetEtapa(1, "⏭ 1. Zerar Configuração — pulado (FortiGate em modo BIOS)", "#16A34A");
+                    Progresso(20, "1/7 BIOS Detectada");
+                    LogAuto(">>> [AUTO 1/7] Zeramento de configuração pulado: FortiGate 40F em modo BIOS (sem SO).");
+                    firmwareDesejado = true;
+                }
+                else if (_skipFactoryReset)
+                {
+                    SetEtapa(1, "⏭ 1. Zerar Configuração — pulado (Login autenticado)", "#16A34A");
+                    Progresso(20, "1/7 OK (Autenticado)");
+                    LogAuto(">>> [AUTO 1/7] Zeramento de configuração pulado (FortiGate autenticado com sucesso pelo operador).");
+                }
+                else
+                {
+                    SetEtapa(1, "⏳ 1. Zerar Configuração — em execução", "#D97706");
+                    Progresso(10, "1/7 Zerar FortiGate...");
+                    LogAuto(">>> [AUTO 1/7] Fortinet FortiGate 40F — Zerar Configuração / Factory Reset");
+                    await ExecutarZerarConfigAsync(porta, baud, ct);
+                    SetEtapa(1, "✅ 1. Zerar Configuração — OK", "#16A34A");
+                    Progresso(20, "1/7 OK");
+                }
+
+                if (firmwareDesejado)
+                {
+                    if (string.IsNullOrEmpty(_selectedIosBinPath) || !File.Exists(_selectedIosBinPath))
+                    {
+                        throw new InvalidOperationException("Equipamento FortiGate 40F: selecione a imagem de Firmware FortiOS (.out) no Passo 3 para realizar a recuperação/atualização.");
+                    }
+
+                    _firmwareSkippedSameVersion = false;
+
+                    // Crítica Preventiva: Se o equipamento já estiver em execução e a versão instalada for a mesma proposta
+                    if (!_isRommonOrBootwareDetected && !string.IsNullOrWhiteSpace(_detectedFortiOsStatusOut) &&
+                        NetworkDevice.Fortinet.FortiOsFirmwareVersionInspector.IsSameVersion(
+                            _detectedFortiOsStatusOut, _selectedIosBinPath, out var curVer, out var tgtVer))
+                    {
+                        _firmwareSkippedSameVersion = true;
+                        SetEtapa(2, $"✅ 2. Firmware — mantido (mesma versão: {curVer})", "#16A34A");
+                        LogAuto("\n=================================================================");
+                        LogAuto("       ℹ️ FIRMWARE FORTIOS: MESMA VERSÃO JÁ INSTALADA           ");
+                        LogAuto("=================================================================");
+                        LogAuto($"  Versão no FortiGate   : {curVer}");
+                        LogAuto($"  Versão da Imagem Alvo : {tgtVer} ({Path.GetFileName(_selectedIosBinPath)})");
+                        LogAuto("  -> A versão instalada no FortiGate é idêntica à versão proposta.");
+                        LogAuto("  -> Etapa 2 de Firmware dispensada com sucesso (TFTP dispensado).");
+                        LogAuto("=================================================================\n");
+                        Progresso(45, "2/7 OK (Firmware Mantido)");
+                    }
+                    else
+                    {
+                        SetEtapa(2, "⏳ 2. Atualizar Firmware — em execução", "#D97706");
+                        Progresso(25, "2/7 Atualizar Firmware...");
+                        var hostIp = _loadedSaipCircuit?.HostLanIp ?? ObterIpLocalParaTftp() ?? "192.168.1.99";
+
+                        if (_isRommonOrBootwareDetected)
+                        {
+                            LogAuto(">>> [AUTO 2/7] Recuperar Firmware FortiGate via FortiBootLoader BIOS TFTP");
+                            await ExecutarRecuperacaoFirmwareBiosFortinetAsync(porta, baud, hostIp, ct);
+                            SetEtapa(2, "✅ 2. Recuperação de Firmware (BIOS) — OK", "#16A34A");
+                            _isRommonOrBootwareDetected = false;
+                        }
+                        else
+                        {
+                            LogAuto(">>> [AUTO 2/7] Atualizar Firmware FortiOS via TFTP");
+                            await ExecutarUpgradeFirmwareAsync(porta, baud, hostIp, ct);
+                            if (_firmwareSkippedSameVersion)
+                            {
+                                SetEtapa(2, "✅ 2. Firmware — mantido (mesma versão já instalada)", "#16A34A");
+                                LogAuto(">>> [AUTO 2/7] Firmware FortiOS mantido: versão selecionada já é a mesma disponível no FortiGate 40F (TFTP pulado).");
+                            }
+                            else
+                            {
+                                SetEtapa(2, "✅ 2. Atualizar Firmware — OK", "#16A34A");
+                            }
+                        }
+                        Progresso(45, "2/7 OK");
+                    }
+                }
+                else
+                {
+                    SetEtapa(2, "✅ 2. Firmware — mantido (opção do operador)", "#16A34A");
+                    LogAuto(">>> [AUTO 2/7] Firmware FortiOS mantido: atualização dispensada pelo operador (bypass de firmware).");
+                    Progresso(45, "2/7 OK");
+                }
+            }
+            else if (isHpe)
             {
                 if (_skipFactoryReset)
                 {
@@ -2378,8 +3270,8 @@ public partial class MainWindow : Window
                     Progresso(20, "1/7 OK");
                 }
 
-                // Reavalia se o equipamento caiu no BootWare após Fase 1
-                if (_isRommonOrBootwareDetected) firmwareDesejado = true;
+                // Reavalia se o equipamento caiu no BootWare após Fase 1 apenas se o operador optou por atualizar
+                if (_isRommonOrBootwareDetected && (ChkAtualizarFirmwareAuto?.IsChecked == true)) firmwareDesejado = true;
 
                 if (firmwareDesejado)
                 {
@@ -2398,9 +3290,9 @@ public partial class MainWindow : Window
                 }
                 else
                 {
-                    SetEtapa(2, "⏭ 2. Atualizar Firmware — pulado (opção do operador)", "#64748B");
-                    LogAuto(">>> [AUTO 2/7] Atualização de firmware HPE pulada conforme seleção do operador.");
-                    Progresso(45, "2/7 pulado");
+                    SetEtapa(2, "✅ 2. Firmware — mantido (opção do operador)", "#16A34A");
+                    LogAuto(">>> [AUTO 2/7] Firmware HPE mantido: atualização dispensada pelo operador (bypass de firmware).");
+                    Progresso(45, "2/7 OK");
                 }
             }
             else
@@ -2421,8 +3313,8 @@ public partial class MainWindow : Window
                     Progresso(18, "1/7 OK");
                 }
 
-                // Reavalia se o equipamento caiu no ROMMON após Fase 1
-                if (_isRommonOrBootwareDetected) firmwareDesejado = true;
+                // Reavalia se o equipamento caiu no ROMMON após Fase 1 apenas se o operador optou por atualizar
+                if (_isRommonOrBootwareDetected && (ChkAtualizarFirmwareAuto?.IsChecked == true)) firmwareDesejado = true;
 
                 if (firmwareDesejado)
                 {
@@ -2441,9 +3333,9 @@ public partial class MainWindow : Window
                 }
                 else
                 {
-                    SetEtapa(2, "⏭ 2. Atualizar Firmware — pulado (opção do operador)", "#64748B");
-                    LogAuto(">>> [AUTO 2/7] Atualização de firmware Cisco pulada conforme seleção do operador.");
-                    Progresso(42, "2/7 pulado");
+                    SetEtapa(2, "✅ 2. Firmware — mantido (opção do operador)", "#16A34A");
+                    LogAuto(">>> [AUTO 2/7] Firmware Cisco mantido: atualização dispensada pelo operador (bypass de firmware).");
+                    Progresso(42, "2/7 OK");
                 }
             }
 
@@ -2466,11 +3358,35 @@ public partial class MainWindow : Window
             SetEtapa(5, $"{icmpR.StatusBadge} {icmpResText}", icmpR.StatusColorHex);
             Progresso(85, "5/7 OK");
 
-            SetEtapa(6, "⏳ 6. Testar Acesso Remoto (Telnet) — em execução", "#D97706"); Progresso(86, "6/7 Telnet..."); LogAuto(">>> [AUTO 6/7] Telnet");
+            var accessTitle = isForti ? "Acesso Remoto (SSH / Telnet)" : "Acesso Remoto (Telnet)";
+            SetEtapa(6, $"⏳ 6. Testar {accessTitle} — em execução", "#D97706"); Progresso(86, "6/7 Remoto..."); LogAuto($">>> [AUTO 6/7] {accessTitle}");
             var telnetHost = TxtTelnetTarget.Text?.Trim(); if (string.IsNullOrEmpty(telnetHost)) telnetHost = _loadedSaipCircuit?.LanIp ?? "200.182.245.17";
             var telnetPort = int.TryParse(TxtTelnetPort.Text?.Trim(), out var tp) ? tp : 23;
             var telnetR = await ExecutarTesteTelnetAsync(telnetHost, telnetPort, ct);
-            SetEtapa(6, (telnetR.IsSuccess ? "✅" : "❌") + " 6. Acesso Remoto (Telnet) — " + (telnetR.IsSuccess ? "OK" : "falha"), telnetR.IsSuccess ? "#16A34A" : "#EF4444"); Progresso(94, "6/7 OK");
+
+            if (isForti && !telnetR.IsSuccess)
+            {
+                // No FortiOS o serviço Telnet vem desabilitado por padrão; valida as portas padrão SSH (22) e HTTPS (443)
+                var sourceIp = ObterIpOrigemParaIcmp();
+                var srv = new ConnectivityService(EscreverLinhaAsync);
+                var (sshOk, sshLat, _) = await srv.TestTcpPortAsync(telnetHost, 22, timeoutMs: 5000, sourceIpAddress: sourceIp, cancellationToken: ct);
+                if (sshOk)
+                {
+                    telnetR = new ConnectivityService.TelnetTestResult(telnetHost, 22, true, sshLat, "SSH (Porta 22) Ativa", "SSH Conectado", null);
+                    LogAuto($"[OK] [FORTINET] Acesso remoto SSH (porta 22) validado com sucesso ({sshLat}ms)!");
+                }
+                else
+                {
+                    var (httpsOk, httpsLat, _) = await srv.TestTcpPortAsync(telnetHost, 443, timeoutMs: 5000, sourceIpAddress: sourceIp, cancellationToken: ct);
+                    if (httpsOk)
+                    {
+                        telnetR = new ConnectivityService.TelnetTestResult(telnetHost, 443, true, httpsLat, "HTTPS (Porta 443) Ativa", "HTTPS Conectado", null);
+                        LogAuto($"[OK] [FORTINET] Acesso remoto HTTPS (porta 443) validado com sucesso ({httpsLat}ms)!");
+                    }
+                }
+            }
+
+            SetEtapa(6, (telnetR.IsSuccess ? "✅" : "❌") + $" 6. {accessTitle} — " + (telnetR.IsSuccess ? "OK" : "falha"), telnetR.IsSuccess ? "#16A34A" : "#EF4444"); Progresso(94, "6/7 OK");
 
             BandwidthTestResult bandR;
             if (icmpR != null && (!icmpR.IsWanOk || !icmpR.IsWebOk))
@@ -2549,7 +3465,7 @@ public partial class MainWindow : Window
     {
         var dataHora = DateTime.Now;
         var itemModelo = CbModeloRoteadorInicial?.SelectedItem as ComboBoxItem;
-        var modelo = itemModelo?.Content?.ToString()?.Replace("🖧", "")?.Trim() ?? "Roteador";
+        var modelo = itemModelo?.Content?.ToString()?.Replace("🖧", "")?.Replace("🛡️", "")?.Trim() ?? "Roteador";
         var cliente = SaipParser.CleanRazaoSocial(_loadedSaipCircuit?.ClienteRazaoSocial) ?? "Não informado / Manual";
         var designacao = _loadedSaipCircuit?.DesignacaoIp ?? _loadedSaipCircuit?.NumeroOts ?? "Não informada";
         var wanIp = _loadedSaipCircuit?.WanIp;
@@ -2579,7 +3495,9 @@ public partial class MainWindow : Window
 
         if (!is5aOk && step3Ok)
         {
-            falhas.Add("Falha no Teste 5a (ICMP LAN / Roteador): Verifique se o cabo Ethernet do PC está conectado na porta LAN do roteador (Giga 0/1 ou Giga 1) e com IP configurado.");
+            var isFortiRep = IsTagFortiGate(itemModelo?.Tag?.ToString() ?? "") || _isFortiGateDetected;
+            var lanIfaceRep = isFortiRep ? "lan (ou lan1/internal)" : "Giga 0/1 ou Giga 1";
+            falhas.Add($"Falha no Teste 5a (ICMP LAN / Roteador): Verifique se o cabo Ethernet do PC está conectado na porta LAN do roteador ({lanIfaceRep}) e com IP configurado.");
         }
 
         if (!is5bOk && is5aOk)
@@ -2674,6 +3592,7 @@ public partial class MainWindow : Window
             BtnAutoAbrirPdf.Visibility = Visibility.Visible;
             BtnAutoExportarPdf.Visibility = Visibility.Visible;
             BtnAutoRestaurarRede.Visibility = Visibility.Visible;
+            BtnAutoRetestarBanda.Visibility = Visibility.Visible;
             BtnAutoSalvarScript.Visibility = Visibility.Visible;
 
             if (exibirPopup && !string.IsNullOrEmpty(pdfPath) && File.Exists(pdfPath))
@@ -2721,6 +3640,146 @@ public partial class MainWindow : Window
     private async void BtnAutoRestaurarRede_Click(object sender, RoutedEventArgs e)
     {
         await PerguntarRestauracaoRedeAsync();
+    }
+
+    private async void BtnAutoRetestarBanda_Click(object sender, RoutedEventArgs e)
+    {
+        BtnAutoRetestarBanda.IsEnabled = false;
+        BtnAutoRetestarBanda.Content = "⏳ Validando Ethernet...";
+
+        try
+        {
+            EscreverLinha("\n=================================================================");
+            EscreverLinha("   🔄 RE-TESTE DE LARGURA DE BANDA / VELOCIDADE DE CONEXÃO");
+            EscreverLinha("=================================================================");
+
+            // 1. Localiza a interface de rede física Ethernet dedicada à conexão com o roteador
+            var eth = ObterInformacoesEthernetRoteador();
+            if (eth == null)
+            {
+                MessageBox.Show(this,
+                    "Nenhuma interface de rede física Ethernet foi detectada no computador.\n\n" +
+                    "Para evitar falsos positivos com redes Wi-Fi ou secundárias ativas no sistema, o re-teste de banda exige uma interface Ethernet cabeada conectada à porta LAN do roteador.",
+                    "Interface Ethernet Não Encontrada",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+
+                EscreverLinha("[ERRO ISOLAMENTO] Nenhuma interface Ethernet física encontrada. Re-teste cancelado para evitar falso positivo via Wi-Fi/outras redes.");
+                return;
+            }
+
+            // 2. Verifica se o cabo de rede está conectado à interface física (Link UP)
+            if (!eth.IsUp)
+            {
+                var respCabo = MessageBox.Show(this,
+                    $"A interface Ethernet '{eth.Name}' ({eth.Description}) está DESCONECTADA (sem link físico / cabo solto).\n\n" +
+                    "👉 Por favor, conecte o cabo de rede entre o computador e a porta LAN do roteador e clique OK para prosseguir, ou Cancelar para abortar o re-teste.\n\n" +
+                    "(O re-teste é bloqueado por Wi-Fi para evitar falsos positivos com a conexão de internet do computador).",
+                    "Cabo de Rede Desconectado — Re-teste de Banda",
+                    MessageBoxButton.OKCancel,
+                    MessageBoxImage.Warning);
+
+                if (respCabo != MessageBoxResult.OK)
+                {
+                    EscreverLinha("[*] Re-teste de banda cancelado pelo operador (cabo de rede desconectado).");
+                    return;
+                }
+
+                // Reavalia o status da interface após a conexão física do cabo pelo operador
+                eth = ObterInformacoesEthernetRoteador();
+                if (eth == null || !eth.IsUp)
+                {
+                    MessageBox.Show(this,
+                        $"A interface Ethernet '{eth?.Name ?? "Ethernet"}' continua sem link físico.\nVerifique se o cabo está firmemente conectado e se a porta LAN do roteador está ligada.",
+                        "Link Ethernet Inativo",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
+
+                    EscreverLinha("[ERRO ISOLAMENTO] Interface Ethernet continua sem link físico após tentativa.");
+                    return;
+                }
+            }
+
+            // 3. Garante que o IP de teste do circuito (HostLanIp) está configurado na interface Ethernet
+            var hostIpEsperado = _loadedSaipCircuit?.HostLanIp?.Trim();
+            if (!string.IsNullOrEmpty(hostIpEsperado) && eth.IPv4Address != hostIpEsperado)
+            {
+                EscreverLinha($"[*] [RE-TESTE] Reaplicando IP estático do circuito ({hostIpEsperado}) na interface Ethernet '{eth.Name}'...");
+                await HostNetworkManager.SetStaticIpAsync(eth.Name, hostIpEsperado, _loadedSaipCircuit!.LanSubnetMask, _loadedSaipCircuit.LanIp, CancellationToken.None);
+                await Task.Delay(1000);
+                eth = ObterInformacoesEthernetRoteador();
+            }
+
+            var sourceIp = eth?.IPv4Address ?? hostIpEsperado;
+            EscreverLinha($"[*] [RE-TESTE] Interface de teste validada: '{eth?.Name}' ({eth?.Description})");
+            EscreverLinha($"[*] [RE-TESTE] IP de Origem: {sourceIp ?? "Automático"} | Status Link: Conectado (UP)");
+            EscreverLinha("[*] [RE-TESTE] Tráfego vinculado exclusivamente à interface Ethernet — Wi-Fi e redes secundárias isoladas.");
+
+            BtnAutoRetestarBanda.Content = "⏳ Medindo Banda...";
+            TxtAutoEtapa7.Text = "⏳ 7. Testar Banda — em re-teste...";
+            TxtAutoEtapa7.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D97706"));
+            TxtAutoLog.Text += $"\n>>> [RE-TESTE] Disparando medição vinculada à Ethernet ({eth?.Name} - IP {sourceIp})...\n";
+
+            var novoBandR = await ExecutarTesteBandaAsync(CancellationToken.None, sourceIp);
+
+            var statusTexto = novoBandR.IsSuccess
+                ? $"✅ 7. Testar Banda — OK ({novoBandR.DownloadMbps:F1} Mbps)"
+                : $"⚠ 7. Testar Banda — falha ({novoBandR.Message})";
+            var statusCor = novoBandR.IsSuccess ? "#16A34A" : "#D97706";
+            TxtAutoEtapa7.Text = statusTexto;
+            TxtAutoEtapa7.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(statusCor));
+
+            TxtAutoLog.Text += $">>> [RE-TESTE] Concluído: Download {novoBandR.DownloadMbps:F1} Mbps | Latência {novoBandR.LatencyMs:F0}ms | {(novoBandR.IsSuccess ? "APROVADO" : "FALHA")}\n";
+
+            // Atualiza o relatório da sessão e regenera o PDF automaticamente
+            if (_lastReportData != null)
+            {
+                var falhas = new List<string>(_lastReportData.DiagnosticAlerts ?? Enumerable.Empty<string>());
+                falhas.RemoveAll(f => f.Contains("Banda", StringComparison.OrdinalIgnoreCase) || f.Contains("Velocidade", StringComparison.OrdinalIgnoreCase));
+                if (!novoBandR.IsSuccess)
+                {
+                    falhas.Add($"Falha no Teste de Largura de Banda: {novoBandR.Message}");
+                }
+
+                _lastReportData = _lastReportData with
+                {
+                    BandResult = novoBandR,
+                    DiagnosticAlerts = falhas,
+                    FalhaGeral = falhas.Count > 0 ? string.Join("; ", falhas) : null
+                };
+
+                try
+                {
+                    _lastGeneratedPdfPath = await ActivationPdfReportService.GenerateReportPdfAsync(_lastReportData);
+                    EscreverLinha($"[OK] Relatório Técnico PDF atualizado com sucesso: {_lastGeneratedPdfPath}");
+                    TxtAutoLog.Text += $"[OK] Relatório PDF atualizado: {Path.GetFileName(_lastGeneratedPdfPath)}\n";
+                }
+                catch (Exception ex)
+                {
+                    EscreverLinha($"[AVISO] Não foi possível atualizar o PDF: {ex.Message}");
+                }
+            }
+
+            MessageBox.Show(this,
+                $"Re-teste de Largura de Banda concluído!\n\n" +
+                $"Download: {novoBandR.DownloadMbps:F1} Mbps\n" +
+                $"Latência: {novoBandR.LatencyMs:F0} ms\n" +
+                $"Status: {(novoBandR.IsSuccess ? "🟢 Aprovado" : "⚠ Insuficiente / Falha")}\n\n" +
+                (novoBandR.IsSuccess ? "O relatório técnico em PDF foi atualizado automaticamente." : novoBandR.Message),
+                "Re-teste de Largura de Banda",
+                MessageBoxButton.OK,
+                novoBandR.IsSuccess ? MessageBoxImage.Information : MessageBoxImage.Warning);
+        }
+        catch (Exception ex)
+        {
+            EscreverLinha($"[ERRO RE-TESTE BANDA] {ex.Message}");
+            MessageBox.Show(this, $"Erro ao executar re-teste de banda: {ex.Message}", "Erro", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            BtnAutoRetestarBanda.IsEnabled = true;
+            BtnAutoRetestarBanda.Content = "🔄 Re-testar Largura de Banda";
+        }
     }
 
     private void BtnAutoSalvarScript_Click(object sender, RoutedEventArgs e)
@@ -2965,17 +4024,20 @@ public partial class MainWindow : Window
         var perfilHw = (CbModeloRoteadorInicial?.SelectedItem as ComboBoxItem)?.Tag?.ToString() 
                     ?? (CbInterrupt?.SelectedItem as ComboBoxItem)?.Tag?.ToString() 
                     ?? string.Empty;
-        var isHpe = perfilHw.Contains("hpe", StringComparison.OrdinalIgnoreCase) || perfilHw.Contains("msr", StringComparison.OrdinalIgnoreCase);
-        var isCisco = perfilHw.Contains("cisco", StringComparison.OrdinalIgnoreCase);
+        var isForti = IsTagFortiGate(perfilHw) || _isFortiGateDetected;
+        var isHpe = !isForti && (perfilHw.Contains("hpe", StringComparison.OrdinalIgnoreCase) || perfilHw.Contains("msr", StringComparison.OrdinalIgnoreCase));
+        var isCisco = !isForti && perfilHw.Contains("cisco", StringComparison.OrdinalIgnoreCase);
 
         var dlg = new OpenFileDialog
         {
-            Title = isHpe ? "Selecionar Pacote de Firmware HPE Comware (.IPE)" 
+            Title = isForti ? "Selecionar Imagem de Firmware FortiOS (.OUT)"
+                  : isHpe ? "Selecionar Pacote de Firmware HPE Comware (.IPE)" 
                   : isCisco ? "Selecionar Imagem de Firmware Cisco IOS (.BIN)"
-                  : "Selecionar Arquivo de Firmware (.bin / .ipe)",
-            Filter = isHpe ? "Pacotes HPE Comware (*.ipe)|*.ipe|Imagens Binárias (*.bin)|*.bin|Todos os Arquivos (*.*)|*.*"
+                  : "Selecionar Arquivo de Firmware (.bin / .ipe / .out)",
+            Filter = isForti ? "Imagens FortiOS (*.out)|*.out|Todos os Arquivos (*.*)|*.*"
+                   : isHpe ? "Pacotes HPE Comware (*.ipe)|*.ipe|Imagens Binárias (*.bin)|*.bin|Todos os Arquivos (*.*)|*.*"
                    : isCisco ? "Firmware Cisco IOS (*.bin)|*.bin|Todos os Arquivos (*.*)|*.*"
-                   : "Firmwares Suportados (*.bin;*.ipe)|*.bin;*.ipe|Firmware Cisco IOS (*.bin)|*.bin|Pacotes HPE Comware (*.ipe)|*.ipe|Todos os Arquivos (*.*)|*.*"
+                   : "Firmwares Suportados (*.bin;*.ipe;*.out)|*.bin;*.ipe;*.out|Imagens FortiOS (*.out)|*.out|Firmware Cisco IOS (*.bin)|*.bin|Pacotes HPE Comware (*.ipe)|*.ipe|Todos os Arquivos (*.*)|*.*"
         };
 
         if (dlg.ShowDialog() == true)
@@ -2998,6 +4060,32 @@ public partial class MainWindow : Window
             EscreverLinha($"[*] Firmware validado e carregado: {fileName} ({sizeMb} MB) [{ext.ToUpperInvariant()}]");
             AtualizarEstadoBotoes();
             AtualizarBotaoProsseguir();
+
+            // Crítica Preventiva de Mesma Versão (FortiOS)
+            if (isForti && !string.IsNullOrWhiteSpace(_detectedFortiOsStatusOut))
+            {
+                if (NetworkDevice.Fortinet.FortiOsFirmwareVersionInspector.IsSameVersion(
+                    _detectedFortiOsStatusOut, dlg.FileName, out var currentVer, out var targetVer))
+                {
+                    EscreverLinha("\n=================================================================");
+                    EscreverLinha("       ℹ️ FIRMWARE FORTIOS: MESMA VERSÃO JÁ INSTALADA           ");
+                    EscreverLinha("=================================================================");
+                    EscreverLinha($"  Versão no FortiGate   : {currentVer}");
+                    EscreverLinha($"  Versão da Imagem Alvo : {targetVer}");
+                    EscreverLinha("  -> A imagem selecionada é idêntica à versão atualmente em execução.");
+                    EscreverLinha("  -> A atualização de firmware no Passo 3 é desnecessária.");
+                    EscreverLinha("=================================================================\n");
+
+                    MessageBox.Show(
+                        $"O FortiGate 40F já está executando exatamente esta versão de FortiOS:\n\n" +
+                        $"• Versão no Equipamento: {currentVer}\n" +
+                        $"• Imagem Selecionada: {targetVer}\n\n" +
+                        $"A atualização de firmware é dispensável e não precisa ser executada.",
+                        "Firmware FortiOS Já Atualizado",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
+            }
         }
     }
 
@@ -3052,6 +4140,7 @@ public partial class MainWindow : Window
         SelecionarFase("A");
         DefinirBadgeStatus("A", "⏳");
         SetBusy(true);
+        _skipFactoryReset = false;
         _cts = new CancellationTokenSource();
         var baud = int.TryParse(CbBaud.Text, out var b) ? b : 9600;
 
@@ -3086,9 +4175,20 @@ public partial class MainWindow : Window
         var profileTag = (CbInterrupt.SelectedItem as ComboBoxItem)?.Tag?.ToString()
                       ?? (CbModeloRoteadorInicial.SelectedItem as ComboBoxItem)?.Tag?.ToString();
         var profile = BootInterruptProfiles.FindById(profileTag);
-        var isHpe = profile.Id.Contains("hpe", StringComparison.OrdinalIgnoreCase) || profile.Family.Contains("MSR", StringComparison.OrdinalIgnoreCase);
+        var isForti = profile.Id.Contains("forti", StringComparison.OrdinalIgnoreCase)
+                   || profile.Manufacturer.Contains("Fortinet", StringComparison.OrdinalIgnoreCase)
+                   || IsTagFortiGate(profileTag ?? "")
+                   || _isFortiGateDetected;
+        var isHpe = !isForti && (profile.Id.Contains("hpe", StringComparison.OrdinalIgnoreCase) || profile.Family.Contains("MSR", StringComparison.OrdinalIgnoreCase));
 
-        if (isHpe)
+        if (isForti)
+        {
+            AtualizarProgresso(10, "Fortinet FortiGate 40F — Zerar Configuração...", "Verificando console e prompt FortiOS...");
+            EscreverLinha($"\n=================================================================");
+            EscreverLinha($"   🧹 FORTINET FORTIGATE 40F — ZERAR CONFIGURAÇÃO EM {porta} @ {baud} BAUD");
+            EscreverLinha($"=================================================================");
+        }
+        else if (isHpe)
         {
             var isHpe1002 = profile.Id.Contains("1002", StringComparison.OrdinalIgnoreCase) || profile.Name.Contains("1002", StringComparison.OrdinalIgnoreCase) || (profileTag?.Contains("1002", StringComparison.OrdinalIgnoreCase) == true);
             var isHpe930 = profile.Id.Contains("930", StringComparison.OrdinalIgnoreCase) || profile.Name.Contains("930", StringComparison.OrdinalIgnoreCase) || (profileTag?.Contains("930", StringComparison.OrdinalIgnoreCase) == true);
@@ -3107,12 +4207,94 @@ public partial class MainWindow : Window
         }
 
         var transport = new SerialTransport(porta, baud);
-        await using var session = new DeviceSession(
-            transport, CiscoIOSAdapter.CreateSessionOptions(null));
+        var sessionOptions = isForti
+            ? new SessionOptions
+            {
+                PromptMatcher = RegexPromptMatcher.Universal(),
+                ConnectTimeout = TimeSpan.FromSeconds(15),
+                CommandTimeout = TimeSpan.FromSeconds(20),
+                Username = "EBT",
+                Password = "CQMR"
+            }
+            : CiscoIOSAdapter.CreateSessionOptions(null);
+
+        await using var session = new DeviceSession(transport, sessionOptions);
         session.RawOutput += OnRawOutput;
         RegistrarSessaoAtiva(session, porta, baud);
 
-        if (isHpe)
+        if (isForti)
+        {
+            if (_skipFactoryReset)
+            {
+                EscreverLinha("[*] Zeramento pulado: FortiGate já autenticado e pronto para provisionamento.");
+                AtualizarProgresso(100, "Zeramento Concluído!", "FortiGate 40F autenticado e pronto.");
+                return;
+            }
+
+            AtualizarProgresso(25, "FortiGate 40F: Conectando...", "Verificando prompt...");
+            try
+            {
+                await session.ConnectAsync(ct);
+            }
+            catch (Exception ex)
+            {
+                EscreverLinha($"[!] Conexão direta FortiGate não autenticou: {ex.Message}");
+                EscreverLinha("[*] Iniciando assistente de recuperação autônoma de senha FortiGate 40F...");
+
+                await session.DisposeAsync();
+                await transport.DisposeAsync();
+
+                bool recuperado = false;
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    var win = new FortiGateAutoRecoveryWindow(porta, baud) { Owner = this };
+                    var res = win.ShowDialog();
+                    recuperado = (res == true && win.Sucesso);
+                });
+
+                if (!recuperado)
+                {
+                    throw new InvalidOperationException("Não foi possível recuperar o acesso de administrador do FortiGate 40F.");
+                }
+
+                _skipFactoryReset = true;
+                EscreverLinha("[OK] Senha recuperada com sucesso via maintainer. Equipamento autenticado!");
+                AtualizarProgresso(100, "Zeramento Concluído!", "FortiGate 40F autenticado e pronto.");
+                return;
+            }
+
+            // Desabilita paginação
+            try
+            {
+                await session.SendCommandAsync("config system console", TimeSpan.FromSeconds(5), ct);
+                await session.SendCommandAsync("set output standard", TimeSpan.FromSeconds(5), ct);
+                await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), ct);
+            }
+            catch { }
+
+            AtualizarProgresso(50, "FortiGate 40F: Resetando...", "Enviando 'execute factoryreset'...");
+            EscreverLinha("[*] Enviando 'execute factoryreset' ao FortiGate...");
+            var conditions = new StopCondition[]
+            {
+                new StopCondition.Contains("FortiResetConfirm", "y/n"),
+                new StopCondition.Prompt()
+            };
+            var resetResult = await session.SendExpectAsync("execute factoryreset", conditions, TimeSpan.FromSeconds(15), ct);
+            if (resetResult.Matched is StopCondition.Contains || resetResult.Output.Contains("y/n", StringComparison.OrdinalIgnoreCase))
+            {
+                await session.SendRawAsync("y\r", ct);
+                EscreverLinha("[OK] Confirmação 'y' enviada. O FortiGate está reiniciando para o padrão de fábrica.");
+                AtualizarProgresso(75, "FortiGate 40F: Reiniciando...", "Aguardando reinicialização (aprox. 45s)...");
+                await Task.Delay(45000, ct);
+            }
+            else
+            {
+                EscreverLinha($"[*] Resposta do comando: {resetResult.Output.Trim()}");
+            }
+
+            AtualizarProgresso(100, "Zeramento Concluído!", "FortiGate 40F em padrão de fábrica.");
+        }
+        else if (isHpe)
         {
             var firmwareFile = _selectedIosBinPath;
             var hostIp = _loadedSaipCircuit?.HostLanIp ?? ObterIpLocalParaTftp() ?? "200.182.245.18";
@@ -3773,11 +4955,17 @@ public partial class MainWindow : Window
         AtualizarProgresso(10, "Fase C: Conectando para Provisionamento...", $"Abrindo conexão em {porta} @ {baud}...");
         EscreverLinha($"\n[*] [FASE C] PROVISIONANDO EQUIPAMENTO ({_loadedSaipCircuit.DesignacaoIp}) EM {porta}...");
 
+        var profileTag = (CbInterrupt.SelectedItem as ComboBoxItem)?.Tag?.ToString()
+                      ?? (CbModeloRoteadorInicial.SelectedItem as ComboBoxItem)?.Tag?.ToString()
+                      ?? "";
+        var isPreForti = _isFortiGateDetected || IsTagFortiGate(profileTag);
         var sessionOptions = new SessionOptions
         {
             PromptMatcher = RegexPromptMatcher.Universal(),
             CommandTimeout = TimeSpan.FromSeconds(60),
-            ConnectTimeout = TimeSpan.FromSeconds(120)
+            ConnectTimeout = TimeSpan.FromSeconds(120),
+            Username = isPreForti ? "EBT" : null,
+            Password = isPreForti ? "CQMR" : null
         };
 
         var transport = new SerialTransport(porta, baud);
@@ -3787,39 +4975,66 @@ public partial class MainWindow : Window
         await session.ConnectAsync(ct);
 
         var promptStr = session.CurrentPrompt ?? "";
+        var isRealBootWarePrompt = session.Mode != ExecMode.UserExec && session.Mode != ExecMode.PrivilegedExec
+            && (promptStr.Contains("<BOOTWARE", StringComparison.OrdinalIgnoreCase)
+                || promptStr.Contains("<EXTENDED-BOOTWARE", StringComparison.OrdinalIgnoreCase)
+                || promptStr.Contains("choice(0-", StringComparison.OrdinalIgnoreCase)
+                || (promptStr.Contains("BootWare", StringComparison.OrdinalIgnoreCase) && !promptStr.EndsWith(">") && !promptStr.EndsWith("]")));
+
+        var isFortiBiosPrompt = promptStr.Contains("Enter C,R,T,F,I,B,Q,or H:", StringComparison.OrdinalIgnoreCase)
+                             || promptStr.Contains("Enter Selection:", StringComparison.OrdinalIgnoreCase)
+                             || promptStr.Contains("FortiBootLoader", StringComparison.OrdinalIgnoreCase);
+
         if (session.Mode == ExecMode.Rommon ||
             promptStr.Trim().StartsWith("rommon", StringComparison.OrdinalIgnoreCase) ||
             promptStr.StartsWith("switch:", StringComparison.OrdinalIgnoreCase) ||
-            promptStr.Contains("<BOOTWARE", StringComparison.OrdinalIgnoreCase) ||
-            promptStr.Contains("BootWare", StringComparison.OrdinalIgnoreCase))
+            isRealBootWarePrompt ||
+            isFortiBiosPrompt)
         {
             _isRommonOrBootwareDetected = true;
             throw new InvalidOperationException(
-                "O equipamento se encontra em modo ROMMON / BootWare (sem sistema operacional carregado). " +
+                "O equipamento se encontra em modo ROMMON / BootWare / BIOS (sem sistema operacional carregado). " +
                 "É OBRIGATÓRIO executar a recuperação de firmware (Fase 2) antes de realizar o provisionamento da Ficha SAIP.");
         }
 
-        var profileTag = (CbInterrupt.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "";
-        var isHpe = profileTag.Contains("hpe", StringComparison.OrdinalIgnoreCase)
+        profileTag = (CbInterrupt.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? profileTag;
+        var isForti = IsTagFortiGate(profileTag)
+                   || promptStr.Contains("FortiGate", StringComparison.OrdinalIgnoreCase)
+                   || promptStr.Contains("FGT", StringComparison.OrdinalIgnoreCase)
+                   || promptStr.Contains("FortiOS", StringComparison.OrdinalIgnoreCase)
+                   || _isFortiGateDetected;
+
+        var isHpe = !isForti && (profileTag.Contains("hpe", StringComparison.OrdinalIgnoreCase)
                  || profileTag.Contains("msr", StringComparison.OrdinalIgnoreCase)
                  || promptStr.StartsWith("[")
                  || promptStr.StartsWith("<")
                  || promptStr.Contains("HPE", StringComparison.OrdinalIgnoreCase)
                  || promptStr.Contains("MSR", StringComparison.OrdinalIgnoreCase)
-                 || promptStr.Contains("Comware", StringComparison.OrdinalIgnoreCase);
+                 || promptStr.Contains("Comware", StringComparison.OrdinalIgnoreCase));
 
-        var is921 = profileTag.Contains("921", StringComparison.OrdinalIgnoreCase)
+        var is921 = !isForti && (profileTag.Contains("921", StringComparison.OrdinalIgnoreCase)
                  || profileTag.Contains("c900", StringComparison.OrdinalIgnoreCase)
                  || promptStr.Contains("921", StringComparison.OrdinalIgnoreCase)
-                 || promptStr.Contains("c900", StringComparison.OrdinalIgnoreCase);
+                 || promptStr.Contains("c900", StringComparison.OrdinalIgnoreCase));
 
-        var is841 = profileTag.Contains("841", StringComparison.OrdinalIgnoreCase)
+        var is841 = !isForti && (profileTag.Contains("841", StringComparison.OrdinalIgnoreCase)
                  || profileTag.Contains("c841", StringComparison.OrdinalIgnoreCase)
                  || profileTag.Contains("c800", StringComparison.OrdinalIgnoreCase)
                  || promptStr.Contains("841", StringComparison.OrdinalIgnoreCase)
-                 || promptStr.Contains("c800", StringComparison.OrdinalIgnoreCase);
+                 || promptStr.Contains("c800", StringComparison.OrdinalIgnoreCase));
 
-        if (isHpe)
+        if (isForti)
+        {
+            EscreverLinha($"[*] Equipamento identificado como Fortinet FortiGate 40F (Prompt detectado: '{promptStr}').");
+            AtualizarProgresso(50, "Fase C: Configurando FortiGate 40F...", $"WAN wan ({_loadedSaipCircuit.WanIp}), LAN lan ({_loadedSaipCircuit.LanIp})...");
+            var fortiConfig = new NetworkDevice.Fortinet.FortiOsSaipConfigurator(EscreverLinhaAsync);
+            fortiConfig.IncluirNatLab = ChkNatLab?.IsChecked == true;
+            await fortiConfig.ApplyConfigAsync(session, _loadedSaipCircuit, "wan", "lan", cancellationToken: ct);
+
+            // Valida se o técnico conectou o cabo na porta LAN (Porta 1 / Giga 1) antes de prosseguir
+            await NetworkDevice.Fortinet.FortiOsSaipConfigurator.EnforceLanPortConnectedAsync(session, "lan", NotificarConexaoCaboAsync, EscreverLinhaAsync, ct);
+        }
+        else if (isHpe)
         {
             EscreverLinha($"[*] Equipamento identificado como HPE / HP MSR / Comware (Prompt detectado: '{promptStr}').");
             AtualizarProgresso(50, "Fase C: Configurando HPE...", $"WAN GE0 ({_loadedSaipCircuit.WanIp}), LAN GE1 ({_loadedSaipCircuit.LanIp})...");
@@ -3866,9 +5081,11 @@ public partial class MainWindow : Window
         try
         {
             EscreverLinha("[*] Capturando running-config aplicada para o relatório TXT...");
-            _lastAppliedConfigScript = isHpe
-                ? await session.SendCommandAsync("display current-configuration", TimeSpan.FromSeconds(120), ct)
-                : await new CiscoIOSAdapter().GetRunningConfigAsync(session, ct);
+            _lastAppliedConfigScript = isForti
+                ? await NetworkDevice.Fortinet.FortiOsSaipConfigurator.GetAppliedRunningConfigAsync(session, ct)
+                : isHpe
+                    ? await session.SendCommandAsync("display current-configuration", TimeSpan.FromSeconds(120), ct)
+                    : await new CiscoIOSAdapter().GetRunningConfigAsync(session, ct);
             EscreverLinha($"[OK] Running-config capturada ({_lastAppliedConfigScript?.Length ?? 0} caracteres).");
         }
         catch (Exception ex)
@@ -3993,9 +5210,22 @@ public partial class MainWindow : Window
         _cts = new CancellationTokenSource();
         var baud = int.TryParse(CbBaud.Text, out var b) ? b : 9600;
 
+        var profileTag = (CbInterrupt.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "";
+        var isForti = IsTagFortiGate(profileTag)
+                   || _isFortiGateDetected
+                   || (!string.IsNullOrEmpty(_selectedIosBinPath) && _selectedIosBinPath.EndsWith(".out", StringComparison.OrdinalIgnoreCase));
+
         try
         {
-            await ExecutarUpgradeFirmwareAsync(porta, baud, hostIp, _cts.Token);
+            if (isForti && _isRommonOrBootwareDetected)
+            {
+                await ExecutarRecuperacaoFirmwareBiosFortinetAsync(porta, baud, hostIp, _cts.Token);
+                _isRommonOrBootwareDetected = false;
+            }
+            else
+            {
+                await ExecutarUpgradeFirmwareAsync(porta, baud, hostIp, _cts.Token);
+            }
             DefinirBadgeStatus("B", "✅");
         }
         catch (OperationCanceledException)
@@ -4022,7 +5252,7 @@ public partial class MainWindow : Window
     {
         if (string.IsNullOrEmpty(_selectedIosBinPath))
         {
-            MessageBox.Show("Selecione um arquivo de firmware Cisco (.bin) para efetuar a recuperação no modo ROMMON.", "Aviso", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Selecione um arquivo de firmware (.bin para Cisco ou .out para Fortinet) para efetuar a recuperação.", "Aviso", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -4038,6 +5268,45 @@ public partial class MainWindow : Window
         var hostIp = _loadedSaipCircuit?.HostLanIp ?? ObterIpLocalParaTftp() ?? "192.168.1.1";
         var routerIp = _loadedSaipCircuit?.LanIp ?? "192.168.1.2";
         var subnetMask = _loadedSaipCircuit?.LanSubnetMask ?? "255.255.255.0";
+
+        var isForti = _isFortiGateDetected || (_selectedIosBinPath?.EndsWith(".out", StringComparison.OrdinalIgnoreCase) == true);
+        if (isForti)
+        {
+            SelecionarFase("B");
+            DefinirBadgeStatus("B", "⏳");
+            SetBusy(true);
+            _cts = new CancellationTokenSource();
+            var baudF = int.TryParse(CbBaud.Text, out var bf) ? bf : 9600;
+            try
+            {
+                await ExecutarRecuperacaoFirmwareBiosFortinetAsync(porta, baudF, hostIp, _cts.Token);
+                _isRommonOrBootwareDetected = false;
+                DefinirBadgeStatus("B", "✅");
+                AtualizarProgresso(100, "Fase B Concluída!", "Firmware gravado na Flash via BIOS TFTP e FortiGate 40F inicializado com sucesso.");
+                MessageBox.Show("Firmware transferido e gravado na Flash via BIOS TFTP com sucesso!", "BIOS TFTP Concluído", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+            catch (OperationCanceledException)
+            {
+                DefinirBadgeStatus("B", "⚪");
+                AtualizarProgresso(0, "Recuperação cancelada", "Cancelado pelo operador.");
+                EscreverLinha("\n[!] Recuperação BIOS TFTP cancelada.");
+                return;
+            }
+            catch (Exception ex)
+            {
+                DefinirBadgeStatus("B", "❌");
+                AtualizarProgresso(0, "Falha na Recuperação", ex.Message);
+                EscreverLinha($"\n[ERRO NA RECUPERAÇÃO BIOS TFTP] {ex.Message}");
+                return;
+            }
+            finally
+            {
+                _cts?.Dispose();
+                _cts = null;
+                SetBusy(false);
+            }
+        }
 
         SelecionarFase("B");
         DefinirBadgeStatus("B", "⏳");
@@ -4133,14 +5402,45 @@ public partial class MainWindow : Window
         return null;
     }
 
-    private async Task ExecutarUpgradeFirmwareAsync(string porta, int baud, string hostIp, CancellationToken ct)
+    private async Task ExecutarRecuperacaoFirmwareBiosFortinetAsync(string porta, int baud, string hostIp, CancellationToken ct)
     {
-        if (string.IsNullOrEmpty(_selectedIosBinPath))
-            return;
+        if (string.IsNullOrEmpty(_selectedIosBinPath) || !File.Exists(_selectedIosBinPath))
+            throw new InvalidOperationException("Selecione a imagem de firmware FortiOS (.out) para realizar a recuperação no modo BIOS.");
 
         var fileName = Path.GetFileName(_selectedIosBinPath);
-        AtualizarProgresso(10, "Fase B: Iniciando Upgrade e TFTP...", "Iniciando servidor TFTP e conectando...");
-        EscreverLinha($"\n[*] [FASE B] ATUALIZAÇÃO DE FIRMWARE VIA TFTP ({fileName})...");
+        AtualizarProgresso(10, "Recuperação BIOS TFTP...", $"Conectando à console serial {porta}...");
+        EscreverLinha($"\n[*] [FASE B] RECUPERAÇÃO DE FIRMWARE FORTIGATE VIA BIOS TFTP ({fileName})...");
+
+        // No modo BIOS Recovery, o hardware FortiGate (FortiBootLoader) opera nativamente com os IPs fixos padrão de fábrica:
+        // - Servidor TFTP (computador do operador): 192.168.1.100
+        // - Equipamento FortiGate (Local IP na WAN): 192.168.1.99
+        // - Máscara de rede: 255.255.255.0
+        const string biosTftpServerIp = "192.168.1.100";
+        const string biosFortiGateIp = "192.168.1.99";
+        const string biosSubnetMask = "255.255.255.0";
+
+        var targetAdapter = CbAdaptadorRede?.Text?.Trim() ?? "";
+        if (string.IsNullOrEmpty(targetAdapter))
+        {
+            var ethAdapters = HostNetworkManager.GetEthernetAdapters();
+            targetAdapter = ethAdapters.FirstOrDefault() ?? "";
+        }
+
+        if (!string.IsNullOrEmpty(targetAdapter))
+        {
+            try
+            {
+                EscreverLinha($"[*] [REDE] Configurando IP fixo padrão de fábrica da BIOS Fortinet ({biosTftpServerIp} / {biosSubnetMask}) no adaptador '{targetAdapter}'...");
+                await HostNetworkManager.EnsureTftpFirewallRuleAsync(ct);
+                var (okNet, outNet) = await HostNetworkManager.SetStaticIpAsync(targetAdapter, biosTftpServerIp, biosSubnetMask, null, ct);
+                if (okNet) EscreverLinha($"[OK] Adaptador '{targetAdapter}' configurado para BIOS TFTP ({biosTftpServerIp}).");
+                else EscreverLinha($"  [AVISO] Configuração do adaptador: {outNet.Trim()}");
+            }
+            catch (Exception ex)
+            {
+                EscreverLinha($"  [AVISO] Configuração do adaptador Windows: {ex.Message}");
+            }
+        }
 
         var sessionOptions = new SessionOptions
         {
@@ -4153,21 +5453,412 @@ public partial class MainWindow : Window
         await using var session = new DeviceSession(transport, sessionOptions);
         session.RawOutput += OnRawOutput;
 
+        EscreverLinha("👉 [CONEXÃO FÍSICA OBRIGATÓRIA] Conecte o cabo de rede Ethernet do computador EXCLUSIVAMENTE na porta WAN do FortiGate 40F (única porta viável para recuperação TFTP na BIOS).");
+        EscreverLinha($"ℹ️ [BIOS FORTINET] A BIOS do FortiGate conecta por padrão no servidor TFTP {biosTftpServerIp} com IP local {biosFortiGateIp}. Adaptador Ethernet do computador ajustado para {biosTftpServerIp}/24.");
+        await session.ConnectRawAsync(ct);
+
+        var recovery = new NetworkDevice.Fortinet.FortiOsBootLoaderRecovery();
+        var success = await recovery.RecoverFirmwareAsync(
+            session,
+            _selectedIosBinPath,
+            biosTftpServerIp,
+            biosFortiGateIp,
+            AtualizarProgresso,
+            EscreverLinhaAsync,
+            ct,
+            biosSubnetMask);
+
+        if (!success)
+        {
+            throw new InvalidOperationException("Falha no procedimento de recuperação do FortiGate via BIOS TFTP.");
+        }
+
+        // Após a recuperação via BIOS (onde o cabo precisava estar na porta WAN),
+        // o FortiOS já inicializou e o provisionamento e testes (Fase 3 em diante)
+        // exigem a conexão na porta LAN (porta 1 / lan1) para aplicar a SAIP e testar conectividade.
+        EscreverLinha("\n=================================================================");
+        EscreverLinha("  🔄 [AJUSTE FÍSICO NECESSÁRIO — TROCA DE PORTA ETHERNET]");
+        EscreverLinha("=================================================================");
+        EscreverLinha("  O firmware foi gravado na Flash e o FortiOS inicializou com sucesso!");
+        EscreverLinha("  👉 Desconecte o cabo de rede da porta WAN e CONECTE NA PORTA LAN1 (Porta 1).");
+        EscreverLinha("  Esta etapa é necessária para prosseguir com o fluxo padrão de provisionamento e testes.\n");
+
+        await InstruirOperadorAsync(
+            "🔄 TROCA DE CABO DE REDE — FORTIGATE 40F\n\n" +
+            "O firmware foi recuperado na Flash e o FortiOS inicializou com sucesso!\n\n" +
+            "👉 Desconecte o cabo de rede Ethernet da porta WAN e conecte-o na porta LAN1 (Porta 1) do FortiGate 40F.\n\n" +
+            "Clique em OK após realizar a troca física para continuar com o provisionamento e testes da esteira.",
+            ct);
+    }
+
+    private async Task ExecutarUpgradeFirmwareAsync(string porta, int baud, string hostIp, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(_selectedIosBinPath))
+            return;
+
+        var fileName = Path.GetFileName(_selectedIosBinPath);
+        AtualizarProgresso(10, "Fase B: Iniciando Upgrade e TFTP...", "Iniciando servidor TFTP e conectando...");
+        EscreverLinha($"\n[*] [FASE B] ATUALIZAÇÃO DE FIRMWARE VIA TFTP ({fileName})...");
+
+        var isPreForti = _isFortiGateDetected || fileName.EndsWith(".out", StringComparison.OrdinalIgnoreCase);
+        var fortiUser = !string.IsNullOrEmpty(_lastFortiResolvedUser) ? _lastFortiResolvedUser : "admin";
+        var fortiPass = _lastFortiResolvedPass ?? "CQMR";
+
+        var sessionOptions = new SessionOptions
+        {
+            PromptMatcher = RegexPromptMatcher.Universal(),
+            CommandTimeout = TimeSpan.FromSeconds(30),
+            ConnectTimeout = TimeSpan.FromSeconds(30),
+            Username = isPreForti ? fortiUser : null,
+            Password = isPreForti ? fortiPass : null
+        };
+
+        var transport = new SerialTransport(porta, baud);
+        await using var session = new DeviceSession(transport, sessionOptions);
+        session.RawOutput += OnRawOutput;
+
         await session.ConnectAsync(ct);
 
         var promptStr = session.CurrentPrompt ?? "";
         var profileTag = (CbInterrupt.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "";
-        var isHpe = profileTag.Contains("hpe", StringComparison.OrdinalIgnoreCase)
+        var isForti = IsTagFortiGate(profileTag)
+                   || promptStr.Contains("FortiGate", StringComparison.OrdinalIgnoreCase)
+                   || promptStr.Contains("FGT", StringComparison.OrdinalIgnoreCase)
+                   || promptStr.Contains("FortiOS", StringComparison.OrdinalIgnoreCase)
+                   || fileName.EndsWith(".out", StringComparison.OrdinalIgnoreCase)
+                   || _isFortiGateDetected;
+
+        var isHpe = !isForti && (profileTag.Contains("hpe", StringComparison.OrdinalIgnoreCase)
                  || profileTag.Contains("msr", StringComparison.OrdinalIgnoreCase)
                  || promptStr.StartsWith("[")
                  || promptStr.StartsWith("<")
                  || promptStr.Contains("HPE", StringComparison.OrdinalIgnoreCase)
                  || promptStr.Contains("MSR", StringComparison.OrdinalIgnoreCase)
                  || promptStr.Contains("Comware", StringComparison.OrdinalIgnoreCase)
-                 || fileName.EndsWith(".ipe", StringComparison.OrdinalIgnoreCase);
+                 || fileName.EndsWith(".ipe", StringComparison.OrdinalIgnoreCase));
 
         bool success;
-        if (isHpe)
+        if (isForti)
+        {
+            EscreverLinha($"[*] Equipamento identificado como Fortinet FortiGate 40F para upgrade de firmware ({fileName}).");
+
+            // ANTES DE CONFIGURAR SERVIDOR TFTP OU INTERFACES DE REDE:
+            // Checa se o FortiOS já está na mesma versão da imagem selecionada
+            if (session.IsConnected)
+            {
+                EscreverLinha("[*] Verificando versão atual do FortiOS no equipamento ('get system status')...");
+                try
+                {
+                    await session.SendRawAsync("\r\n", ct);
+                    await Task.Delay(250, ct);
+                }
+                catch { }
+
+                string statusOut = string.Empty;
+                try
+                {
+                    statusOut = await session.SendCommandAsync("get system status", TimeSpan.FromSeconds(10), ct);
+                }
+                catch (Exception ex)
+                {
+                    EscreverLinha($"  [AVISO] Não foi possível obter 'get system status': {ex.Message}");
+                }
+
+                if (!string.IsNullOrWhiteSpace(statusOut) &&
+                    (statusOut.Contains("Version:", StringComparison.OrdinalIgnoreCase) ||
+                     statusOut.Contains("FortiGate", StringComparison.OrdinalIgnoreCase)))
+                {
+                    _detectedFortiOsStatusOut = statusOut;
+                    if (NetworkDevice.Fortinet.FortiOsFirmwareVersionInspector.IsSameVersion(
+                        statusOut, fileName, out var currentVer, out var targetVer))
+                    {
+                        _firmwareSkippedSameVersion = true;
+                        EscreverLinha("\n=================================================================");
+                        EscreverLinha("       ℹ️ FIRMWARE FORTIOS JÁ ATUALIZADO NO FORTIGATE 40F        ");
+                        EscreverLinha("=================================================================");
+                        EscreverLinha($"  Versão no Equipamento : {currentVer}");
+                        EscreverLinha($"  Versão da Imagem Alvo : {targetVer} ({fileName})");
+                        EscreverLinha("  -> A versão instalada já é a mesma da imagem selecionada.");
+                        EscreverLinha("  -> Pulando transferência TFTP e reinicialização desnecessária!");
+                        EscreverLinha("=================================================================\n");
+
+                        AtualizarProgresso(100, "Firmware Já Atualizado", $"FortiOS já está na versão {currentVer}. Transferência TFTP dispensada.");
+                        return;
+                    }
+                    else
+                    {
+                        EscreverLinha($"[*] Versão no equipamento ({currentVer}) difere da imagem proposta ({targetVer}). Prosseguindo com upgrade TFTP.");
+                    }
+                }
+            }
+
+            AtualizarProgresso(20, "Fase B: Gravando firmware FortiOS...", $"Iniciando transferência TFTP da imagem {fileName}...");
+
+            var fileDir = Path.GetDirectoryName(_selectedIosBinPath) ?? AppContext.BaseDirectory;
+            await using var tftpServer = new NetworkDevice.Protocols.Tftp.EmbeddedTftpServer(fileDir);
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            var lastUiUpdate = DateTime.MinValue;
+            var lastLoggedPct = -1;
+
+            tftpServer.TransferProgress += (file, sent, total, pct) =>
+            {
+                var now = DateTime.UtcNow;
+                var elapsedSec = stopwatch.Elapsed.TotalSeconds;
+                var sentMb = sent / (1024.0 * 1024.0);
+                var totalMb = total / (1024.0 * 1024.0);
+                var speedMbSec = elapsedSec > 0.5 ? sentMb / elapsedSec : 0;
+                var remainingSec = speedMbSec > 0 ? (totalMb - sentMb) / speedMbSec : 0;
+                var etaStr = remainingSec > 0 ? $" | Restam ~{TimeSpan.FromSeconds(remainingSec):mm\\:ss}" : "";
+
+                var mappedPct = 25 + (int)(pct * 0.45);
+                if ((now - lastUiUpdate).TotalMilliseconds >= 250 || pct >= 100)
+                {
+                    lastUiUpdate = now;
+                    AtualizarProgresso(
+                        mappedPct,
+                        $"⚠️ NÃO DESLIGUE! Transferindo Firmware TFTP ({pct:N1}%)...",
+                        $"{sentMb:N1} MB / {totalMb:N1} MB ({pct:N1}%) — {speedMbSec:N1} MB/s{etaStr}");
+                }
+
+                var step = (int)(pct / 5) * 5;
+                if (step > lastLoggedPct)
+                {
+                    lastLoggedPct = step;
+                    var barLength = 20;
+                    var filled = (int)Math.Round((pct / 100.0) * barLength);
+                    var bar = new string('█', Math.Clamp(filled, 0, barLength)) + new string('░', Math.Max(0, barLength - filled));
+                    EscreverLinha($"    -> [TFTP] [{bar}] {sentMb:N1} MB / {totalMb:N1} MB ({pct:N1}%) | {speedMbSec:N1} MB/s{etaStr}");
+                }
+            };
+            tftpServer.Start();
+
+            // Garante regra de firewall no Windows para TFTP (porta 69 UDP)
+            await HostNetworkManager.EnsureTftpFirewallRuleAsync(ct);
+
+            // Mapeia interfaces reais do FortiGate
+            string lanInterface = "lan";
+            string wanInterface = "wan";
+            try
+            {
+                var intfOutput = await session.SendCommandAsync("get system interface", TimeSpan.FromSeconds(10), ct);
+                var (w, l) = NetworkDevice.Fortinet.FortiOsSaipConfigurator.DetectInterfaces(intfOutput, "wan", "lan");
+                wanInterface = w;
+                lanInterface = l;
+                EscreverLinha($"[*] Interfaces FortiGate mapeadas: LAN -> '{lanInterface}' | WAN -> '{wanInterface}'.");
+            }
+            catch { }
+
+            var routerLanIp = _loadedSaipCircuit?.LanIp ?? "192.168.1.99";
+            var routerMask = _loadedSaipCircuit?.LanSubnetMask ?? "255.255.255.0";
+
+            // Se temos Ficha SAIP, desabilita servidor DHCP conflitante e configura IP na LAN real
+            if (_loadedSaipCircuit != null)
+            {
+                try
+                {
+                    // 1. Desabilita servidor DHCP nativo para evitar conflito de subnet no FortiOS
+                    await session.SendCommandAsync("config system dhcp server", TimeSpan.FromSeconds(5), ct);
+                    await session.SendCommandAsync("edit 1", TimeSpan.FromSeconds(5), ct);
+                    await session.SendCommandAsync("set status disable", TimeSpan.FromSeconds(5), ct);
+                    await session.SendCommandAsync("next", TimeSpan.FromSeconds(5), ct);
+                    await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), ct);
+                }
+                catch { }
+
+                try
+                {
+                    EscreverLinha($"[*] Configurando IP {routerLanIp} {routerMask} na interface '{lanInterface}' do FortiGate...");
+                    await session.SendCommandAsync("config system interface", TimeSpan.FromSeconds(5), ct);
+                    await session.SendCommandAsync($"edit \"{lanInterface}\"", TimeSpan.FromSeconds(5), ct);
+                    await session.SendCommandAsync($"set ip {routerLanIp} {routerMask}", TimeSpan.FromSeconds(5), ct);
+                    await session.SendCommandAsync("set allowaccess ping https ssh http telnet", TimeSpan.FromSeconds(5), ct);
+                    await session.SendCommandAsync("next", TimeSpan.FromSeconds(5), ct);
+                    await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), ct);
+                    EscreverLinha($"[OK] Interface '{lanInterface}' configurada com {routerLanIp}.");
+                }
+                catch (Exception ex)
+                {
+                    EscreverLinha($"  [AVISO] Configuração de interface FortiGate: {ex.Message}");
+                }
+            }
+
+            // Configura placa de rede do Windows com hostIp (com auto-detecção de adaptador)
+            var targetAdapter = CbAdaptadorRede?.Text?.Trim() ?? "";
+            if (string.IsNullOrEmpty(targetAdapter))
+            {
+                var ethAdapters = HostNetworkManager.GetEthernetAdapters();
+                targetAdapter = ethAdapters.FirstOrDefault() ?? "";
+            }
+
+            if (!string.IsNullOrEmpty(targetAdapter))
+            {
+                try
+                {
+                    EscreverLinha($"[*] Configurando IP {hostIp} no adaptador de rede '{targetAdapter}' para servidor TFTP...");
+                    var (okNet, outNet) = await HostNetworkManager.SetStaticIpAsync(targetAdapter, hostIp, routerMask, null, ct);
+                    if (okNet) EscreverLinha($"[OK] Adaptador '{targetAdapter}' configurado para TFTP ({hostIp}).");
+                    else EscreverLinha($"  [AVISO] Configuração do adaptador: {outNet.Trim()}");
+                }
+                catch (Exception ex)
+                {
+                    EscreverLinha($"  [AVISO] Configuração do adaptador Windows: {ex.Message}");
+                }
+            }
+
+            // Valida criticamente o link físico da porta LAN do FortiGate (Porta 1 / Giga 1 / lan1)
+            await NetworkDevice.Fortinet.FortiOsSaipConfigurator.EnforceLanPortConnectedAsync(session, lanInterface, NotificarConexaoCaboAsync, EscreverLinhaAsync, ct);
+
+            // Valida conectividade FortiGate -> PC via ping antes de disparar o TFTP
+            EscreverLinha($"[*] Validando conectividade de rede FortiGate -> {hostIp}...");
+            var pingOutput = await session.SendCommandAsync($"execute ping {hostIp}", TimeSpan.FromSeconds(10), ct);
+
+            if (pingOutput.Contains("100% packet loss", StringComparison.OrdinalIgnoreCase) ||
+                pingOutput.Contains("Unreachable", StringComparison.OrdinalIgnoreCase) ||
+                pingOutput.Contains("Network is unreachable", StringComparison.OrdinalIgnoreCase))
+            {
+                EscreverLinha($"[⚠️] FortiGate não obteve resposta no IP {hostIp} (possível cabo de rede desconectado).");
+                await InstruirOperadorAsync(
+                    "⚠️ CONEXÃO DO CABO DE REDE ETHERNET - ATUALIZAÇÃO FIRMWARE FORTIGATE 40F\n\n" +
+                    "O FortiGate não conseguiu alcançar o computador via rede Ethernet.\n\n" +
+                    "👉 REQUISITOS OBRIGATÓRIOS PARA O TFTP:\n" +
+                    "1. Conecte um cabo de rede Ethernet entre o computador e uma das portas LAN (Portas 1, 2 ou 3) do FortiGate 40F.\n" +
+                    "2. Certifique-se de que o LED da porta física no FortiGate está ACESO (Link ativo).\n" +
+                    $"3. O computador está configurado no IP {hostIp}.\n\n" +
+                    "Clique em OK assim que o cabo estiver conectado para prosseguir com a transferência TFTP.",
+                    ct);
+
+                // Re-testa ping após confirmação do operador
+                EscreverLinha($"[*] Re-testando ping FortiGate -> {hostIp}...");
+                pingOutput = await session.SendCommandAsync($"execute ping {hostIp}", TimeSpan.FromSeconds(10), ct);
+                if (!pingOutput.Contains("100% packet loss") && !pingOutput.Contains("Unreachable", StringComparison.OrdinalIgnoreCase))
+                {
+                    EscreverLinha($"[OK] Comunicação Ethernet validada! Link ativo.");
+                }
+                else
+                {
+                    EscreverLinha($"  [AVISO] Sem resposta ao ping, tentando transferência TFTP mesmo assim...");
+                }
+            }
+            else
+            {
+                EscreverLinha($"[OK] Comunicação Ethernet validada! FortiGate alcança o servidor TFTP em {hostIp}.");
+            }
+
+            if (session.IsConnected && !string.IsNullOrEmpty(session.CurrentPrompt) &&
+                (session.CurrentPrompt.Contains("#") || session.CurrentPrompt.Contains("$")))
+            {
+                EscreverLinha($"[*] Enviando 'execute restore image tftp {fileName} {hostIp}' via console...");
+                var conditions = new StopCondition[]
+                {
+                    new StopCondition.Contains("FortiConfirm", "y/n"),
+                    new StopCondition.Prompt()
+                };
+
+                var promptResult = await session.SendExpectAsync($"execute restore image tftp {fileName} {hostIp}", conditions, TimeSpan.FromSeconds(15), ct);
+                if (promptResult.Matched is StopCondition.Contains || promptResult.Output.Contains("y/n", StringComparison.OrdinalIgnoreCase))
+                {
+                    await session.SendRawAsync("y\r", ct);
+                    EscreverLinha("[OK] Confirmação 'y' enviada. FortiGate iniciando download TFTP e gravação da Flash...");
+                    AtualizarProgresso(40, "Gravando firmware FortiOS...", "Transferindo arquivo via TFTP e aguardando reboot...");
+
+                    var tftpConditions = new StopCondition[]
+                    {
+                        new StopCondition.Contains("TFTP_OK", "Get image from tftp server OK"),
+                        new StopCondition.Contains("TFTP_OK2", "Check image OK"),
+                        new StopCondition.Contains("TFTP_RESET", "System is resetting"),
+                        new StopCondition.Contains("TFTP_FAIL1", "Can not connect"),
+                        new StopCondition.Contains("TFTP_FAIL2", "Command fail"),
+                        new StopCondition.Contains("TFTP_FAIL3", "TFTP timeout"),
+                        new StopCondition.Prompt()
+                    };
+
+                    try
+                    {
+                        var tftpWait = await session.WaitForAsync(tftpConditions, TimeSpan.FromSeconds(120), ct);
+                        if (tftpWait.Output.Contains("Can not connect", StringComparison.OrdinalIgnoreCase) ||
+                            tftpWait.Output.Contains("Command fail", StringComparison.OrdinalIgnoreCase) ||
+                            tftpWait.Output.Contains("TFTP timeout", StringComparison.OrdinalIgnoreCase) ||
+                            tftpWait.Output.Contains("Network is unreachable", StringComparison.OrdinalIgnoreCase))
+                        {
+                            EscreverLinha($"[ERRO TFTP] {tftpWait.Output.Trim()}");
+                            throw new InvalidOperationException($"Transferência TFTP falhou no FortiGate: {tftpWait.Output.Trim()}. Verifique a conexão física do cabo na porta LAN.");
+                        }
+                    }
+                    catch (SessionTimeoutException)
+                    {
+                        EscreverLinha("[*] FortiGate reiniciando após recepção da imagem...");
+                    }
+
+                    EscreverLinha("\n[*] FortiGate gravando nova imagem na memória Flash e reinicializando...");
+                    for (int remaining = 50; remaining > 0; remaining -= 5)
+                    {
+                        var mapped = 70 + (int)((50 - remaining) * 0.3);
+                        AtualizarProgresso(mapped, $"FortiGate 40F: Reiniciando ({remaining}s)...", "Gravando Flash interna e inicializando FortiOS...");
+                        EscreverLinha($"    ⏳ [FLASH/BOOT] Gravando firmware e reinicializando... aguardando (~{remaining}s restantes)");
+                        await Task.Delay(5000, ct);
+                    }
+
+                    EscreverLinha("[*] Sondando console serial para verificar inicialização do FortiOS...");
+                    var bootDeadline = DateTime.UtcNow.AddSeconds(180);
+                    var probeAttempt = 0;
+                    success = false;
+                    while (DateTime.UtcNow < bootDeadline && !ct.IsCancellationRequested)
+                    {
+                        probeAttempt++;
+                        try
+                        {
+                            await session.SendRawAsync("\r", ct);
+                            var bootCheck = await session.WaitForAsync(
+                                new StopCondition[]
+                                {
+                                    new StopCondition.Prompt(),
+                                    new StopCondition.Contains("LoginPrompt", "login:"),
+                                    new StopCondition.Contains("ActivateConsole", "activate this console"),
+                                    new StopCondition.Contains("PressEnter", "press ENTER")
+                                },
+                                TimeSpan.FromSeconds(5),
+                                ct);
+
+                            if (bootCheck.Matched != null)
+                            {
+                                EscreverLinha($"[OK] FortiGate 40F reinicializado com sucesso com o novo firmware (detectado na tentativa {probeAttempt})!");
+                                success = true;
+                                await Task.Delay(2000, ct);
+                                break;
+                            }
+                        }
+                        catch { }
+
+                        var remSeconds = Math.Max(0, (int)(bootDeadline - DateTime.UtcNow).TotalSeconds);
+                        EscreverLinha($"    ⏳ [SONDA SERIAL] Tentativa {probeAttempt}: aguardando inicialização do FortiOS... ({remSeconds}s restantes)");
+                        await Task.Delay(4000, ct);
+                    }
+
+                    if (!success)
+                    {
+                        EscreverLinha("❌ [ERRO] Tempo limite (180s) esgotado aguardando o FortiOS concluir a reinicialização.");
+                        EscreverLinha("    Certifique-se de que o equipamento terminou o boot antes de avançar para a fase de provisionamento.");
+                    }
+                }
+                else
+                {
+                    EscreverLinha($"[*] Resposta do comando: {promptResult.Output.Trim()}");
+                    success = !promptResult.Output.Contains("command fail", StringComparison.OrdinalIgnoreCase);
+                }
+            }
+            else
+            {
+                var routerIp = _loadedSaipCircuit?.LanIp ?? "192.168.1.99";
+                var subnetMask = _loadedSaipCircuit?.LanSubnetMask ?? "255.255.255.0";
+                var driver = new NetworkDevice.Fortinet.Drivers.FortiGate40FDriver(EscreverLinhaAsync);
+                success = await driver.FirmwareRecovery.RecoverFirmwareAsync(
+                    session, _selectedIosBinPath, hostIp, routerIp, subnetMask,
+                    InstruirOperadorAsync,
+                    (pct, tit, desc) => { AtualizarProgresso(pct, tit, desc); return Task.CompletedTask; },
+                    ct);
+            }
+        }
+        else if (isHpe)
         {
             EscreverLinha($"[*] Equipamento identificado como HPE Comware para upgrade de firmware ({fileName}).");
             AtualizarProgresso(20, "Fase B: Gravando firmware HPE...", "Transferindo via TFTP, gravando bootloader e reiniciando...");
@@ -4275,8 +5966,21 @@ public partial class MainWindow : Window
         }
     }
 
+    private EthernetAdapterDetails? ObterInformacoesEthernetRoteador()
+    {
+        var adapterName = CbAdaptadorRede?.Text?.Trim();
+        var hostIp = _loadedSaipCircuit?.HostLanIp?.Trim();
+        return HostNetworkManager.GetDedicatedRouterEthernetInterface(adapterName, hostIp);
+    }
+
     private string? ObterIpOrigemParaIcmp()
     {
+        var eth = ObterInformacoesEthernetRoteador();
+        if (eth != null && !string.IsNullOrWhiteSpace(eth.IPv4Address))
+        {
+            return eth.IPv4Address;
+        }
+
         if (_loadedSaipCircuit != null && !string.IsNullOrWhiteSpace(_loadedSaipCircuit.HostLanIp))
         {
             return _loadedSaipCircuit.HostLanIp.Trim();
@@ -4315,7 +6019,10 @@ public partial class MainWindow : Window
         {
             var porta = ObterPortaSelecionada();
             var baud = ObterBaudRateSelecionado();
-            EscreverLinha($"[*] [5b] Verificando estado da porta WAN {info.InterfaceExibicao} via console serial...");
+            var isForti = info.IsForti
+                       || _isFortiGateDetected
+                       || IsTagFortiGate((CbModeloRoteadorInicial?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "");
+
             transport = new SerialTransport(porta, baud, readTimeout: TimeSpan.FromMilliseconds(400));
             session = new DeviceSession(transport, new SessionOptions
             {
@@ -4323,12 +6030,28 @@ public partial class MainWindow : Window
                 ConnectTimeout = TimeSpan.FromSeconds(8),
                 CommandTimeout = TimeSpan.FromSeconds(10),
                 Username = "EBT",
-                Password = info.IsHpe ? "PRO1ANPRO1AN" : "PRO1AN",
+                Password = isForti ? "CQMR" : info.IsHpe ? "PRO1ANPRO1AN" : "PRO1AN",
             });
             session.RawOutput += OnRawOutput;
             await session.ConnectAsync(ct);
 
-            if (info.IsHpe)
+            if (isForti)
+            {
+                var physical = await session.SendCommandAsync("get system interface physical", TimeSpan.FromSeconds(8), ct);
+                var (encontrada, down) = WanPortInspector.FortiWanStatus(physical, info.NomesBusca);
+                if (!encontrada)
+                {
+                    var diag = await session.SendCommandAsync("diagnose netlink interface list wan", TimeSpan.FromSeconds(8), ct);
+                    (encontrada, down) = WanPortInspector.FortiWanStatus(diag, info.NomesBusca);
+                }
+
+                if (!encontrada) return null;
+                EscreverLinha(down
+                    ? $"[ALERTA 5b] Porta WAN {info.InterfaceExibicao} DOWN no {info.ModeloExibicao}."
+                    : $"[*] [5b] Porta WAN {info.InterfaceExibicao} UP no {info.ModeloExibicao} — falha é de rota/operadora.");
+                return down;
+            }
+            else if (info.IsHpe)
             {
                 try { await session.SendCommandAsync("screen-length disable", TimeSpan.FromSeconds(5), ct); } catch { }
                 var brief = await session.SendCommandAsync("display interface brief", TimeSpan.FromSeconds(15), ct);
@@ -4378,8 +6101,13 @@ public partial class MainWindow : Window
         ConnectivityService service, string wanTarget, string? sourceIp,
         ConnectivityTestResult atual, CancellationToken ct)
     {
-        var tag = (CbInterrupt.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "";
+        var tag = (CbInterrupt.SelectedItem as ComboBoxItem)?.Tag?.ToString()
+               ?? (CbModeloRoteadorInicial?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "";
         var info = WanPortInspector.PorTagModelo(tag);
+        if (info == null && (_isFortiGateDetected || IsTagFortiGate(tag)))
+        {
+            info = new WanPortaInfo("Fortinet FortiGate 40F", "WAN (Porta WAN)", new[] { "wan", "wan1" }, false, true);
+        }
         if (info == null) return atual;
 
         bool? down;
@@ -4391,8 +6119,8 @@ public partial class MainWindow : Window
         {
             ct.ThrowIfCancellationRequested();
             var resp = Dispatcher.Invoke(() => MessageBox.Show(this,
-                $"A porta WAN {info.InterfaceExibicao} do roteador {info.ModeloExibicao} está DOWN (sem link).\n\n" +
-                $"👉 Conecte o cabo de rede na porta WAN e clique SIM para repetir o teste.\n\n" +
+                $"A porta WAN {info.InterfaceExibicao} do roteador {info.ModeloExibicao} está DOWN (sem link físico).\n\n" +
+                $"👉 Por favor, conecte a porta WAN ao equipamento do acesso para testes de conectividade do serviço e clique SIM para repetir o teste.\n\n" +
                 $"Clique NÃO para seguir normalmente (WAN ficará como Offline).",
                 "Porta WAN DOWN — Fase 5b",
                 MessageBoxButton.YesNo, MessageBoxImage.Warning));
@@ -4401,7 +6129,7 @@ public partial class MainWindow : Window
                 EscreverLinha("[*] [5b] Operador optou por seguir com WAN Offline.");
                 break;
             }
-            EscreverLinha($"[*] [5b] Repetindo teste WAN após conexão do cabo (tentativa {tentativa}/3)...");
+            EscreverLinha($"[*] [5b] Repetindo teste WAN após conexão ao equipamento do acesso (tentativa {tentativa}/3)...");
             AtualizarProgresso(78, "Fase 5b: Repetindo ICMP WAN...", $"Disparando pacotes ICMP para Gateway WAN ({wanTarget})...");
             var retry = await service.TestPingAsync(wanTarget, count: 4, timeoutMs: 2000, sourceIpAddress: sourceIp, cancellationToken: ct);
             if (retry.IsSuccess)
@@ -4646,16 +6374,40 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task<BandwidthTestResult> ExecutarTesteBandaAsync(CancellationToken ct)
+    private async Task<BandwidthTestResult> ExecutarTesteBandaAsync(CancellationToken ct, string? sourceIpAddress = null)
     {
         AtualizarProgresso(10, "Fase G: Testando Banda...", "Iniciando teste de vazão...");
         EscreverLinha("\n[*] [FASE G] TESTE DE BANDA / VELOCIDADE DE CONEXÃO");
+
+        // Se o IP de origem não foi fornecido explicitamente, obtém da interface física Ethernet conectada ao roteador
+        if (string.IsNullOrWhiteSpace(sourceIpAddress))
+        {
+            var ethInfo = ObterInformacoesEthernetRoteador();
+            if (ethInfo != null && ethInfo.IsUp && !string.IsNullOrWhiteSpace(ethInfo.IPv4Address))
+            {
+                sourceIpAddress = ethInfo.IPv4Address;
+            }
+            else if (_loadedSaipCircuit != null && !string.IsNullOrWhiteSpace(_loadedSaipCircuit.HostLanIp))
+            {
+                sourceIpAddress = _loadedSaipCircuit.HostLanIp.Trim();
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(sourceIpAddress))
+        {
+            EscreverLinha($"[*] [ISOLAMENTO REDE] Medição de banda vinculada estritamente à interface Ethernet (IP: {sourceIpAddress}).");
+            EscreverLinha("[*] [ISOLAMENTO REDE] Conexões Wi-Fi, celulares e secundárias foram isoladas para evitar falsos positivos.");
+        }
+        else
+        {
+            EscreverLinha("[AVISO] Nenhuma interface Ethernet identificada com IP de teste. Verifique a conexão com a porta LAN do roteador.");
+        }
 
         var service = new BandwidthTestService(EscreverLinhaAsync);
 
         // 1. Tenta executar CLI Speedtest se disponível
         BandwidthTestResult raw;
-        var cliResult = await service.RunSpeedtestCliAsync(cancellationToken: ct);
+        var cliResult = await service.RunSpeedtestCliAsync(sourceIpAddress: sourceIpAddress, cancellationToken: ct);
         if (cliResult.IsSuccess)
         {
             raw = cliResult;
@@ -4666,6 +6418,7 @@ public partial class MainWindow : Window
             EscreverLinha("[*] Executando Teste de Banda Nativo HTTP (Cloudflare CDN - Payload: ~50 MB)...");
             raw = await service.RunNativeHttpSpeedTestAsync(
                 testPayloadMegaBytes: 50,
+                sourceIpAddress: sourceIpAddress,
                 onProgress: (mbps, pct) =>
                 {
                     AtualizarProgresso((int)pct, "Fase G: Medindo Vazão HTTP...", $"Vazão atual: {mbps:F2} Mbps ({pct:F0}%)");
@@ -4765,8 +6518,11 @@ public partial class MainWindow : Window
                 var hostIp = _loadedSaipCircuit?.HostLanIp ?? ObterIpLocalParaTftp() ?? "127.0.0.1";
                 await ExecutarUpgradeFirmwareAsync(porta, baud, hostIp, ct);
                 DefinirBadgeStatus("B", "✅");
-                EscreverLinha("[*] Aguardando 15 segundos para estabilização pós-reload...");
-                await Task.Delay(15000, ct);
+                if (!_firmwareSkippedSameVersion)
+                {
+                    EscreverLinha("[*] Aguardando 15 segundos para estabilização pós-reload...");
+                    await Task.Delay(15000, ct);
+                }
             }
             else
             {
@@ -4822,7 +6578,7 @@ public partial class MainWindow : Window
             await Task.Delay(1000, ct);
 
             // -------------------------------------------------------------
-            // FASE 6 (F): TESTAR ACESSO REMOTO (TELNET)
+            // FASE 6 (F): TESTAR ACESSO REMOTO (TELNET / SSH)
             // -------------------------------------------------------------
             SelecionarFase("F");
             DefinirBadgeStatus("F", "⏳");
@@ -4830,8 +6586,31 @@ public partial class MainWindow : Window
                 ?? (!string.IsNullOrWhiteSpace(TxtTelnetTarget.Text) ? TxtTelnetTarget.Text.Trim() : "200.182.245.17");
             var telnetPortEsteira = int.TryParse(TxtTelnetPort.Text.Trim(), out var tp) ? tp : 23;
 
-            EscreverLinha("\n>>> [ESTEIRA] FASE 6: TESTAR ACESSO REMOTO TELNET");
+            EscreverLinha("\n>>> [ESTEIRA] FASE 6: TESTAR ACESSO REMOTO");
             var telnetEsteiraResult = await ExecutarTesteTelnetAsync(telnetHostEsteira, telnetPortEsteira, ct);
+
+            var profileTagEsteira = (CbInterrupt.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "";
+            var isFortiEsteira = IsTagFortiGate(profileTagEsteira) || _isFortiGateDetected;
+            if (isFortiEsteira && !telnetEsteiraResult.IsSuccess)
+            {
+                var srv = new ConnectivityService(EscreverLinhaAsync);
+                var (sshOk, sshLat, _) = await srv.TestTcpPortAsync(telnetHostEsteira, 22, timeoutMs: 5000, sourceIpAddress: ObterIpOrigemParaIcmp(), cancellationToken: ct);
+                if (sshOk)
+                {
+                    telnetEsteiraResult = new ConnectivityService.TelnetTestResult(telnetHostEsteira, 22, true, sshLat, "SSH (Porta 22) Ativa", "SSH Conectado", null);
+                    EscreverLinha($"[OK] [FORTINET] Acesso remoto SSH (porta 22) validado com sucesso ({sshLat}ms)!");
+                }
+                else
+                {
+                    var (httpsOk, httpsLat, _) = await srv.TestTcpPortAsync(telnetHostEsteira, 443, timeoutMs: 5000, sourceIpAddress: ObterIpOrigemParaIcmp(), cancellationToken: ct);
+                    if (httpsOk)
+                    {
+                        telnetEsteiraResult = new ConnectivityService.TelnetTestResult(telnetHostEsteira, 443, true, httpsLat, "HTTPS (Porta 443) Ativa", "HTTPS Conectado", null);
+                        EscreverLinha($"[OK] [FORTINET] Acesso remoto HTTPS (porta 443) validado com sucesso ({httpsLat}ms)!");
+                    }
+                }
+            }
+
             DefinirBadgeStatus("F", telnetEsteiraResult.IsSuccess ? "✅" : "❌");
             await Task.Delay(1000, ct);
 

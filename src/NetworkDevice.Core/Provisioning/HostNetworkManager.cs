@@ -21,6 +21,18 @@ public sealed record AdapterSnapshot(
         : $"Fixo {IpAddress ?? "?"} / {SubnetMask ?? "?"} gw {Gateway ?? "-"} dns {(DnsServers.Count > 0 ? string.Join(",", DnsServers) : "-")}";
 }
 
+/// <summary>
+/// Detalhes de uma interface Ethernet física dedicada à conexão com o roteador.
+/// </summary>
+public sealed record EthernetAdapterDetails(
+    string Name,
+    string Description,
+    bool IsUp,
+    bool IsPhysicalEthernet,
+    string? IPv4Address,
+    string? SubnetMask,
+    string? Gateway);
+
 public class WindowsHostNetworkService : IHostNetworkService
 {
     public IReadOnlyList<string> GetAvailableAdapters()
@@ -122,6 +134,96 @@ public static class HostNetworkManager
         if (list.Count == 0) return new List<string> { "Ethernet" };
         // Prioriza: Ethernet cabeada (Up > Down) > Wi-Fi (Up > Down)
         return list.OrderByDescending(x => x.isEthernet).ThenByDescending(x => x.isUp).Select(x => x.name).ToList();
+    }
+
+    /// <summary>
+    /// Localiza e detalha a interface de rede física Ethernet dedicada à conexão com o roteador.
+    /// Exclui estritamente Wi-Fi, redes celulares, VPN, adaptadores virtuais e loopback para prevenir vazamento e falso positivo.
+    /// </summary>
+    public static EthernetAdapterDetails? GetDedicatedRouterEthernetInterface(string? preferredName = null, string? expectedIp = null)
+    {
+        try
+        {
+            var interfaces = NetworkInterface.GetAllNetworkInterfaces();
+            var candidates = new List<EthernetAdapterDetails>();
+
+            foreach (var ni in interfaces)
+            {
+                // Ignora interfaces virtuais, túneis, VPN, loopback, WSL, Hyper-V, Bluetooth
+                if (ni.Description.Contains("Loopback", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Description.Contains("Virtual", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Description.Contains("Hyper-V", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Description.Contains("WSL", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Description.Contains("VPN", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Description.Contains("Bluetooth", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Name.Contains("Loopback", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Name.Contains("vEthernet", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Name.Contains("WSL", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                // Exclui estritamente Wi-Fi / Wireless / Celular
+                var isWirelessOrCell = ni.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 ||
+                                       ni.NetworkInterfaceType == NetworkInterfaceType.Wwanpp ||
+                                       ni.NetworkInterfaceType == NetworkInterfaceType.Wwanpp2 ||
+                                       ni.Description.Contains("Wireless", StringComparison.OrdinalIgnoreCase) ||
+                                       ni.Description.Contains("Wi-Fi", StringComparison.OrdinalIgnoreCase) ||
+                                       ni.Description.Contains("802.11", StringComparison.OrdinalIgnoreCase) ||
+                                       ni.Description.Contains("Cellular", StringComparison.OrdinalIgnoreCase) ||
+                                       ni.Description.Contains("Mobile", StringComparison.OrdinalIgnoreCase) ||
+                                       ni.Name.Contains("Wi-Fi", StringComparison.OrdinalIgnoreCase) ||
+                                       ni.Name.Contains("Celular", StringComparison.OrdinalIgnoreCase);
+
+                if (isWirelessOrCell)
+                    continue;
+
+                // Aceita apenas Ethernet física cabeada
+                var isEthernet = ni.NetworkInterfaceType == NetworkInterfaceType.Ethernet ||
+                                 ni.NetworkInterfaceType == NetworkInterfaceType.GigabitEthernet ||
+                                 ni.NetworkInterfaceType == NetworkInterfaceType.FastEthernetFx ||
+                                 ni.NetworkInterfaceType == NetworkInterfaceType.FastEthernetT;
+
+                if (!isEthernet)
+                    continue;
+
+                var isUp = ni.OperationalStatus == OperationalStatus.Up;
+                var ipProps = ni.GetIPProperties();
+                var unicast = ipProps.UnicastAddresses
+                    .FirstOrDefault(u => u.Address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(u.Address));
+
+                var ipv4 = unicast?.Address.ToString();
+                var mask = unicast?.IPv4Mask?.ToString();
+                var gw = ipProps.GatewayAddresses
+                    .FirstOrDefault(g => g.Address.AddressFamily == AddressFamily.InterNetwork)?
+                    .Address.ToString();
+
+                candidates.Add(new EthernetAdapterDetails(ni.Name, ni.Description, isUp, true, ipv4, mask, gw));
+            }
+
+            if (candidates.Count == 0) return null;
+
+            // 1. Prioriza por IP esperado (se coincidir com a interface Ethernet)
+            if (!string.IsNullOrWhiteSpace(expectedIp))
+            {
+                var matchIp = candidates.FirstOrDefault(c => string.Equals(c.IPv4Address, expectedIp.Trim(), StringComparison.OrdinalIgnoreCase));
+                if (matchIp != null) return matchIp;
+            }
+
+            // 2. Prioriza por nome preferido (selecionado no combo CbAdaptadorRede)
+            if (!string.IsNullOrWhiteSpace(preferredName))
+            {
+                var matchName = candidates.FirstOrDefault(c => string.Equals(c.Name, preferredName.Trim(), StringComparison.OrdinalIgnoreCase));
+                if (matchName != null) return matchName;
+            }
+
+            // 3. Prioriza interface UP (com cabo conectado), depois primeira Ethernet física disponível
+            return candidates.OrderByDescending(c => c.IsUp).FirstOrDefault();
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// <summary>

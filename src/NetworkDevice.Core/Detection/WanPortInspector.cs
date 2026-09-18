@@ -5,7 +5,8 @@ public sealed record WanPortaInfo(
     string ModeloExibicao,
     string InterfaceExibicao,
     string[] NomesBusca,
-    bool IsHpe);
+    bool IsHpe,
+    bool IsForti = false);
 
 public static class WanPortInspector
 {
@@ -30,6 +31,9 @@ public static class WanPortInspector
         if (t.Contains("954") || t.Contains("958") || t.Contains("hpe") || t.Contains("msr"))
             return new WanPortaInfo("HPE MSR 954", "GE0/0",
                 new[] { "ge0/0", "gigabitethernet0/0" }, true);
+        if (t.Contains("forti") || t.Contains("fgt") || t.Contains("40f"))
+            return new WanPortaInfo("Fortinet FortiGate 40F", "WAN (Porta WAN)",
+                new[] { "wan", "wan1" }, false, true);
         return null;
     }
 
@@ -67,6 +71,49 @@ public static class WanPortInspector
             if (Norm(line).Contains("administratively")) return (true, true);
             return (true, Norm(tok[1]).Contains("down") || Norm(tok[2]).Contains("down"));
         }
+        return (false, false);
+    }
+
+    // 'get system interface physical' ou 'diagnose netlink interface list' -> (encontrada, down)
+    public static (bool Encontrada, bool Down) FortiWanStatus(string output, string[] nomes)
+    {
+        if (string.IsNullOrWhiteSpace(output)) return (false, false);
+
+        foreach (var nome in nomes)
+        {
+            // 1. Bloco de 'get system interface physical' (ex.: ==[wan] ... status: up/down)
+            var match = System.Text.RegularExpressions.Regex.Match(
+                output,
+                $@"(?i)==\s*\[\s*{System.Text.RegularExpressions.Regex.Escape(nome)}\s*\](?<content>[\s\S]*?)(?:==\s*\[|\z)");
+            if (match.Success)
+            {
+                var content = match.Groups["content"].Value;
+                var isDown = System.Text.RegularExpressions.Regex.IsMatch(content, @"(?i)\bstatus:\s*down\b");
+                var isUp = System.Text.RegularExpressions.Regex.IsMatch(content, @"(?i)\bstatus:\s*up\b");
+                if (isDown) return (true, true);
+                if (isUp) return (true, false);
+                return (true, true);
+            }
+
+            // 2. Bloco de 'diagnose netlink interface list' (ex.: if=wan ... carrier: ON/OFF)
+            var nlMatch = System.Text.RegularExpressions.Regex.Match(
+                output,
+                $@"(?i)\bif={System.Text.RegularExpressions.Regex.Escape(nome)}\b(?<content>[\s\S]*?)(?:\bif=|\z)");
+            if (nlMatch.Success)
+            {
+                var content = nlMatch.Groups["content"].Value;
+                var hasNoCarrier = content.Contains("no_carrier", StringComparison.OrdinalIgnoreCase);
+                var isDown = System.Text.RegularExpressions.Regex.IsMatch(content, @"(?i)\bstate:\s*down\b") ||
+                             System.Text.RegularExpressions.Regex.IsMatch(content, @"(?i)\bcarrier:\s*off\b") ||
+                             hasNoCarrier;
+                var isUp = System.Text.RegularExpressions.Regex.IsMatch(content, @"(?i)\bstate:\s*up\b") ||
+                           System.Text.RegularExpressions.Regex.IsMatch(content, @"(?i)\bcarrier:\s*on\b");
+                if (isDown) return (true, true);
+                if (isUp) return (true, false);
+                return (true, true);
+            }
+        }
+
         return (false, false);
     }
 }

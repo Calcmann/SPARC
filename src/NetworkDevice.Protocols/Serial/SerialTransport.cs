@@ -20,13 +20,13 @@ public sealed class SerialTransport : ITransport
     {
         _breakDuration = breakDuration ?? TimeSpan.FromMilliseconds(250);
         _readTimeout = readTimeout ?? TimeSpan.FromMilliseconds(200);
-        _port = new SerialPort(portName, baudRate, parity, dataBits, stopBits)
+        _port = new SerialPort(portName?.Trim() ?? "", baudRate, parity, dataBits, stopBits)
         {
             ReadTimeout = (int)_readTimeout.TotalMilliseconds,
-            WriteTimeout = Timeout.Infinite,
+            WriteTimeout = 3000,
             Handshake = Handshake.None,
-            DtrEnable = true,
-            RtsEnable = true
+            DtrEnable = false, // Evita travar drivers CH340/PL2303 no construtor
+            RtsEnable = false  // RtsEnable=false é mandatório em cabos console para CH340 não bloquear envio por CTS
         };
     }
 
@@ -35,12 +35,18 @@ public sealed class SerialTransport : ITransport
     public Task OpenAsync(CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (_port.IsOpen)
+            return Task.CompletedTask;
+
         try { _port.Open(); }
         catch (UnauthorizedAccessException ex) { throw new DeviceSessionException($"Porta {_port.PortName} em uso ou sem permissão: {ex.Message}"); }
         catch (IOException ex) { throw new DeviceSessionException($"Falha ao abrir {_port.PortName}: {ex.Message}"); }
         catch (ArgumentException ex) { throw new DeviceSessionException($"Porta {_port.PortName} inválida: {ex.Message}"); }
-        _port.DtrEnable = true;
-        _port.RtsEnable = true;
+        catch (InvalidOperationException) when (_port.IsOpen) { return Task.CompletedTask; }
+
+        // Protege contra falhas de IOCTL em drivers CH340/CH341 antigos ou clones sem crystal
+        try { _port.DtrEnable = true; } catch { }
+        try { _port.RtsEnable = false; } catch { }
         try { _port.DiscardInBuffer(); } catch { }
         try { _port.DiscardOutBuffer(); } catch { }
         return Task.CompletedTask;
@@ -115,6 +121,21 @@ public sealed class SerialTransport : ITransport
         {
             _port.BreakState = true;
             await Task.Delay(_breakDuration, cancellationToken);
+        }
+        catch (Exception)
+        {
+            // Drivers CH340/CH341 frequentemente não implementam SetCommBreak via Win32.
+            // Fallback de quebra de quadro (framing break): reduz para 1200 baud e envia byte 0x00,
+            // gerando um sinal elétrico de BREAK idêntico ao BreakState no barramento RS-232.
+            try
+            {
+                var origBaud = _port.BaudRate;
+                _port.BaudRate = 1200;
+                _port.Write(new byte[] { 0x00 }, 0, 1);
+                await Task.Delay(_breakDuration, cancellationToken);
+                _port.BaudRate = origBaud;
+            }
+            catch { }
         }
         finally
         {

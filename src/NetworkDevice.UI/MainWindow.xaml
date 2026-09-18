@@ -120,6 +120,7 @@
                                     <ComboBoxItem Content="🖧 Cisco Série 1900 / 1921 / 1941 / 1905 (Break @ 9600 - ROMMON)" Tag="cisco.c1900.break" />
                                     <ComboBoxItem Content="🖧 Cisco Série 900 / C921-4P (Ctrl+C Puro @ 9600)" Tag="cisco.c900.ctrl-c" />
                                     <ComboBoxItem Content="🖧 Cisco Série 800 / C841M (Break @ 9600 - ROMMON)" Tag="cisco.c841.break" />
+                                    <ComboBoxItem Content="🛡️ Fortinet FortiGate 40F (FortiOS @ 9600 - Console)" Tag="fortinet.fgt40f.fortios" />
                                 </ComboBox>
                             </DockPanel>
                         </StackPanel>
@@ -323,11 +324,25 @@
                             HorizontalAlignment="Stretch" Click="BtnSemiAutoAtalho_Click" IsEnabled="True" Visibility="Collapsed"
                             ToolTip="Atalho: Ctrl+Shift+V — Acessa a esteira em modo passo a passo" />
 
+                    <!-- BOTÃO RECUPERAÇÃO FORTINET 40F VIA ATALHO CTRL+SHIFT+V -->
+                    <Button x:Name="BtnRecuperacaoFortinet" Content="🛠️ Recuperação Fortinet 40F (Bootloader)"
+                            Padding="12,7" Background="#881337" Foreground="White" BorderBrush="#BE123C" BorderThickness="1"
+                            FontWeight="Bold" FontSize="13" Cursor="Hand" Margin="0,4,0,0"
+                            HorizontalAlignment="Stretch" Click="BtnRecuperacaoFortinet_Click" Visibility="Collapsed"
+                            ToolTip="Atalho: Ctrl+Shift+V — Abre a janela avançada de recuperação autônoma e bootloader (BIOS) do FortiGate 40F" />
+
+                    <!-- BOTÃO SIMULAR FORTIGATE 40F EM MODO BIOS (SEM FIRMWARE) -->
+                    <Button x:Name="BtnSimularFortiBiosRecovery" Content="🧪 Simular FortiGate 40F sem Firmware (BIOS TFTP)"
+                            Padding="10,6" Background="#7F1D1D" Foreground="White" BorderBrush="#DC2626" BorderThickness="1"
+                            FontWeight="Bold" FontSize="12" Cursor="Hand" Margin="0,4,0,0"
+                            HorizontalAlignment="Stretch" Click="BtnSimularFortiBiosRecovery_Click" Visibility="Collapsed"
+                            ToolTip="Atalho: Ctrl+Shift+V — Simula um FortiGate 40F com firmware corrompido ou ausente para teste em bancada" />
+
                     <!-- OPÇÃO SECRETA NAT (LAB) — mesmo atalho, default DESLIGADA -->
-                    <CheckBox x:Name="ChkNatLab" Content="🌐 Habilitar NAT overload (LAB) — mantém NAT após provisionar"
+                    <CheckBox x:Name="ChkNatLab" Content="🌐 Habilitar NAT (LAB) — modem de acesso 4G / bancada"
                             Foreground="#FCA5A5" FontSize="12" FontWeight="Bold" Margin="0,4,0,0"
                             HorizontalAlignment="Center" Visibility="Collapsed" IsChecked="False"
-                            ToolTip="Opção secreta (Ctrl+Shift+V). Quando marcada, a esteira Cisco aplica ip nat inside/outside + overload e não o remove." />
+                            ToolTip="Opção secreta (Ctrl+Shift+V) para testes em bancada de laboratório com modem 4G. Quando marcada, habilita NAT overload no Cisco e política com NAT (set nat enable) no FortiGate 40F." />
 
                     <!-- MANUAL -->
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,3,0,2">
@@ -371,14 +386,15 @@
                             <TextBlock x:Name="TxtAutoEtapa7" Text="○ 7. Testar Banda — aguardando" Foreground="#A1A1AA" FontSize="13.5" Margin="0,3" />
                         </StackPanel>
                     </Border>
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,14,0,0">
-                        <Button x:Name="BtnAutoCancelar" Content="✖ Cancelar" Padding="14,6" Background="#B91C1C" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnCancelar_Click" />
-                        <Button x:Name="BtnAutoAbrirPdf" Content="📄 Visualizar Relatório PDF" Padding="14,6" Margin="8,0,0,0" Background="#B91C1C" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnAutoAbrirPdf_Click" Visibility="Collapsed" />
-                        <Button x:Name="BtnAutoExportarPdf" Content="💾 Salvar PDF como..." Padding="12,6" Margin="8,0,0,0" Background="#3F3F46" Foreground="White" BorderThickness="0" Click="BtnAutoExportarPdf_Click" Visibility="Collapsed" />
-                        <Button x:Name="BtnAutoRestaurarRede" Content="↩ Restaurar configuração IP do Windows" Padding="12,6" Margin="8,0,0,0" Background="#0F766E" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnAutoRestaurarRede_Click" Visibility="Collapsed" ToolTip="Volta a placa de rede ao IP/DHCP anterior ao teste (ou mantém para mais testes)" />
-                        <Button x:Name="BtnAutoSalvarScript" Content="📝 Salvar script TXT" Padding="12,6" Margin="8,0,0,0" Background="#3F3F46" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnAutoSalvarScript_Click" Visibility="Collapsed" ToolTip="Salva em TXT as configurações aplicadas no equipamento (running-config)" />
-                        <Button x:Name="BtnAutoVoltar" Content="← Voltar à Esteira" Padding="14,6" Margin="8,0,0,0" Background="#64748B" Foreground="White" BorderThickness="0" Click="BtnAutoVoltar_Click" Visibility="Collapsed" />
-                    </StackPanel>
+                    <WrapPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,14,0,0">
+                        <Button x:Name="BtnAutoCancelar" Content="✖ Cancelar" Padding="14,6" Margin="4,3" Background="#B91C1C" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnCancelar_Click" />
+                        <Button x:Name="BtnAutoAbrirPdf" Content="📄 Visualizar Relatório PDF" Padding="14,6" Margin="4,3" Background="#B91C1C" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnAutoAbrirPdf_Click" Visibility="Collapsed" />
+                        <Button x:Name="BtnAutoExportarPdf" Content="💾 Salvar PDF como..." Padding="12,6" Margin="4,3" Background="#3F3F46" Foreground="White" BorderThickness="0" Click="BtnAutoExportarPdf_Click" Visibility="Collapsed" />
+                        <Button x:Name="BtnAutoRestaurarRede" Content="↩ Restaurar configuração IP do Windows" Padding="12,6" Margin="4,3" Background="#0F766E" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnAutoRestaurarRede_Click" Visibility="Collapsed" ToolTip="Volta a placa de rede ao IP/DHCP anterior ao teste (ou mantém para mais testes)" />
+                        <Button x:Name="BtnAutoRetestarBanda" Content="🔄 Re-testar Largura de Banda" Padding="12,6" Margin="4,3" Background="#D97706" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnAutoRetestarBanda_Click" Visibility="Collapsed" ToolTip="Executa novamente o teste de velocidade/largura de banda da Fase 7 e atualiza o relatório técnico" />
+                        <Button x:Name="BtnAutoSalvarScript" Content="📝 Salvar script TXT" Padding="12,6" Margin="4,3" Background="#3F3F46" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnAutoSalvarScript_Click" Visibility="Collapsed" ToolTip="Salva em TXT as configurações aplicadas no equipamento (running-config)" />
+                        <Button x:Name="BtnAutoVoltar" Content="← Voltar à Esteira" Padding="14,6" Margin="4,3" Background="#64748B" Foreground="White" BorderThickness="0" Click="BtnAutoVoltar_Click" Visibility="Collapsed" />
+                    </WrapPanel>
                     <Border Background="#0A0E14" CornerRadius="6" Margin="0,14,0,0" MaxHeight="200">
                         <ScrollViewer x:Name="ScrollAutoLog" VerticalScrollBarVisibility="Auto">
                             <TextBlock x:Name="TxtAutoLog" Text="Aguardando início..." Foreground="#94A3B8" FontFamily="Consolas" FontSize="12.5" Padding="8" TextWrapping="Wrap" />
@@ -423,6 +439,7 @@
                             <ComboBoxItem Content="Cisco Série 1900 / 1921 / 1941 / 1905 (Break @ 9600 - ROMMON)" Tag="cisco.c1900.break" />
                             <ComboBoxItem Content="Cisco Série 900 / C921-4P (Ctrl+C Puro @ 9600)" Tag="cisco.c900.ctrl-c" />
                             <ComboBoxItem Content="Cisco Série 800 / C841M (Break @ 9600 - ROMMON)" Tag="cisco.c841.break" />
+                            <ComboBoxItem Content="Fortinet FortiGate 40F (FortiOS @ 9600 - Console)" Tag="fortinet.fgt40f.fortios" />
                         </ComboBox>
                     </StackPanel>
 

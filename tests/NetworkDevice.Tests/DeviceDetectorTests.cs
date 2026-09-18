@@ -93,4 +93,52 @@ HPE MSR931 uptime is 0 week, 0 day, 16 hours, 0 minute
         Assert.Equal(AccessState.Open, result.AccessState);
         Assert.False(result.RequiresUserAndPassword);
     }
+
+    [Fact]
+    public void ClassifyPrompt_DetectFortiGateLogin_AsPasswordProtected()
+    {
+        var prompt = "FortiGate-40F login: ";
+        var result = _detector.ClassifyPrompt(prompt, DeviceSeries.FortiGate40F);
+
+        Assert.Equal(DeviceManufacturer.Fortinet, result.Manufacturer);
+        Assert.Equal(DeviceSeries.FortiGate40F, result.Series);
+        Assert.Equal(DeviceOperatingState.PasswordProtected, result.OperatingState);
+        Assert.Equal(AccessState.UserAndPasswordRequired, result.AccessState);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_DetectFortiGateLoginFailed_AsPasswordProtected()
+    {
+        var prompt = "FortiGate-40F login: admin\r\nPassword: \r\nVerifying password...\r\n\r\nLogin incorrect\r\nFortiGate-40F login: ";
+        var result = _detector.ClassifyPrompt(prompt);
+
+        Assert.Equal(DeviceManufacturer.Fortinet, result.Manufacturer);
+        Assert.Equal(DeviceSeries.FortiGate40F, result.Series);
+        Assert.Equal(DeviceOperatingState.PasswordProtected, result.OperatingState);
+        Assert.Equal(AccessState.UserAndPasswordRequired, result.AccessState);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_DetectFortiGateWithoutPrompt_AsPasswordProtected()
+    {
+        var prompt = "FortiGate-40F\r\nVerifying password...";
+        var result = _detector.ClassifyPrompt(prompt);
+
+        Assert.Equal(DeviceManufacturer.Fortinet, result.Manufacturer);
+        Assert.Equal(DeviceSeries.FortiGate40F, result.Series);
+        Assert.Equal(DeviceOperatingState.PasswordProtected, result.OperatingState);
+        Assert.Equal(AccessState.UserAndPasswordRequired, result.AccessState);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_DetectFortiGateAuthenticatedPrompt_AsReadyAndOpen()
+    {
+        var prompt = "FortiGate-40F # ";
+        var result = _detector.ClassifyPrompt(prompt);
+
+        Assert.Equal(DeviceManufacturer.Fortinet, result.Manufacturer);
+        Assert.Equal(DeviceSeries.FortiGate40F, result.Series);
+        Assert.Equal(DeviceOperatingState.Ready, result.OperatingState);
+        Assert.Equal(AccessState.Open, result.AccessState);
+    }
 }

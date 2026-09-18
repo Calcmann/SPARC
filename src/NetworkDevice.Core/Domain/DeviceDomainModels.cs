@@ -5,7 +5,8 @@ public enum DeviceManufacturer
     Unknown = 0,
     Hpe,
     Cisco,
-    Generic
+    Generic,
+    Fortinet
 }
 
 public enum DeviceSeries
@@ -17,7 +18,8 @@ public enum DeviceSeries
     Series1900,
     Isr921,
     Isr841,
-    Generic
+    Generic,
+    FortiGate40F
 }
 
 public enum DeviceOperatingState

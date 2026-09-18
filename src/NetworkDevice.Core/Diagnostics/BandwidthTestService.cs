@@ -1,5 +1,8 @@
 using System.Diagnostics;
+using System.Net;
 using System.Net.Http;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Text.Json;
 
 namespace NetworkDevice.Core.Diagnostics;
@@ -65,16 +68,43 @@ public class BandwidthTestService
         }
     }
 
+    public Task<BandwidthTestResult> RunNativeHttpSpeedTestAsync(
+        int testPayloadMegaBytes,
+        Action<double, double>? onProgress,
+        CancellationToken cancellationToken = default)
+        => RunNativeHttpSpeedTestAsync(testPayloadMegaBytes, null, onProgress, cancellationToken);
+
     /// <summary>
     /// Executa teste de banda nativo HTTP medindo download em Mbps contra CDNs públicas neutras (Cloudflare / Fast CDN).
+    /// Suporta vincular o tráfego estritamente à interface Ethernet do roteador (sourceIpAddress) para isolar Wi-Fi e outras redes.
     /// Funciona 100% multiplataforma no Windows, Android e Linux sem necessidade de programas externos instalados.
     /// </summary>
     public async Task<BandwidthTestResult> RunNativeHttpSpeedTestAsync(
         int testPayloadMegaBytes = 50,
+        string? sourceIpAddress = null,
         Action<double, double>? onProgress = null,
         CancellationToken cancellationToken = default)
     {
         await LogAsync($"[*] Iniciando teste de banda nativo HTTP (Payload de teste: ~{testPayloadMegaBytes} MB)...");
+
+        if (!string.IsNullOrWhiteSpace(sourceIpAddress))
+        {
+            var cleanIp = sourceIpAddress.Trim();
+            var isBound = NetworkInterface.GetAllNetworkInterfaces()
+                .Where(ni => ni.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+                .SelectMany(ni => ni.GetIPProperties().UnicastAddresses)
+                .Any(a => a.Address.ToString() == cleanIp);
+
+            if (!isBound)
+            {
+                await LogAsync($"[ERRO ISOLAMENTO] IP de origem {cleanIp} não está ativo na interface Ethernet conectada ao roteador. Teste de banda abortado para evitar falso positivo via Wi-Fi/outras redes.");
+                return new BandwidthTestResult(0, 0, 0, 0, "HTTP CDN", "Nativo HTTP", false,
+                    $"[ERRO ISOLAMENTO] IP {cleanIp} não está ativo na interface Ethernet do roteador. Teste abortado para evitar falso positivo via Wi-Fi.");
+            }
+
+            await LogAsync($"[*] Vinculando teste de banda HTTP estritamente à interface conectada ao roteador (IP Origem: {cleanIp})...");
+            await LogAsync($"[*] Demais conexões do sistema (Wi-Fi, 4G, redes secundárias) estão isoladas para prevenir falsos positivos.");
+        }
 
         // Endpoints de teste de banda confiáveis com suporte a chunking CDN
         var endpoints = new[]
@@ -87,9 +117,40 @@ public class BandwidthTestService
         var bytesReceived = 0L;
         var sw = new Stopwatch();
         var latencySw = Stopwatch.StartNew();
+        SocketsHttpHandler? socketsHandler = null;
+        HttpClient? customClient = null;
 
         try
         {
+            if (!string.IsNullOrWhiteSpace(sourceIpAddress) && IPAddress.TryParse(sourceIpAddress.Trim(), out var localIp))
+            {
+                socketsHandler = new SocketsHttpHandler
+                {
+                    ConnectTimeout = TimeSpan.FromSeconds(10),
+                    ConnectCallback = async (context, token) =>
+                    {
+                        var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                        try
+                        {
+                            socket.Bind(new IPEndPoint(localIp, 0));
+                            await socket.ConnectAsync(context.DnsEndPoint, token);
+                            return new NetworkStream(socket, ownsSocket: true);
+                        }
+                        catch
+                        {
+                            socket.Dispose();
+                            throw;
+                        }
+                    }
+                };
+                customClient = new HttpClient(socketsHandler, disposeHandler: true)
+                {
+                    Timeout = TimeSpan.FromSeconds(45)
+                };
+            }
+
+            var httpClient = customClient ?? HttpClientInstance;
+
             // Mede latência básica para o endpoint
             HttpResponseMessage? response = null;
             string? usedEndpoint = null;
@@ -100,7 +161,7 @@ public class BandwidthTestService
                 {
                     latencySw.Restart();
                     var req = new HttpRequestMessage(HttpMethod.Get, url);
-                    response = await HttpClientInstance.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                    response = await httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
                     if (response.IsSuccessStatusCode)
                     {
                         usedEndpoint = url;
@@ -180,6 +241,10 @@ public class BandwidthTestService
             await LogAsync($"[ERRO] Falha no teste de banda HTTP: {ex.Message}");
             return new BandwidthTestResult(0, 0, 0, 0, "HTTP CDN", "Nativo HTTP", false, ex.Message);
         }
+        finally
+        {
+            customClient?.Dispose();
+        }
     }
 
     /// <summary>
@@ -187,6 +252,7 @@ public class BandwidthTestService
     /// </summary>
     public async Task<BandwidthTestResult> RunSpeedtestCliAsync(
         string? customCliPath = null,
+        string? sourceIpAddress = null,
         CancellationToken cancellationToken = default)
     {
         var cliPath = customCliPath;
@@ -209,10 +275,11 @@ public class BandwidthTestService
 
         try
         {
+            var srcArg = !string.IsNullOrWhiteSpace(sourceIpAddress) ? $" -i {sourceIpAddress.Trim()}" : "";
             var psi = new ProcessStartInfo
             {
                 FileName = cliPath,
-                Arguments = "--format=json --accept-license --accept-gdpr",
+                Arguments = $"--format=json --accept-license --accept-gdpr{srcArg}",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,

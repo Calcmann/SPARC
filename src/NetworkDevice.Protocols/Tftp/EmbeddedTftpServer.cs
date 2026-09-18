@@ -24,6 +24,8 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
     private Socket? _listenerSocket;
     private CancellationTokenSource? _cts;
     private Task? _serverTask;
+    private readonly List<Task> _activeTransfers = new();
+    private readonly object _transfersLock = new();
 
     public event Action<string, long, long, double>? TransferProgress;
     public event Action<string>? LogMessage;
@@ -74,6 +76,18 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
             _serverTask = null;
         }
 
+        Task[] pending;
+        lock (_transfersLock)
+        {
+            pending = _activeTransfers.ToArray();
+            _activeTransfers.Clear();
+        }
+
+        if (pending.Length > 0)
+        {
+            try { await Task.WhenAll(pending); } catch { }
+        }
+
         LogMessage?.Invoke("[TFTP] Servidor TFTP finalizado.");
     }
 
@@ -95,7 +109,26 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
                     Array.Copy(receiveBuffer, rrqCopy, bytesReceived);
 
                     // Executa a transferência em thread dedicada com sockets de alta velocidade
-                    Task.Run(() => HandleReadRequest(rrqCopy, clientEp, ct), ct);
+                    Task transferTask = null!;
+                    transferTask = Task.Run(() =>
+                    {
+                        try
+                        {
+                            HandleReadRequest(rrqCopy, clientEp, ct);
+                        }
+                        finally
+                        {
+                            lock (_transfersLock)
+                            {
+                                _activeTransfers.Remove(transferTask);
+                            }
+                        }
+                    }, ct);
+
+                    lock (_transfersLock)
+                    {
+                        _activeTransfers.Add(transferTask);
+                    }
                 }
             }
             catch (SocketException) when (ct.IsCancellationRequested)
@@ -118,13 +151,50 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
         var cleanFilename = Path.GetFileName(filename);
         var fullPath = Path.Combine(_rootDirectory, cleanFilename);
 
-        // Compatibilidade Tftpd32: busca case-insensitive (ROMMON pode variar case)
+        // Compatibilidade Tftpd32 / BIOS Fortinet / ROMMON: busca case-insensitive, fuzzy e fallback
         if (!File.Exists(fullPath))
         {
             var dirFiles = Directory.Exists(_rootDirectory) ? Directory.GetFiles(_rootDirectory) : Array.Empty<string>();
             var match = dirFiles.FirstOrDefault(f => Path.GetFileName(f).Equals(cleanFilename, StringComparison.OrdinalIgnoreCase));
-            if (match != null) { fullPath = match; cleanFilename = Path.GetFileName(match); }
-            else if (File.Exists(filename)) fullPath = filename;
+            if (match != null)
+            {
+                fullPath = match;
+                cleanFilename = Path.GetFileName(match);
+            }
+            else if (File.Exists(filename))
+            {
+                fullPath = filename;
+            }
+            else
+            {
+                // Tolerância para BIOS serial (ex: se comeu primeira letra "GT_40F..." vs "FGT_40F..." ou sufixo/prefixo)
+                var fuzzyMatch = dirFiles.FirstOrDefault(f =>
+                {
+                    var fName = Path.GetFileName(f);
+                    return fName.EndsWith(cleanFilename, StringComparison.OrdinalIgnoreCase) ||
+                           cleanFilename.EndsWith(fName, StringComparison.OrdinalIgnoreCase) ||
+                           fName.Contains(cleanFilename, StringComparison.OrdinalIgnoreCase) ||
+                           cleanFilename.Contains(fName, StringComparison.OrdinalIgnoreCase);
+                });
+
+                if (fuzzyMatch != null)
+                {
+                    LogMessage?.Invoke($"[TFTP] Arquivo '{cleanFilename}' associado ao firmware correspondente '{Path.GetFileName(fuzzyMatch)}'.");
+                    fullPath = fuzzyMatch;
+                    cleanFilename = Path.GetFileName(fuzzyMatch);
+                }
+                else
+                {
+                    // Se houver apenas 1 arquivo de firmware (.out ou .bin) no diretório temporário TFTP
+                    var singleFirmware = dirFiles.Where(f => f.EndsWith(".out", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".bin", StringComparison.OrdinalIgnoreCase)).ToList();
+                    if (singleFirmware.Count == 1)
+                    {
+                        LogMessage?.Invoke($"[TFTP] Fallback: Servindo o único arquivo de firmware disponível '{Path.GetFileName(singleFirmware[0])}' para a requisição '{cleanFilename}'.");
+                        fullPath = singleFirmware[0];
+                        cleanFilename = Path.GetFileName(singleFirmware[0]);
+                    }
+                }
+            }
         }
 
         using var transferSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp)
@@ -207,7 +277,7 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
 
                 // Envia pacote e aguarda ACK correspondente ao bloco exato
                 var ackOk = false;
-                for (var retry = 0; retry < 8; retry++)
+                for (var retry = 0; retry < 8 && !ct.IsCancellationRequested; retry++)
                 {
                     transferSocket.Send(dataPacket, SocketFlags.None);
 

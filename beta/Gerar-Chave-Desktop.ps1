@@ -10,9 +10,9 @@ if ([string]::IsNullOrWhiteSpace($Req)) {
     Write-Host ""
     $Req = Read-Host "Cole o pedido SPBREQ do notebook e tecle Enter"
 }
-if ($Req -match "(SPBREQ\.[A-Za-z0-9\-_]+)") { $Req = $Matches[1] }
 $Req = $Req -replace "\s+", ""
-if (-not ($Req -match "^SPBREQ\.[A-Za-z0-9\-_]+$")) {
+if ($Req -match "(SPBREQ\.[A-Za-z0-9\-_=]+)") { $Req = $Matches[1] }
+if (-not ($Req -match "^SPBREQ\.[A-Za-z0-9\-_=]+$")) {
     Write-Host ""
     Write-Host "PEDIDO INVALIDO: nao encontrei um SPBREQ... valido no texto colado."
     Write-Host "Confira se copiou a linha inteira dos dados de ativacao."

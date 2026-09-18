@@ -33,7 +33,7 @@ if (Test-Path $tmp) { Remove-Item -Recurse -Force $tmp }
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 & robocopy C:\SPARC\src "$tmp\src" /MIR /XD bin obj .vs /NFL /NDL /NJH /NJS | Out-Null
 if ($LASTEXITCODE -ge 8) { throw "robocopy falhou ($LASTEXITCODE)" }
-Copy-Item C:\SPARC\Manual_Instrucoes_Operador_SPARC.pdf, C:\SPARC\Manual_Instrucoes_Operador_Killtech.pdf $tmp\
+Copy-Item C:\SPARC\Manual_Instrucoes_Operador_SPARC.pdf $tmp\
 
 Write-Host "== [3/6] Injetando guard (copia) + config..."
 Copy-Item (Join-Path $betaRoot "guard\*.cs") "$tmp\src\NetworkDevice.UI\"

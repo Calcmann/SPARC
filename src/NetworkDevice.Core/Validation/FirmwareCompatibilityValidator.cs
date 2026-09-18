@@ -196,6 +196,41 @@ public static class FirmwareCompatibilityValidator
                 }
                 return new FirmwareValidationResult(true, string.Empty, "msr1000-cmw710-*.ipe");
 
+            case DeviceSeries.FortiGate40F:
+                if (ext != ".out")
+                {
+                    return new FirmwareValidationResult(
+                        false,
+                        $"O arquivo '{fileName}' possui extensão '{ext}'. Equipamentos Fortinet FortiGate aceitam exclusivamente imagens de firmware com extensão .OUT.",
+                        "FGT_40F-v*.out");
+                }
+
+                if (fileName.Contains("msr", StringComparison.OrdinalIgnoreCase) ||
+                    fileName.Contains("cmw", StringComparison.OrdinalIgnoreCase) ||
+                    fileName.StartsWith("c900", StringComparison.OrdinalIgnoreCase) ||
+                    fileName.StartsWith("c800", StringComparison.OrdinalIgnoreCase) ||
+                    fileName.StartsWith("c841", StringComparison.OrdinalIgnoreCase) ||
+                    fileName.StartsWith("c1900", StringComparison.OrdinalIgnoreCase) ||
+                    fileName.Contains("cisco", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new FirmwareValidationResult(
+                        false,
+                        $"O firmware '{fileName}' é incompatível com o Fortinet FortiGate 40F (arquivo destinado a outro fabricante).",
+                        "FGT_40F-v*.out");
+                }
+
+                if (!fileName.Contains("40F", StringComparison.OrdinalIgnoreCase) &&
+                    !fileName.Contains("FGT", StringComparison.OrdinalIgnoreCase) &&
+                    !fileName.Contains("forti", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new FirmwareValidationResult(
+                        false,
+                        $"O firmware '{fileName}' não aparenta ser destinado ao FortiGate 40F (nome esperado: FGT_40F-v*.out).",
+                        "FGT_40F-v*.out");
+                }
+
+                return new FirmwareValidationResult(true, string.Empty, "FGT_40F-v*.out");
+
             default:
                 if (ext == ".ipe" && (fileName.Contains("cisco", StringComparison.OrdinalIgnoreCase) || fileName.StartsWith("c9", StringComparison.OrdinalIgnoreCase) || fileName.StartsWith("c19", StringComparison.OrdinalIgnoreCase)))
                 {

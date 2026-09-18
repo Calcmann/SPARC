@@ -24,6 +24,7 @@
     <ProjectReference Include="..\..\src\NetworkDevice.Core\NetworkDevice.Core.csproj" />
     <ProjectReference Include="..\..\src\NetworkDevice.Protocols\NetworkDevice.Protocols.csproj" />
     <ProjectReference Include="..\..\src\NetworkDevice.Cisco\NetworkDevice.Cisco.csproj" />
+    <ProjectReference Include="..\..\src\NetworkDevice.Fortinet\NetworkDevice.Fortinet.csproj" />
   </ItemGroup>
 
 </Project>

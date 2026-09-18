@@ -29,6 +29,10 @@ public sealed class DeviceDetector : IDeviceDetector
         @"[^\r\n>#]+[>#]\s*$",
         RegexOptions.Compiled);
 
+    public static readonly Regex FortiPromptRegex = new(
+        @"(?i)(?:FortiGate|FGT)[A-Za-z0-9_\-]*\s*(?:\([^()\r\n]*\))?\s*[#$]\s*$",
+        RegexOptions.Compiled);
+
     public static readonly Regex Cisco1900ModelRegex = new(
         @"(?i)(?:\bC19[0-9]{2}\b|\bCISCO19[0-9]{2}(?:[A-Za-z0-9\-\/]+)?\b|\bcisco\s+19[0-9]{2}\b|\b19[0-9]{2}\s*(?:BR|[A-Z]{2})?\s*(?:platform|Series|with|Integrated)\b|\bBootstrap,\s*Version\s*15\.0\(1r\)M|\bc1900-universalk9|\bc1900-)",
         RegexOptions.Compiled);
@@ -51,6 +55,11 @@ public sealed class DeviceDetector : IDeviceDetector
 
     public static readonly Regex Hpe954ModelRegex = new(
         @"(?i)(?:\bMSR\s*95[0-9](?:-[0-9A-Za-z]+)?\b|\bMSR95[0-9](?:-[0-9A-Za-z]+)?\b|\b954\b|\b958\b|\bmsr95[0-9])",
+        RegexOptions.Compiled);
+
+    // Fortinet FortiGate 40F (aditivo — não altera os padrões Cisco/HPE acima).
+    public static readonly Regex FortiGate40FModelRegex = new(
+        @"(?i)(?:\bFortiGate(?:-|\s*)40F\b|\bFGT-?40F\b|\bFGT40F\b|\bFortiOS\b.*\b40F\b)",
         RegexOptions.Compiled);
 
     public async Task<DeviceDetectionResult> DetectAsync(ITransport transport, CancellationToken ct = default)
@@ -97,7 +106,15 @@ public sealed class DeviceDetector : IDeviceDetector
                     current.Contains("BootWare", StringComparison.OrdinalIgnoreCase) ||
                     current.Contains("Please enter q/Q to quit", StringComparison.OrdinalIgnoreCase) ||
                     current.Contains("EXTENDED-BOOTWARE", StringComparison.OrdinalIgnoreCase) ||
-                    current.Contains("BASIC BOOT MENU", StringComparison.OrdinalIgnoreCase))
+                    current.Contains("BASIC BOOT MENU", StringComparison.OrdinalIgnoreCase) ||
+                    current.Contains("FOS boot failed", StringComparison.OrdinalIgnoreCase) ||
+                    current.Contains("Neither DEFAULT nor BACKUP", StringComparison.OrdinalIgnoreCase) ||
+                    current.Contains("Please install valid FOS", StringComparison.OrdinalIgnoreCase) ||
+                    current.Contains("System halted", StringComparison.OrdinalIgnoreCase) ||
+                    current.Contains("CTRL+D", StringComparison.OrdinalIgnoreCase) ||
+                    current.Contains("Enter C,R,T,F,I,B,Q,or H:", StringComparison.OrdinalIgnoreCase) ||
+                    current.Contains("Enter Selection:", StringComparison.OrdinalIgnoreCase) ||
+                    current.Contains("FortiBootLoader", StringComparison.OrdinalIgnoreCase))
                 {
                     break;
                 }
@@ -154,36 +171,50 @@ public sealed class DeviceDetector : IDeviceDetector
                     || rawPrompt.Contains("boot: cannot load", StringComparison.OrdinalIgnoreCase)
                     || rawPrompt.Contains("autoboot failed", StringComparison.OrdinalIgnoreCase);
 
-        var isComwareReady = rawPrompt.Contains("Press ENTER to get started", StringComparison.OrdinalIgnoreCase)
+        // 2. Detecção de Senha / Bloqueio / Prompt Aberto (PasswordProtected / OpenPrompt)
+        var lines = rawPrompt.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        var lastLine = lines.LastOrDefault()?.Trim() ?? rawPrompt;
+        // Procura a última linha que corresponda a um prompt HPE/Cisco/Fortinet em todo o buffer,
+        // pois o buffer pode conter output de comandos (ex.: 'display version' ou 'get system status') após o prompt.
+        var promptLine = lines.LastOrDefault(l => HpePromptRegex.IsMatch(l) || CiscoPromptRegex.IsMatch(l) || FortiPromptRegex.IsMatch(l)) ?? lastLine;
+        var isOpenPrompt = (HpePromptRegex.IsMatch(promptLine) || CiscoPromptRegex.IsMatch(promptLine) || FortiPromptRegex.IsMatch(promptLine)) && !PasswordPromptRegex.IsMatch(promptLine);
+
+        var isUserAuth = !isOpenPrompt && (UserAuthPromptRegex.IsMatch(rawPrompt) || rawPrompt.Contains("Login incorrect", StringComparison.OrdinalIgnoreCase) || rawPrompt.Contains("Login failed", StringComparison.OrdinalIgnoreCase));
+        var isPasswordOnly = !isOpenPrompt && PasswordOnlyPromptRegex.IsMatch(rawPrompt);
+        var isPasswordLocked = !isOpenPrompt && (isUserAuth || isPasswordOnly || PasswordPromptRegex.IsMatch(rawPrompt) || rawPrompt.Contains("Verifying password", StringComparison.OrdinalIgnoreCase));
+
+        var isComwareReady = isOpenPrompt
+                          || rawPrompt.Contains("Press ENTER to get started", StringComparison.OrdinalIgnoreCase)
                           || rawPrompt.Contains("Line con0 is available", StringComparison.OrdinalIgnoreCase);
 
-        var isBootware = !isComwareReady && (
-                          rawPrompt.Contains("BootWare", StringComparison.OrdinalIgnoreCase)
-                       || rawPrompt.Contains("choice(0-", StringComparison.OrdinalIgnoreCase)
+        var isBootware = !isOpenPrompt && !isComwareReady && (
+                          rawPrompt.Contains("choice(0-", StringComparison.OrdinalIgnoreCase)
                        || rawPrompt.Contains("choice (0-", StringComparison.OrdinalIgnoreCase)
                        || rawPrompt.Contains("EXTENDED-BOOTWARE", StringComparison.OrdinalIgnoreCase)
                        || rawPrompt.Contains("BASIC BOOT MENU", StringComparison.OrdinalIgnoreCase)
                        || rawPrompt.Contains("<MAIN MENU>", StringComparison.OrdinalIgnoreCase)
                        || rawPrompt.Contains("Enter your choice", StringComparison.OrdinalIgnoreCase)
                        || rawPrompt.Contains("Please enter q/Q to quit", StringComparison.OrdinalIgnoreCase)
-|| rawPrompt.Contains("Image program does not exist", StringComparison.OrdinalIgnoreCase)
-                        || rawPrompt.Contains("Loading images fails", StringComparison.OrdinalIgnoreCase)
-                        || rawPrompt.Contains("The image does not exist", StringComparison.OrdinalIgnoreCase)
-                        || rawPrompt.Contains("Loading boot image fails", StringComparison.OrdinalIgnoreCase)
-                        || rawPrompt.Contains("The main application file does not exist", StringComparison.OrdinalIgnoreCase)
-                        || rawPrompt.Contains("Booting App fails", StringComparison.OrdinalIgnoreCase));
+                       || rawPrompt.Contains("Image program does not exist", StringComparison.OrdinalIgnoreCase)
+                       || rawPrompt.Contains("Loading images fails", StringComparison.OrdinalIgnoreCase)
+                       || rawPrompt.Contains("The image does not exist", StringComparison.OrdinalIgnoreCase)
+                       || rawPrompt.Contains("Loading boot image fails", StringComparison.OrdinalIgnoreCase)
+                       || rawPrompt.Contains("The main application file does not exist", StringComparison.OrdinalIgnoreCase)
+                       || rawPrompt.Contains("Booting App fails", StringComparison.OrdinalIgnoreCase));
 
-        // 2. Detecção de Senha / Bloqueio (PasswordProtected)
-        var lines = rawPrompt.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-        var lastLine = lines.LastOrDefault()?.Trim() ?? rawPrompt;
-        // Procura a última linha que corresponda a um prompt HPE/Cisco em todo o buffer,
-        // pois o buffer pode conter output de comandos (ex.: 'display version') após o prompt.
-        var promptLine = lines.LastOrDefault(l => HpePromptRegex.IsMatch(l) || CiscoPromptRegex.IsMatch(l)) ?? lastLine;
-        var isOpenPrompt = (HpePromptRegex.IsMatch(promptLine) || CiscoPromptRegex.IsMatch(promptLine)) && !PasswordPromptRegex.IsMatch(promptLine);
-
-        var isUserAuth = !isOpenPrompt && UserAuthPromptRegex.IsMatch(rawPrompt);
-        var isPasswordOnly = !isOpenPrompt && PasswordOnlyPromptRegex.IsMatch(rawPrompt);
-        var isPasswordLocked = !isOpenPrompt && (isUserAuth || isPasswordOnly || PasswordPromptRegex.IsMatch(rawPrompt));
+        // 1b. Detecção de BIOS / Bootloader / Falha de Imagem Fortinet (FortiGate 40F)
+        var isFortiBios = rawPrompt.Contains("FOS boot failed", StringComparison.OrdinalIgnoreCase)
+                       || rawPrompt.Contains("Neither DEFAULT nor BACKUP", StringComparison.OrdinalIgnoreCase)
+                       || rawPrompt.Contains("Please install valid FOS", StringComparison.OrdinalIgnoreCase)
+                       || rawPrompt.Contains("You may try backup", StringComparison.OrdinalIgnoreCase)
+                       || rawPrompt.Contains("System halted", StringComparison.OrdinalIgnoreCase)
+                       || rawPrompt.Contains("CTRL+D", StringComparison.OrdinalIgnoreCase)
+                       || rawPrompt.Contains("Enter C,R,T,F,I,B,Q,or H:", StringComparison.OrdinalIgnoreCase)
+                       || rawPrompt.Contains("Enter Selection:", StringComparison.OrdinalIgnoreCase)
+                       || rawPrompt.Contains("Reading boot image ... failed", StringComparison.OrdinalIgnoreCase)
+                       || (rawPrompt.Contains("Press any key to display configuration menu", StringComparison.OrdinalIgnoreCase) && !isOpenPrompt)
+                       || (rawPrompt.Contains("FortiBootLoader", StringComparison.OrdinalIgnoreCase) && !isOpenPrompt)
+                       || (rawPrompt.Contains("Verifying image", StringComparison.OrdinalIgnoreCase) && rawPrompt.Contains("bad checksum", StringComparison.OrdinalIgnoreCase));
 
         // 3. Detecção de Fabricante
         var isHpe = isBootware
@@ -197,7 +228,20 @@ public sealed class DeviceDetector : IDeviceDetector
             || userSelectedSeries == DeviceSeries.Msr930
             || userSelectedSeries == DeviceSeries.Msr1002;
 
-        var isCisco = isRommon
+        // Bloco Fortinet (aditivo — assinaturas exclusivas FortiOS/FGT/Fortinet; não colidem com HPE/Cisco).
+        var isFortinet = isFortiBios
+            || FortiGate40FModelRegex.IsMatch(rawPrompt)
+            || rawPrompt.Contains("FortiGate", StringComparison.OrdinalIgnoreCase)
+            || rawPrompt.Contains("Fortinet", StringComparison.OrdinalIgnoreCase)
+            || rawPrompt.Contains("FortiOS", StringComparison.OrdinalIgnoreCase)
+            || rawPrompt.Contains("FortiBootLoader", StringComparison.OrdinalIgnoreCase)
+            || rawPrompt.Contains("config system", StringComparison.OrdinalIgnoreCase)
+            || rawPrompt.Contains("config firewall", StringComparison.OrdinalIgnoreCase)
+            || rawPrompt.Contains("FGT", StringComparison.OrdinalIgnoreCase)
+            || rawPrompt.Contains("FOS", StringComparison.OrdinalIgnoreCase)
+            || userSelectedSeries == DeviceSeries.FortiGate40F;
+
+        var isCisco = !isFortinet && (isRommon
             || rawPrompt.Contains("cisco", StringComparison.OrdinalIgnoreCase)
             || rawPrompt.Contains("IOS", StringComparison.OrdinalIgnoreCase)
             || rawPrompt.Contains("initial configuration dialog", StringComparison.OrdinalIgnoreCase)
@@ -205,9 +249,10 @@ public sealed class DeviceDetector : IDeviceDetector
             || CiscoPromptRegex.IsMatch(rawPrompt)
             || userSelectedSeries == DeviceSeries.Series1900
             || userSelectedSeries == DeviceSeries.Isr921
-            || userSelectedSeries == DeviceSeries.Isr841;
+            || userSelectedSeries == DeviceSeries.Isr841);
 
-        var manufacturer = isHpe ? DeviceManufacturer.Hpe :
+        var manufacturer = isFortinet ? DeviceManufacturer.Fortinet :
+                           isHpe ? DeviceManufacturer.Hpe :
                            isCisco ? DeviceManufacturer.Cisco :
                            DeviceManufacturer.Generic;
 
@@ -215,7 +260,11 @@ public sealed class DeviceDetector : IDeviceDetector
         var series = userSelectedSeries;
         if (series == DeviceSeries.Unknown)
         {
-            if (isHpe)
+            if (isFortinet)
+            {
+                series = DeviceSeries.FortiGate40F;
+            }
+            else if (isHpe)
             {
                 if (Hpe1002ModelRegex.IsMatch(rawPrompt))
                 {
@@ -258,14 +307,14 @@ public sealed class DeviceDetector : IDeviceDetector
         BootState bootState;
         FirmwareState fwState;
 
-        if (isBootware || isRommon)
+        if (isBootware || isRommon || isFortiBios)
         {
             opState = DeviceOperatingState.BootFailure;
             accessState = AccessState.RommonOrBootware;
-            bootState = isBootware ? BootState.Bootware : BootState.Rommon;
+            bootState = isBootware ? BootState.Bootware : (isRommon ? BootState.Rommon : BootState.Bootware);
             fwState = FirmwareState.CorruptedOrMissing;
         }
-        else if (isUserAuth)
+        else if (isUserAuth || (isFortinet && isPasswordLocked))
         {
             opState = DeviceOperatingState.PasswordProtected;
             accessState = AccessState.UserAndPasswordRequired;
@@ -276,6 +325,14 @@ public sealed class DeviceDetector : IDeviceDetector
         {
             opState = DeviceOperatingState.PasswordProtected;
             accessState = AccessState.PasswordRequired;
+            bootState = BootState.Normal;
+            fwState = FirmwareState.Ready;
+        }
+        else if (isFortinet && !FortiPromptRegex.IsMatch(promptLine))
+        {
+            // Fortinet sem prompt autenticado (# ou $) está categoricamente protegido por senha
+            opState = DeviceOperatingState.PasswordProtected;
+            accessState = AccessState.UserAndPasswordRequired;
             bootState = BootState.Normal;
             fwState = FirmwareState.Ready;
         }

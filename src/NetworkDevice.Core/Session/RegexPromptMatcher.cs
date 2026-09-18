@@ -5,7 +5,7 @@ namespace NetworkDevice.Core.Session;
 public sealed class RegexPromptMatcher : IPromptMatcher
 {
     private static readonly Regex UniversalPromptRegex = new(
-        @"^(?:(?<rommon>rommon(?:\s+\d+)?\s*>)|(?<cisco>[A-Za-z0-9_.+()/-]+?(?:\([A-Za-z0-9_.+()/-]+\))?[#>])|\[[~*]?(?<hpe_sys>[A-Za-z0-9_.+()/-]+?)\]|<(?<hpe_user>[A-Za-z0-9_.+()/-]+?)>)$",
+        @"^(?:(?<rommon>rommon(?:\s+\d+)?\s*>)|(?<cisco>[A-Za-z0-9_.+()/-]+?(?:\([A-Za-z0-9_.+()/-]+\))?[#>])|\[[~*]?(?<hpe_sys>[A-Za-z0-9_.+()/-]+?)\]|<(?<hpe_user>[A-Za-z0-9_.+()/-]+?)>|(?<forti>[A-Za-z0-9_.\-]+(?:\s+\([^()\r\n]*\))?\s*[#$]))$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private readonly Regex _regex;
@@ -35,7 +35,15 @@ public sealed class RegexPromptMatcher : IPromptMatcher
             trimmed.Equals("[yes/no]", StringComparison.OrdinalIgnoreCase) ||
             trimmed.Equals("[yes]", StringComparison.OrdinalIgnoreCase) ||
             trimmed.Equals("[no]", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.Equals("[y/n]", StringComparison.OrdinalIgnoreCase))
+            trimmed.Equals("[y/n]", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("==", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("[lan", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("[wan", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("[modem", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("[port", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("[internal", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("[onboard", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("[a]", StringComparison.OrdinalIgnoreCase))
             return null;
 
         var m = _regex.Match(trimmed);

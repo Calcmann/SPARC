@@ -70,6 +70,14 @@ public static class WorkflowRouter
             (DeviceManufacturer.Cisco, DeviceSeries.Isr841, WorkflowType.FirmwareRecovery) =>
                 "Cisco Série 800 / C841M — Recuperação de IOS C841 via ROMMON",
 
+            // Fortinet FortiGate 40F (aditivo — braços novos antes do fallback; demais inalterados).
+            (DeviceManufacturer.Fortinet, DeviceSeries.FortiGate40F, WorkflowType.Provisioning) =>
+                "Fortinet FortiGate 40F — Provisionamento Canônico FortiOS",
+            (DeviceManufacturer.Fortinet, DeviceSeries.FortiGate40F, WorkflowType.PasswordRecovery) =>
+                "Fortinet FortiGate 40F — Recuperação de Acesso via Console (maintainer/BIOS)",
+            (DeviceManufacturer.Fortinet, DeviceSeries.FortiGate40F, WorkflowType.FirmwareRecovery) =>
+                "Fortinet FortiGate 40F — Recuperação de Imagem via FortiBootLoader TFTP",
+
             _ => $"{manufacturer} {series} — {workflow}"
         };
     }

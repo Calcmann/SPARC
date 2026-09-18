@@ -70,4 +70,54 @@ public sealed class WanPortInspectorTests
         Assert.True(enc2);
         Assert.False(down2);
     }
+
+    [Fact]
+    public void Forti_DetectaDown_Physical()
+    {
+        const string physical = """
+            ==[wan]
+                    mode: static
+                    ip: 201.30.10.70 255.255.255.252
+                    status: down
+                    speed: 0Mbps (Half Duplex)
+            ==[lan1]
+                    mode: static
+                    ip: 192.168.1.99 255.255.255.0
+                    status: up
+                    speed: 1000Mbps (Full Duplex)
+            """;
+
+        var (enc, down) = WanPortInspector.FortiWanStatus(physical, new[] { "wan" });
+        Assert.True(enc);
+        Assert.True(down);
+
+        var (encLan, downLan) = WanPortInspector.FortiWanStatus(physical, new[] { "lan1" });
+        Assert.True(encLan);
+        Assert.False(downLan);
+    }
+
+    [Fact]
+    public void Forti_DetectaUp_Physical()
+    {
+        const string physical = """
+            ==[wan]
+                    mode: static
+                    ip: 201.30.10.70 255.255.255.252
+                    status: up
+                    speed: 1000Mbps (Full Duplex)
+            """;
+
+        var (enc, down) = WanPortInspector.FortiWanStatus(physical, new[] { "wan" });
+        Assert.True(enc);
+        Assert.False(down);
+    }
+
+    [Fact]
+    public void Forti_DetectaDown_NetlinkFallback()
+    {
+        const string netlink = "if=wan family=2 type=1 index=3 mtu=1500 flags=up,broadcast,multicast state: DOWN carrier: OFF no_carrier";
+        var (enc, down) = WanPortInspector.FortiWanStatus(netlink, new[] { "wan" });
+        Assert.True(enc);
+        Assert.True(down);
+    }
 }

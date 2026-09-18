@@ -48,12 +48,18 @@ public sealed class DeviceSession : IAsyncDisposable
             var deadline = DateTime.UtcNow.Add(_options.ConnectTimeout);
             var maxAttempts = Math.Max(25, (int)(_options.ConnectTimeout.TotalSeconds / 1.2));
             var attempts = 0;
+            var needWakeup = false;
+            var passwordAttemptCount = 0;
+            var usernameAttemptCount = 0;
+            var triedBlankPassword = false;
+            var triedConfiguredPassword = false;
 
             while (attempts++ < maxAttempts && DateTime.UtcNow < deadline)
             {
-                if (attempts > 1)
+                if (needWakeup)
                 {
-                    // Envia Enter periódico para forçar redesenho de prompt
+                    needWakeup = false;
+                    // Envia Enter apenas após timeout para redesenhar prompt acordando o console
                     await _transport.WriteAsync(Text("\r\n"), cancellationToken);
                     await Task.Delay(200, cancellationToken);
                 }
@@ -61,11 +67,12 @@ public sealed class DeviceSession : IAsyncDisposable
                 (LoginStageKind Kind, string Tail, string Full) stage;
                 try
                 {
-                    stage = await ReadUntilLoginOrPromptAsync(TimeSpan.FromSeconds(2), cancellationToken);
+                    stage = await ReadUntilLoginOrPromptAsync(TimeSpan.FromSeconds(3), cancellationToken);
                 }
                 catch (SessionTimeoutException)
                 {
-                    // Tenta novamente na próxima iteração do laço até atingir deadline
+                    // Tenta novamente na próxima iteração do laço até atingir deadline enviando Enter de despertar
+                    needWakeup = true;
                     continue;
                 }
 
@@ -84,20 +91,63 @@ public sealed class DeviceSession : IAsyncDisposable
                 }
                 else if (stage.Kind == LoginStageKind.BootWarePassword)
                 {
-                    await _transport.WriteAsync(Text("\r\n"), cancellationToken);
+                    await _transport.WriteAsync(Text("\r"), cancellationToken);
                     await Task.Delay(300, cancellationToken);
                 }
                 else if (stage.Kind == LoginStageKind.Username)
                 {
                     if (_options.Username is null)
                         throw new LoginException("Dispositivo pediu usuário, mas nenhuma credencial foi fornecida.");
-                    await _transport.WriteAsync(Text(_options.Username + "\r\n"), cancellationToken);
+
+                    usernameAttemptCount++;
+                    string userToSend;
+                    if (usernameAttemptCount == 1)
+                    {
+                        userToSend = _options.Username;
+                    }
+                    else if (_options.Username.Equals("EBT", StringComparison.OrdinalIgnoreCase))
+                    {
+                        userToSend = "admin";
+                    }
+                    else if (_options.Username.Equals("admin", StringComparison.OrdinalIgnoreCase))
+                    {
+                        userToSend = "EBT";
+                    }
+                    else
+                    {
+                        userToSend = _options.Username;
+                    }
+
+                    await _transport.WriteAsync(Text(userToSend + "\r"), cancellationToken);
+                    await Task.Delay(200, cancellationToken);
                 }
                 else if (stage.Kind == LoginStageKind.Password)
                 {
-                    if (_options.Password is null)
-                        throw new LoginException("Dispositivo pediu senha, mas nenhuma credencial foi fornecida.");
-                    await _transport.WriteAsync(Text(_options.Password + "\r\n"), cancellationToken);
+                    passwordAttemptCount++;
+                    string pass;
+                    if (!triedConfiguredPassword && !string.IsNullOrEmpty(_options.Password))
+                    {
+                        pass = _options.Password;
+                        triedConfiguredPassword = true;
+                    }
+                    else if (!triedBlankPassword)
+                    {
+                        pass = "";
+                        triedBlankPassword = true;
+                    }
+                    else
+                    {
+                        pass = _options.Password ?? "";
+                    }
+
+                    await _transport.WriteAsync(Text(pass + "\r"), cancellationToken);
+                    await Task.Delay(300, cancellationToken);
+                }
+                else if (stage.Kind == LoginStageKind.NewPassword || stage.Kind == LoginStageKind.ConfirmPassword)
+                {
+                    var passToSend = !string.IsNullOrEmpty(_options.Password) ? _options.Password : "CQMR";
+                    await _transport.WriteAsync(Text(passToSend + "\r"), cancellationToken);
+                    await Task.Delay(400, cancellationToken);
                 }
                 else if (stage.Kind == LoginStageKind.InteractiveYesNo)
                 {
@@ -214,6 +264,7 @@ public sealed class DeviceSession : IAsyncDisposable
             : conditions;
         var deadline = DateTime.UtcNow.Add(effectiveTimeout);
         var output = new StringBuilder();
+        int autoLoginAttempts = 0;
 
         while (true)
         {
@@ -257,12 +308,35 @@ public sealed class DeviceSession : IAsyncDisposable
                                 return new ExpectResult(current, cond);
                             }
 
-                            var pMatch = Regex.Match(line, @"(?<prompt>[<\[][A-Za-z0-9_\-\.]+[>\]])");
-                            if (pMatch.Success && _options.PromptMatcher.TryMatch(pMatch.Groups["prompt"].Value) is { } pm2)
+                            if (!line.Contains("==") && !line.Contains("status:") && !line.Contains("mode:"))
                             {
-                                CurrentPrompt = pm2.Prompt;
-                                Mode = pm2.Mode;
-                                return new ExpectResult(current, cond);
+                                var pMatch = Regex.Match(line, @"(?<prompt>[<\[][A-Za-z0-9_\-\.]+[>\]])\s*$");
+                                if (pMatch.Success && _options.PromptMatcher.TryMatch(pMatch.Groups["prompt"].Value) is { } pm2)
+                                {
+                                    CurrentPrompt = pm2.Prompt;
+                                    Mode = pm2.Mode;
+                                    return new ExpectResult(current, cond);
+                                }
+                            }
+
+                            // Auto-recuperação caso a sessão caia inesperadamente para login: / username: / password:
+                            if (autoLoginAttempts < 4 && !string.IsNullOrEmpty(_options.Username))
+                            {
+                                if (line.EndsWith("login:", StringComparison.OrdinalIgnoreCase) ||
+                                    line.EndsWith("username:", StringComparison.OrdinalIgnoreCase) ||
+                                    line.EndsWith("user name:", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    autoLoginAttempts++;
+                                    await _transport.WriteAsync(Text(_options.Username + "\r"), cancellationToken);
+                                    await Task.Delay(250, cancellationToken);
+                                    break;
+                                }
+                                else if (line.EndsWith("password:", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    await _transport.WriteAsync(Text((_options.Password ?? "") + "\r"), cancellationToken);
+                                    await Task.Delay(300, cancellationToken);
+                                    break;
+                                }
                             }
                         }
                     }
@@ -327,12 +401,15 @@ public sealed class DeviceSession : IAsyncDisposable
                         return text;
                     }
 
-                    var promptMatch = Regex.Match(line, @"(?<prompt>[<\[][A-Za-z0-9_\-\.]+[>\]])");
-                    if (promptMatch.Success && _options.PromptMatcher.TryMatch(promptMatch.Groups["prompt"].Value) is { } ematch)
+                    if (!line.Contains("==") && !line.Contains("status:") && !line.Contains("mode:"))
                     {
-                        CurrentPrompt = ematch.Prompt;
-                        Mode = ematch.Mode;
-                        return text;
+                        var promptMatch = Regex.Match(line, @"(?<prompt>[<\[][A-Za-z0-9_\-\.]+[>\]])\s*$");
+                        if (promptMatch.Success && _options.PromptMatcher.TryMatch(promptMatch.Groups["prompt"].Value) is { } ematch)
+                        {
+                            CurrentPrompt = ematch.Prompt;
+                            Mode = ematch.Mode;
+                            return text;
+                        }
                     }
                 }
             }
@@ -404,9 +481,13 @@ public sealed class DeviceSession : IAsyncDisposable
             Mode = pm.Mode;
             return LoginStageKind.Prompt;
         }
-        if (Regex.IsMatch(lastLine, @"(?i)^(user|username|user\s*name|login)\s*[:?]"))
+        if (Regex.IsMatch(lastLine, @"(?i)(?:confirm|verify|re-?enter)\s+(?:new\s+)?password\s*[:?]"))
+            return LoginStageKind.ConfirmPassword;
+        if (Regex.IsMatch(lastLine, @"(?i)(?:new\s+password\s*[:?]|please\s+input\s+a\s+new\s+password|change\s+your\s+password)"))
+            return LoginStageKind.NewPassword;
+        if (Regex.IsMatch(lastLine, @"(?i)(?:^|[\s\b@:])(?:user|username|user\s*name|login)\s*[:?]"))
             return LoginStageKind.Username;
-        if (Regex.IsMatch(lastLine, @"(?i)^password\s*[:?]"))
+        if (Regex.IsMatch(lastLine, @"(?i)(?:^|[\s\b])(?:password|login\s+password)\s*[:?]"))
             return LoginStageKind.Password;
         if (Regex.IsMatch(lastLine, @"(?i)(?:Before pressing ENTER you must choose|stop automatic configuration|auto-configuration|autoinstall|press ENTER to get started).*?\[Y/N\]"))
             return LoginStageKind.InteractiveYesNo;
@@ -505,6 +586,8 @@ public sealed class DeviceSession : IAsyncDisposable
         Prompt,
         Username,
         Password,
+        NewPassword,
+        ConfirmPassword,
         InteractiveYesNo,
         InitialDialogNo,
         PressEnter,

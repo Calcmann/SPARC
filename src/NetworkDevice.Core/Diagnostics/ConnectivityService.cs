@@ -619,4 +619,52 @@ public class ConnectivityService
             || (t.Contains("[") && t.Contains("]"))
             || System.Text.RegularExpressions.Regex.IsMatch(t, @"(?i)(?:<.+?>|\[.+?\]|[A-Za-z0-9_.\-/: ]+[#>])\s*$");
     }
+
+    /// <summary>
+    /// Testa se uma porta TCP (ex: 22 SSH, 443 HTTPS, 23 Telnet) está aberta no host.
+    /// </summary>
+    public async Task<(bool IsOpen, long LatencyMs, string? Error)> TestTcpPortAsync(
+        string hostOrIp,
+        int port,
+        int timeoutMs = 5000,
+        string? sourceIpAddress = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(hostOrIp))
+            return (false, 0, "Host não informado");
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(timeoutMs);
+
+        try
+        {
+            TcpClient? client = null;
+            if (!string.IsNullOrWhiteSpace(sourceIpAddress) && System.Net.IPAddress.TryParse(sourceIpAddress, out var srcIp))
+            {
+                try
+                {
+                    client = new TcpClient(new System.Net.IPEndPoint(srcIp, 0));
+                    await client.ConnectAsync(hostOrIp, port, cts.Token);
+                    sw.Stop();
+                    client.Dispose();
+                    return (true, sw.ElapsedMilliseconds, null);
+                }
+                catch
+                {
+                    client?.Dispose();
+                }
+            }
+
+            using var defaultClient = new TcpClient();
+            await defaultClient.ConnectAsync(hostOrIp, port, cts.Token);
+            sw.Stop();
+            return (true, sw.ElapsedMilliseconds, null);
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            return (false, sw.ElapsedMilliseconds, ex.Message);
+        }
+    }
 }
