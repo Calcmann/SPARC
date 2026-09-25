@@ -8,7 +8,7 @@ namespace NetworkDevice.Protocols.Tftp;
 /// Servidor TFTP de altíssima performance (RFC 1350, RFC 2347, RFC 2348 blksize, RFC 2349 tsize/timeout, RFC 7440 windowsize).
 /// Utiliza I/O nativo de sockets UDP síncronos em thread dedicada sem Task.Delay para máxima vazão de hardware (2 a 5 MB/s no TFTP padrão).
 /// </summary>
-public sealed class EmbeddedTftpServer : IAsyncDisposable
+public sealed class EmbeddedTftpServer : IAsyncDisposable, IDisposable
 {
     private const int DefaultPort = 69;
     private const int DefaultBlockSize = 512;
@@ -39,7 +39,7 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
 
     public bool IsRunning => _listenerSocket is not null;
 
-    public void Start()
+    public void Start(bool autoCloseKnownTftpConflicts = true)
     {
         if (IsRunning)
             return;
@@ -51,8 +51,50 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
             ReceiveBufferSize = 2 * 1024 * 1024,
             SendBufferSize = 2 * 1024 * 1024
         };
-        _listenerSocket.Bind(new IPEndPoint(IPAddress.Any, _port));
 
+        try
+        {
+            _listenerSocket.ExclusiveAddressUse = false;
+            _listenerSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+        }
+        catch { }
+
+        try
+        {
+            _listenerSocket.Bind(new IPEndPoint(IPAddress.Any, _port));
+        }
+        catch (SocketException ex) when (
+            ex.SocketErrorCode == SocketError.AddressAlreadyInUse || ex.NativeErrorCode == 10048 ||
+            ex.SocketErrorCode == SocketError.AccessDenied || ex.NativeErrorCode == 10013)
+        {
+            var conflict = UdpPortDiagnostics.FindProcessUsingUdpPort(_port);
+            if (autoCloseKnownTftpConflicts && conflict != null && !conflict.IsCurrentProcess &&
+                (conflict.ProcessName.Contains("tftpd", StringComparison.OrdinalIgnoreCase) ||
+                 conflict.ProcessName.Contains("tftp32", StringComparison.OrdinalIgnoreCase) ||
+                 conflict.ProcessName.Contains("tftp64", StringComparison.OrdinalIgnoreCase)))
+            {
+                LogMessage?.Invoke($"[TFTP] Porta {_port} ocupada pelo aplicativo '{conflict.ProcessName}' (PID {conflict.ProcessId}). Encerrando processo conflitante...");
+                if (UdpPortDiagnostics.TryCloseConflictingProcess(conflict))
+                {
+                    Thread.Sleep(350);
+                    try
+                    {
+                        _listenerSocket.Bind(new IPEndPoint(IPAddress.Any, _port));
+                        goto SocketBound;
+                    }
+                    catch { }
+                }
+            }
+
+            _listenerSocket?.Close();
+            _listenerSocket?.Dispose();
+            _listenerSocket = null;
+
+            var diagnosticMsg = UdpPortDiagnostics.BuildFriendlyConflictMessage(_port, conflict);
+            throw new InvalidOperationException(diagnosticMsg, ex);
+        }
+
+    SocketBound:
         _serverTask = Task.Run(() => ListenLoop(_cts.Token));
         LogMessage?.Invoke($"[TFTP] Servidor TFTP de alta velocidade ativo em 0.0.0.0:{_port} (Diretório: {_rootDirectory})");
     }
@@ -413,6 +455,33 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable
         Array.Copy(msgBytes, 0, packet, 4, msgBytes.Length);
 
         socket.Send(packet, SocketFlags.None);
+    }
+
+    public void Stop()
+    {
+        if (_cts is not null)
+        {
+            _cts.Cancel();
+            _cts.Dispose();
+            _cts = null;
+        }
+
+        _listenerSocket?.Close();
+        _listenerSocket?.Dispose();
+        _listenerSocket = null;
+        _serverTask = null;
+
+        lock (_transfersLock)
+        {
+            _activeTransfers.Clear();
+        }
+
+        LogMessage?.Invoke("[TFTP] Servidor TFTP finalizado.");
+    }
+
+    public void Dispose()
+    {
+        Stop();
     }
 
     public async ValueTask DisposeAsync()

@@ -315,6 +315,48 @@ public class CiscoIOSRecoveryTests
     }
 
     [Fact]
+    public async Task RecoverAndResetAsync_WhenOperatorConfirmsReloadBeforeRestart_ToleratesActivePromptAndRecoversOnRommon()
+    {
+        var transport = new RecoverySimTransport(
+            responder: cmd => cmd switch
+            {
+                "confreg 0x2142" => new[] { "rommon 1 >\r\n" },
+                "reset" => new[] { "System Bootstrap...\r\nWould you like to enter the initial configuration dialog? [yes/no]: " },
+                "no" => new[] { "Press RETURN to get started\r\n", "Router>\r\n" },
+                "enable" => new[] { "Router#\r\n" },
+                "write erase" => new[] { "Erasing the nvram filesystem will remove all configuration files! Continue? [confirm]\r\n", "Router#\r\n" },
+                "configure terminal" => new[] { "Router(config)#\r\n" },
+                "config-register 0x2102" => new[] { "Router(config)#\r\n" },
+                "end" => new[] { "Router#\r\n" },
+                "write memory" => new[] { "Building configuration...\r\n[OK]\r\nRouter#\r\n" },
+                "reload" => new[] { "Proceed with reload? [confirm]\r\n" },
+                _ => Array.Empty<string>()
+            },
+            initialOutput: "User Access Verification\r\nPassword: ",
+            emitLoginPromptFirst: true);
+
+        await using var session = new DeviceSession(transport, new SessionOptions());
+        var recovery = new CiscoIOSRecovery(
+            bootWait: TimeSpan.FromSeconds(2),
+            commandTimeout: TimeSpan.FromSeconds(2),
+            verifyTimeout: TimeSpan.FromSeconds(2),
+            profile: BootInterruptProfiles.Cisco900);
+
+        var reloadRequested = false;
+        await recovery.RecoverAndResetAsync(session, (_, _) =>
+        {
+            // Operador confirma reload antes de reiniciar na energia:
+            // O roteador ainda responde com prompt de login, mas o SPARC tolera e aguarda o ROMMON
+            reloadRequested = true;
+            return Task.CompletedTask;
+        });
+
+        Assert.True(reloadRequested);
+        Assert.Contains("confreg 0x2142", transport.Commands);
+        Assert.Contains("write erase", transport.Commands);
+    }
+
+    [Fact]
     public async Task RecoverAndResetAsync_WhenSilentSerialStream_SchedulerContinuesWithoutDeadlock()
     {
         // Simula silêncio inicial em RX antes do ROMMON responder
@@ -442,10 +484,12 @@ public class CiscoIOSRecoveryTests
         private readonly Func<string, IEnumerable<string>> _responder;
         private readonly string _rommonPrompt;
         private readonly bool _emitOsBootOnInterrupt;
+        private readonly bool _emitLoginPromptFirst;
         private readonly int _initialSilenceMs;
         private readonly Queue<string> _pending = new();
         private string? _remainder;
         private bool _interrupted;
+        private int _interruptCount;
         private DateTime _silenceUntil = DateTime.MinValue;
 
         public RecoverySimTransport(
@@ -453,11 +497,13 @@ public class CiscoIOSRecoveryTests
             string? initialOutput = null,
             string rommonPrompt = "rommon 1 >\r\n",
             bool emitOsBootOnInterrupt = false,
+            bool emitLoginPromptFirst = false,
             int initialSilenceMs = 0)
         {
             _responder = responder;
             _rommonPrompt = rommonPrompt;
             _emitOsBootOnInterrupt = emitOsBootOnInterrupt;
+            _emitLoginPromptFirst = emitLoginPromptFirst;
             _initialSilenceMs = initialSilenceMs;
             if (!string.IsNullOrEmpty(initialOutput))
                 _pending.Enqueue(initialOutput);
@@ -529,6 +575,13 @@ public class CiscoIOSRecoveryTests
 
         private void TriggerInterruptResponse()
         {
+            if (_emitLoginPromptFirst && _interruptCount == 0)
+            {
+                _interruptCount++;
+                _pending.Enqueue("\r\nUser Access Verification\r\nUsername: ");
+                return;
+            }
+
             if (_interrupted)
                 return;
             _interrupted = true;

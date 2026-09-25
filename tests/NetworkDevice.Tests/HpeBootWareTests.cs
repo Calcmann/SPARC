@@ -65,7 +65,7 @@ public sealed class HpeBootWareTests
     {
         var profile = BootInterruptProfiles.FindById(idOrName);
         Assert.Equal("cisco.c841.break", profile.Id);
-        Assert.Equal(BootInterruptMethod.Break, profile.Method);
+        Assert.Equal(BootInterruptMethod.Dual, profile.Method);
     }
 
     [Fact]

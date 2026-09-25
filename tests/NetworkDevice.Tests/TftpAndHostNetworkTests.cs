@@ -33,6 +33,18 @@ public class TftpAndHostNetworkTests
     }
 
     [Fact]
+    public void SerialPorts_Available_Returns_NonNull_List()
+    {
+        var ports = NetworkDevice.Protocols.Serial.SerialPorts.Available();
+        Assert.NotNull(ports);
+        // Garante que todas as portas retornadas comecem com "COM"
+        foreach (var port in ports)
+        {
+            Assert.StartsWith("COM", port);
+        }
+    }
+
+    [Fact]
     public async Task EmbeddedTftpServer_Starts_And_Stops_Cleanly()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), "tftp_test_" + Guid.NewGuid().ToString("N"));
@@ -101,6 +113,78 @@ public class TftpAndHostNetworkTests
             Assert.StartsWith("FortiGate 40F", payload);
 
             await server.StopAsync();
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void UdpPortDiagnostics_BuildFriendlyConflictMessage_TftpdExternal_ReturnsInstructiveAction()
+    {
+        var conflict = new UdpPortConflict(69, 1234, "tftpd64", @"C:\Program Files\Tftpd64\tftpd64.exe", false);
+        var msg = UdpPortDiagnostics.BuildFriendlyConflictMessage(69, conflict);
+
+        Assert.Contains("tftpd64", msg);
+        Assert.Contains("COMO RESOLVER", msg);
+        Assert.Contains("servidor TFTP integrado", msg);
+    }
+
+    [Fact]
+    public void UdpPortDiagnostics_BuildFriendlyConflictMessage_OtherProcess_ReturnsTaskMgrInstructions()
+    {
+        var conflict = new UdpPortConflict(69, 5678, "app-servico", @"C:\Tools\app-servico.exe", false);
+        var msg = UdpPortDiagnostics.BuildFriendlyConflictMessage(69, conflict);
+
+        Assert.Contains("app-servico", msg);
+        Assert.Contains("Gerenciador de Tarefas", msg);
+        Assert.Contains("UDP 69", msg);
+    }
+
+    [Fact]
+    public void UdpPortDiagnostics_BuildFriendlyConflictMessage_CurrentProcess_ReturnsRestartInstruction()
+    {
+        var conflict = new UdpPortConflict(69, Environment.ProcessId, "SPARC", null, true);
+        var msg = UdpPortDiagnostics.BuildFriendlyConflictMessage(69, conflict);
+
+        Assert.Contains("tarefa anterior", msg);
+        Assert.Contains("SPARC", msg);
+    }
+
+    [Fact]
+    public void UdpPortDiagnostics_BuildFriendlyConflictMessage_NullConflict_ReturnsGeneralTftpdAdvice()
+    {
+        var msg = UdpPortDiagnostics.BuildFriendlyConflictMessage(69, null);
+
+        Assert.Contains("Tftpd32, Tftpd64", msg);
+        Assert.Contains("COMO RESOLVER", msg);
+    }
+
+    [Fact]
+    public void EmbeddedTftpServer_WhenPortAlreadyInUse_ThrowsDescriptiveInvalidOperationException()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "tftp_conflict_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var port = 16975;
+            using var blockerSocket = new System.Net.Sockets.Socket(
+                System.Net.Sockets.AddressFamily.InterNetwork,
+                System.Net.Sockets.SocketType.Dgram,
+                System.Net.Sockets.ProtocolType.Udp);
+            blockerSocket.ExclusiveAddressUse = true;
+            blockerSocket.Bind(new IPEndPoint(IPAddress.Any, port));
+
+            using var server = new EmbeddedTftpServer(tempDir, port: port);
+
+            var ex = Assert.Throws<InvalidOperationException>(() => server.Start(autoCloseKnownTftpConflicts: false));
+            Assert.Contains(port.ToString(), ex.Message);
+            Assert.Contains("TFTP", ex.Message);
+            Assert.NotNull(ex.InnerException);
+            Assert.IsType<System.Net.Sockets.SocketException>(ex.InnerException);
         }
         finally
         {

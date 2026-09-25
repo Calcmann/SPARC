@@ -1,9 +1,22 @@
 # Gera a variante BETA (time-bomb + node-locking + chave 30d + ofuscacao) em EXE UNICO,
 # a partir de uma COPIA isolada em TEMP. Nao altera C:\SPARC\src.
 # Padrao: framework-dependent single-file (~20 MB, exige .NET 8 instalado - igual ao exe padrao).
-param([int]$Dias = 30, [string]$Tag = "", [switch]$FrameworkDependent, [switch]$SemOfuscacao)
+param([int]$Dias = 30, [string]$Tag = "", [string]$Versao = "", [switch]$FrameworkDependent, [switch]$SemOfuscacao)
 
 $ErrorActionPreference = "Stop"
+
+# Se $Versao nao for fornecida, extrai automaticamente de NetworkDevice.UI.csproj (ex.: 0.8.1)
+if ([string]::IsNullOrWhiteSpace($Versao)) {
+    $uiCsproj = "C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj"
+    if (Test-Path $uiCsproj) {
+        $xml = [xml](Get-Content $uiCsproj)
+        $Versao = $xml.Project.PropertyGroup.Version
+    }
+    if ([string]::IsNullOrWhiteSpace($Versao)) {
+        $Versao = "0.8.1"
+    }
+}
+
 $running = Get-Process | Where-Object { $_.ProcessName -like "*SPARC-Beta*" -or $_.ProcessName -eq "NetworkDevice.UI" }
 if ($running) {
     Write-Host "Processos em execucao - tentando fechar..."
@@ -16,7 +29,7 @@ $tool = Join-Path $betaRoot "tools\LicenseTool\LicenseTool.csproj"
 $outDir = "C:\SPARC\dist-beta"
 $tmp = Join-Path ([IO.Path]::GetTempPath()) "sparc-beta-build"
 
-if ([string]::IsNullOrWhiteSpace($Tag)) { $Tag = "BETA-TESTES-" + (Get-Date).ToString("yyyyMMdd") }
+if ([string]::IsNullOrWhiteSpace($Tag)) { $Tag = "BETA-TESTES-$Versao-" + (Get-Date).ToString("yyyyMMdd") }
 $expiresIso = ([DateTime]::UtcNow.AddDays($Dias)).ToString("yyyy-MM-ddTHH:mm:ssZ")
 if ($FrameworkDependent) { $sc = "false" } else { $sc = "true" }
 
@@ -120,6 +133,9 @@ if (-not $SemOfuscacao) {
         "  <SkipType name=`"NetworkDevice.UI.CliDiagnosticWindow`" skipFields=`"true`" skipProperties=`"true`" skipMethods=`"true`" skipEvents=`"true`" />`r`n" +
         "  <SkipType name=`"NetworkDevice.UI.PasswordAuthDialog`" skipFields=`"true`" skipProperties=`"true`" skipMethods=`"true`" skipEvents=`"true`" />`r`n" +
         "  <SkipType name=`"NetworkDevice.UI.FortiGateAutoRecoveryWindow`" skipFields=`"true`" skipProperties=`"true`" skipMethods=`"true`" skipEvents=`"true`" />`r`n" +
+        "  <SkipType name=`"NetworkDevice.UI.CliDebugWindow`" skipFields=`"true`" skipProperties=`"true`" skipMethods=`"true`" skipEvents=`"true`" />`r`n" +
+        "  <SkipType name=`"NetworkDevice.UI.UiBrushes`" skipFields=`"true`" skipProperties=`"true`" skipMethods=`"true`" skipEvents=`"true`" />`r`n" +
+        "  <SkipNamespace name=`"NetworkDevice.UI.Beta`" />`r`n" +
         "</Module>`r`n</Obfuscator>`r`n"
     [IO.File]::WriteAllText($xml, $obfXml)
     & $obfExe $xml
@@ -137,7 +153,7 @@ if (-not $SemOfuscacao) {
 
 Write-Host "== [6/6] Publish single-file (self-contained=$sc)..."
 New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-& dotnet publish $uiProj --no-build -c Release -r win-x64 --self-contained $sc /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true /p:DebugType=none -o $outDir
+& dotnet publish $uiProj --no-build -c Release -r win-x64 --self-contained $sc /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true /p:EnableCompressionInSingleFile=true /p:DebugType=none -o $outDir
 if ($LASTEXITCODE -ne 0) { throw "publish falhou" }
 Remove-Item (Join-Path $outDir "*.pdb") -ErrorAction SilentlyContinue
 Remove-Item (Join-Path $outDir "*_cor3.dll"), (Join-Path $outDir "vcruntime140_cor3.dll") -ErrorAction SilentlyContinue
@@ -146,13 +162,15 @@ $final = Join-Path $outDir "SPARC-Beta-Testes.exe"
 if (Test-Path $final) { Remove-Item -Force $final }
 Move-Item -LiteralPath $built -Destination $final
 
-# Gera tambem a copia com versao especifica (ex.: SPARC-Beta-Testes-0.7.exe)
-$versionedExe = Join-Path $outDir "SPARC-Beta-Testes-0.7.exe"
+# Gera tambem a copia com versao especifica (ex.: SPARC-Beta-Testes-0.8.exe)
+$versionedExe = Join-Path $outDir "SPARC-Beta-Testes-$Versao.exe"
 Copy-Item -LiteralPath $final -Destination $versionedExe -Force
+Copy-Item (Join-Path $tmp "Manual_Instrucoes_Operador_SPARC.pdf") (Join-Path $outDir "Manual_Instrucoes_Operador_SPARC.pdf") -Force -ErrorAction SilentlyContinue
 $mb = [math]::Round((Get-Item $final).Length / 1MB, 1)
 
 Write-Host ""
 Write-Host "BETA PRONTA: $final ($mb MB)"
+Write-Host "COPIA COM VERSAO: $versionedExe"
 $expiresLocal = ([DateTime]::Parse($expiresIso).ToUniversalTime()).ToLocalTime().ToString("dd/MM/yyyy HH:mm")
 Write-Host "Tag: $Tag | Build valido ate: $expiresLocal (horario local) | Ofuscado: $(-not $SemOfuscacao)"
 Write-Host "Base C:\SPARC\src: INTACTA (verifique com git status)."

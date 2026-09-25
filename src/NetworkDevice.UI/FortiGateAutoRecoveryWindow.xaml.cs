@@ -56,7 +56,7 @@ public partial class FortiGateAutoRecoveryWindow : Window
             BorderBiosPanel.Visibility = Visibility.Collapsed;
             GridConsoleInput.Visibility = Visibility.Collapsed;
             BtnForcarPromptAtual.Visibility = Visibility.Collapsed;
-            Height = 670;
+            Height = Math.Min(600, Math.Max(460, SystemParameters.WorkArea.Height - 30));
             _interceptarBios = false;
             _biosFormatRequested = false;
         }
@@ -70,13 +70,25 @@ public partial class FortiGateAutoRecoveryWindow : Window
             BorderBiosPanel.Visibility = Visibility.Visible;
             GridConsoleInput.Visibility = Visibility.Visible;
             BtnForcarPromptAtual.Visibility = Visibility.Visible;
-            Height = 700;
+            Height = Math.Min(640, Math.Max(480, SystemParameters.WorkArea.Height - 30));
             _interceptarBios = false;
             _biosFormatRequested = false;
         }
 
         Loaded += async (s, e) =>
         {
+            try
+            {
+                var workArea = SystemParameters.WorkArea;
+                MaxHeight = workArea.Height;
+                MaxWidth = workArea.Width;
+                if (Height > workArea.Height - 20)
+                    Height = Math.Max(MinHeight, workArea.Height - 20);
+                if (Width > workArea.Width - 20)
+                    Width = Math.Max(MinWidth, workArea.Width - 20);
+            }
+            catch { }
+
             if (!_monitorando)
             {
                 _monitorando = true;
@@ -707,9 +719,9 @@ public partial class FortiGateAutoRecoveryWindow : Window
             BtnConcluir.FontSize = 14;
             BtnConcluir.FontWeight = FontWeights.Black;
             BtnConcluir.Padding = new Thickness(22, 10, 22, 10);
-            BtnConcluir.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#15803D"));
+            BtnConcluir.Background = UiBrushes.Get("#15803D");
             BtnConcluir.Foreground = Brushes.White;
-            BtnConcluir.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FDE047"));
+            BtnConcluir.BorderBrush = UiBrushes.Get("#FDE047");
             BtnConcluir.BorderThickness = new Thickness(2.5);
             BtnConcluir.IsEnabled = true;
             BtnConcluir.Focus();

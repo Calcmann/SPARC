@@ -169,14 +169,11 @@ public sealed class HpeComwareUpgrader
 
         await ProgressAsync($"[*] Versão em execução no SO   : {(string.IsNullOrEmpty(currentRunningVersion) ? "Desconhecida" : currentRunningVersion)}");
         await ProgressAsync($"[*] Versão principal no bootloader: {(string.IsNullOrEmpty(currentBootVersion) ? "Desconhecida" : currentBootVersion)}");
-        await ProgressAsync($"[*] Nova versão alvo do arquivo   : {targetVersionTag}");
+        await ProgressAsync($"[*] Nova versão alvo do arquivo   : {(string.IsNullOrEmpty(targetVersionTag) ? "Não identificada" : targetVersionTag)}");
 
-        // Usa contains normalizado para tolerar Release 6749P43 vs R6749P43
-        bool ContainsVersion(string output, string norm) =>
-            !string.IsNullOrEmpty(norm) && output.Contains(norm, StringComparison.OrdinalIgnoreCase);
-
-        var isBootloaderAlreadyUpdated = ContainsVersion(currentBootLoader, targetNorm) || ContainsVersion(currentBootLoader, targetVersionTag);
-        var isOsAlreadyRunningUpdated = ContainsVersion(currentVersionText, targetNorm) || ContainsVersion(currentVersionText, targetVersionTag);
+        // Comparação estrita de versões completas (evita falsos positivos por substrings parciais ou hardcoded)
+        var isBootloaderAlreadyUpdated = !string.IsNullOrEmpty(targetNorm) && !string.IsNullOrEmpty(bootNorm) && bootNorm.Equals(targetNorm, StringComparison.OrdinalIgnoreCase);
+        var isOsAlreadyRunningUpdated = !string.IsNullOrEmpty(targetNorm) && !string.IsNullOrEmpty(runningNorm) && runningNorm.Equals(targetNorm, StringComparison.OrdinalIgnoreCase);
 
         // Prioridade 1: se boot-loader já está na versão alvo, não há nada a oferecer - apenas informar
         if (isBootloaderAlreadyUpdated && isOsAlreadyRunningUpdated)
@@ -908,16 +905,28 @@ public sealed class HpeComwareUpgrader
 
     private static string ExtrairVersaoDeNomeArquivo(string fileName)
     {
-        // 1. Tenta casar sufixo de Release no formato -Rxxxx ou -RxxxxPxx (ex: -R6749P43 ou -R0605P20)
-        var match = Regex.Match(fileName, @"(?i)-(?<ver>R\d+(?:P\d+)?)(?:\.ipe|\.bin|$)", RegexOptions.Compiled);
+        if (string.IsNullOrWhiteSpace(fileName))
+            return string.Empty;
+
+        // 1. Tenta casar sufixo de Release no formato Rxxxx ou RxxxxPxx com delimitador -, _, . ou início
+        var match = Regex.Match(fileName, @"(?i)(?:[-_.]|\b)(?<ver>R\d+(?:P\d+)?)(?:[-_.]|\.ipe|\.bin|$)", RegexOptions.Compiled);
         if (match.Success)
             return match.Groups["ver"].Value.ToUpperInvariant();
 
-        var matchCmw = Regex.Match(fileName, @"(?i)CMW\d+-(?<ver>R\d+(?:P\d+)?)", RegexOptions.Compiled);
+        // 2. Tenta formato CMW710-Rxxxx ou CMW710_Rxxxx
+        var matchCmw = Regex.Match(fileName, @"(?i)CMW\d+[-_](?<ver>R\d+(?:P\d+)?)", RegexOptions.Compiled);
         if (matchCmw.Success)
             return matchCmw.Groups["ver"].Value.ToUpperInvariant();
 
-        return Path.GetFileNameWithoutExtension(fileName).Split('-').LastOrDefault()?.ToUpperInvariant() ?? "R6749P43";
+        // 3. Tenta formato numérico com patch (ex: 6749P43)
+        var matchNumeric = Regex.Match(fileName, @"(?i)(?:[-_.]|\b)(?<ver>\d{4}(?:P\d+)?)(?:[-_.]|\.ipe|\.bin|$)", RegexOptions.Compiled);
+        if (matchNumeric.Success)
+        {
+            var v = matchNumeric.Groups["ver"].Value.ToUpperInvariant();
+            return v.StartsWith("R") ? v : "R" + v;
+        }
+
+        return string.Empty;
     }
 
     private static string ExtrairVersaoDeTexto(string bootLoaderOutput, string versionOutput)

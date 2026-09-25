@@ -16,7 +16,7 @@ internal sealed class ActivationWindow : Window
     {
         Title = "SPARC " + BetaConfig.Tag + " - Ativacao necessaria";
         Width = 620;
-        Height = 560;
+        Height = 490;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         ResizeMode = ResizeMode.NoResize;
         Background = new SolidColorBrush(Color.FromRgb(0x17, 0x17, 0x1A));
@@ -29,27 +29,24 @@ internal sealed class ActivationWindow : Window
         if (!string.IsNullOrWhiteSpace(reason))
             root.Children.Add(new TextBlock { Text = reason, Foreground = new SolidColorBrush(Color.FromRgb(0xF8, 0x71, 0x71)), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) });
 
-        root.Children.Add(new TextBlock { Text = "1) ID desta maquina (informe ao responsavel):", Foreground = Brushes.LightGray });
-        root.Children.Add(new TextBox { Text = machine.DisplayId, IsReadOnly = true, Margin = new Thickness(0, 4, 0, 4), FontFamily = new FontFamily("Consolas"), FontSize = 16 });
-
-        root.Children.Add(new TextBlock { Text = "2) Dados de ativacao (copie e envie junto com o ID):", Foreground = Brushes.LightGray });
-        var txtReq = new TextBox { Text = MachineId.BuildRequest(machine), IsReadOnly = true, TextWrapping = TextWrapping.Wrap, Height = 64, Margin = new Thickness(0, 4, 0, 4), FontFamily = new FontFamily("Consolas"), FontSize = 10, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        root.Children.Add(new TextBlock { Text = "1) Codigo de ativacao desta maquina (copie e envie ao responsavel):", Foreground = Brushes.LightGray, FontWeight = FontWeights.SemiBold });
+        var txtReq = new TextBox { Text = MachineId.BuildRequest(machine), IsReadOnly = true, TextWrapping = TextWrapping.Wrap, Height = 74, Margin = new Thickness(0, 4, 0, 4), FontFamily = new FontFamily("Consolas"), FontSize = 11, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         root.Children.Add(txtReq);
 
         _txtStatus = new TextBlock { Foreground = new SolidColorBrush(Color.FromRgb(0xF8, 0x71, 0x71)), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) };
-        var btnCopy = new Button { Content = "Copiar dados de ativacao", Width = 230, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 8) };
-        btnCopy.Click += (_, _) => { try { Clipboard.SetText(txtReq.Text); _txtStatus.Text = "Dados copiados - envie ao responsavel."; } catch { } };
+        var btnCopy = new Button { Content = "Copiar codigo de ativacao", Width = 220, Height = 28, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 8), FontWeight = FontWeights.SemiBold };
+        btnCopy.Click += (_, _) => { try { Clipboard.SetText(txtReq.Text); _txtStatus.Text = "Codigo copiado para a area de transferencia! Envie-o ao responsavel."; _txtStatus.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80)); } catch { } };
         root.Children.Add(btnCopy);
         root.Children.Add(_txtStatus);
 
-        root.Children.Add(new TextBlock { Text = "3) Cole aqui a chave recebida:", Foreground = Brushes.LightGray });
-        _txtLicense = new TextBox { TextWrapping = TextWrapping.Wrap, Height = 64, Margin = new Thickness(0, 4, 0, 8), FontFamily = new FontFamily("Consolas"), FontSize = 10, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        root.Children.Add(new TextBlock { Text = "2) Cole aqui a chave recebida:", Foreground = Brushes.LightGray, FontWeight = FontWeights.SemiBold });
+        _txtLicense = new TextBox { TextWrapping = TextWrapping.Wrap, Height = 74, Margin = new Thickness(0, 4, 0, 10), FontFamily = new FontFamily("Consolas"), FontSize = 11, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         root.Children.Add(_txtLicense);
 
         var bar = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
-        var btnSair = new Button { Content = "Sair", Width = 100, Margin = new Thickness(0, 0, 8, 0) };
+        var btnSair = new Button { Content = "Sair", Width = 100, Height = 30, Margin = new Thickness(0, 0, 8, 0) };
         btnSair.Click += (_, _) => { DialogResult = false; };
-        var btnAtivar = new Button { Content = "Ativar", Width = 140, FontWeight = FontWeights.Bold };
+        var btnAtivar = new Button { Content = "Ativar SPARC", Width = 140, Height = 30, FontWeight = FontWeights.Bold };
         btnAtivar.Click += (_, _) => TentarAtivar();
         bar.Children.Add(btnSair);
         bar.Children.Add(btnAtivar);

@@ -14995,3 +14995,1167 @@ Tempo Decorrido 00:00:03.41
 As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
 2026-09-18 12:08:53 [OK] Build Release concluido com sucesso.
 2026-09-18 12:08:53 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-21 09:56:36 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-21 09:56:36 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-21 09:56:36 [*] Codigo fonte mais recente que os binarios (MainWindow.xaml.cs 09/18/2026 11:31:03 > 09/17/2026 18:41:06). Recompilando...
+2026-09-21 09:56:36 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(51,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(69,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(614,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(613,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(370,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5338,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(51,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(69,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(614,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(613,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(370,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5338,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+    9 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:15.93
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-21 09:56:57 [OK] Build Release concluido com sucesso.
+2026-09-21 09:56:57 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-21 10:46:11 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-21 10:46:11 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-21 10:46:11 [*] Codigo fonte mais recente que os binarios (MainWindow.xaml.cs 09/21/2026 10:28:29 > 09/21/2026 09:56:50). Recompilando...
+2026-09-21 10:46:11 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5338,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5338,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+    1 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:07.31
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-21 10:46:22 [OK] Build Release concluido com sucesso.
+2026-09-21 10:46:22 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-22 09:29:50 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-22 09:29:50 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-22 09:29:50 [*] Codigo fonte mais recente que os binarios (SerialTransport.cs 09/21/2026 18:52:22 > 09/21/2026 09:56:50). Recompilando...
+2026-09-22 09:29:50 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5343,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5343,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+    2 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:09.63
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-22 09:30:04 [OK] Build Release concluido com sucesso.
+2026-09-22 09:30:04 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-22 09:40:22 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-22 09:40:22 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-22 09:40:22 [*] Codigo fonte mais recente que os binarios (PasswordAuthDialog.g.cs 09/22/2026 09:30:01 > 09/21/2026 18:32:37). Recompilando...
+2026-09-22 09:40:22 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:01.41
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-22 09:40:27 [OK] Build Release concluido com sucesso.
+2026-09-22 09:40:27 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-22 10:47:47 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-22 10:47:47 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-22 10:47:48 [*] Codigo fonte mais recente que os binarios (PasswordAuthDialog.g.cs 09/22/2026 09:30:01 > 09/21/2026 18:32:37). Recompilando...
+2026-09-22 10:47:48 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:09.10
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-22 10:48:01 [OK] Build Release concluido com sucesso.
+2026-09-22 10:48:01 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-22 14:44:58 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-22 14:44:58 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-22 14:44:58 [*] Codigo fonte mais recente que os binarios (PasswordAuthDialog.g.cs 09/22/2026 14:43:45 > 09/22/2026 14:43:42). Recompilando...
+2026-09-22 14:44:58 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:02.91
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-22 14:45:04 [OK] Build Release concluido com sucesso.
+2026-09-22 14:45:04 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-22 17:13:47 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-22 17:13:47 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-22 17:13:47 [*] Codigo fonte mais recente que os binarios (MainWindow.xaml.cs 09/22/2026 15:17:00 > 09/22/2026 14:43:42). Recompilando...
+2026-09-22 17:13:47 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(51,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(69,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(370,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(614,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(613,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5625,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(51,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(69,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(370,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(614,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(613,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5625,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+    9 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:10.47
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-22 17:14:01 [OK] Build Release concluido com sucesso.
+2026-09-22 17:14:01 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-22 19:20:28 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-22 19:20:28 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-22 19:20:28 [*] Codigo fonte mais recente que os binarios (NetworkDevice.UI.AssemblyInfo.cs 09/22/2026 18:50:37 > 09/22/2026 17:13:55). Recompilando...
+2026-09-22 19:20:28 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj restaurado (em 2,44 seg).
+  C:\SPARC\src\NetworkDevice.Protocols\NetworkDevice.Protocols.csproj restaurado (em 2,46 seg).
+  C:\SPARC\src\NetworkDevice.Fortinet\NetworkDevice.Fortinet.csproj restaurado (em 45 ms).
+  C:\SPARC\src\NetworkDevice.Cisco\NetworkDevice.Cisco.csproj restaurado (em 2,52 seg).
+  C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj restaurado (em 2,52 seg).
+  2 de 7 projetos est├úo atualizados para restaura├º├úo.
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(51,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(69,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(370,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(613,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(614,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5653,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(51,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(69,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(370,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(613,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(614,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5653,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+    8 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:12.83
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-22 19:20:45 [OK] Build Release concluido com sucesso.
+2026-09-22 19:20:45 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-23 13:42:22 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-23 13:42:22 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-23 13:42:23 [*] Codigo fonte mais recente que os binarios (DeviceDetector.cs 09/23/2026 13:38:28 > 09/22/2026 19:20:39). Recompilando...
+2026-09-23 13:42:23 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(51,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(69,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(370,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(613,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(614,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5815,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(51,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(69,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(370,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(613,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(614,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5815,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+    9 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:11.81
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-23 13:42:38 [OK] Build Release concluido com sucesso.
+2026-09-23 13:42:38 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-23 15:22:43 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-23 15:22:43 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-23 15:22:43 [*] Codigo fonte mais recente que os binarios (MainWindow.xaml 09/23/2026 14:02:15 > 09/23/2026 13:42:32). Recompilando...
+2026-09-23 15:22:43 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(51,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(69,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(613,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(370,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(614,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5815,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(51,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(69,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(613,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(370,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(614,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5815,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+    8 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:10.13
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-23 15:22:58 [OK] Build Release concluido com sucesso.
+2026-09-23 15:22:58 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-23 15:32:33 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-23 15:32:33 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-23 15:32:33 [*] Codigo fonte mais recente que os binarios (NetworkDevice.UI.AssemblyInfo.cs 09/23/2026 15:22:55 > 09/23/2026 15:22:54). Recompilando...
+2026-09-23 15:32:33 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:01.56
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-23 15:32:38 [OK] Build Release concluido com sucesso.
+2026-09-23 15:32:38 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-23 15:38:03 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-23 15:38:03 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-23 15:38:04 [*] Codigo fonte mais recente que os binarios (NetworkDevice.UI.AssemblyInfo.cs 09/23/2026 15:22:55 > 09/23/2026 15:22:54). Recompilando...
+2026-09-23 15:38:04 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:04.21
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-23 15:38:13 [OK] Build Release concluido com sucesso.
+2026-09-23 15:38:13 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-23 16:00:34 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-23 16:00:34 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-23 16:00:34 [*] Codigo fonte mais recente que os binarios (PasswordAuthDialog.g.cs 09/23/2026 15:55:01 > 09/23/2026 15:22:54). Recompilando...
+2026-09-23 16:00:34 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  c:\SPARC\src\NetworkDevice.Cisco\NetworkDevice.Cisco.csproj restaurado (em 391 ms).
+  C:\SPARC\src\NetworkDevice.Cli\NetworkDevice.Cli.csproj restaurado (em 391 ms).
+  C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj restaurado (em 342 ms).
+  C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj restaurado (em 414 ms).
+  3 de 7 projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> c:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5825,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5825,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+    1 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:03.10
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-23 16:00:41 [OK] Build Release concluido com sucesso.
+2026-09-23 16:00:41 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-23 16:11:09 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-23 16:11:09 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-23 16:11:10 [*] Codigo fonte mais recente que os binarios (NetworkDevice.UI.AssemblyInfo.cs 09/23/2026 16:07:01 > 09/23/2026 16:06:25). Recompilando...
+2026-09-23 16:11:10 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> c:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:01.38
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-23 16:11:15 [OK] Build Release concluido com sucesso.
+2026-09-23 16:11:15 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-23 16:25:20 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-23 16:25:20 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-23 16:25:20 [*] Codigo fonte mais recente que os binarios (NetworkDevice.UI.AssemblyInfo.cs 09/23/2026 16:07:01 > 09/23/2026 16:06:25). Recompilando...
+2026-09-23 16:25:20 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  C:\SPARC\src\NetworkDevice.Cisco\NetworkDevice.Cisco.csproj restaurado (em 2,46 seg).
+  C:\SPARC\src\NetworkDevice.Cli\NetworkDevice.Cli.csproj restaurado (em 2,46 seg).
+  C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj restaurado (em 2,5 seg).
+  C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj restaurado (em 2,52 seg).
+  3 de 7 projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5825,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5825,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+    1 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:09.08
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-23 16:25:32 [OK] Build Release concluido com sucesso.
+2026-09-23 16:25:32 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-23 18:38:10 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-23 18:38:10 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-23 18:38:11 [*] Codigo fonte mais recente que os binarios (Y1564TestWindow.xaml.cs 09/23/2026 18:12:48 > 09/23/2026 18:04:59). Recompilando...
+2026-09-23 18:38:11 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(51,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(69,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(370,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(613,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(614,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5837,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\src\NetworkDevice.UI\Y1564TestWindow.xaml.cs(21,26): warning CS0169: O campo "Y1564TestWindow._lastResult" nunca ├® usado [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(51,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(69,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(370,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(613,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(614,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5837,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\src\NetworkDevice.UI\Y1564TestWindow.xaml.cs(21,26): warning CS0169: O campo "Y1564TestWindow._lastResult" nunca ├® usado [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+    10 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:10.62
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-23 18:38:25 [OK] Build Release concluido com sucesso.
+2026-09-23 18:38:25 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-23 18:56:44 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-23 18:56:44 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-23 18:56:44 [*] Codigo fonte mais recente que os binarios (NetworkDevice.UI.AssemblyInfo.cs 09/23/2026 18:52:53 > 09/23/2026 18:52:51). Recompilando...
+2026-09-23 18:56:44 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:01.39
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-23 18:56:49 [OK] Build Release concluido com sucesso.
+2026-09-23 18:56:49 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-23 19:17:30 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-23 19:17:30 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-23 19:17:30 [*] Codigo fonte mais recente que os binarios (MainWindow.xaml 09/23/2026 19:10:43 > 09/23/2026 18:52:51). Recompilando...
+2026-09-23 19:17:30 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5837,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\src\NetworkDevice.UI\Y1564TestWindow.xaml.cs(21,26): warning CS0169: O campo "Y1564TestWindow._lastResult" nunca ├® usado [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5837,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\src\NetworkDevice.UI\Y1564TestWindow.xaml.cs(21,26): warning CS0169: O campo "Y1564TestWindow._lastResult" nunca ├® usado [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+    3 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:10.55
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-23 19:17:44 [OK] Build Release concluido com sucesso.
+2026-09-23 19:17:44 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-23 19:18:02 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-23 19:18:02 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-23 19:18:02 [*] Codigo fonte mais recente que os binarios (NetworkDevice.UI.AssemblyInfo.cs 09/23/2026 19:17:41 > 09/23/2026 18:52:51). Recompilando...
+2026-09-23 19:18:02 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:01.63
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-23 19:18:08 [OK] Build Release concluido com sucesso.
+2026-09-23 19:18:08 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-23 19:25:01 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-23 19:25:01 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-23 19:25:02 [*] Codigo fonte mais recente que os binarios (NetworkDevice.UI.AssemblyInfo.cs 09/23/2026 19:17:41 > 09/23/2026 18:52:51). Recompilando...
+2026-09-23 19:25:02 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:01.45
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-23 19:25:07 [OK] Build Release concluido com sucesso.
+2026-09-23 19:25:07 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-23 20:02:45 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-23 20:02:45 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-23 20:02:45 [*] Codigo fonte mais recente que os binarios (NetworkDevice.UI.AssemblyInfo.cs 09/23/2026 19:59:58 > 09/23/2026 18:52:51). Recompilando...
+2026-09-23 20:02:45 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:03.09
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-23 20:02:52 [OK] Build Release concluido com sucesso.
+2026-09-23 20:02:52 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-24 10:52:18 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-24 10:52:18 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-24 10:52:19 [*] Codigo fonte mais recente que os binarios (NetworkDevice.UI.AssemblyInfo.cs 09/24/2026 10:33:36 > 09/24/2026 10:33:33). Recompilando...
+2026-09-24 10:52:19 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:03.14
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-24 10:52:25 [OK] Build Release concluido com sucesso.
+2026-09-24 10:52:25 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-24 10:52:53 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-24 10:52:53 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-24 10:52:53 [*] Codigo fonte mais recente que os binarios (NetworkDevice.UI.AssemblyInfo.cs 09/24/2026 10:33:36 > 09/24/2026 10:33:33). Recompilando...
+2026-09-24 10:52:53 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:01.68
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-24 10:52:59 [OK] Build Release concluido com sucesso.
+2026-09-24 10:52:59 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-24 13:07:15 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-24 13:07:15 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-24 13:07:15 [*] Codigo fonte mais recente que os binarios (Y1564TestWindow.g.cs 09/24/2026 13:04:12 > 09/24/2026 13:04:09). Recompilando...
+2026-09-24 13:07:15 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:02.89
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-24 13:07:22 [OK] Build Release concluido com sucesso.
+2026-09-24 13:07:22 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-24 13:57:30 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-24 13:57:30 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-24 13:57:30 [*] Codigo fonte mais recente que os binarios (MainWindow.xaml 09/24/2026 13:31:20 > 09/24/2026 13:04:09). Recompilando...
+2026-09-24 13:57:30 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5837,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\src\NetworkDevice.UI\Y1564TestWindow.xaml.cs(21,26): warning CS0169: O campo "Y1564TestWindow._lastResult" nunca ├® usado [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5837,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\src\NetworkDevice.UI\Y1564TestWindow.xaml.cs(21,26): warning CS0169: O campo "Y1564TestWindow._lastResult" nunca ├® usado [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+    2 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:07.37
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-24 13:57:41 [OK] Build Release concluido com sucesso.
+2026-09-24 13:57:41 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-24 14:03:08 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-24 14:03:08 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-24 14:03:08 [*] Codigo fonte mais recente que os binarios (MainWindow.xaml 09/24/2026 13:59:35 > 09/24/2026 13:04:09). Recompilando...
+2026-09-24 14:03:08 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5837,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\src\NetworkDevice.UI\Y1564TestWindow.xaml.cs(21,26): warning CS0169: O campo "Y1564TestWindow._lastResult" nunca ├® usado [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5837,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\src\NetworkDevice.UI\Y1564TestWindow.xaml.cs(21,26): warning CS0169: O campo "Y1564TestWindow._lastResult" nunca ├® usado [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+    2 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:02.78
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-24 14:03:15 [OK] Build Release concluido com sucesso.
+2026-09-24 14:03:15 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-24 14:13:35 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-24 14:13:35 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-24 14:13:36 [*] Codigo fonte mais recente que os binarios (Y1564TestWindow.xaml.cs 09/24/2026 14:11:40 > 09/24/2026 13:04:09). Recompilando...
+2026-09-24 14:13:36 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(51,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(69,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(370,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(613,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(614,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5851,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(51,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(69,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(370,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(613,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(614,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5851,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+    9 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:04.00
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-24 14:13:45 [OK] Build Release concluido com sucesso.
+2026-09-24 14:13:45 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-24 15:01:11 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-24 15:01:11 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-24 15:01:11 [*] Codigo fonte mais recente que os binarios (Y1564TestWindow.xaml.cs 09/24/2026 14:33:13 > 09/24/2026 14:13:42). Recompilando...
+2026-09-24 15:01:11 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(51,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(69,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(370,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(614,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(613,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5851,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(51,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(69,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(370,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(614,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(613,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5851,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+    9 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:10.77
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-24 15:01:26 [OK] Build Release concluido com sucesso.
+2026-09-24 15:01:26 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-24 16:20:40 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-24 16:20:40 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-24 16:20:40 [*] Codigo fonte mais recente que os binarios (NetworkDevice.UI.csproj 09/24/2026 15:59:28 > 09/24/2026 15:59:04). Recompilando...
+2026-09-24 16:20:40 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj restaurado (em 1,83 seg).
+  C:\SPARC\src\NetworkDevice.Cisco\NetworkDevice.Cisco.csproj restaurado (em 1,93 seg).
+  C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj restaurado (em 1,93 seg).
+  C:\SPARC\src\NetworkDevice.Fortinet\NetworkDevice.Fortinet.csproj restaurado (em 54 ms).
+  C:\SPARC\src\NetworkDevice.Protocols\NetworkDevice.Protocols.csproj restaurado (em 9 ms).
+  C:\SPARC\src\NetworkDevice.Cli\NetworkDevice.Cli.csproj restaurado (em 8 ms).
+  C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj restaurado (em 1,98 seg).
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(51,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(69,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(370,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(614,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(613,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+C:\SPARC\src\NetworkDevice.UI\Y1564TestWindow.xaml.cs(372,9): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5851,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(51,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(69,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(370,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(614,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(613,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.UI\Y1564TestWindow.xaml.cs(372,9): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5851,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+    10 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:13.13
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-24 16:20:57 [OK] Build Release concluido com sucesso.
+2026-09-24 16:20:57 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-24 16:34:36 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-24 16:34:36 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-24 16:34:36 [*] Codigo fonte mais recente que os binarios (NetworkDevice.UI.AssemblyInfo.cs 09/24/2026 16:32:42 > 09/24/2026 16:20:51). Recompilando...
+2026-09-24 16:34:36 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:01.46
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-24 16:34:41 [OK] Build Release concluido com sucesso.
+2026-09-24 16:34:41 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-24 16:43:45 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-24 16:43:45 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-24 16:43:45 [*] Codigo fonte mais recente que os binarios (MainWindow.g.cs 09/24/2026 16:35:38 > 09/24/2026 16:31:55). Recompilando...
+2026-09-24 16:43:45 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+C:\SPARC\src\NetworkDevice.UI\Y1564TestWindow.xaml.cs(383,9): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5805,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.UI\Y1564TestWindow.xaml.cs(383,9): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5805,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+    2 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:02.41
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-24 16:43:51 [OK] Build Release concluido com sucesso.
+2026-09-24 16:43:51 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-24 16:48:51 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-24 16:48:51 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-24 16:48:51 [*] Codigo fonte mais recente que os binarios (Y1564TestWindow.xaml.cs 09/24/2026 16:46:39 > 09/24/2026 16:31:55). Recompilando...
+2026-09-24 16:48:51 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+C:\SPARC\src\NetworkDevice.UI\Y1564TestWindow.xaml.cs(403,9): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5805,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.UI\Y1564TestWindow.xaml.cs(403,9): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5805,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+    2 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:02.21
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-24 16:48:57 [OK] Build Release concluido com sucesso.
+2026-09-24 16:48:57 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-24 17:08:54 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-24 17:08:54 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-24 17:08:55 [*] Codigo fonte mais recente que os binarios (Y1564TestService.cs 09/24/2026 17:02:31 > 09/24/2026 16:31:55). Recompilando...
+2026-09-24 17:08:55 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(51,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(69,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(613,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(370,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(614,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+C:\SPARC\src\NetworkDevice.UI\Y1564TestWindow.xaml.cs(403,9): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5805,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(51,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(69,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(613,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(370,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(614,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.UI\Y1564TestWindow.xaml.cs(403,9): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5805,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+    10 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:08.52
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-24 17:09:07 [OK] Build Release concluido com sucesso.
+2026-09-24 17:09:07 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-24 19:29:39 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-24 19:29:39 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-24 19:29:39 [*] Codigo fonte mais recente que os binarios (Y1564TestWindow.xaml.cs 09/24/2026 19:26:24 > 09/24/2026 17:09:02). Recompilando...
+2026-09-24 19:29:39 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(51,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(69,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Diagnostics\PromiscuousLoopbackService.cs(130,52): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Diagnostics\PromiscuousLoopbackService.cs(147,23): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(370,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(614,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(613,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+C:\SPARC\src\NetworkDevice.UI\Y1564TestWindow.xaml.cs(405,9): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5805,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(51,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(69,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Diagnostics\PromiscuousLoopbackService.cs(130,52): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Diagnostics\PromiscuousLoopbackService.cs(147,23): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(370,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(614,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(613,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+C:\SPARC\src\NetworkDevice.UI\Y1564TestWindow.xaml.cs(405,9): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5805,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+    12 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:17.18
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-24 19:30:00 [OK] Build Release concluido com sucesso.
+2026-09-24 19:30:00 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-24 19:35:36 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-24 19:35:36 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-24 19:35:37 [*] Codigo fonte mais recente que os binarios (Y1564TestWindow.xaml.cs 09/24/2026 19:31:15 > 09/24/2026 19:29:51). Recompilando...
+2026-09-24 19:35:37 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+
+Compila├º├úo com ├¬xito.
+    0 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:02.08
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-24 19:35:42 [OK] Build Release concluido com sucesso.
+2026-09-24 19:35:42 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-25 09:42:42 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-25 09:42:42 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-25 09:42:42 [*] Codigo fonte mais recente que os binarios (Y1564TestWindow.g.cs 09/24/2026 20:30:37 > 09/24/2026 19:29:51). Recompilando...
+2026-09-25 09:42:42 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  Todos os projetos est├úo atualizados para restaura├º├úo.
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+C:\SPARC\src\NetworkDevice.UI\Y1564TestWindow.xaml.cs(405,9): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5805,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.UI\Y1564TestWindow.xaml.cs(405,9): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5805,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+    2 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:07.25
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-25 09:42:52 [OK] Build Release concluido com sucesso.
+2026-09-25 09:42:52 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe
+2026-09-25 10:19:29 [*] Atalho SPARC recriado/corrigido com icone oficial: C:\Users\User\Desktop\SPARC.lnk
+2026-09-25 10:19:29 [*] Modo local: Git nÃ£o sincronizado automaticamente (backup eventual apenas).
+2026-09-25 10:19:29 [*] Codigo fonte mais recente que os binarios (Y1564TestWindow.g.cs 09/25/2026 10:14:12 > 09/24/2026 19:29:51). Recompilando...
+2026-09-25 10:19:29 [*] Compilando Release (dotnet build -c Release)...
+  Determinando os projetos a serem restaurados...
+  C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj restaurado (em 424 ms).
+  C:\SPARC\src\NetworkDevice.Fortinet\NetworkDevice.Fortinet.csproj restaurado (em 424 ms).
+  C:\SPARC\src\NetworkDevice.Cli\NetworkDevice.Cli.csproj restaurado (em 424 ms).
+  C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj restaurado (em 441 ms).
+  C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj restaurado (em 4 ms).
+  C:\SPARC\src\NetworkDevice.Cisco\NetworkDevice.Cisco.csproj restaurado (em 4 ms).
+  C:\SPARC\src\NetworkDevice.Protocols\NetworkDevice.Protocols.csproj restaurado (em 5 ms).
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(51,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(69,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Diagnostics\PromiscuousLoopbackService.cs(138,52): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Diagnostics\PromiscuousLoopbackService.cs(155,23): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(370,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(614,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(613,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+  NetworkDevice.Core -> C:\SPARC\src\NetworkDevice.Core\bin\Release\net8.0\NetworkDevice.Core.dll
+  NetworkDevice.Protocols -> C:\SPARC\src\NetworkDevice.Protocols\bin\Release\net8.0\NetworkDevice.Protocols.dll
+  NetworkDevice.Fortinet -> C:\SPARC\src\NetworkDevice.Fortinet\bin\Release\net8.0\NetworkDevice.Fortinet.dll
+  NetworkDevice.Cisco -> C:\SPARC\src\NetworkDevice.Cisco\bin\Release\net8.0\NetworkDevice.Cisco.dll
+C:\SPARC\src\NetworkDevice.UI\Y1564TestWindow.xaml.cs(405,9): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5805,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+  NetworkDevice.UI -> C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.dll
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+  NetworkDevice.Tests -> C:\SPARC\tests\NetworkDevice.Tests\bin\Release\net8.0\NetworkDevice.Tests.dll
+  NetworkDevice.Cli -> C:\SPARC\src\NetworkDevice.Cli\bin\Release\net8.0\NetworkDevice.Cli.dll
+
+Compila├º├úo com ├¬xito.
+
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(51,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Detection\WanPortInspector.cs(69,34): warning CS8600: Convers├úo de literal nula ou poss├¡vel valor nulo em tipo n├úo anul├ível. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Diagnostics\PromiscuousLoopbackService.cs(138,52): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Diagnostics\PromiscuousLoopbackService.cs(155,23): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(370,26): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. H├í suporte para 'IPv4InterfaceProperties.IsDhcpEnabled' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,20): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal.IsInRole(WindowsBuiltInRole)' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(615,39): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsBuiltInRole.Administrator' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(614,29): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsPrincipal' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.Core\Provisioning\HostNetworkManager.cs(613,28): warning CA1416: Este site de chamada pode ser acessado em todas as plataformas. S├│ h├í suporte para 'WindowsIdentity.GetCurrent()' em: 'windows'. (https://learn.microsoft.com/dotnet/fundamentals/code-analysis/quality-rules/ca1416) [C:\SPARC\src\NetworkDevice.Core\NetworkDevice.Core.csproj]
+C:\SPARC\src\NetworkDevice.UI\Y1564TestWindow.xaml.cs(405,9): warning CS8602: Desrefer├¬ncia de uma refer├¬ncia possivelmente nula. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\src\NetworkDevice.UI\MainWindow.xaml.cs(5805,17): warning CS8604: Poss├¡vel argumento de refer├¬ncia nula para o par├ómetro 'imageFilePath' em 'Task<bool> CiscoIOSUpgrader.UpgradeViaRommonTftpAsync(DeviceSession session, string imageFilePath, string hostIpAddress = "192.168.1.1", string? routerIpAddress = "192.168.1.2", string? subnetMask = "255.255.255.0", string? lanInterface = null, string? localAdapterName = null, Func<string, CancellationToken, Task>? requestOperatorAction = null, CancellationToken cancellationToken = default(CancellationToken))'. [C:\SPARC\src\NetworkDevice.UI\NetworkDevice.UI.csproj]
+C:\SPARC\tests\NetworkDevice.Tests\HpeSaipConfiguratorTests.cs(153,53): warning CS8625: N├úo ├® poss├¡vel converter um literal nulo em um tipo de refer├¬ncia n├úo anul├ível. [C:\SPARC\tests\NetworkDevice.Tests\NetworkDevice.Tests.csproj]
+    12 Aviso(s)
+    0 Erro(s)
+
+Tempo Decorrido 00:00:12.14
+
+As atualiza├º├Áes de carga de trabalho est├úo dispon├¡veis. Execute `dotnet workload list` para obter mais informa├º├Áes.
+2026-09-25 10:19:45 [OK] Build Release concluido com sucesso.
+2026-09-25 10:19:45 [*] Iniciando C:\SPARC\src\NetworkDevice.UI\bin\Release\net8.0-windows\NetworkDevice.UI.exe

@@ -96,26 +96,42 @@ public sealed class DeviceSession : IAsyncDisposable
                 }
                 else if (stage.Kind == LoginStageKind.Username)
                 {
-                    if (_options.Username is null)
-                        throw new LoginException("Dispositivo pediu usuário, mas nenhuma credencial foi fornecida.");
-
                     usernameAttemptCount++;
                     string userToSend;
-                    if (usernameAttemptCount == 1)
+                    if (!string.IsNullOrEmpty(_options.Username))
                     {
-                        userToSend = _options.Username;
-                    }
-                    else if (_options.Username.Equals("EBT", StringComparison.OrdinalIgnoreCase))
-                    {
-                        userToSend = "admin";
-                    }
-                    else if (_options.Username.Equals("admin", StringComparison.OrdinalIgnoreCase))
-                    {
-                        userToSend = "EBT";
+                        if (usernameAttemptCount == 1)
+                        {
+                            userToSend = _options.Username;
+                        }
+                        else if (_options.Username.Equals("EBT", StringComparison.OrdinalIgnoreCase))
+                        {
+                            userToSend = "admin";
+                        }
+                        else if (_options.Username.Equals("admin", StringComparison.OrdinalIgnoreCase))
+                        {
+                            userToSend = "cisco";
+                        }
+                        else if (_options.Username.Equals("cisco", StringComparison.OrdinalIgnoreCase))
+                        {
+                            userToSend = "admin";
+                        }
+                        else
+                        {
+                            userToSend = _options.Username;
+                        }
                     }
                     else
                     {
-                        userToSend = _options.Username;
+                        // Fallback proativo para credenciais comuns de rede (Cisco CP, Admin, EBT)
+                        if (usernameAttemptCount == 1)
+                            userToSend = "cisco";
+                        else if (usernameAttemptCount == 2)
+                            userToSend = "admin";
+                        else if (usernameAttemptCount == 3)
+                            userToSend = "EBT";
+                        else
+                            throw new LoginException("Dispositivo pediu usuário, mas nenhuma credencial foi fornecida ou aceita.");
                     }
 
                     await _transport.WriteAsync(Text(userToSend + "\r"), cancellationToken);
@@ -137,7 +153,15 @@ public sealed class DeviceSession : IAsyncDisposable
                     }
                     else
                     {
-                        pass = _options.Password ?? "";
+                        // Alterna entre senhas padrão conhecidas se a senha configurada ou em branco não tiverem sido aceitas
+                        if (passwordAttemptCount == 2)
+                            pass = "cisco";
+                        else if (passwordAttemptCount == 3)
+                            pass = "CQMR";
+                        else if (passwordAttemptCount == 4)
+                            pass = "admin";
+                        else
+                            pass = _options.Password ?? "";
                     }
 
                     await _transport.WriteAsync(Text(pass + "\r"), cancellationToken);
@@ -265,6 +289,7 @@ public sealed class DeviceSession : IAsyncDisposable
         var deadline = DateTime.UtcNow.Add(effectiveTimeout);
         var output = new StringBuilder();
         int autoLoginAttempts = 0;
+        var lastWakeup = DateTime.MinValue;
 
         while (true)
         {
@@ -275,8 +300,24 @@ public sealed class DeviceSession : IAsyncDisposable
             {
                 AppendCleaned(output, read);
                 await HandlePaginationAsync(output, cancellationToken);
+                await HandleDnsLookupAsync(output, cancellationToken);
 
                 var current = output.ToString();
+
+                // Se estamos aguardando prompt e a console caiu em 'Press RETURN to get started', acorda com Enter
+                if (effectiveConditions.Any(c => c is StopCondition.Prompt) &&
+                    Regex.IsMatch(current, @"(?i)Press\s+(?:RETURN|ENTER)\s+to\s+get\s+started|con0\s+is\s+now\s+available|Line\s+con0\s+is\s+available"))
+                {
+                    if ((DateTime.UtcNow - lastWakeup).TotalSeconds >= 1.5)
+                    {
+                        lastWakeup = DateTime.UtcNow;
+                        await _transport.WriteAsync(Text("\r\n"), cancellationToken);
+                        await Task.Delay(150, cancellationToken);
+                        var ext = DateTime.UtcNow.Add(effectiveTimeout);
+                        if (ext > deadline) deadline = ext;
+                    }
+                }
+
                 var lines = current.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
 
                 // Varre as últimas linhas (até 6 linhas recentes) para não ser enganado por logs de syslog
@@ -369,6 +410,8 @@ public sealed class DeviceSession : IAsyncDisposable
     {
         var output = new StringBuilder();
         var deadline = DateTime.UtcNow.Add(timeout);
+        var lastWakeupAttempt = DateTime.MinValue;
+        var triedFinalWakeup = false;
 
         while (true)
         {
@@ -379,8 +422,33 @@ public sealed class DeviceSession : IAsyncDisposable
             {
                 AppendCleaned(output, read);
                 await HandlePaginationAsync(output, ct);
+                await HandleDnsLookupAsync(output, ct);
 
                 var text = output.ToString();
+
+                // 1. Se a console caiu em 'Press RETURN/ENTER to get started' ou con0 disponível, acorda com Enter imediatamente
+                if (Regex.IsMatch(text, @"(?i)Press\s+(?:RETURN|ENTER)\s+to\s+get\s+started|con0\s+is\s+now\s+available|Line\s+con0\s+is\s+available"))
+                {
+                    if ((DateTime.UtcNow - lastWakeupAttempt).TotalSeconds >= 1.5)
+                    {
+                        lastWakeupAttempt = DateTime.UtcNow;
+                        await _transport.WriteAsync(Text("\r\n"), ct);
+                        await Task.Delay(150, ct);
+                        var ext = DateTime.UtcNow.Add(timeout);
+                        if (ext > deadline) deadline = ext;
+                    }
+                }
+
+                // 2. Syslog de interface (%LINK-3-UPDOWN / %LINEPROTO-) quebra o prompt no Cisco IOS.
+                // Se receber syslog e o prompt não vier em 2s, envia Enter suave para forçar o redesenho do prompt.
+                if ((DateTime.UtcNow - lastWakeupAttempt).TotalSeconds >= 2.5 &&
+                    (text.Contains("%LINK-") || text.Contains("%LINEPROTO-") || text.Contains("%SYS-")))
+                {
+                    lastWakeupAttempt = DateTime.UtcNow;
+                    await _transport.WriteAsync(Text("\r\n"), ct);
+                    await Task.Delay(100, ct);
+                }
+
                 var lines = text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
 
                 for (int i = lines.Length - 1; i >= Math.Max(0, lines.Length - 4); i--)
@@ -415,6 +483,16 @@ public sealed class DeviceSession : IAsyncDisposable
             }
             else if (DateTime.UtcNow >= deadline)
             {
+                // Antes de estourar timeout, tenta acordar console com Enter uma última vez
+                if (!triedFinalWakeup)
+                {
+                    triedFinalWakeup = true;
+                    await _transport.WriteAsync(Text("\r\n"), ct);
+                    await Task.Delay(200, ct);
+                    deadline = DateTime.UtcNow.AddSeconds(3);
+                    continue;
+                }
+
                 throw new SessionTimeoutException(
                     $"Tempo esgotado aguardando prompt do dispositivo. Última saída: {Truncate(output.ToString())}");
             }
@@ -439,6 +517,7 @@ public sealed class DeviceSession : IAsyncDisposable
             {
                 AppendCleaned(output, read);
                 await HandlePaginationAsync(output, ct);
+                await HandleDnsLookupAsync(output, ct);
 
                 var text = output.ToString();
                 // Varre todas as linhas recentes procurando prompt HPE/Cisco mesmo quando banner termina com Press ENTER
@@ -524,6 +603,21 @@ public sealed class DeviceSession : IAsyncDisposable
                 output.Length--;
             await _transport.WriteAsync(new ReadOnlyMemory<byte>(new byte[] { 0x20 }), ct);
             await Task.Delay(40, ct);
+        }
+    }
+
+    private static readonly Regex DnsTranslatingRegex = new(@"Translating\s+""[^""]+""\.\.\.(?:domain\s+server)?", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private async Task HandleDnsLookupAsync(StringBuilder output, CancellationToken ct)
+    {
+        var text = output.ToString();
+        if (DnsTranslatingRegex.IsMatch(text))
+        {
+            // Cisco IOS disparou broadcast DNS para comando desconhecido; aborta imediatamente com Ctrl+Shift+6 (0x1E)
+            await _transport.WriteAsync(new ReadOnlyMemory<byte>(new byte[] { 0x1E }), ct);
+            await Task.Delay(80, ct);
+            await _transport.WriteAsync(Text("\r\n"), ct);
+            await Task.Delay(150, ct);
         }
     }
 

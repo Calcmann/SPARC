@@ -8,6 +8,7 @@ public sealed class BootInterruptScheduler
     private static readonly ReadOnlyMemory<byte> CtrlBBytes = new(new byte[] { 0x02 });
     private static readonly ReadOnlyMemory<byte> CtrlDBytes = new(new byte[] { 0x04 });
     private static readonly ReadOnlyMemory<byte> EscBytes = new(new byte[] { 0x1B });
+    private static readonly ReadOnlyMemory<byte> CrBytes = new(new byte[] { 0x0D });
 
     private readonly ITransport _transport;
     private readonly BootInterruptProfile _profile;
@@ -43,7 +44,18 @@ public sealed class BootInterruptScheduler
             for (var i = 0; i < burst; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                await SendSingleSignalAsync(cancellationToken);
+                try
+                {
+                    await SendSingleSignalAsync(cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception)
+                {
+                    // Falha transitória de driver USB não deve abortar o escalonador de interrupções
+                }
                 TransmissionsCount++;
 
                 if (i < burst - 1 && _profile.BurstInterval > TimeSpan.Zero)
@@ -64,6 +76,8 @@ public sealed class BootInterruptScheduler
         {
             case BootInterruptMethod.CtrlC:
                 await _transport.WriteAsync(CtrlCBytes, ct);
+                await Task.Delay(50, ct);
+                await _transport.WriteAsync(CrBytes, ct);
                 break;
 
             case BootInterruptMethod.CtrlB:
@@ -77,6 +91,8 @@ public sealed class BootInterruptScheduler
             case BootInterruptMethod.Break:
             case BootInterruptMethod.CtrlBreak:
                 await _transport.SendBreakAsync(ct);
+                await Task.Delay(80, ct);
+                await _transport.WriteAsync(CrBytes, ct);
                 break;
 
             case BootInterruptMethod.Esc:
@@ -85,7 +101,10 @@ public sealed class BootInterruptScheduler
 
             case BootInterruptMethod.Dual:
                 await _transport.SendBreakAsync(ct);
+                await Task.Delay(80, ct);
                 await _transport.WriteAsync(CtrlCBytes, ct);
+                await Task.Delay(80, ct);
+                await _transport.WriteAsync(CrBytes, ct);
                 break;
 
             case BootInterruptMethod.None:

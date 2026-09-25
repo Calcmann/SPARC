@@ -246,9 +246,21 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
                        cleanWan.Contains("0/0") ? "GE 0/0" :
                        cleanWan;
 
-        for (var attempt = 1; attempt <= 15; attempt++)
+        for (var attempt = 1; attempt <= 45; attempt++)
         {
-            var output = await session.SendCommandAsync("show ip interface brief", TimeSpan.FromSeconds(10), cancellationToken);
+            string output = string.Empty;
+            try
+            {
+                output = await session.SendCommandAsync("show ip interface brief", TimeSpan.FromSeconds(15), cancellationToken);
+            }
+            catch (SessionTimeoutException)
+            {
+                // Se a console adormeceu durante a ausência do operador ou se um syslog de cabo conectado (%LINK-3-UPDOWN)
+                // omitiu o prompt, envia Enter de despertar e tenta novamente sem abortar
+                await session.WriteLineAsync(string.Empty, cancellationToken);
+                await Task.Delay(1000, cancellationToken);
+                continue;
+            }
             
             var isLanUp = Regex.IsMatch(output, $@"(?i){cleanLan}\s+\S+\s+\w+\s+\w+\s+up\s+up");
             var isWanUp = Regex.IsMatch(output, $@"(?i){cleanWan}\s+\S+\s+\w+\s+\w+\s+up\s+up");
@@ -275,12 +287,16 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
                         $"Todos os procedimentos no Cisco IOS (Upgrade, Provisionamento, Testes ICMP e Banda) são executados EXCLUSIVAMENTE pela porta LAN ({shortLan}).\n\n" +
                         $"Clique em OK após conectar na porta {shortLan}.",
                         cancellationToken);
+
+                    // Operador clicou em OK após trocar o cabo: acorda console do Cisco e absorve syslogs
+                    await session.WriteLineAsync(string.Empty, cancellationToken);
+                    await Task.Delay(800, cancellationToken);
                 }
             }
             else if (!isLanUp)
             {
-                if (progress is not null)
-                    await progress($"[AVISO] Porta LAN ({lanInterface}) sem link físico. Aguardando conexão do cabo de rede...");
+                if (progress is not null && (attempt % 5 == 1))
+                    await progress($"[AVISO] Porta LAN ({lanInterface}) sem link físico. Aguardando conexão do cabo de rede ({attempt}/45)...");
 
                 if (requestOperatorAction is not null && attempt == 1)
                 {
@@ -291,6 +307,10 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
                         $"🟢 {displayLan}\n\n" +
                         $"Clique em OK após conectar o cabo na porta {shortLan}.",
                         cancellationToken);
+
+                    // Operador clicou em OK após conectar o cabo: acorda console do Cisco e absorve syslogs de porta UP
+                    await session.WriteLineAsync(string.Empty, cancellationToken);
+                    await Task.Delay(800, cancellationToken);
                 }
             }
 

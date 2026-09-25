@@ -87,10 +87,37 @@ public sealed class CiscoIOSRecovery
         stateMachine.StateChanged += (state, msg) =>
         {
             StateChanged?.Invoke(state, msg);
-            _ = ProgressAsync($"[{state}] {msg}", cancellationToken);
+            if (state == RecoveryState.Interrupting)
+            {
+                _ = ProgressAsync($"[*] {msg}", cancellationToken);
+            }
+            else if (state == RecoveryState.RommonDetected)
+            {
+                _ = ProgressAsync($"\n[OK] {msg}", cancellationToken);
+            }
+            else if (state == RecoveryState.WaitingReload)
+            {
+                _ = ProgressAsync($"[INSTRUÇÃO] {msg}", cancellationToken);
+            }
+            else
+            {
+                _ = ProgressAsync($"[{state}] {msg}", cancellationToken);
+            }
         };
 
-        stateMachine.OutputReceived += text => session.EmitRawOutput(text);
+        stateMachine.OutputReceived += text =>
+        {
+            session.EmitRawOutput(text);
+            var lines = text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var line in lines)
+            {
+                var trimmed = line.Trim();
+                if (!string.IsNullOrEmpty(trimmed) && trimmed.Length > 2)
+                {
+                    _ = ProgressAsync($"  │ {trimmed}", cancellationToken);
+                }
+            }
+        };
 
         stateMachine.TransitionTo(RecoveryState.Connecting, "Abrindo conexão com o equipamento...");
         await session.ConnectRawAsync(cancellationToken);
@@ -125,7 +152,7 @@ public sealed class CiscoIOSRecovery
         }
 
         // 2) Equipamento bloqueado por senha (PasswordLocked): Solicita reload, limpa buffers e inicia o agendador de interrupção
-        await ProgressAsync("Equipamento bloqueado por senha ou não inicializado. Iniciando processo de quebra via ROMMON...", cancellationToken);
+        await ProgressAsync("Equipamento bloqueado por senha ou não inicializado. Preparando processo de quebra via ROMMON...", cancellationToken);
 
         stateMachine.TransitionTo(RecoveryState.WaitingReload, "Solicitando reload do equipamento...");
         if (requestReload is not null)
@@ -138,6 +165,7 @@ public sealed class CiscoIOSRecovery
 
             await ProgressAsync($"Solicitando reload do equipamento ({_profile.Name})...", cancellationToken);
             await requestReload(reloadInstruction, cancellationToken);
+            await ProgressAsync("Confirmação recebida do operador. Monitorando captura do ROMMON...", cancellationToken);
         }
         else
         {
@@ -154,12 +182,9 @@ public sealed class CiscoIOSRecovery
 
         await ProgressAsync($"Iniciando pulsos de interrupção ({_profile.Name}) e aguardando ROMMON...", cancellationToken);
         using var interruptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var interruptTask = stateMachine.RunInterruptPhaseAsync(interruptCts.Token);
-
         try
         {
-            // 3) Aguarda a conclusão da interrupção
-            var rommonPrompt = await interruptTask;
+            var rommonPrompt = await stateMachine.RunInterruptPhaseAsync(interruptCts.Token);
             var capturedRommonKind = RommonSwitchPrompt.IsMatch(rommonPrompt) ? RommonKind.Switch : RommonKind.Router;
 
             // 4) Executa os passos de recuperação e zeramento

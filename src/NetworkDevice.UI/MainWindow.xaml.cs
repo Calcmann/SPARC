@@ -22,6 +22,7 @@ using NetworkDevice.Core.Provisioning;
 using NetworkDevice.Core.Recovery;
 using NetworkDevice.Core.Routing;
 using NetworkDevice.Core.Session;
+using NetworkDevice.Core.UI;
 using NetworkDevice.Core.Validation;
 using NetworkDevice.Protocols.Hpe;
 using NetworkDevice.Protocols.Serial;
@@ -30,11 +31,11 @@ namespace NetworkDevice.UI;
 
 public partial class MainWindow : Window
 {
-    private static readonly SolidColorBrush BrushSistema = new((Color)ColorConverter.ConvertFromString("#38BDF8")); // Ciano
-    private static readonly SolidColorBrush BrushSucesso = new((Color)ColorConverter.ConvertFromString("#4ADE80")); // Verde
-    private static readonly SolidColorBrush BrushInstrucao = new((Color)ColorConverter.ConvertFromString("#FBBF24")); // Amarelo/Dourado
-    private static readonly SolidColorBrush BrushErro = new((Color)ColorConverter.ConvertFromString("#F87171")); // Vermelho
-    private static readonly SolidColorBrush BrushEquipamento = new((Color)ColorConverter.ConvertFromString("#94A3B8")); // Cinza/Slate
+    private static readonly SolidColorBrush BrushSistema = UiBrushes.Get("#38BDF8"); // Ciano
+    private static readonly SolidColorBrush BrushSucesso = UiBrushes.Get("#4ADE80"); // Verde
+    private static readonly SolidColorBrush BrushInstrucao = UiBrushes.Get("#FBBF24"); // Amarelo/Dourado
+    private static readonly SolidColorBrush BrushErro = UiBrushes.Get("#F87171"); // Vermelho
+    private static readonly SolidColorBrush BrushEquipamento = UiBrushes.Get("#94A3B8"); // Cinza/Slate
 
     private const int WM_DEVICECHANGE = 0x0219;
     private CancellationTokenSource? _cts;
@@ -49,7 +50,11 @@ public partial class MainWindow : Window
     private string? _detectedFortiOsVersion;
     private string? _lastFortiResolvedUser;
     private string? _lastFortiResolvedPass;
+    private string? _lastResolvedUser;
+    private string? _lastResolvedPass;
     private TripleIcmpResult? _lastIcmpResult;
+
+    public const string AppReleaseVersion = "Release v0.8.8 Beta";
 
     public MainWindow()
     {
@@ -59,6 +64,13 @@ public partial class MainWindow : Window
     private bool _serialOk;
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
+        AjustarDimensoesJanelaParaMonitor();
+        InicializarEscalaUi();
+
+        if (TxtAppVersionInicial != null) TxtAppVersionInicial.Text = AppReleaseVersion;
+        if (TxtAppVersionEsteira != null) TxtAppVersionEsteira.Text = AppReleaseVersion;
+        if (TxtAppVersionAuto != null) TxtAppVersionAuto.Text = AppReleaseVersion;
+
         CbModeloRoteadorInicial.SelectedIndex = 0;
         CbInterrupt.SelectedIndex = -1;
         _serialOk = false;
@@ -78,10 +90,152 @@ public partial class MainWindow : Window
     {
         if (msg == WM_DEVICECHANGE)
         {
-            AtualizarPortas();
+            try
+            {
+                AtualizarPortas();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[WndProc] Erro ao tratar WM_DEVICECHANGE: {ex.Message}");
+            }
         }
         return IntPtr.Zero;
     }
+
+    #region Auto-Dimensionamento de Janela e Escala da Interface (14" 1080p / DPI Scaling)
+
+    private double _currentUiScale = 1.0;
+    private bool _isUiScaleAuto = true;
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        AjustarDimensoesJanelaParaMonitor();
+    }
+
+    protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
+    {
+        base.OnDpiChanged(oldDpi, newDpi);
+        AjustarDimensoesJanelaParaMonitor();
+        if (_isUiScaleAuto)
+        {
+            ResetarEscalaUiAuto();
+        }
+    }
+
+    private void AjustarDimensoesJanelaParaMonitor()
+    {
+        try
+        {
+            var workArea = SystemParameters.WorkArea;
+            if (workArea.Width <= 0 || workArea.Height <= 0) return;
+
+            this.MaxHeight = workArea.Height;
+            this.MaxWidth = workArea.Width;
+
+            var (targetWidth, targetHeight) = UiScaleCalculator.CalculateWindowBounds(workArea.Width, workArea.Height, 1060, 820);
+            this.Width = targetWidth;
+            this.Height = targetHeight;
+
+            this.Left = Math.Max(workArea.Left, workArea.Left + (workArea.Width - this.Width) / 2);
+            this.Top = Math.Max(workArea.Top, workArea.Top + (workArea.Height - this.Height) / 2);
+        }
+        catch
+        {
+            // Silencioso se medição falhar
+        }
+    }
+
+    private void InicializarEscalaUi()
+    {
+        var settings = UiScaleCalculator.LoadSettings();
+        _isUiScaleAuto = settings.IsAuto;
+
+        if (_isUiScaleAuto)
+        {
+            var workArea = SystemParameters.WorkArea;
+            _currentUiScale = UiScaleCalculator.CalculateRecommendedScale(workArea.Width, workArea.Height);
+        }
+        else
+        {
+            _currentUiScale = settings.Scale;
+        }
+
+        AplicarEscalaUiVisual(_currentUiScale);
+    }
+
+    private void AplicarEscalaUiVisual(double scale)
+    {
+        _currentUiScale = UiScaleCalculator.ClampScale(scale);
+
+        if (UiScaleTransform != null)
+        {
+            UiScaleTransform.ScaleX = _currentUiScale;
+            UiScaleTransform.ScaleY = _currentUiScale;
+        }
+
+        int percent = (int)Math.Round(_currentUiScale * 100);
+        string text = _isUiScaleAuto ? $"{percent}% (Auto)" : $"{percent}%";
+
+        var cor = _isUiScaleAuto
+            ? UiBrushes.Get("#38BDF8")
+            : UiBrushes.Get("#FBBF24");
+
+        if (TxtZoomLevel != null)
+        {
+            TxtZoomLevel.Text = text;
+            TxtZoomLevel.Foreground = cor;
+        }
+
+        if (TxtZoomLevelEsteira != null)
+        {
+            TxtZoomLevelEsteira.Text = text;
+            TxtZoomLevelEsteira.Foreground = cor;
+        }
+    }
+
+    private void AjustarEscalaUi(double delta)
+    {
+        _isUiScaleAuto = false;
+        AplicarEscalaUiVisual(_currentUiScale + delta);
+        SalvarConfiguracaoEscala();
+    }
+
+    private void ResetarEscalaUiAuto()
+    {
+        _isUiScaleAuto = true;
+        var workArea = SystemParameters.WorkArea;
+        _currentUiScale = UiScaleCalculator.CalculateRecommendedScale(workArea.Width, workArea.Height);
+        AplicarEscalaUiVisual(_currentUiScale);
+        SalvarConfiguracaoEscala();
+    }
+
+    private void SalvarConfiguracaoEscala()
+    {
+        UiScaleCalculator.SaveSettings(new UiDisplaySettings
+        {
+            Scale = _currentUiScale,
+            IsAuto = _isUiScaleAuto
+        });
+    }
+
+    private void BtnZoomMinus_Click(object sender, RoutedEventArgs e) => AjustarEscalaUi(-UiScaleCalculator.ScaleStep);
+    private void BtnZoomPlus_Click(object sender, RoutedEventArgs e) => AjustarEscalaUi(UiScaleCalculator.ScaleStep);
+    private void BtnZoomAuto_Click(object sender, RoutedEventArgs e) => ResetarEscalaUiAuto();
+
+    private void MainWindow_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if ((Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+        {
+            e.Handled = true;
+            if (e.Delta > 0)
+                AjustarEscalaUi(UiScaleCalculator.ScaleStep);
+            else if (e.Delta < 0)
+                AjustarEscalaUi(-UiScaleCalculator.ScaleStep);
+        }
+    }
+
+    #endregion
 
     #region Navegação entre Fases da Esteira
 
@@ -348,20 +502,27 @@ public partial class MainWindow : Window
 
     private void AtualizarBotaoProsseguir()
     {
-        if (BtnAvancarParaEsteira == null) return;
-        var modeloOk = CbModeloRoteadorInicial?.SelectedIndex > 0;
-        var modoManual = RbModoManual?.IsChecked == true;
-        bool insumoOk = _loadedSaipCircuit != null;
-        bool auto = true; // Modo Automático é o padrão (sem seleção de modo na tela inicial)
-        var querAtualizar = ChkAtualizarFirmwareAuto?.IsChecked == true;
-        var firmwareObrigatorio = _isRommonOrBootwareDetected || querAtualizar;
-        var arquivoValido = !string.IsNullOrEmpty(_selectedIosBinPath) && System.IO.File.Exists(_selectedIosBinPath);
-        var firmwareOk = !firmwareObrigatorio || arquivoValido;
-        var ok = _serialOk && modeloOk && insumoOk && firmwareOk;
-        BtnAvancarParaEsteira.IsEnabled = ok;
+        try
+        {
+            if (BtnAvancarParaEsteira == null) return;
+            var modeloOk = CbModeloRoteadorInicial?.SelectedIndex > 0;
+            var modoManual = RbModoManual?.IsChecked == true;
+            bool insumoOk = _loadedSaipCircuit != null;
+            bool auto = true; // Modo Automático é o padrão (sem seleção de modo na tela inicial)
+            var querAtualizar = ChkAtualizarFirmwareAuto?.IsChecked == true;
+            var firmwareObrigatorio = _isRommonOrBootwareDetected || querAtualizar;
+            var arquivoValido = !string.IsNullOrEmpty(_selectedIosBinPath) && System.IO.File.Exists(_selectedIosBinPath);
+            var firmwareOk = !firmwareObrigatorio || arquivoValido;
+            var ok = _serialOk && modeloOk && insumoOk && firmwareOk;
+            BtnAvancarParaEsteira.IsEnabled = ok;
 
-        // Atualiza checklist visual expandido de 4 itens e badges de cada passo
-        AtualizarChecklist(_serialOk, modeloOk, insumoOk, firmwareOk, auto, modoManual, firmwareObrigatorio, querAtualizar, arquivoValido);
+            // Atualiza checklist visual expandido de 4 itens e badges de cada passo
+            AtualizarChecklist(_serialOk, modeloOk, insumoOk, firmwareOk, auto, modoManual, firmwareObrigatorio, querAtualizar, arquivoValido);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[AtualizarBotaoProsseguir] Erro: {ex.Message}");
+        }
     }
 
     private void AtualizarChecklist(
@@ -369,21 +530,23 @@ public partial class MainWindow : Window
         bool isAuto, bool modoManual, bool firmwareObrigatorio = true,
         bool querAtualizar = true, bool arquivoValido = false)
     {
-        var brushVerdeTxt = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#15803D"));
-        var brushVerdeBg = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F0FDF4"));
-        var brushVerdeBorder = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#86EFAC"));
+        try
+        {
+            var brushVerdeTxt = UiBrushes.Get("#15803D");
+            var brushVerdeBg = UiBrushes.Get("#F0FDF4");
+            var brushVerdeBorder = UiBrushes.Get("#86EFAC");
 
-        var brushVermelhoTxt = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#991B1B"));
-        var brushVermelhoBg = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FEF2F2"));
-        var brushVermelhoBorder = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FECDD3"));
+            var brushVermelhoTxt = UiBrushes.Get("#991B1B");
+            var brushVermelhoBg = UiBrushes.Get("#FEF2F2");
+            var brushVermelhoBorder = UiBrushes.Get("#FECDD3");
 
-        var brushAmareloTxt = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#92400E"));
-        var brushAmareloBg = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FFFBEB"));
-        var brushAmareloBorder = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FCD34D"));
+            var brushAmareloTxt = UiBrushes.Get("#92400E");
+            var brushAmareloBg = UiBrushes.Get("#FFFBEB");
+            var brushAmareloBorder = UiBrushes.Get("#FCD34D");
 
-        var brushCinzaTxt = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#64748B"));
-        var brushCinzaBg = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F8FAFC"));
-        var brushCinzaBorder = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#CBD5E1"));
+            var brushCinzaTxt = UiBrushes.Get("#64748B");
+            var brushCinzaBg = UiBrushes.Get("#F8FAFC");
+            var brushCinzaBorder = UiBrushes.Get("#CBD5E1");
 
         var totalEtapas = 4;
         var concluidas = 0;
@@ -552,6 +715,11 @@ public partial class MainWindow : Window
         }
 
         BtnAvancarParaEsteira.ToolTip = concluidas == totalEtapas ? "Pronto para iniciar" : TxtAlertaProsseguir?.Text;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[AtualizarChecklist] Erro defensivo: {ex.Message}");
+        }
     }
 
     private void ConfigurarBotaoTestarTerminal(bool habilitado, string texto, string corBgHex = "#B91C1C", string corFgHex = "#FFFFFF")
@@ -564,8 +732,8 @@ public partial class MainWindow : Window
                 BtnTestarAvaliarInicial.Content = texto;
                 try
                 {
-                    BtnTestarAvaliarInicial.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(corBgHex));
-                    BtnTestarAvaliarInicial.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(corFgHex));
+                    BtnTestarAvaliarInicial.Background = UiBrushes.Get(corBgHex);
+                    BtnTestarAvaliarInicial.Foreground = UiBrushes.Get(corFgHex);
                 }
                 catch { }
             }
@@ -575,7 +743,7 @@ public partial class MainWindow : Window
                 BtnAvaliarEquipamentoTop.Content = texto;
                 try
                 {
-                    BtnAvaliarEquipamentoTop.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(corFgHex));
+                    BtnAvaliarEquipamentoTop.Foreground = UiBrushes.Get(corFgHex);
                 }
                 catch { }
             }
@@ -690,7 +858,7 @@ public partial class MainWindow : Window
             BtnAvaliarEquipamentoTop.Content = "⏹ Cancelar";
         }
         TxtSerialTestStatus.Text = "⏳ Testando...";
-        TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D97706"));
+        TxtSerialTestStatus.Foreground = UiBrushes.Get("#D97706");
 
         try
         {
@@ -706,7 +874,7 @@ public partial class MainWindow : Window
                     TxtSerialTestStatus.Text?.Contains("Senha") != true)
                 {
                     TxtSerialTestStatus.Text = "✅ Serial OK";
-                    TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#16A34A"));
+                    TxtSerialTestStatus.Foreground = UiBrushes.Get("#16A34A");
                 }
             }
             else
@@ -718,7 +886,7 @@ public partial class MainWindow : Window
         {
             EscreverLinha($"[!] Teste serial cancelado.");
             TxtSerialTestStatus.Text = "↺ Cancelado";
-            TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#64748B"));
+            TxtSerialTestStatus.Foreground = UiBrushes.Get("#64748B");
         }
         catch (Exception ex)
         {
@@ -734,14 +902,14 @@ public partial class MainWindow : Window
             if (BtnTestarAvaliarInicial != null && BtnTestarAvaliarInicial.Content?.ToString() != "preencha dados para seguir" && BtnTestarAvaliarInicial.Content?.ToString() != "Aguarde...")
             {
                 BtnTestarAvaliarInicial.Content = "🔌 Testar Conexão Porta Serial";
-                BtnTestarAvaliarInicial.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#B91C1C"));
-                BtnTestarAvaliarInicial.Foreground = new SolidColorBrush(Colors.White);
+                BtnTestarAvaliarInicial.Background = UiBrushes.Get("#B91C1C");
+                BtnTestarAvaliarInicial.Foreground = UiBrushes.Get(Colors.White);
                 BtnTestarAvaliarInicial.IsEnabled = true;
             }
             if (BtnAvaliarEquipamentoTop != null && BtnAvaliarEquipamentoTop.Content?.ToString() != "preencha dados para seguir" && BtnAvaliarEquipamentoTop.Content?.ToString() != "Aguarde...")
             {
                 BtnAvaliarEquipamentoTop.Content = "🔌 Testar Conexão Porta Serial";
-                BtnAvaliarEquipamentoTop.Foreground = new SolidColorBrush(Colors.White);
+                BtnAvaliarEquipamentoTop.Foreground = UiBrushes.Get(Colors.White);
                 BtnAvaliarEquipamentoTop.IsEnabled = true;
             }
         }
@@ -1074,8 +1242,8 @@ public partial class MainWindow : Window
 
             if (!bytesReceived || rxAccumulator.Length == 0)
             {
-                var portasDisp = System.IO.Ports.SerialPort.GetPortNames();
-                var lista = portasDisp.Length > 0 ? string.Join(", ", portasDisp) : "(nenhuma detectada)";
+                var portasDisp = NetworkDevice.Protocols.Serial.SerialPorts.Available();
+                var lista = portasDisp.Count > 0 ? string.Join(", ", portasDisp) : "(nenhuma detectada)";
                 EscreverLinha("\n=================================================================");
                 EscreverLinha($"   ⏱️ [TEMPO LIMITE - 10s] SEM RESPOSTA DA CONEXÃO SERIAL");
                 EscreverLinha("=================================================================");
@@ -1252,8 +1420,8 @@ public partial class MainWindow : Window
                     var modeName = isForti ? "BIOS / Bootloader (Fortinet)" : (isRommon ? "ROMMON (Cisco)" : "BootWare (HPE)");
                     TxtSerialTestStatus.Text = isForti ? "🔴 BIOS / Sem Firmware (Fortinet)" : $"🟡 {modeName}";
                     TxtSerialTestStatus.Foreground = isForti
-                        ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF4444"))
-                        : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D97706"));
+                        ? UiBrushes.Get("#EF4444")
+                        : UiBrushes.Get("#D97706");
 
                     if (ChkAtualizarFirmwareAuto != null)
                     {
@@ -1499,16 +1667,18 @@ public partial class MainWindow : Window
                             {
                                 _lastFortiResolvedUser = resolvedUser;
                                 _lastFortiResolvedPass = resolvedPass;
+                                _lastResolvedUser = resolvedUser;
+                                _lastResolvedPass = resolvedPass;
                                 _skipFactoryReset = true;
                                 _serialOk = true;
                                 TxtSerialTestStatus.Text = "✅ Autenticado";
-                                TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#16A34A"));
+                                TxtSerialTestStatus.Foreground = UiBrushes.Get("#16A34A");
                                 if (TxtChkSerialIcon != null && TxtChkSerialSub != null)
                                 {
                                     TxtChkSerialIcon.Text = "🟢 1b. Serial (Autenticado)";
                                     TxtChkSerialSub.Text = $"{porta} (Acesso Fábrica/Padrão)";
-                                    CardChkSerial.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F0FDF4"));
-                                    CardChkSerial.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#BBF7D0"));
+                                    CardChkSerial.Background = UiBrushes.Get("#F0FDF4");
+                                    CardChkSerial.BorderBrush = UiBrushes.Get("#BBF7D0");
                                 }
                                 EscreverLinha($"[OK] [FORTIGATE] Autenticação automática concluída com sucesso (usuário '{resolvedUser}')! Acesso liberado sem necessidade de intervenção manual.\n");
                                 SelecionarModeloNoCombo("fortinet.fgt40f");
@@ -1526,10 +1696,10 @@ public partial class MainWindow : Window
                             TxtSerialTestStatus.Foreground = BrushErro;
                             if (TxtChkSerialIcon != null && TxtChkSerialSub != null)
                             {
-                                TxtChkSerialIcon.Text = "🟡 1b. Serial (Senha Desconhecida)";
-                                TxtChkSerialSub.Text = $"{porta} (Requer Senha ou Quebra)";
-                                CardChkSerial.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FFFBEB"));
-                                CardChkSerial.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FDE68A"));
+                                    TxtChkSerialIcon.Text = "🟡 1b. Serial (Senha Desconhecida)";
+                                    TxtChkSerialSub.Text = $"{porta} (Requer Senha ou Quebra)";
+                                CardChkSerial.Background = UiBrushes.Get("#FFFBEB");
+                                CardChkSerial.BorderBrush = UiBrushes.Get("#FDE68A");
                             }
                             SelecionarModeloNoCombo("fortinet.fgt40f");
                             ConfigurarBotaoTestarTerminal(true, "🔌 Testar Conexão Porta Serial", "#B91C1C", "#FFFFFF");
@@ -1545,6 +1715,149 @@ public partial class MainWindow : Window
                             EscreverLinha("     1. Informar credenciais conhecidas manualmente;");
                             EscreverLinha("     2. Quebrar senha e zerar configuração de forma autônoma.");
                             EscreverLinha("=================================================================\n");
+                        }
+                        else if (isCisco)
+                        {
+                            bool autoOk = false;
+                            string resolvedUser = "cisco";
+                            string resolvedPass = "cisco";
+
+                            EscreverLinha("[*] [CISCO] Console com autenticação detectado. Testando automaticamente credenciais de fábrica (cisco/cisco, admin/cisco, admin/admin) e padrão SPARC (EBT/CQMR)...");
+                            ConfigurarBotaoTestarTerminal(false, "Autenticando...", "#FEF2F2", "#DC2626");
+                            await Task.Delay(250);
+
+                            // 1. Padrão Cisco Configuration Professional (CCP) de fábrica: cisco / cisco
+                            autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "cisco", "cisco");
+                            if (!autoOk)
+                            {
+                                // 2. admin / cisco
+                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "admin", "cisco");
+                                resolvedUser = "admin";
+                                resolvedPass = "cisco";
+                            }
+                            if (!autoOk)
+                            {
+                                // 3. admin / admin
+                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "admin", "admin");
+                                resolvedUser = "admin";
+                                resolvedPass = "admin";
+                            }
+                            if (!autoOk)
+                            {
+                                // 4. EBT / CQMR
+                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "EBT", "CQMR");
+                                resolvedUser = "EBT";
+                                resolvedPass = "CQMR";
+                            }
+                            if (!autoOk)
+                            {
+                                // 5. admin / CQMR
+                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "admin", "CQMR");
+                                resolvedUser = "admin";
+                                resolvedPass = "CQMR";
+                            }
+                            if (!autoOk && !requiresUserAndPass)
+                            {
+                                // 6. Senha única de console: cisco / CQMR
+                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, null, "cisco");
+                                resolvedUser = "";
+                                resolvedPass = "cisco";
+                                if (!autoOk)
+                                {
+                                    autoOk = await TentarLoginSerialDiretoAsync(porta, baud, null, "CQMR");
+                                    resolvedPass = "CQMR";
+                                }
+                            }
+
+                            if (autoOk)
+                            {
+                                _lastResolvedUser = resolvedUser;
+                                _lastResolvedPass = resolvedPass;
+                                _skipFactoryReset = true;
+                                _serialOk = true;
+                                TxtSerialTestStatus.Text = "✅ Autenticado";
+                                TxtSerialTestStatus.Foreground = UiBrushes.Get("#16A34A");
+                                if (TxtChkSerialIcon != null && TxtChkSerialSub != null)
+                                {
+                                    TxtChkSerialIcon.Text = "🟢 1b. Serial (Autenticado)";
+                                    TxtChkSerialSub.Text = $"{porta} (Acesso Fábrica/Padrão)";
+                                    CardChkSerial.Background = UiBrushes.Get("#F0FDF4");
+                                    CardChkSerial.BorderBrush = UiBrushes.Get("#BBF7D0");
+                                }
+                                EscreverLinha($"[OK] [CISCO] Autenticação automática concluída com sucesso (usuário '{resolvedUser}')! Acesso liberado sem necessidade de intervenção manual.\n");
+                                ConfigurarBotaoTestarTerminal(true, "🔌 Testar Conexão Porta Serial", "#B91C1C", "#FFFFFF");
+                                AtualizarBotaoProsseguir();
+
+                                await ExecutarAvaliacaoPosLoginAsync(porta, baud);
+                                return;
+                            }
+
+                            EscreverLinha("\n=================================================================");
+                            EscreverLinha("   🔒 [CISCO] SENHA PERSONALIZADA DETECTADA");
+                            EscreverLinha("=================================================================");
+                            EscreverLinha("  O roteador Cisco conectado está protegido por credenciais personalizadas");
+                            EscreverLinha("  diferentes do padrão de fábrica (cisco/cisco) e padrão SPARC (EBT/CQMR).");
+                            EscreverLinha("  👉 Escolha uma opção no diálogo:");
+                            EscreverLinha("     1. Informar credenciais conhecidas manualmente;");
+                            EscreverLinha("     2. Zerar a configuração via ROMMON para remover a senha.");
+                            EscreverLinha("=================================================================\n");
+                        }
+                        else if (isHpe)
+                        {
+                            bool autoOk = false;
+                            string resolvedUser = "admin";
+                            string resolvedPass = "admin";
+
+                            EscreverLinha("[*] [HPE] Console com autenticação detectado. Testando automaticamente credenciais de fábrica e padrão SPARC...");
+                            ConfigurarBotaoTestarTerminal(false, "Autenticando...", "#FEF2F2", "#DC2626");
+                            await Task.Delay(250);
+
+                            // 1. admin / admin
+                            autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "admin", "admin");
+                            if (!autoOk)
+                            {
+                                // 2. admin / CQMR
+                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "admin", "CQMR");
+                                resolvedUser = "admin";
+                                resolvedPass = "CQMR";
+                            }
+                            if (!autoOk)
+                            {
+                                // 3. EBT / CQMR
+                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "EBT", "CQMR");
+                                resolvedUser = "EBT";
+                                resolvedPass = "CQMR";
+                            }
+                            if (!autoOk && !requiresUserAndPass)
+                            {
+                                // 4. Senha em branco
+                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, null, "");
+                                resolvedUser = "";
+                                resolvedPass = "";
+                            }
+
+                            if (autoOk)
+                            {
+                                _lastResolvedUser = resolvedUser;
+                                _lastResolvedPass = resolvedPass;
+                                _skipFactoryReset = true;
+                                _serialOk = true;
+                                TxtSerialTestStatus.Text = "✅ Autenticado";
+                                TxtSerialTestStatus.Foreground = UiBrushes.Get("#16A34A");
+                                if (TxtChkSerialIcon != null && TxtChkSerialSub != null)
+                                {
+                                    TxtChkSerialIcon.Text = "🟢 1b. Serial (Autenticado)";
+                                    TxtChkSerialSub.Text = $"{porta} (Acesso Fábrica/Padrão)";
+                                    CardChkSerial.Background = UiBrushes.Get("#F0FDF4");
+                                    CardChkSerial.BorderBrush = UiBrushes.Get("#BBF7D0");
+                                }
+                                EscreverLinha($"[OK] [HPE] Autenticação automática concluída com sucesso (usuário '{resolvedUser}')! Acesso liberado sem necessidade de intervenção manual.\n");
+                                ConfigurarBotaoTestarTerminal(true, "🔌 Testar Conexão Porta Serial", "#B91C1C", "#FFFFFF");
+                                AtualizarBotaoProsseguir();
+
+                                await ExecutarAvaliacaoPosLoginAsync(porta, baud);
+                                return;
+                            }
                         }
 
                         string? loginErrorMessage = null;
@@ -1565,8 +1878,8 @@ public partial class MainWindow : Window
                                     {
                                         TxtChkSerialIcon.Text = "🟡 1b. Serial (Senha Desconhecida)";
                                         TxtChkSerialSub.Text = $"{porta} (Requer Senha ou Quebra)";
-                                        CardChkSerial.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FFFBEB"));
-                                        CardChkSerial.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FDE68A"));
+                                        CardChkSerial.Background = UiBrushes.Get("#FFFBEB");
+                                        CardChkSerial.BorderBrush = UiBrushes.Get("#FDE68A");
                                     }
                                     EscreverLinha("[AVISO] Diálogo fechado. FortiGate 40F permanece bloqueado por senha desconhecida.");
                                 }
@@ -1592,13 +1905,13 @@ public partial class MainWindow : Window
                                         _skipFactoryReset = true;
                                         _serialOk = true;
                                         TxtSerialTestStatus.Text = "✅ Autenticado";
-                                        TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#16A34A"));
+                                        TxtSerialTestStatus.Foreground = UiBrushes.Get("#16A34A");
                                         if (TxtChkSerialIcon != null && TxtChkSerialSub != null)
                                         {
                                             TxtChkSerialIcon.Text = "🟢 1b. Serial (Autenticado)";
                                             TxtChkSerialSub.Text = $"{porta} (Acesso Recuperado)";
-                                            CardChkSerial.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F0FDF4"));
-                                            CardChkSerial.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#BBF7D0"));
+                                            CardChkSerial.Background = UiBrushes.Get("#F0FDF4");
+                                            CardChkSerial.BorderBrush = UiBrushes.Get("#BBF7D0");
                                         }
                                         EscreverLinha("[OK] [FORTIGATE] Senha restaurada ao padrão de fábrica com sucesso! Prossiga com o provisionamento padrão.\n");
                                         SelecionarModeloNoCombo("fortinet.fgt40f");
@@ -1629,7 +1942,7 @@ public partial class MainWindow : Window
                                         _skipFactoryReset = false;
                                         _serialOk = true;
                                         TxtSerialTestStatus.Text = "🔒 Recuperar/Zerar";
-                                        TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626"));
+                                        TxtSerialTestStatus.Foreground = UiBrushes.Get("#DC2626");
                                         if (TxtChkSerialIcon != null && TxtChkSerialSub != null)
                                         {
                                             TxtChkSerialIcon.Text = "🟢 1b. Serial (Com Senha)";
@@ -1646,7 +1959,7 @@ public partial class MainWindow : Window
 
                                 _skipFactoryReset = false;
                                 TxtSerialTestStatus.Text = "🔒 Zerar Configuração";
-                                TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626"));
+                                TxtSerialTestStatus.Foreground = UiBrushes.Get("#DC2626");
                                 if (TxtChkSerialIcon != null && TxtChkSerialSub != null)
                                 {
                                     TxtChkSerialIcon.Text = "🟢 1b. Serial (Com Senha)";
@@ -1708,6 +2021,8 @@ public partial class MainWindow : Window
 
                                 if (loginOk)
                                 {
+                                    _lastResolvedUser = user;
+                                    _lastResolvedPass = pass;
                                     if (isForti)
                                     {
                                         _lastFortiResolvedUser = user;
@@ -1716,13 +2031,13 @@ public partial class MainWindow : Window
                                     _skipFactoryReset = true;
                                     _serialOk = true;
                                     TxtSerialTestStatus.Text = "✅ Autenticado";
-                                    TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#16A34A"));
+                                    TxtSerialTestStatus.Foreground = UiBrushes.Get("#16A34A");
                                     if (TxtChkSerialIcon != null && TxtChkSerialSub != null)
                                     {
                                         TxtChkSerialIcon.Text = "🟢 1b. Serial (Autenticado)";
                                         TxtChkSerialSub.Text = $"{porta} (Zeramento Pulado)";
-                                        CardChkSerial.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F0FDF4"));
-                                        CardChkSerial.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#BBF7D0"));
+                                        CardChkSerial.Background = UiBrushes.Get("#F0FDF4");
+                                        CardChkSerial.BorderBrush = UiBrushes.Get("#BBF7D0");
                                     }
                                     EscreverLinha("[OK] Autenticação realizada com sucesso! Acesso ao console concedido sem necessidade de zeramento.\n");
 
@@ -1738,7 +2053,7 @@ public partial class MainWindow : Window
                                 {
                                     _skipFactoryReset = false;
                                     TxtSerialTestStatus.Text = "🔒 Falha Login";
-                                    TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#DC2626"));
+                                    TxtSerialTestStatus.Foreground = UiBrushes.Get("#DC2626");
                                     var credMsg = requiresUserAndPass ? "Usuário ou senha incorretos." : "Senha incorreta.";
                                     EscreverLinha($"[AVISO] {credMsg} Acesso negado pelo equipamento em {porta}.");
                                     EscreverLinha("👉 Escolha entre informar uma nova combinação de credenciais ou optar por zerar a configuração de fábrica.\n");
@@ -1754,7 +2069,7 @@ public partial class MainWindow : Window
                     _serialOk = true;
                     _skipFactoryReset = true;
                     TxtSerialTestStatus.Text = "✅ Serial OK";
-                    TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#16A34A"));
+                    TxtSerialTestStatus.Foreground = UiBrushes.Get("#16A34A");
 
                     string especificoNome;
                     if (isHpe)
@@ -1802,12 +2117,17 @@ public partial class MainWindow : Window
                         especificoNome = "Roteador";
                     }
 
+                    bool isUserExec = isCisco && prompt.Trim().EndsWith(">");
+                    string estadoDesc = isUserExec
+                        ? "🟡 Terminal Operacional (Modo Usuário Router> — Validando privilégios...)"
+                        : "✅ Terminal Operacional Aberto";
+
                     EscreverLinha($"\n=================================================================");
-                    EscreverLinha($"   🟢 CONEXÃO SERIAL VALIDADA COM SUCESSO (ACESSO LIVRE)");
+                    EscreverLinha($"   🟢 CONEXÃO SERIAL FÍSICA VALIDADA COM SUCESSO");
                     EscreverLinha($"=================================================================");
                     EscreverLinha($"  Porta Serial : {porta} @ {baud} bps");
                     EscreverLinha($"  Equipamento  : 🖧 {especificoNome}");
-                    EscreverLinha($"  Estado       : ✅ Terminal Operacional Aberto (Sem Senha)");
+                    EscreverLinha($"  Estado       : {estadoDesc}");
                     EscreverLinha($"[*] Iniciando coleta automática de inventário e avaliação do equipamento...\n");
 
                     Dispatcher.BeginInvoke(new Action(async () =>
@@ -1822,15 +2142,15 @@ public partial class MainWindow : Window
                     {
                         TxtChkSerialIcon.Text = (isForti && fortiCredentialsExhausted) ? "🟡 1b. Serial (Senha Desconhecida)" : "🟡 1b. Serial (Requer Senha)";
                         TxtChkSerialSub.Text = $"{porta} (Autenticação Pendente)";
-                        CardChkSerial.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FFFBEB"));
-                        CardChkSerial.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FDE68A"));
+                        CardChkSerial.Background = UiBrushes.Get("#FFFBEB");
+                        CardChkSerial.BorderBrush = UiBrushes.Get("#FDE68A");
                     }
                     else
                     {
                         TxtChkSerialIcon.Text = isPasswordLocked ? (_skipFactoryReset ? "🟢 1b. Serial (Autenticado)" : "🟢 1b. Serial (Com Senha)") : "🟢 1b. Status Serial";
                         TxtChkSerialSub.Text = isPasswordLocked ? (_skipFactoryReset ? $"{porta} (Zeramento Pulado)" : $"{porta} (Requer Zeramento)") : (isForti ? $"{porta} (Acesso Livre)" : $"{porta} @ {baud} OK");
-                        CardChkSerial.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F0FDF4"));
-                        CardChkSerial.BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#BBF7D0"));
+                        CardChkSerial.Background = UiBrushes.Get("#F0FDF4");
+                        CardChkSerial.BorderBrush = UiBrushes.Get("#BBF7D0");
                     }
                 }
 
@@ -1902,8 +2222,8 @@ public partial class MainWindow : Window
                               ex.Message.Contains("denied", StringComparison.OrdinalIgnoreCase) ||
                               ex.InnerException is UnauthorizedAccessException;
 
-            var portasDisp2 = System.IO.Ports.SerialPort.GetPortNames();
-            var lista2 = portasDisp2.Length > 0 ? string.Join(", ", portasDisp2) : "(nenhuma porta detectada)";
+            var portasDisp2 = NetworkDevice.Protocols.Serial.SerialPorts.Available();
+            var lista2 = portasDisp2.Count > 0 ? string.Join(", ", portasDisp2) : "(nenhuma porta detectada)";
 
             EscreverLinha("\n=================================================================");
             if (isPortInUse)
@@ -2150,7 +2470,7 @@ public partial class MainWindow : Window
         {
             ConfigurarBotaoTestarTerminal(false, "Aguarde...", "#FEF2F2", "#DC2626");
             TxtSerialTestStatus.Text = "⏳ Avaliando...";
-            TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D97706"));
+            TxtSerialTestStatus.Foreground = UiBrushes.Get("#D97706");
         });
 
         // Aguarda liberação da COM pelo teste serial anterior (Dispose do SerialPort
@@ -2167,7 +2487,7 @@ public partial class MainWindow : Window
                 Dispatcher.Invoke(() =>
                 {
                     TxtSerialTestStatus.Text = $"⏳ Reavaliando... ({tentativa}/{maxTentativas})";
-                    TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D97706"));
+                    TxtSerialTestStatus.Foreground = UiBrushes.Get("#D97706");
                 });
                 EscreverLinha($"[*] Nova tentativa de avaliação em 2s... ({tentativa}/{maxTentativas})");
                 await Task.Delay(2000);
@@ -2180,14 +2500,20 @@ public partial class MainWindow : Window
                 var isFortiPre = _isFortiGateDetected
                               || IsTagFortiGate((CbModeloRoteadorInicial?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "");
 
+                var selectedTag = (CbModeloRoteadorInicial?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "";
+                var isCiscoPre = selectedTag.StartsWith("cisco", StringComparison.OrdinalIgnoreCase);
+
+                var resolvedUser = _lastResolvedUser ?? (isFortiPre ? "admin" : (isCiscoPre ? "cisco" : null));
+                var resolvedPass = _lastResolvedPass ?? (isFortiPre ? "CQMR" : (isCiscoPre ? "cisco" : null));
+
                 transport = new SerialTransport(porta, baud, readTimeout: TimeSpan.FromMilliseconds(400));
                 session = new DeviceSession(transport, new SessionOptions
                 {
                     PromptMatcher = RegexPromptMatcher.Universal(),
                     ConnectTimeout = TimeSpan.FromSeconds(10),
                     CommandTimeout = TimeSpan.FromSeconds(10),
-                    Username = isFortiPre ? "admin" : null,
-                    Password = isFortiPre ? "CQMR" : null
+                    Username = resolvedUser,
+                    Password = resolvedPass
                 });
                 session.RawOutput += OnRawOutput;
                 // Interrompe qualquer dump/paginação residual no console físico antes de negociar prompt
@@ -2220,7 +2546,7 @@ public partial class MainWindow : Window
                 }
                 else
                 {
-                    await AvaliarEquipamentoCiscoAsync(session, CancellationToken.None);
+                    await AvaliarEquipamentoCiscoAsync(session, porta, CancellationToken.None);
                 }
 
                 avaliacaoOk = true;
@@ -2252,7 +2578,7 @@ public partial class MainWindow : Window
                 if (TxtSerialTestStatus.Text.StartsWith("⏳"))
                 {
                     TxtSerialTestStatus.Text = "✅ Avaliado";
-                    TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#16A34A"));
+                    TxtSerialTestStatus.Foreground = UiBrushes.Get("#16A34A");
                 }
             }
             else
@@ -2261,7 +2587,7 @@ public partial class MainWindow : Window
                 EscreverLinha($"[AVISO] Não foi possível obter inventário completo após {maxTentativas} tentativas: {ultimoErro?.Message}");
                 EscreverLinha("👉 Aguarde 5s (estabilização do console) e clique em 'Testar Conexão Porta Serial' novamente.");
                 TxtSerialTestStatus.Text = "⚠️ Avaliação incompleta — testar novamente";
-                TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D97706"));
+                TxtSerialTestStatus.Foreground = UiBrushes.Get("#D97706");
                 ConfigurarBotaoTestarTerminal(true, "🔌 Testar Conexão Porta Serial", "#B91C1C", "#FFFFFF");
             }
             AtualizarBotaoProsseguir();
@@ -2415,14 +2741,42 @@ public partial class MainWindow : Window
             MessageBoxImage.Information);
     }
 
-    private async Task AvaliarEquipamentoCiscoAsync(DeviceSession session, CancellationToken ct)
+    private async Task AvaliarEquipamentoCiscoAsync(DeviceSession session, string porta, CancellationToken ct)
     {
+        bool hasPrivilege = false;
+        bool isEnableLocked = false;
+
         try
         {
             var p = session.CurrentPrompt ?? "";
-            if (p.Trim().EndsWith(">"))
+            if (p.Trim().EndsWith("#"))
             {
-                await session.SendCommandAsync("enable", TimeSpan.FromSeconds(5), ct);
+                hasPrivilege = true;
+            }
+            else if (p.Trim().EndsWith(">"))
+            {
+                // Tenta elevar para modo privilegiado (#) via enable com expect
+                var exp = await session.SendExpectAsync("enable", new StopCondition[]
+                {
+                    new StopCondition.Contains("password", "Password:"),
+                    new StopCondition.LineRegex("hash", new Regex(@"#\s*$")),
+                    new StopCondition.LineRegex("greater", new Regex(@">\s*$")),
+                    new StopCondition.Prompt()
+                }, TimeSpan.FromSeconds(4), ct);
+
+                if (exp.Output.Contains("Password:", StringComparison.OrdinalIgnoreCase))
+                {
+                    isEnableLocked = true;
+                    // Cancela o prompt de senha no Cisco com Ctrl+C e Enter para liberar o console limpo em modo usuário
+                    await session.SendCtrlCAsync(ct);
+                    await Task.Delay(150, ct);
+                    await session.SendRawAsync("\r\n", ct);
+                    await Task.Delay(150, ct);
+                }
+                else if (session.CurrentPrompt?.Trim().EndsWith("#") == true)
+                {
+                    hasPrivilege = true;
+                }
             }
         }
         catch { }
@@ -2430,7 +2784,7 @@ public partial class MainWindow : Window
         try { await session.SendCommandAsync("terminal length 0", TimeSpan.FromSeconds(5), ct); } catch { }
         try { await session.SendCommandAsync("terminal width 512", TimeSpan.FromSeconds(5), ct); } catch { }
 
-        // 1. show version
+        // 1. show version (funciona tanto em Router> quanto em Router#)
         var showVer = await session.SendCommandAsync("show version", TimeSpan.FromSeconds(15), ct);
 
         var modelMatch = Regex.Match(showVer, @"(?im)\bcisco\s+([A-Za-z0-9\-\/_]+)\s*\(");
@@ -2465,38 +2819,82 @@ public partial class MainWindow : Window
         var uptimeMatch = Regex.Match(showVer, @"(?im)uptime is\s+(.+)");
         var uptime = uptimeMatch.Success ? uptimeMatch.Groups[1].Value.Trim() : "—";
 
-        // 2. dir flash: / dir sdflash: / dir
-        var dirFlash = await session.SendCommandAsync("dir flash:", TimeSpan.FromSeconds(15), ct);
-        if (dirFlash.Contains("% Invalid", StringComparison.OrdinalIgnoreCase))
+        // 2. dir flash: / dir sdflash: (apenas se tiver privilégio para não disparar broadcast DNS em Router>)
+        var dirFlash = "";
+        var binFiles = new List<string>();
+        var flashFreeMb = "—";
+
+        if (hasPrivilege)
         {
-            dirFlash = await session.SendCommandAsync("dir sdflash:", TimeSpan.FromSeconds(15), ct);
-            if (dirFlash.Contains("% Invalid", StringComparison.OrdinalIgnoreCase))
+            try
             {
-                dirFlash = await session.SendCommandAsync("dir", TimeSpan.FromSeconds(15), ct);
+                dirFlash = await session.SendCommandAsync("dir flash:", TimeSpan.FromSeconds(10), ct);
+                if (dirFlash.Contains("% Invalid", StringComparison.OrdinalIgnoreCase))
+                {
+                    dirFlash = await session.SendCommandAsync("dir sdflash:", TimeSpan.FromSeconds(10), ct);
+                }
+            }
+            catch { }
+
+            if (!string.IsNullOrWhiteSpace(dirFlash) && !dirFlash.Contains("% Invalid", StringComparison.OrdinalIgnoreCase))
+            {
+                var binMatches = Regex.Matches(dirFlash, @"(?im)\b(\S+\.bin)\b");
+                binFiles = binMatches.Select(m => m.Groups[1].Value).Distinct().ToList();
+                var flashFreeMatch = Regex.Match(dirFlash, @"(?im)([0-9]+)\s+bytes\s+free");
+                flashFreeMb = flashFreeMatch.Success && long.TryParse(flashFreeMatch.Groups[1].Value, out var freeB)
+                    ? $"{freeB / (1024.0 * 1024.0):F1} MB livres"
+                    : "—";
             }
         }
-        var binMatches = Regex.Matches(dirFlash, @"(?im)\b(\S+\.bin)\b");
-        var binFiles = binMatches.Select(m => m.Groups[1].Value).Distinct().ToList();
-        var flashFreeMatch = Regex.Match(dirFlash, @"(?im)([0-9]+)\s+bytes\s+free");
-        var flashFreeMb = flashFreeMatch.Success && long.TryParse(flashFreeMatch.Groups[1].Value, out var freeB)
-            ? $"{freeB / (1024.0 * 1024.0):F1} MB livres"
-            : "—";
 
-        // 3. show ip interface brief
+        // Se estiver em modo usuário (Router>) e não tiver privilégio para listar diretório,
+        // extrai a imagem IOS ativa e em execução diretamente do 'show version'
+        if (binFiles.Count == 0)
+        {
+            var sysImgMatch = Regex.Match(showVer, @"(?im)System image file is\s+""(?:[^""]*?:)?([^""]+\.bin)""");
+            if (!sysImgMatch.Success)
+            {
+                sysImgMatch = Regex.Match(showVer, @"(?im)\b([A-Za-z0-9_\-\.]+\.bin)\b");
+            }
+            if (sysImgMatch.Success)
+            {
+                binFiles.Add(sysImgMatch.Groups[1].Value.Trim());
+            }
+        }
+
+        // 3. show ip interface brief (funciona em Router> e Router#)
         var ipBrief = await session.SendCommandAsync("show ip interface brief", TimeSpan.FromSeconds(15), ct);
         var ifLines = ipBrief.Split('\n')
             .Where(l => l.StartsWith("GigabitEthernet", StringComparison.OrdinalIgnoreCase) || l.StartsWith("FastEthernet", StringComparison.OrdinalIgnoreCase) || l.StartsWith("Ethernet", StringComparison.OrdinalIgnoreCase))
             .Select(l => l.Trim())
             .ToList();
 
-        // 4. show running-config | include hostname|ip route 0.0.0.0
-        var hostOut = await session.SendCommandAsync("show running-config | include hostname", TimeSpan.FromSeconds(10), ct);
-        var hostMatch = Regex.Match(hostOut, @"(?im)^\s*hostname\s+(\S+)");
-        var hostname = hostMatch.Success ? hostMatch.Groups[1].Value.Trim() : "Router";
+        // 4. show running-config (apenas com privilégio)
+        var hostname = "Router";
+        var defaultGateways = new List<string>();
 
-        var routeOut = await session.SendCommandAsync("show running-config | include ip route 0.0.0.0", TimeSpan.FromSeconds(10), ct);
-        var routeMatches = Regex.Matches(routeOut, @"(?im)^\s*ip\s+route\s+0\.0\.0\.0\s+0\.0\.0\.0\s+(\S+)");
-        var defaultGateways = routeMatches.Select(m => m.Groups[1].Value.Trim()).ToList();
+        if (hasPrivilege)
+        {
+            try
+            {
+                var hostOut = await session.SendCommandAsync("show running-config | include hostname", TimeSpan.FromSeconds(10), ct);
+                var hostMatch = Regex.Match(hostOut, @"(?im)^\s*hostname\s+(\S+)");
+                if (hostMatch.Success) hostname = hostMatch.Groups[1].Value.Trim();
+
+                var routeOut = await session.SendCommandAsync("show running-config | include ip route 0.0.0.0", TimeSpan.FromSeconds(10), ct);
+                var routeMatches = Regex.Matches(routeOut, @"(?im)^\s*ip\s+route\s+0\.0\.0\.0\s+0\.0\.0\.0\s+(\S+)");
+                defaultGateways = routeMatches.Select(m => m.Groups[1].Value.Trim()).ToList();
+            }
+            catch { }
+        }
+        else
+        {
+            var pMatch = Regex.Match(session.CurrentPrompt ?? "", @"(?im)^\s*([A-Za-z0-9_\-\.]+)>\s*$");
+            if (pMatch.Success && !pMatch.Groups[1].Value.Equals("Router", StringComparison.OrdinalIgnoreCase))
+            {
+                hostname = pMatch.Groups[1].Value.Trim();
+            }
+        }
 
         // Exibe painel consolidado
         EscreverLinha($"  🏷️ Fabricante / Modelo : Cisco {modelo}");
@@ -2516,10 +2914,26 @@ public partial class MainWindow : Window
             EscreverLinha($"     {ifLine}");
         }
 
-        EscreverLinha($"\n  📋 Configuração Atual  : Hostname '{hostname}' | Gateway(s) Default: {(defaultGateways.Count > 0 ? string.Join(", ", defaultGateways) : "Nenhum (Zerado)")}");
+        EscreverLinha($"\n  📋 Configuração Atual  : Hostname '{hostname}' | Gateway(s) Default: {(defaultGateways.Count > 0 ? string.Join(", ", defaultGateways) : (hasPrivilege ? "Nenhum (Zerado)" : "Não disponível em modo usuário"))}");
 
-        bool isZerado = hostname.Equals("Router", StringComparison.OrdinalIgnoreCase) && defaultGateways.Count == 0;
-        EscreverLinha($"  📊 Situação do Aparelho: {(isZerado ? "🟢 TOTALMENTE ZERADO (Pronto para provisionamento direto)" : "🟡 POSSUI CONFIGURAÇÃO PRÉVIA (Recomenda-se zerar na Fase 1 ou sobregravar)")}");
+        if (isEnableLocked)
+        {
+            _isRommonOrBootwareDetected = false;
+            _skipFactoryReset = false;
+            _serialOk = true;
+
+            EscreverLinha("\n  🔒 SITUAÇÃO DO ROTEADOR: TERMINAL EM MODO USUÁRIO COM SENHA DE ENABLE (ENABLE SECRET)");
+            EscreverLinha("  -> O roteador respondeu com 'Password:' ao comando 'enable'.");
+            EscreverLinha("  -> Comandos de escrita (provisionamento, gravação e running-config) exigem privilégio.");
+            EscreverLinha("  -> A FASE 1 (Zerar Configuração via ROMMON / confreg 0x2142) É OBRIGATÓRIA.");
+            EscreverLinha("  -> O SPARC executará a recuperação de senha e o zeramento de fábrica automaticamente.");
+        }
+        else
+        {
+            bool isZerado = hostname.Equals("Router", StringComparison.OrdinalIgnoreCase) && defaultGateways.Count == 0;
+            EscreverLinha($"  📊 Situação do Aparelho: {(isZerado ? "🟢 TOTALMENTE ZERADO (Pronto para provisionamento direto)" : "🟡 POSSUI CONFIGURAÇÃO PRÉVIA (Recomenda-se zerar na Fase 1 ou sobregravar)")}");
+        }
+
         Dispatcher.Invoke(() =>
         {
             if (is841)
@@ -2540,7 +2954,38 @@ public partial class MainWindow : Window
                 TxtChkModeloIcon.Text = "🟢 1a. Modelo";
                 TxtChkModeloSub.Text = $"Cisco {modelo}";
             }
+
+            if (CardChkSerial != null && TxtChkSerialIcon != null && TxtChkSerialSub != null)
+            {
+                if (isEnableLocked)
+                {
+                    _skipFactoryReset = false;
+                    _serialOk = true;
+                    TxtChkSerialIcon.Text = "🟢 1b. Serial (Com Senha)";
+                    TxtChkSerialSub.Text = $"{porta} (Requer Zeramento)";
+                    TxtSerialTestStatus.Text = "🔒 Requer Zeramento";
+                    TxtSerialTestStatus.Foreground = UiBrushes.Get("#DC2626");
+                }
+                else
+                {
+                    _serialOk = true;
+                    TxtChkSerialIcon.Text = "🟢 1b. Serial (OK)";
+                    TxtChkSerialSub.Text = $"{porta} (Acesso Privilegiado)";
+                    TxtSerialTestStatus.Text = "✅ Conectado";
+                    TxtSerialTestStatus.Foreground = UiBrushes.Get("#16A34A");
+                }
+            }
+
+            AtualizarBotaoProsseguir();
         });
+
+        var statusTextoMsg = isEnableLocked
+            ? "🔒 Terminal em Modo Usuário (Router>) com Senha de Enable\n" +
+              "⚠️ O roteador possui senha administrativa ('enable secret/password').\n" +
+              "👉 O SPARC realizará o zeramento e quebra de senha via ROMMON automaticamente na Fase 1."
+            : (hostname.Equals("Router", StringComparison.OrdinalIgnoreCase) && defaultGateways.Count == 0
+                ? "🟢 Terminal Privilegiado Aberto (Sem Senha)\n✅ Equipamento pronto para provisionamento direto (Fase 3)."
+                : "🟡 Terminal Privilegiado Aberto (Possui Configuração Anterior)\n💡 Dica: Execute a esteira completa para zerar e homologar.");
 
         MessageBox.Show(
             $"AVALIAÇÃO DO EQUIPAMENTO CISCO:\n\n" +
@@ -2548,14 +2993,12 @@ public partial class MainWindow : Window
             $"• Serial: {serialNumber}\n" +
             $"• Versão IOS: {iosVer}\n" +
             $"• Config-Register: {configRegister}\n" +
-            $"• Imagens na Flash: {string.Join(", ", binFiles)}\n" +
-            $"• Status: {(isZerado ? "🟢 Equipamento Limpo/Zerado" : "🟡 Possui Configuração Anterior")}\n\n" +
-            $"{(isZerado ? "✅ Equipamento pronto para provisionamento direto (Fase 3)." : "💡 Dica: Execute a esteira completa para zerar e homologar.")}\n\n" +
-            "⚠️ ALERTA DE PERDA DE DADOS:\n" +
-            "Ao prosseguir com a esteira ou zeramento, toda a configuração existente no equipamento será COMPLETAMENTE APAGADA e os dados anteriores serão PERDIDOS.",
+            $"• Imagens na Flash: {(binFiles.Count > 0 ? string.Join(", ", binFiles) : "Consultada via show version")}\n" +
+            $"• Status: {statusTextoMsg}\n\n" +
+            "👉 Próximo Passo: Carregue a Ficha SAIP (Passo 2) e clique em 'INICIAR PROVISIONAMENTO AUTOMÁTICO'.",
             "Diagnóstico do Equipamento — SPARC",
             MessageBoxButton.OK,
-            MessageBoxImage.Information);
+            isEnableLocked ? MessageBoxImage.Warning : MessageBoxImage.Information);
     }
 
     private async Task AvaliarEquipamentoHpeAsync(DeviceSession session, CancellationToken ct)
@@ -2654,63 +3097,85 @@ public partial class MainWindow : Window
 
     private void AtualizarPortas()
     {
-        if (CbPorta == null)
-            return;
-
-        // Qualquer troca de porta invalida teste serial anterior
-        _serialOk = false;
-        if (TxtSerialTestStatus != null) { TxtSerialTestStatus.Text = ""; }
-        AtualizarBotaoProsseguir();
-
-        // Preserva a seleção atual (prioriza o combo visível da tela inicial)
-        var selecionada = CbPortaInicial?.Text?.Trim();
-        if (string.IsNullOrEmpty(selecionada))
-            selecionada = CbPorta.Text?.Trim();
-
-        var portas = SerialPort.GetPortNames()
-            .OrderBy(p => int.TryParse(p.Replace("COM", ""), out var n) ? n : 0)
-            .ToArray();
-
-        _syncingCombos = true;
         try
         {
-            CbPorta.Items.Clear();
-            if (CbPortaInicial is not null)
-                CbPortaInicial.Items.Clear();
+            if (CbPorta == null)
+                return;
 
-            foreach (var porta in portas)
+            // Qualquer troca de porta invalida teste serial anterior
+            _serialOk = false;
+            if (TxtSerialTestStatus != null) { TxtSerialTestStatus.Text = ""; }
+            AtualizarBotaoProsseguir();
+
+            // Preserva a seleção atual (prioriza o combo visível da tela inicial)
+            var selecionada = CbPortaInicial?.Text?.Trim();
+            if (string.IsNullOrEmpty(selecionada))
+                selecionada = CbPorta.Text?.Trim();
+
+            var portas = NetworkDevice.Protocols.Serial.SerialPorts.Available()
+                .ToList();
+
+            // Se o operador digitou ou tinha uma porta selecionada (ex.: COM3), preserva-a na lista
+            if (!string.IsNullOrEmpty(selecionada) && !portas.Contains(selecionada, StringComparer.OrdinalIgnoreCase))
             {
-                CbPorta.Items.Add(porta);
-                if (CbPortaInicial is not null)
-                    CbPortaInicial.Items.Add(porta);
+                portas.Insert(0, selecionada);
             }
 
-            // Restaura a porta anterior se ainda existir, senão COM1, senão a primeira.
-            // Define SelectedIndex + Text nos dois combos para a caixa exibir o valor.
-            string? restaurar = null;
-            if (!string.IsNullOrEmpty(selecionada) && CbPorta.Items.Contains(selecionada))
-                restaurar = selecionada;
-            else if (CbPorta.Items.Contains("COM1"))
-                restaurar = "COM1";
-            else if (CbPorta.Items.Count > 0)
-                restaurar = CbPorta.Items[0]?.ToString();
-
-            if (!string.IsNullOrEmpty(restaurar))
+            _syncingCombos = true;
+            try
             {
-                var idx = CbPorta.Items.IndexOf(restaurar);
-                if (idx >= 0) CbPorta.SelectedIndex = idx;
-                CbPorta.Text = restaurar;
+                CbPorta.Items.Clear();
                 if (CbPortaInicial is not null)
+                    CbPortaInicial.Items.Clear();
+
+                foreach (var porta in portas)
                 {
-                    var idxIni = CbPortaInicial.Items.IndexOf(restaurar);
-                    if (idxIni >= 0) CbPortaInicial.SelectedIndex = idxIni;
-                    CbPortaInicial.Text = restaurar;
+                    CbPorta.Items.Add(porta);
+                    if (CbPortaInicial is not null)
+                        CbPortaInicial.Items.Add(porta);
+                }
+
+                // Restaura a porta anterior se ainda existir (priorizando portas USB != COM1), senão a primeira porta USB, senão COM1
+                string? restaurar = null;
+                if (!string.IsNullOrEmpty(selecionada) && CbPorta.Items.Contains(selecionada) && !selecionada.Equals("COM1", StringComparison.OrdinalIgnoreCase))
+                {
+                    restaurar = selecionada;
+                }
+                else
+                {
+                    // Prioriza automaticamente adaptador serial USB ativo (qualquer porta diferente da COM1 legada da placa-mãe)
+                    var usbPort = CbPorta.Items.Cast<object>().Select(i => i.ToString()).FirstOrDefault(p => !string.IsNullOrEmpty(p) && !p.Equals("COM1", StringComparison.OrdinalIgnoreCase));
+                    if (!string.IsNullOrEmpty(usbPort))
+                        restaurar = usbPort;
+                    else if (!string.IsNullOrEmpty(selecionada) && CbPorta.Items.Contains(selecionada))
+                        restaurar = selecionada;
+                    else if (CbPorta.Items.Contains("COM1"))
+                        restaurar = "COM1";
+                    else if (CbPorta.Items.Count > 0)
+                        restaurar = CbPorta.Items[0]?.ToString();
+                }
+
+                if (!string.IsNullOrEmpty(restaurar))
+                {
+                    var idx = CbPorta.Items.IndexOf(restaurar);
+                    if (idx >= 0) CbPorta.SelectedIndex = idx;
+                    CbPorta.Text = restaurar;
+                    if (CbPortaInicial is not null)
+                    {
+                        var idxIni = CbPortaInicial.Items.IndexOf(restaurar);
+                        if (idxIni >= 0) CbPortaInicial.SelectedIndex = idxIni;
+                        CbPortaInicial.Text = restaurar;
+                    }
                 }
             }
+            finally
+            {
+                _syncingCombos = false;
+            }
         }
-        finally
+        catch (Exception ex)
         {
-            _syncingCombos = false;
+            System.Diagnostics.Debug.WriteLine($"[AtualizarPortas] Erro ao enumerar portas COM: {ex.Message}");
         }
     }
 
@@ -2752,6 +3217,28 @@ public partial class MainWindow : Window
         var isCtrl = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
         var isShift = (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
 
+        if (isCtrl && !isShift)
+        {
+            if (e.Key == Key.OemPlus || e.Key == Key.Add)
+            {
+                e.Handled = true;
+                AjustarEscalaUi(UiScaleCalculator.ScaleStep);
+                return;
+            }
+            if (e.Key == Key.OemMinus || e.Key == Key.Subtract)
+            {
+                e.Handled = true;
+                AjustarEscalaUi(-UiScaleCalculator.ScaleStep);
+                return;
+            }
+            if (e.Key == Key.D0 || e.Key == Key.NumPad0)
+            {
+                e.Handled = true;
+                ResetarEscalaUiAuto();
+                return;
+            }
+        }
+
         if (isCtrl && isShift && (e.Key == Key.V || e.Key == Key.A || e.Key == Key.T))
         {
             e.Handled = true;
@@ -2759,60 +3246,26 @@ public partial class MainWindow : Window
             {
                 bool jaVisivel = BtnSemiAutoAtalho.Visibility == Visibility.Visible;
                 BtnSemiAutoAtalho.Visibility = jaVisivel ? Visibility.Collapsed : Visibility.Visible;
+                if (BtnAnalisadorDados != null)
+                    BtnAnalisadorDados.Visibility = BtnSemiAutoAtalho.Visibility;
                 if (ChkNatLab != null)
                     ChkNatLab.Visibility = BtnSemiAutoAtalho.Visibility;
                 if (BtnRecuperacaoFortinet != null)
                     BtnRecuperacaoFortinet.Visibility = BtnSemiAutoAtalho.Visibility;
-                if (BtnSimularFortiBiosRecovery != null)
-                    BtnSimularFortiBiosRecovery.Visibility = BtnSemiAutoAtalho.Visibility;
                 if (!jaVisivel && StatusTexto != null)
                     StatusTexto.Content = "⚙️ OPÇÕES AVANÇADAS DISPONÍVEL — Clique no botão abaixo ou Ctrl+Shift+V.";
             }
         }
     }
 
-    private void BtnSimularFortiBiosRecovery_Click(object sender, RoutedEventArgs e)
+    private void BtnAnalisadorDados_Click(object sender, RoutedEventArgs e)
     {
-        _isFortiGateDetected = true;
-        _isRommonOrBootwareDetected = true;
-        SelecionarModeloNoCombo("fortinet.fortigate.maintainer");
-        if (ChkAtualizarFirmwareAuto != null)
+        var hostIp = _loadedSaipCircuit?.HostLanIp ?? ObterIpLocalParaTftp();
+        var win = new Y1564TestWindow(_loadedSaipCircuit, hostIp)
         {
-            ChkAtualizarFirmwareAuto.IsChecked = true;
-            if (BtnSelecionarFirmwareAuto != null)
-                BtnSelecionarFirmwareAuto.IsEnabled = true;
-        }
-
-        if (TxtSerialTestStatus != null)
-        {
-            TxtSerialTestStatus.Text = "🔴 BIOS / Sem Firmware (Fortinet)";
-            TxtSerialTestStatus.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF4444"));
-        }
-        if (TxtChkSerialIcon != null && TxtChkSerialSub != null)
-        {
-            TxtChkSerialIcon.Text = "🔴 1a. Fortinet 40F (BIOS/Sem FW)";
-            TxtChkSerialSub.Text = "Simulação: FortiBootLoader (TFTP)";
-        }
-
-        AtualizarBotaoProsseguir();
-
-        EscreverLinha("\n=================================================================");
-        EscreverLinha("  🧪 [SIMULAÇÃO] FORTIGATE 40F EM MODO BIOS / SEM FIRMWARE ATIVADO");
-        EscreverLinha("=================================================================");
-        EscreverLinha("  • Estado: DeviceOperatingState.BootFailure (FortiBootLoader)");
-        EscreverLinha("  • Fluxo: WorkflowType.FirmwareRecovery (BIOS TFTP)");
-        EscreverLinha("  • Passo 3 configurado para exigir arquivo de firmware .out.");
-        EscreverLinha("  • A esteira automática e a Fase 2 executarão o fluxo de BIOS TFTP.");
-        EscreverLinha("=================================================================\n");
-
-        MessageBox.Show(
-            "SIMULAÇÃO ATIVADA: FortiGate 40F em Modo BIOS / Sem Firmware\n\n" +
-            "• O sistema configurou a esteira para simular o roteador com firmware corrompido ou ausente.\n" +
-            "• O Passo 3 agora exige a seleção da imagem .out.\n" +
-            "• Ao clicar em 'INICIAR PROVISIONAMENTO AUTOMÁTICO' ou 'Executar Fase 2', o fluxo de recuperação BIOS TFTP será acionado.",
-            "Simulação BIOS TFTP Ativada",
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
+            Owner = this
+        };
+        win.ShowDialog();
     }
 
     private void BtnRecuperacaoFortinet_Click(object sender, RoutedEventArgs e)
@@ -2927,6 +3380,7 @@ public partial class MainWindow : Window
         GridModoAutomatico.Visibility = Visibility.Collapsed;
         GridTelaInicial.Visibility = Visibility.Visible;
         if (BtnSemiAutoAtalho != null) BtnSemiAutoAtalho.Visibility = Visibility.Collapsed;
+        if (BtnAnalisadorDados != null) BtnAnalisadorDados.Visibility = Visibility.Collapsed;
         if (ChkNatLab != null) ChkNatLab.Visibility = Visibility.Collapsed;
     }
 
@@ -2966,12 +3420,12 @@ public partial class MainWindow : Window
                 if (TxtHostIpCalculado is not null)
                     TxtHostIpCalculado.Text = $"Host LAN: {hostIp}";
                 TxtManualHostCalculadoPreview.Text = $"Host LAN Calculado para Placa de Teste: {hostIp} (Máscara: {mask})";
-                TxtManualHostCalculadoPreview.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#15803D"));
+                TxtManualHostCalculadoPreview.Foreground = UiBrushes.Get("#15803D");
             }
             else
             {
                 TxtManualHostCalculadoPreview.Text = "Host LAN Calculado para Placa de Teste: — (preencha LAN IP)";
-                TxtManualHostCalculadoPreview.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#64748B"));
+                TxtManualHostCalculadoPreview.Foreground = UiBrushes.Get("#64748B");
             }
         }
         AtualizarBotaoProsseguir();
@@ -3129,7 +3583,7 @@ public partial class MainWindow : Window
                 7 => TxtAutoEtapa7,
                 _ => null
             };
-            if (t != null) { t.Text = estado; t.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(cor)); }
+            if (t != null) { t.Text = estado; t.Foreground = UiBrushes.Get(cor); }
         }
         void Progresso(int pct, string titulo) { PbAutoGeral.Value = pct; TxtAutoPorcentagem.Text = $"{pct}%"; TxtAutoStatusGeral.Text = titulo; }
         void LogAuto(string msg) { TxtAutoLog.Text += msg + "\n"; EscreverLinha(msg); }
@@ -3140,6 +3594,7 @@ public partial class MainWindow : Window
         if (BtnAutoRestaurarRede != null) BtnAutoRestaurarRede.Visibility = Visibility.Collapsed;
         if (BtnAutoRetestarBanda != null) BtnAutoRetestarBanda.Visibility = Visibility.Collapsed;
         if (BtnAutoSalvarScript != null) BtnAutoSalvarScript.Visibility = Visibility.Collapsed;
+        if (BtnAutoCertidaoY1564 != null) BtnAutoCertidaoY1564.Visibility = Visibility.Collapsed;
 
         // Garante que o modo automático importe o mesmo sistema de análise de boot do modo padrão (HPE BootWare Ctrl+B)
         if (CbModeloRoteadorInicial.SelectedIndex > 0 && CbInterrupt.SelectedIndex != CbModeloRoteadorInicial.SelectedIndex - 1)
@@ -3320,12 +3775,12 @@ public partial class MainWindow : Window
                 {
                     if (string.IsNullOrEmpty(_selectedIosBinPath) || !File.Exists(_selectedIosBinPath))
                     {
-                        throw new InvalidOperationException("Equipamento em modo ROMMON (sem SO): selecione o arquivo de Firmware (.bin) no Passo 3 para realizar a recuperação via TFTP.");
+                        throw new InvalidOperationException("Atualização de firmware solicitada para Cisco: selecione o arquivo de Firmware (.bin) no Passo 3.");
                     }
 
                     SetEtapa(2, "⏳ 2. Atualizar Firmware — em execução", "#D97706");
                     Progresso(22, "2/7 Atualizar Firmware...");
-                    LogAuto(">>> [AUTO 2/7] Atualizar / Recuperar Firmware Cisco via TFTP (ROMMON)");
+                    LogAuto(">>> [AUTO 2/7] Atualizar / Validar Firmware Cisco via TFTP");
                     var hostIp = _loadedSaipCircuit?.HostLanIp ?? ObterIpLocalParaTftp() ?? "127.0.0.1";
                     await ExecutarUpgradeFirmwareAsync(porta, baud, hostIp, ct);
                     SetEtapa(2, "✅ 2. Atualizar Firmware — OK", "#16A34A");
@@ -3537,13 +3992,13 @@ public partial class MainWindow : Window
             WanCidr: wanCidr,
             WanGateway: wanGateway,
             WanSubnetMask: wanMask,
-            WanInterface: modelo.Contains("921", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet 5" : modelo.Contains("954", StringComparison.OrdinalIgnoreCase) || modelo.Contains("HPE", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet0/0" : "GigabitEthernet 0/0",
+            WanInterface: modelo.Contains("921", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet 4" : modelo.Contains("841", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet0/4" : modelo.Contains("954", StringComparison.OrdinalIgnoreCase) || modelo.Contains("HPE", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet0/0" : "GigabitEthernet 0/0",
             LanIp: lanIp,
             LanCidr: lanCidr,
             LanBlockNetwork: lanBlock,
             LanSubnetMask: lanMask,
             HostLanIp: hostLanIp,
-            LanInterface: modelo.Contains("921", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet 4" : modelo.Contains("954", StringComparison.OrdinalIgnoreCase) || modelo.Contains("HPE", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet0/1" : "GigabitEthernet 0/1",
+            LanInterface: modelo.Contains("921", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet 5" : modelo.Contains("841", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet0/5" : modelo.Contains("954", StringComparison.OrdinalIgnoreCase) || modelo.Contains("HPE", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet0/1" : "GigabitEthernet 0/1",
             Step1ZerarOk: step1Ok,
             Step2FirmwareOk: step2Ok,
             FirmwareNome: Path.GetFileName(_selectedIosBinPath),
@@ -3594,6 +4049,7 @@ public partial class MainWindow : Window
             BtnAutoRestaurarRede.Visibility = Visibility.Visible;
             BtnAutoRetestarBanda.Visibility = Visibility.Visible;
             BtnAutoSalvarScript.Visibility = Visibility.Visible;
+            if (BtnAutoCertidaoY1564 != null) BtnAutoCertidaoY1564.Visibility = Visibility.Visible;
 
             if (exibirPopup && !string.IsNullOrEmpty(pdfPath) && File.Exists(pdfPath))
             {
@@ -3717,7 +4173,7 @@ public partial class MainWindow : Window
 
             BtnAutoRetestarBanda.Content = "⏳ Medindo Banda...";
             TxtAutoEtapa7.Text = "⏳ 7. Testar Banda — em re-teste...";
-            TxtAutoEtapa7.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D97706"));
+            TxtAutoEtapa7.Foreground = UiBrushes.Get("#D97706");
             TxtAutoLog.Text += $"\n>>> [RE-TESTE] Disparando medição vinculada à Ethernet ({eth?.Name} - IP {sourceIp})...\n";
 
             var novoBandR = await ExecutarTesteBandaAsync(CancellationToken.None, sourceIp);
@@ -3727,7 +4183,7 @@ public partial class MainWindow : Window
                 : $"⚠ 7. Testar Banda — falha ({novoBandR.Message})";
             var statusCor = novoBandR.IsSuccess ? "#16A34A" : "#D97706";
             TxtAutoEtapa7.Text = statusTexto;
-            TxtAutoEtapa7.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(statusCor));
+            TxtAutoEtapa7.Foreground = UiBrushes.Get(statusCor);
 
             TxtAutoLog.Text += $">>> [RE-TESTE] Concluído: Download {novoBandR.DownloadMbps:F1} Mbps | Latência {novoBandR.LatencyMs:F0}ms | {(novoBandR.IsSuccess ? "APROVADO" : "FALHA")}\n";
 
@@ -3820,6 +4276,16 @@ public partial class MainWindow : Window
         }
     }
 
+    private void BtnAutoCertidaoY1564_Click(object sender, RoutedEventArgs e)
+    {
+        var hostIp = _loadedSaipCircuit?.HostLanIp ?? ObterIpLocalParaTftp();
+        var win = new Y1564TestWindow(_loadedSaipCircuit, hostIp)
+        {
+            Owner = this
+        };
+        win.ShowDialog();
+    }
+
     private void BtnAutoExportarPdf_Click(object sender, RoutedEventArgs e)
     {
         if (string.IsNullOrEmpty(_lastGeneratedPdfPath) || !File.Exists(_lastGeneratedPdfPath))
@@ -3873,13 +4339,13 @@ public partial class MainWindow : Window
                 WanCidr: _loadedSaipCircuit?.WanCidr ?? 30,
                 WanGateway: _loadedSaipCircuit?.WanGateway,
                 WanSubnetMask: _loadedSaipCircuit?.WanSubnetMask,
-                WanInterface: modelo.Contains("921", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet 5" : modelo.Contains("954", StringComparison.OrdinalIgnoreCase) || modelo.Contains("HPE", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet0/0" : "GigabitEthernet 0/0",
+                WanInterface: modelo.Contains("921", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet 4" : modelo.Contains("841", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet0/4" : modelo.Contains("954", StringComparison.OrdinalIgnoreCase) || modelo.Contains("HPE", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet0/0" : "GigabitEthernet 0/0",
                 LanIp: _loadedSaipCircuit?.LanIp,
                 LanCidr: _loadedSaipCircuit?.LanCidr ?? 28,
                 LanBlockNetwork: _loadedSaipCircuit?.LanBlockNetwork,
                 LanSubnetMask: _loadedSaipCircuit?.LanSubnetMask,
                 HostLanIp: _loadedSaipCircuit?.HostLanIp,
-                LanInterface: modelo.Contains("921", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet 4" : modelo.Contains("954", StringComparison.OrdinalIgnoreCase) || modelo.Contains("HPE", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet0/1" : "GigabitEthernet 0/1",
+                LanInterface: modelo.Contains("921", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet 5" : modelo.Contains("841", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet0/5" : modelo.Contains("954", StringComparison.OrdinalIgnoreCase) || modelo.Contains("HPE", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet0/1" : "GigabitEthernet 0/1",
                 Step1ZerarOk: true,
                 Step2FirmwareOk: true,
                 FirmwareNome: Path.GetFileName(_selectedIosBinPath),
@@ -3918,6 +4384,7 @@ public partial class MainWindow : Window
         Width = 1060;
         MinWidth = 920;
         if (BtnSemiAutoAtalho != null) BtnSemiAutoAtalho.Visibility = Visibility.Collapsed;
+        if (BtnAnalisadorDados != null) BtnAnalisadorDados.Visibility = Visibility.Collapsed;
     }
 
     public static string CidrToSubnetMask(int cidr)
@@ -5387,12 +5854,30 @@ public partial class MainWindow : Window
                 if (ni.NetworkInterfaceType is System.Net.NetworkInformation.NetworkInterfaceType.Loopback or System.Net.NetworkInformation.NetworkInterfaceType.Tunnel)
                     continue;
 
+                if (ni.Description.Contains("Tailscale", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Name.Contains("Tailscale", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Description.Contains("Virtual", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Description.Contains("Hyper-V", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Description.Contains("WSL", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Description.Contains("VPN", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Description.Contains("Loopback", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Name.Contains("Loopback", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Description.Contains("KM-TEST", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Name.Contains("Topaz", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Description.Contains("Topaz", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Description.Contains("Warsaw", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Description.Contains("GAS", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Description.Contains("Npcap", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Description.Contains("TAP", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Description.Contains("Bluetooth", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
                 foreach (var ip in ni.GetIPProperties().UnicastAddresses)
                 {
                     if (ip.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork && !System.Net.IPAddress.IsLoopback(ip.Address))
                     {
                         var ipStr = ip.Address.ToString();
-                        if (!ipStr.StartsWith("169.254."))
+                        if (!ipStr.StartsWith("169.254.") && !ipStr.StartsWith("100.") && !ipStr.StartsWith("54.232."))
                             return ipStr;
                     }
                 }
@@ -5595,7 +6080,21 @@ public partial class MainWindow : Window
             AtualizarProgresso(20, "Fase B: Gravando firmware FortiOS...", $"Iniciando transferência TFTP da imagem {fileName}...");
 
             var fileDir = Path.GetDirectoryName(_selectedIosBinPath) ?? AppContext.BaseDirectory;
+
+            // Verificação preventiva de processos conflitantes na porta UDP 69 (ex.: Tftpd32 / Tftpd64)
+            var conflict69 = NetworkDevice.Protocols.Tftp.UdpPortDiagnostics.FindProcessUsingUdpPort(69);
+            if (conflict69 != null && !conflict69.IsCurrentProcess &&
+                (conflict69.ProcessName.Contains("tftpd", StringComparison.OrdinalIgnoreCase) ||
+                 conflict69.ProcessName.Contains("tftp32", StringComparison.OrdinalIgnoreCase) ||
+                 conflict69.ProcessName.Contains("tftp64", StringComparison.OrdinalIgnoreCase)))
+            {
+                EscreverLinha($"[*] Detectado servidor TFTP externo '{conflict69.ProcessName}' (PID {conflict69.ProcessId}) ocupando a porta UDP 69.");
+                EscreverLinha($"[*] O SPARC possui servidor TFTP integrado de alta velocidade. Finalizando '{conflict69.ProcessName}' para liberar a porta...");
+                NetworkDevice.Protocols.Tftp.UdpPortDiagnostics.TryCloseConflictingProcess(conflict69);
+            }
+
             await using var tftpServer = new NetworkDevice.Protocols.Tftp.EmbeddedTftpServer(fileDir);
+            tftpServer.LogMessage += msg => EscreverLinha($"  {msg}");
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             var lastUiUpdate = DateTime.MinValue;
             var lastLoggedPct = -1;

@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.RegularExpressions;
 using NetworkDevice.Core.Provisioning;
 using NetworkDevice.Core.Session;
@@ -112,7 +113,7 @@ public sealed class CiscoIOSUpgrader
             try { showBoot = await session.SendCommandAsync("show boot", TimeSpan.FromSeconds(10), cancellationToken); } catch { }
         }
 
-        var isRunningTarget = IsCiscoRunningImage(showVer, binFileName);
+        var isRunningTarget = CiscoIOSFirmwareVersionInspector.IsSameVersion(showVer, binFileName, out var curVer, out var tgtVer);
         var isFileOnFlash = dirFlash.Contains(binFileName, StringComparison.OrdinalIgnoreCase) ||
                            dirFlash.Contains(Path.GetFileNameWithoutExtension(binFileName), StringComparison.OrdinalIgnoreCase);
         var isBootConfigured = IsBootSystemConfigured(showBoot, binFileName);
@@ -124,7 +125,8 @@ public sealed class CiscoIOSUpgrader
             await ProgressAsync($"   IMAGEM {binFileName} JÁ ATIVA NO CISCO IOS                    ");
             await ProgressAsync("=================================================================");
             await ProgressAsync($"  O roteador Cisco já está executando a imagem alvo.");
-            await ProgressAsync($"  Imagem em execução : {binFileName}");
+            await ProgressAsync($"  Versão em execução : {curVer.DisplayString}");
+            await ProgressAsync($"  Versão alvo        : {tgtVer.DisplayString}");
 
             // Se o boot system não estiver explicitamente salvo, garante sem reiniciar
             if (!isBootConfigured && isFileOnFlash)
@@ -139,7 +141,7 @@ public sealed class CiscoIOSUpgrader
 
             await ProgressAsync($"  -> Pulando cópia TFTP e reinicialização (100% economia de tempo).");
             await ProgressAsync("=================================================================\n");
-            _onProgress?.Invoke(100, "Fase B: Firmware OK", $"Equipamento já executa {binFileName}.");
+            _onProgress?.Invoke(100, "Fase B: Firmware OK", $"Equipamento já executa {binFileName} ({curVer.CanonicalVersion ?? curVer.DisplayString}).");
             return true;
         }
 
@@ -427,92 +429,255 @@ public sealed class CiscoIOSUpgrader
         }
         catch { }
 
-        // Monitora o boot completo e envia Enter / responde diálogos iniciais
-        var bootTimeout = DateTime.UtcNow.AddSeconds(240);
+        // Monitora o boot completo, transmite CLI em tempo real e responde diálogos iniciais
+        await AguardarBootCiscoIOSAsync(session, TimeSpan.FromMinutes(6), ct);
+    }
+
+    private async Task AguardarBootCiscoIOSAsync(DeviceSession session, TimeSpan baseTimeout, CancellationToken ct)
+    {
+        var bootTimeout = DateTime.UtcNow.Add(baseTimeout);
+        var maxAbsoluteTimeout = DateTime.UtcNow.AddMinutes(20);
         var lastStatusLog = DateTime.MinValue;
-        var memoryUpgradeDetected = false;
+        var lastActivityTime = DateTime.UtcNow;
+        var lastKeepAliveEnter = DateTime.UtcNow;
 
-        while (DateTime.UtcNow < bootTimeout && !ct.IsCancellationRequested)
+        int upgradeTo512Count = 0;
+        int noMemoryLicenseCount = 0;
+        bool decompressionReported = false;
+
+        var loggedBootMilestones = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Assina RawOutput da sessão para escutar cada chunk em tempo real
+        var lineAccumulator = new StringBuilder();
+        var rawLinesQueue = new Queue<string>();
+        var syncLock = new object();
+
+        Action<string> onRawChunk = chunk =>
         {
-            var remainingSec = (int)Math.Max(0, (bootTimeout - DateTime.UtcNow).TotalSeconds);
-            if ((DateTime.UtcNow - lastStatusLog).TotalSeconds >= 10)
+            lock (syncLock)
             {
-                lastStatusLog = DateTime.UtcNow;
-                await ProgressAsync($"[*] Aguardando boot da nova versão Cisco IOS (~{remainingSec}s max)...");
-            }
-
-            try
-            {
-                var result = await session.WaitForAsync(
-                    new StopCondition[]
-                    {
-                        new StopCondition.LineRegex("mem-upgrade", new Regex(@"(?i)UPGRADING\s+TO\s+\d+MB|RELOADING\.\.\.\.")),
-                        new StopCondition.LineRegex("invalid-image", new Regex(@"(?i)Invalid\s+image\s+for\s+platform|failed\s+to\s+boot.*unsupported")),
-                        new StopCondition.LineRegex("dialog", new Regex(@"(?i)initial\s+configuration\s+dialog|\?\s*\[yes/no\]|\[yes\]")),
-                        new StopCondition.LineRegex("autoinstall", new Regex(@"(?i)terminate\s+autoinstall")),
-                        new StopCondition.LineRegex("press-return", new Regex(@"(?i)press\s+return\s+to\s+get\s+started|press\s+enter")),
-                        new StopCondition.LineRegex("cisco-prompt", new Regex(@"(?i)^[A-Za-z0-9_.+()/-]+[>#]")),
-                        new StopCondition.Prompt()
-                    },
-                    TimeSpan.FromSeconds(3),
-                    ct);
-
-                if (result.Matched is StopCondition.LineRegex lr)
+                lastActivityTime = DateTime.UtcNow;
+                lineAccumulator.Append(chunk);
+                var str = lineAccumulator.ToString();
+                var nlIndex = str.IndexOf('\n');
+                while (nlIndex >= 0)
                 {
-                    if (lr.Name == "mem-upgrade")
+                    var line = str.Substring(0, nlIndex).Trim('\r', '\n');
+                    if (!string.IsNullOrWhiteSpace(line))
                     {
-                        if (!memoryUpgradeDetected)
+                        rawLinesQueue.Enqueue(line);
+                    }
+                    str = str.Substring(nlIndex + 1);
+                    nlIndex = str.IndexOf('\n');
+                }
+                lineAccumulator.Clear();
+                lineAccumulator.Append(str);
+            }
+        };
+
+        session.RawOutput += onRawChunk;
+
+        try
+        {
+            while (DateTime.UtcNow < bootTimeout && DateTime.UtcNow < maxAbsoluteTimeout && !ct.IsCancellationRequested)
+            {
+                // 1. Processa linhas acumuladas na fila do console serial
+                List<string> linesToProcess = new();
+                lock (syncLock)
+                {
+                    while (rawLinesQueue.Count > 0)
+                    {
+                        linesToProcess.Add(rawLinesQueue.Dequeue());
+                    }
+                }
+
+                foreach (var line in linesToProcess)
+                {
+                    var trimmed = line.Trim();
+                    if (string.IsNullOrWhiteSpace(trimmed)) continue;
+
+                    // Detecta e transmite marcos chave do boot para a UI
+                    if (trimmed.Contains("System Bootstrap", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.Contains("Total memory size =", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.Contains("Readonly ROMMON initialized", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.Contains("program load complete", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.Contains("Digitally Signed Release Software", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.Contains("Smart Init is enabled", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.Contains("smart init is sizing iomem", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.Contains("Rounded IOMEM up to:", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.Contains("Using 14 percent iomem", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.Contains("Using 7 percent iomem", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.Contains("Restricted Rights Legend", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.Contains("Cisco IOS Software", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.StartsWith("%SYS-", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.StartsWith("%LINK-", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.StartsWith("%LINEPROTO-", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (loggedBootMilestones.Add(trimmed))
                         {
-                            memoryUpgradeDetected = true;
-                            await ProgressAsync("[*] Roteador atualizou a controladora DRAM (UPGRADING TO 512MB) e iniciou segundo ciclo de boot — estendendo tempo de espera em +180s...");
-                            bootTimeout = DateTime.UtcNow.AddSeconds(180);
-                            await Task.Delay(3000, ct);
+                            await ProgressAsync($"  │ [BOOT] {trimmed}");
                         }
                     }
-                    else if (lr.Name == "invalid-image")
+
+                    // Notifica início de descompressão
+                    if (trimmed.Contains("Self decompressing the image", StringComparison.OrdinalIgnoreCase))
                     {
-                        await ProgressAsync("[ALERTA CRÍTICO] A imagem de firmware é incompatível com a plataforma do roteador (Invalid image for platform). O equipamento tentará autoboot na imagem padrão.");
+                        if (!decompressionReported)
+                        {
+                            decompressionReported = true;
+                            await ProgressAsync("  │ [BOOT] Descompactando imagem Cisco IOS na memória DRAM (Self decompressing)...");
+                        }
                     }
-                    else if (lr.Name == "dialog")
+
+                    // Detecta conclusão de descompressão [OK]
+                    if (trimmed.EndsWith("[OK]") || trimmed.Contains("[OK]"))
                     {
-                        await ProgressAsync("[*] Diálogo de configuração inicial detectado — enviando 'no'...");
-                        await session.WriteLineAsync("no", ct);
-                        await Task.Delay(2000, ct);
+                        if (loggedBootMilestones.Add("DECOMPRESSION_OK_" + (DateTime.UtcNow.Ticks / TimeSpan.TicksPerSecond / 10)))
+                        {
+                            await ProgressAsync("  │ [BOOT] Descompressão da imagem IOS concluída com sucesso! [OK]");
+                            decompressionReported = false;
+                        }
                     }
-                    else if (lr.Name == "autoinstall")
+
+                    // Detecta: UPGRADING TO 512MB. RELOADING........
+                    if (Regex.IsMatch(trimmed, @"(?i)UPGRADING\s+TO\s+\d+MB|RELOADING\.\.\.\."))
                     {
-                        await ProgressAsync("[*] Diálogo autoinstall detectado — enviando 'yes'...");
-                        await session.WriteLineAsync("yes", ct);
-                        await Task.Delay(1000, ct);
+                        upgradeTo512Count++;
+                        await ProgressAsync($"  │ [BOOT] ⚡ Hardware detectou controladora DRAM ('{trimmed}'). Reiniciando para aplicar...");
+                        var ext = DateTime.UtcNow.AddSeconds(240);
+                        if (ext > bootTimeout) bootTimeout = ext;
                     }
-                    else if (lr.Name == "press-return")
+
+                    // Detecta: No memory license, set to default memory size and reboot !!
+                    if (Regex.IsMatch(trimmed, @"(?i)No\s+memory\s+license.*reboot|memory\s+license.*reboot"))
                     {
-                        await ProgressAsync("[*] 'Press RETURN to get started' detectado — enviando ENTER...");
-                        await session.WriteLineAsync(string.Empty, ct);
-                        await Task.Delay(1000, ct);
+                        noMemoryLicenseCount++;
+                        await ProgressAsync($"  │ [BOOT] ⚠️ Licença de memória ausente: '{trimmed}'");
+                        var ext = DateTime.UtcNow.AddSeconds(240);
+                        if (ext > bootTimeout) bootTimeout = ext;
+
+                        // Se detectou a alternância UPGRADING TO 512MB e No memory license:
+                        if (upgradeTo512Count >= 1 && noMemoryLicenseCount >= 1)
+                        {
+                            await ProgressAsync("\n" +
+                                "  ┌─────────────────────────────────────────────────────────────────────────────┐\n" +
+                                "  │ ⚠️ [DIAGNÓSTICO AUTOMÁTICO] LOOP DE BOOT DE MEMÓRIA (MEMORY FLAP) DETECTADO │\n" +
+                                "  ├─────────────────────────────────────────────────────────────────────────────┤\n" +
+                                "  │ O Cisco 1905 tenta subir com 512MB, mas a imagem IOS 15.0(1)M8 exige a    │\n" +
+                                "  │ licença 'FL-19-MEM' e força reboot para 256MB. Em 256MB o IOS tenta voltar  │\n" +
+                                "  │ para 512MB, gerando um ciclo infinito de reinicializações na mesma imagem.  │\n" +
+                                "  │                                                                             │\n" +
+                                "  │ RECOMENDAÇÃO EM CAMPO:                                                      │\n" +
+                                "  │ 1. Interrompa o boot no ROMMON com BREAK/Ctrl+C.                             │\n" +
+                                "  │ 2. Grave/boote uma versão de IOS 15.2+ ou 15.4+ (não exige licença de RAM)  │\n" +
+                                "  │    ou utilize imagem compatível com a DRAM nativa (256MB).                 │\n" +
+                                "  └─────────────────────────────────────────────────────────────────────────────┘\n");
+                        }
                     }
-                    else if (lr.Name == "cisco-prompt" || result.Matched is StopCondition.Prompt)
+                }
+
+                // 2. Extensão Dinâmica de Timeout (Keep-Alive de Atividade)
+                // Se o roteador transmitiu dados nos últimos 45 segundos, mantém pelo menos +120s de prazo
+                if ((DateTime.UtcNow - lastActivityTime).TotalSeconds < 45)
+                {
+                    var extended = DateTime.UtcNow.AddSeconds(120);
+                    if (extended > bootTimeout && extended < maxAbsoluteTimeout)
                     {
-                        await ProgressAsync("[OK] Cisco IOS reinicializado e pronto para provisionamento!");
-                        await Task.Delay(2000, ct);
+                        bootTimeout = extended;
+                    }
+                }
+
+                var remainingSec = (int)Math.Max(0, (bootTimeout - DateTime.UtcNow).TotalSeconds);
+                if ((DateTime.UtcNow - lastStatusLog).TotalSeconds >= 12)
+                {
+                    lastStatusLog = DateTime.UtcNow;
+                    var phaseMsg = decompressionReported ? "descompactando imagem" : "carregando kernel";
+                    await ProgressAsync($"[*] Aguardando boot do Cisco IOS ({phaseMsg}, ~{remainingSec}s restantes)...");
+                }
+
+                // 3. Testa condições de parada e prompts
+                try
+                {
+                    var result = await session.WaitForAsync(
+                        new StopCondition[]
+                        {
+                            new StopCondition.LineRegex("mem-upgrade", new Regex(@"(?i)(?:UPGRADING\s+TO\s+\d+MB|RELOADING\.\.\.\.|No\s+memory\s+license.*reboot|memory\s+license.*reboot)")),
+                            new StopCondition.LineRegex("invalid-image", new Regex(@"(?i)Invalid\s+image\s+for\s+platform|failed\s+to\s+boot.*unsupported")),
+                            new StopCondition.LineRegex("dialog", new Regex(@"(?i)initial\s+configuration\s+dialog|\?\s*\[yes/no\]|\[yes\]")),
+                            new StopCondition.LineRegex("autoinstall", new Regex(@"(?i)terminate\s+autoinstall")),
+                            new StopCondition.LineRegex("press-return", new Regex(@"(?i)press\s+return\s+to\s+get\s+started|press\s+enter")),
+                            new StopCondition.LineRegex("cisco-prompt", new Regex(@"(?i)^[A-Za-z0-9_.+()/-]+[>#]")),
+                            new StopCondition.Prompt()
+                        },
+                        TimeSpan.FromSeconds(2),
+                        ct);
+
+                    if (result.Matched is StopCondition.LineRegex lr)
+                    {
+                        if (lr.Name == "mem-upgrade")
+                        {
+                            await Task.Delay(2000, ct);
+                        }
+                        else if (lr.Name == "invalid-image")
+                        {
+                            await ProgressAsync("[ALERTA CRÍTICO] A imagem de firmware é incompatível com o hardware do roteador (Invalid image for platform).");
+                        }
+                        else if (lr.Name == "dialog")
+                        {
+                            await ProgressAsync("[*] Diálogo de configuração inicial detectado — enviando 'no'...");
+                            await session.WriteLineAsync("no", ct);
+                            await Task.Delay(2000, ct);
+                        }
+                        else if (lr.Name == "autoinstall")
+                        {
+                            await ProgressAsync("[*] Diálogo autoinstall detectado — enviando 'yes'...");
+                            await session.WriteLineAsync("yes", ct);
+                            await Task.Delay(1000, ct);
+                        }
+                        else if (lr.Name == "press-return")
+                        {
+                            await ProgressAsync("[*] 'Press RETURN to get started' detectado — enviando ENTER...");
+                            await session.WriteLineAsync(string.Empty, ct);
+                            await Task.Delay(1000, ct);
+                        }
+                        else if (lr.Name == "cisco-prompt" || result.Matched is StopCondition.Prompt)
+                        {
+                            await ProgressAsync("[OK] Cisco IOS reinicializado e pronto para provisionamento!");
+                            await Task.Delay(1500, ct);
+                            return;
+                        }
+                    }
+                    else if (result.Matched is StopCondition.Prompt)
+                    {
+                        await ProgressAsync("[OK] Prompt do Cisco IOS confirmado.");
+                        await Task.Delay(1500, ct);
                         return;
                     }
                 }
-                else if (result.Matched is StopCondition.Prompt)
+                catch (SessionTimeoutException)
                 {
-                    await ProgressAsync("[OK] Prompt do Cisco IOS confirmado.");
-                    await Task.Delay(2000, ct);
-                    return;
+                    // Envia Enter suave somente após 20s de silêncio para acordar o prompt sem poluir o boot
+                    if ((DateTime.UtcNow - lastKeepAliveEnter).TotalSeconds >= 20 &&
+                        (DateTime.UtcNow - lastActivityTime).TotalSeconds >= 10)
+                    {
+                        lastKeepAliveEnter = DateTime.UtcNow;
+                        await session.WriteLineAsync(string.Empty, ct);
+                    }
                 }
             }
-            catch (SessionTimeoutException)
-            {
-                // Envia Enter leve para acordar console quando inativo
-                await session.WriteLineAsync(string.Empty, ct);
-            }
+        }
+        finally
+        {
+            session.RawOutput -= onRawChunk;
         }
 
-        throw new TimeoutException("O Cisco IOS reiniciou mas o prompt operacional não respondeu dentro do tempo limite (~160s). Verifique a console serial.");
+        // Se saiu do laço por timeout
+        if (upgradeTo512Count > 0 && noMemoryLicenseCount > 0)
+        {
+            throw new TimeoutException("O Cisco IOS entrou em loop de reinicialização de memória (Memory Flap entre 256MB e 512MB devido à ausência da licença 'FL-19-MEM' no IOS 15.0(1)M8). Consulte o diagnóstico detalhado emitido no log.");
+        }
+
+        throw new TimeoutException("O Cisco IOS reiniciou mas o prompt operacional não respondeu dentro do tempo limite. Verifique a console serial.");
     }
 
     private async Task ProgressAsync(string message)
@@ -523,43 +688,7 @@ public sealed class CiscoIOSUpgrader
 
     private static bool IsCiscoRunningImage(string showVerOutput, string binFileName)
     {
-        if (string.IsNullOrWhiteSpace(showVerOutput) || string.IsNullOrWhiteSpace(binFileName))
-            return false;
-
-        var cleanBin = Path.GetFileName(binFileName).Trim();
-        var cleanBase = Path.GetFileNameWithoutExtension(cleanBin).Trim();
-
-        // 1. Verifica nome exato ou sem extensão
-        if (showVerOutput.Contains(cleanBin, StringComparison.OrdinalIgnoreCase) ||
-            showVerOutput.Contains(cleanBase, StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        // 2. Extrai tag de release do nome do arquivo (ex: "c1900-universalk9-mz.SPA.157-3.M9.bin" -> "157-3.M9", "15.7(3)M9", "15.7(3) M9")
-        var match = Regex.Match(cleanBin, @"(?i)(\d{2,3})-(\d+)\.([A-Za-z0-9]+)");
-        if (match.Success)
-        {
-            var major = match.Groups[1].Value;
-            var minor = match.Groups[2].Value;
-            var train = match.Groups[3].Value;
-
-            if (major.Length == 3)
-            {
-                var vStr1 = $"{major[0]}{major[1]}.{major[2]}({minor}){train}"; // 15.9(3)M12
-                var vStr2 = $"{major[0]}{major[1]}.{major[2]}({minor}) {train}"; // 15.9(3) M12
-                if (showVerOutput.Contains(vStr1, StringComparison.OrdinalIgnoreCase) ||
-                    showVerOutput.Contains(vStr2, StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
-        }
-
-        // 3. Fallback genérico por versão (ex.: "15.7" presente no nome e no show version)
-        var generalVerMatch = Regex.Match(cleanBin, @"(?i)(\d+\.\d+)");
-        if (generalVerMatch.Success && showVerOutput.Contains(generalVerMatch.Value, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        return false;
+        return CiscoIOSFirmwareVersionInspector.IsSameVersion(showVerOutput, binFileName, out _, out _);
     }
 
     private static bool IsBootSystemConfigured(string bootOutput, string binFileName)
@@ -904,99 +1033,11 @@ public sealed class CiscoIOSUpgrader
         await Task.Delay(2000, cancellationToken);
 
         // 7. Aguarda a descompressão e inicialização do Cisco IOS
-        await ProgressAsync("[*] Aguardando descompressão e inicialização completa do Cisco IOS (isso pode levar ~2-3 minutos)...");
+        await ProgressAsync("[*] Aguardando descompressão e inicialização completa do Cisco IOS (isso pode levar ~2-4 minutos)...");
         _onProgress?.Invoke(90, "Fase B: Carregando Cisco IOS...", "Aguardando descompressão e prompt do Cisco IOS...");
 
-        var bootTimeout = DateTime.UtcNow.AddMinutes(5);
-        var lastStatusLog = DateTime.MinValue;
-        var memoryUpgradeDetected = false;
-        var decompressionLogged = false;
-        var booted = false;
-
-        while (DateTime.UtcNow < bootTimeout && !cancellationToken.IsCancellationRequested)
-        {
-            var remainingSec = (int)Math.Max(0, (bootTimeout - DateTime.UtcNow).TotalSeconds);
-            if ((DateTime.UtcNow - lastStatusLog).TotalSeconds >= 15)
-            {
-                lastStatusLog = DateTime.UtcNow;
-                await ProgressAsync($"[*] Aguardando descompressão e boot do Cisco IOS (~{remainingSec}s max)...");
-            }
-
-            try
-            {
-                var result = await session.WaitForAsync(
-                    new StopCondition[]
-                    {
-                        new StopCondition.LineRegex("mem-upgrade", new Regex(@"(?i)UPGRADING\s+TO\s+\d+MB|RELOADING\.\.\.\.")),
-                        new StopCondition.LineRegex("decompression", new Regex(@"(?i)Self\s+decompressing\s+the\s+image|Smart\s+Init\s+is\s+enabled|Cisco\s+IOS\s+Software")),
-                        new StopCondition.LineRegex("invalid-image", new Regex(@"(?i)Invalid\s+image\s+for\s+platform|failed\s+to\s+boot.*unsupported")),
-                        new StopCondition.LineRegex("dialog", new Regex(@"(?i)initial\s+configuration\s+dialog|\?\s*\[yes/no\]|\[yes\]")),
-                        new StopCondition.LineRegex("autoinstall", new Regex(@"(?i)terminate\s+autoinstall")),
-                        new StopCondition.LineRegex("press-return", new Regex(@"(?i)press\s+return\s+to\s+get\s+started|press\s+enter")),
-                        new StopCondition.LineRegex("cisco-prompt", new Regex(@"^[A-Za-z0-9_.-]+[>#]\s*$", RegexOptions.Compiled))
-                    },
-                    TimeSpan.FromSeconds(3),
-                    cancellationToken);
-
-                if (result.Matched is StopCondition.LineRegex lr)
-                {
-                    if (lr.Name == "mem-upgrade")
-                    {
-                        if (!memoryUpgradeDetected)
-                        {
-                            memoryUpgradeDetected = true;
-                            await ProgressAsync("[*] Roteador atualizou controladora DRAM (UPGRADING TO 512MB) e reiniciou — estendendo tempo de espera em +180s...");
-                            bootTimeout = DateTime.UtcNow.AddSeconds(180);
-                            await Task.Delay(3000, cancellationToken);
-                        }
-                    }
-                    else if (lr.Name == "decompression")
-                    {
-                        if (!decompressionLogged)
-                        {
-                            decompressionLogged = true;
-                            await ProgressAsync("[*] Descompressão e carga do kernel Cisco IOS em andamento...");
-                        }
-                        if ((bootTimeout - DateTime.UtcNow).TotalSeconds < 180)
-                        {
-                            bootTimeout = DateTime.UtcNow.AddSeconds(180);
-                        }
-                    }
-                    else if (lr.Name == "invalid-image")
-                    {
-                        await ProgressAsync("[ALERTA CRÍTICO] A imagem gravada é incompatível com o hardware do roteador (Invalid image for platform).");
-                    }
-                    else if (lr.Name == "dialog")
-                    {
-                        await ProgressAsync("[*] Diálogo de configuração inicial detectado — enviando 'no'...");
-                        await session.WriteLineAsync("no", cancellationToken);
-                        await Task.Delay(2000, cancellationToken);
-                    }
-                    else if (lr.Name == "autoinstall")
-                    {
-                        await ProgressAsync("[*] Diálogo autoinstall detectado — enviando 'yes'...");
-                        await session.WriteLineAsync("yes", cancellationToken);
-                        await Task.Delay(1000, cancellationToken);
-                    }
-                    else if (lr.Name == "press-return")
-                    {
-                        await ProgressAsync("[*] 'Press RETURN to get started' detectado — enviando ENTER...");
-                        await session.WriteLineAsync(string.Empty, cancellationToken);
-                        await Task.Delay(1000, cancellationToken);
-                    }
-                    else if (lr.Name == "cisco-prompt")
-                    {
-                        await ProgressAsync("[OK] Cisco IOS reinicializado e pronto para provisionamento!");
-                        booted = true;
-                        break;
-                    }
-                }
-            }
-            catch (SessionTimeoutException)
-            {
-                await session.WriteLineAsync(string.Empty, cancellationToken);
-            }
-        }
+        await AguardarBootCiscoIOSAsync(session, TimeSpan.FromMinutes(6), cancellationToken);
+        var booted = true;
 
         // 8. Se entrou no prompt Cisco IOS, limpa NVRAM antiga e garante boot normal persistente (0x2102)
         if (booted)

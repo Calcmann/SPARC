@@ -3,9 +3,10 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="SPARC — Recuperação Autônoma de Senha e Bootloader (FortiGate 40F)"
         Icon="Assets/sparc.ico"
-        Width="780" Height="700"
+        Width="780" Height="620"
+        MinWidth="680" MinHeight="460"
         WindowStartupLocation="CenterOwner"
-        ResizeMode="NoResize"
+        ResizeMode="CanResizeWithGrip"
         Background="#0F172A"
         FontFamily="Segoe UI">
 

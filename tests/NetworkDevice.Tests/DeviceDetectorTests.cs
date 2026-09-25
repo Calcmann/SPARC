@@ -141,4 +141,31 @@ HPE MSR931 uptime is 0 week, 0 day, 16 hours, 0 minute
         Assert.Equal(DeviceOperatingState.Ready, result.OperatingState);
         Assert.Equal(AccessState.Open, result.AccessState);
     }
+
+    [Fact]
+    public void ClassifyPrompt_CiscoConfigurationProfessionalBanner_DetectsPasswordProtected()
+    {
+        var prompt = 
+            "Cisco Configuration Professional (Cisco CP) is installed on this device.\r\n" +
+            "This feature requires the one-time use of the username \"cisco\" with the \r\n" +
+            "password \"cisco\". These default credentials have a privilege level of 15.\r\n" +
+            "YOU MUST USE CISCO CP or the CISCO IOS CLI TO CHANGE THESE\r\n" +
+            "PUBLICLY-KNOWN CREDENTIALS\r\n" +
+            " \r\n" +
+            "Here are the Cisco IOS commands.\r\n" +
+            " \r\n" +
+            "username <myuser>  privilege 15 secret 0 <mypassword>\r\n" +
+            "no username cisco\r\n" +
+            " \r\n" +
+            "Replace <myuser> and <mypassword> with the username and password you want \r\n" +
+            "to use.\r\n" +
+            " \r\n" +
+            "Username: ";
+
+        var result = _detector.ClassifyPrompt(prompt);
+
+        Assert.Equal(DeviceManufacturer.Cisco, result.Manufacturer);
+        Assert.Equal(DeviceOperatingState.PasswordProtected, result.OperatingState);
+        Assert.Equal(AccessState.UserAndPasswordRequired, result.AccessState);
+    }
 }

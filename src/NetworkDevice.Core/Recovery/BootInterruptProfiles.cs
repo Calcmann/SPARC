@@ -17,8 +17,8 @@ public static class BootInterruptProfiles
         BurstCount = 1,
         BurstInterval = TimeSpan.Zero,
         RetryInterval = TimeSpan.FromMilliseconds(750),
-        MaxWindow = TimeSpan.FromSeconds(90),
-        MaxTotalTransmissions = 100,
+        MaxWindow = TimeSpan.FromMinutes(2.5),
+        MaxTotalTransmissions = 200,
         OsBootPolicy = OsBootPolicy.TerminalFail
     };
 
@@ -29,14 +29,14 @@ public static class BootInterruptProfiles
         Manufacturer = "Cisco",
         Family = "ISR 800 / 841",
         ModelPatterns = new[] { "C841", "C841M", "841", "Cisco 841", "Cisco C841", "ISR841", "ISR 841", "C800M", "800M", "C800", "800", "cisco.c841.break", "cisco.c841.ctrl-c" },
-        Method = BootInterruptMethod.Break,
+        Method = BootInterruptMethod.Dual,
         RequiresManualIntervention = false,
-        InitialDelay = TimeSpan.FromMilliseconds(100),
-        BurstCount = 2,
-        BurstInterval = TimeSpan.FromMilliseconds(40),
-        RetryInterval = TimeSpan.FromMilliseconds(350),
-        MaxWindow = TimeSpan.FromSeconds(90),
-        MaxTotalTransmissions = 180,
+        InitialDelay = TimeSpan.FromMilliseconds(200),
+        BurstCount = 1,
+        BurstInterval = TimeSpan.Zero,
+        RetryInterval = TimeSpan.FromMilliseconds(1200),
+        MaxWindow = TimeSpan.FromMinutes(2.5),
+        MaxTotalTransmissions = 150,
         OsBootPolicy = OsBootPolicy.TerminalFail
     };
 
@@ -49,12 +49,12 @@ public static class BootInterruptProfiles
         ModelPatterns = new[] { "1900", "1921", "1941", "1905", "C1900", "C1921", "C1941", "C1905", "1900 Series" },
         Method = BootInterruptMethod.Break,
         RequiresManualIntervention = false,
-        InitialDelay = TimeSpan.FromMilliseconds(100),
-        BurstCount = 2,
-        BurstInterval = TimeSpan.FromMilliseconds(40),
-        RetryInterval = TimeSpan.FromMilliseconds(350),
-        MaxWindow = TimeSpan.FromSeconds(90),
-        MaxTotalTransmissions = 180,
+        InitialDelay = TimeSpan.FromMilliseconds(200),
+        BurstCount = 1,
+        BurstInterval = TimeSpan.Zero,
+        RetryInterval = TimeSpan.FromMilliseconds(1200),
+        MaxWindow = TimeSpan.FromMinutes(2.5),
+        MaxTotalTransmissions = 150,
         OsBootPolicy = OsBootPolicy.TerminalFail
     };
 
@@ -71,8 +71,8 @@ public static class BootInterruptProfiles
         BurstCount = 2,
         BurstInterval = TimeSpan.FromMilliseconds(40),
         RetryInterval = TimeSpan.FromMilliseconds(1500),
-        MaxWindow = TimeSpan.FromSeconds(90),
-        MaxTotalTransmissions = 60,
+        MaxWindow = TimeSpan.FromMinutes(2.5),
+        MaxTotalTransmissions = 150,
         OsBootPolicy = OsBootPolicy.TerminalFail
     };
 
@@ -102,8 +102,8 @@ public static class BootInterruptProfiles
         BurstCount = 1,
         BurstInterval = TimeSpan.Zero,
         RetryInterval = TimeSpan.FromMilliseconds(1000),
-        MaxWindow = TimeSpan.FromSeconds(90),
-        MaxTotalTransmissions = 95,
+        MaxWindow = TimeSpan.FromMinutes(2.5),
+        MaxTotalTransmissions = 150,
         OsBootPolicy = OsBootPolicy.TerminalFail
     };
 

@@ -20,6 +20,7 @@
             <DockPanel>
                 <!-- Status da Porta e Modo -->
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" DockPanel.Dock="Left">
+                    <Image Source="Assets/sparc_emblem.png" Height="26" Margin="0,0,8,0" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" />
                     <Border Background="#16A34A" CornerRadius="4" Padding="6,2" Margin="0,0,8,0">
                         <TextBlock x:Name="TxtStatusBadge" Text="🟢 CONSOLE LIVE" FontWeight="Bold" FontSize="11" Foreground="#FFFFFF" />
                     </Border>

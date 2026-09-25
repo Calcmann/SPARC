@@ -47,9 +47,36 @@ public sealed class RecoveryStateMachine
             {
                 rommonPromptTcs.TrySetResult(evt.Line ?? evt.Text);
             }
-            else if (evt.Type == BootEventType.OsBootDetected && _profile.OsBootPolicy == OsBootPolicy.TerminalFail)
+            else if (evt.Type == BootEventType.OsBootDetected)
             {
-                osBootTcs.TrySetResult(evt.Line ?? evt.Text);
+                var matched = evt.MatchedPattern ?? string.Empty;
+                var line = evt.Line ?? evt.Text ?? string.Empty;
+
+                var isInteractivePrompt = matched.Contains("User", StringComparison.OrdinalIgnoreCase) ||
+                                          matched.Contains("login", StringComparison.OrdinalIgnoreCase) ||
+                                          matched.Contains("RETURN", StringComparison.OrdinalIgnoreCase) ||
+                                          line.Contains("Username:", StringComparison.OrdinalIgnoreCase) ||
+                                          line.Contains("Password:", StringComparison.OrdinalIgnoreCase) ||
+                                          line.Contains("login:", StringComparison.OrdinalIgnoreCase) ||
+                                          line.Contains("Press RETURN", StringComparison.OrdinalIgnoreCase);
+
+                if (isInteractivePrompt)
+                {
+                    // O equipamento ainda está respondendo no prompt da sessão anterior (técnico clicou OK antes de reiniciar)
+                    // ou ainda não foi desligado da energia. Emite aviso de orientação e NÃO aborta o monitoramento.
+                    StateChanged?.Invoke(RecoveryState.WaitingReload,
+                        $"[AVISO] Equipamento ainda ativo no prompt ('{line.Trim()}'). Desligue e religue a alimentação agora na tomada/chave (aguarde 5 segundos desligado)...");
+                }
+                else if (_profile.OsBootPolicy == OsBootPolicy.TerminalFail)
+                {
+                    // Descompressão/carregamento real do SO (ex: 'Self-decompressing the image' ou 'Loading...')
+                    osBootTcs.TrySetResult(line);
+                }
+                else if (_profile.OsBootPolicy == OsBootPolicy.Warning)
+                {
+                    StateChanged?.Invoke(RecoveryState.Interrupting,
+                        $"[AVISO] Detectada atividade de boot do SO ('{line.Trim()}'). Continuando tentativas de interrupção...");
+                }
             }
         };
 

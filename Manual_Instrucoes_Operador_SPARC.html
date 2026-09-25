@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Manual do Operador — SPARC</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 8mm 10mm 8mm 10mm;
+        }
+        * {
+            box-sizing: border-box;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+            color: #1E293B;
+            background-color: #FFFFFF;
+            margin: 0;
+            padding: 0;
+            font-size: 11.8px;
+            line-height: 1.4;
+        }
+
+        /* Quebras de página controladas */
+        .page-break {
+            page-break-after: always;
+            break-after: page;
+        }
+        .avoid-break {
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
+
+        /* Cabeçalho de página */
+        .header-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 3px solid #EE1C25;
+            padding-bottom: 4px;
+            margin-bottom: 7px;
+        }
+        .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+        }
+        .logo-badge {
+            background-color: #EE1C25;
+            color: #FFFFFF;
+            font-weight: 900;
+            font-size: 18px;
+            padding: 3px 10px;
+            border-radius: 6px;
+            letter-spacing: 1.5px;
+        }
+        .logo-title h1 {
+            margin: 0;
+            font-size: 15px;
+            font-weight: 800;
+            color: #0F172A;
+            text-transform: uppercase;
+        }
+        .logo-title p {
+            margin: 1px 0 0 0;
+            font-size: 10.5px;
+            color: #64748B;
+            font-weight: 600;
+        }
+        .header-meta {
+            text-align: right;
+            font-size: 10px;
+            color: #475569;
+            font-weight: 600;
+        }
+
+        /* Títulos de seção */
+        h2 {
+            font-size: 13.5px;
+            font-weight: 800;
+            color: #0F172A;
+            margin-top: 6px;
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            border-left: 4px solid #EE1C25;
+            padding-left: 7px;
+        }
+        h3 {
+            font-size: 12.5px;
+            font-weight: 700;
+            color: #1E293B;
+            margin-top: 6px;
+            margin-bottom: 3px;
+        }
+
+        /* Caixas de destaque */
+        .card {
+            background: #F8FAFC;
+            border: 1px solid #E2E8F0;
+            border-radius: 7px;
+            padding: 5px 9px;
+            margin-bottom: 5px;
+        }
+        .card-tip {
+            background: #F0FDF4;
+            border: 1px solid #86EFAC;
+            border-left: 4px solid #16A34A;
+        }
+        .card-alert {
+            background: #FEF2F2;
+            border: 1px solid #FECACA;
+            border-left: 4px solid #DC2626;
+        }
+        .card-info {
+            background: #EFF6FF;
+            border: 1px solid #BFDBFE;
+            border-left: 4px solid #2563EB;
+        }
+        .card-claro {
+            background: #FFFBEB;
+            border: 1px solid #FDE68A;
+            border-left: 4px solid #D97706;
+        }
+
+        /* Lista de passos visual */
+        .step-list {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            margin: 5px 0;
+        }
+        .step-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            background: #FFFFFF;
+            border: 1px solid #E2E8F0;
+            border-radius: 7px;
+            padding: 5px 8px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+        }
+        .step-number {
+            background: #EE1C25;
+            color: #FFFFFF;
+            font-weight: 800;
+            font-size: 12px;
+            width: 23px;
+            height: 23px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+        .step-content {
+            flex-grow: 1;
+        }
+        .step-content h4 {
+            margin: 0 0 2px 0;
+            font-size: 12.5px;
+            font-weight: 700;
+            color: #0F172A;
+        }
+        .step-content p {
+            margin: 0;
+            color: #334155;
+            font-size: 11.5px;
+        }
+
+        /* Imagem dos cabos console */
+        .console-container {
+            display: flex;
+            gap: 9px;
+            align-items: center;
+            margin-top: 4px;
+            background: #F8FAFC;
+            border: 1px solid #CBD5E1;
+            border-radius: 7px;
+            padding: 4px 8px;
+        }
+        .console-img {
+            max-width: 145px;
+            height: auto;
+            border-radius: 5px;
+            flex-shrink: 0;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .console-desc {
+            font-size: 11px;
+            color: #334155;
+            line-height: 1.3;
+        }
+
+        /* Tabela de portas de rede */
+        table.porta-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 4px 0 4px 0;
+            font-size: 11px;
+        }
+        table.porta-table th {
+            background: #0F172A;
+            color: #FFFFFF;
+            text-align: left;
+            padding: 3px 6px;
+            font-weight: 700;
+        }
+        table.porta-table td {
+            padding: 3px 6px;
+            border-bottom: 1px solid #E2E8F0;
+            vertical-align: middle;
+        }
+        table.porta-table tr:nth-child(even) td {
+            background: #F8FAFC;
+        }
+        .badge-lan {
+            background: #DCFCE7;
+            color: #166534;
+            font-weight: 700;
+            padding: 1px 5px;
+            border-radius: 4px;
+            border: 1px solid #86EFAC;
+            display: inline-block;
+        }
+        .badge-wan {
+            background: #FEE2E2;
+            color: #991B1B;
+            font-weight: 700;
+            padding: 1px 5px;
+            border-radius: 4px;
+            border: 1px solid #FCA5A5;
+            display: inline-block;
+        }
+
+        /* Rodapé */
+        .footer-note {
+            margin-top: 8px;
+            border-top: 1px solid #E2E8F0;
+            padding-top: 3px;
+            font-size: 9.5px;
+            color: #64748B;
+            display: flex;
+            justify-content: space-between;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ==================== PÁGINA 1: PARTE FÍSICA (CABOS, DRIVER E PORTAS) ==================== -->
+    <div class="header-bar">
+        <div class="logo-area">
+            <div class="logo-badge">SPARC</div>
+            <div class="logo-title">
+                <h1>Manual de Instruções do Técnico</h1>
+                <p>Parte 1: Conexões Físicas, Cabos Console e Portas de Rede</p>
+            </div>
+        </div>
+        <div class="header-meta">
+            <div><strong>Versão:</strong> 2026.1 Oficial</div>
+            <div><strong>Padrão Claro:</strong> Homologação Ativa</div>
+        </div>
+    </div>
+
+    <div class="card card-tip" style="margin-bottom: 7px; padding: 7px 11px;">
+        <strong>👋 Olá, Técnico! Bem-vindo ao SPARC.</strong><br>
+        O SPARC foi desenvolvido para automatizar 100% da configuração dos equipamentos de rede. Você <strong>não precisa digitar comandos em telas pretas</strong> nem memorizar scripts. Basta carregar a Ficha SAIP, conectar os cabos e iniciar o procedimento com um clique!
+    </div>
+
+    <h2>1. O Que Você Precisa Conectar (Checklist Físico Inicial)</h2>
+    <p style="margin-bottom: 4px;">Tenha em mãos estes itens essenciais antes de ligar o roteador na tomada:</p>
+
+    <div class="step-list">
+        <!-- ITEM 1: CABO CONSOLE COM FOTO E ALERTA DE DRIVER -->
+        <div class="step-item avoid-break">
+            <div class="step-number">1</div>
+            <div class="step-content">
+                <h4>Cabo Console Serial (USB / RJ45)</h4>
+                <p>Conecte o conector RJ45 na porta <strong>CONSOLE</strong> do roteador e o plugue USB no seu notebook de trabalho.</p>
+                
+                <div class="console-container">
+                    <img src="docs/cabo_console_usb.jpg" alt="Cabos Console Serial USB" class="console-img">
+                    <div class="console-desc">
+                        <strong>Modelos de cabo aceitos:</strong><br>
+                        • <strong>Cabo azul plano (recomendado):</strong> Conector RJ45 direto para USB com chip interno FTDI.<br>
+                        • <strong>Adaptador Serial DB9 para USB:</strong> Conector de 9 pinos (RS232) adaptado para USB.<br>
+                        Ambos os modelos comunicam perfeitamente com o SPARC.
+                    </div>
+                </div>
+
+                <div class="card card-alert" style="margin-top: 5px; margin-bottom: 0; padding: 5px 9px; font-size: 11.2px;">
+                    <strong>⚠️ ATENÇÃO COM O DRIVER DO ADAPTADOR USB (Windows):</strong><br>
+                    Para o SPARC se comunicar com o roteador, o seu cabo USB <strong>deve estar com o driver instalado e funcionando no Windows</strong>.
+                    <ul style="margin: 2px 0 0 0; padding-left: 15px; color: #334155;">
+                        <li><strong>Verificação no Windows:</strong> Ao plugar o cabo, abra o <em>Gerenciador de Dispositivos</em> e veja se em <em>"Portas (COM e LPT)"</em> aparece o cabo sem erros (ex: <code>USB Serial Port COM3</code>).</li>
+                        <li><strong>Se houver um aviso amarelo ⚠️:</strong> O cabo não funcionará até instalar o driver do fabricante do chip (<em>FTDI</em>, <em>Prolific</em> ou <em>CH340</em>). Cabos originais com chip <strong>FTDI</strong> instalam o driver sozinhos.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- ITEM 2: CABO DE REDE E GUIA DE PORTAS COM LAN 1 PADRONIZADA -->
+        <div class="step-item avoid-break">
+            <div class="step-number">2</div>
+            <div class="step-content">
+                <h4>Cabo de Rede Ethernet (Azul ou Cinza) — Onde Ligar?</h4>
+                <p>Conecte uma ponta no notebook e a outra ponta <strong>obrigatoriamente na porta LAN</strong> indicada abaixo:</p>
+                
+                <table class="porta-table avoid-break">
+                    <thead>
+                        <tr>
+                            <th>Modelo do Equipamento</th>
+                            <th>Onde Conectar o Notebook (LAN)</th>
+                            <th>Porta do Link Operadora (WAN)</th>
+                            <th>Dica de Conexão</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Cisco Série 900 (C921-4P)</strong></td>
+                            <td><span class="badge-lan">👉 Porta 5 (GE 5)</span></td>
+                            <td><span class="badge-wan">Porta 4 (GE 4)</span></td>
+                            <td>Use a Porta 5. Não use as portas 0 a 3.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Cisco Série 800 (C841M)</strong></td>
+                            <td><span class="badge-lan">👉 Porta 5 (GE 0/5)</span></td>
+                            <td><span class="badge-wan">Porta 4 (GE 0/4)</span></td>
+                            <td>Porta amarela GE 0/5.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Cisco Série 1900 / 1921 / 1941</strong></td>
+                            <td><span class="badge-lan">👉 Porta 1 (GE 0/1)</span></td>
+                            <td><span class="badge-wan">Porta 0 (GE 0/0)</span></td>
+                            <td>Porta GE 0/1 do cliente.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>HPE Comware (MSR954 / MSR930)</strong></td>
+                            <td><span class="badge-lan">👉 Porta 1 (GE 0/1)</span></td>
+                            <td><span class="badge-wan">Porta 0 (GE 0/0)</span></td>
+                            <td>Porta GigabitEthernet0/1.</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Fortinet FortiGate 40F</strong></td>
+                            <td><span class="badge-lan">👉 Porta LAN 1</span></td>
+                            <td><span class="badge-wan">Porta WAN</span></td>
+                            <td>Conecte obrigatoriamente na Porta LAN 1.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ITEM 3: FICHA SAIP -->
+        <div class="step-item avoid-break">
+            <div class="step-number">3</div>
+            <div class="step-content">
+                <h4>Ficha SAIP do Cliente (.PDF ou .TXT)</h4>
+                <p>Arquivo fornecido pelo <strong>Suporte Office / Despacho</strong> contendo a designação do circuito, dados cadastrais do cliente e blocos de IP WAN/LAN. Mantenha o arquivo salvo no seu computador de campo pronto para ser carregado no SPARC.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer-note">
+        <span>SPARC — Sistema de Provisionamento e Ativação Rápida de Circuitos</span>
+        <span>Página 1 de 3</span>
+    </div>
+
+    <div class="page-break"></div>
+
+    <!-- ==================== PÁGINA 2: PARTE LÓGICA (OPERAÇÃO, FIRMWARE CLARO E RELATÓRIO) ==================== -->
+    <div class="header-bar">
+        <div class="logo-area">
+            <div class="logo-badge">SPARC</div>
+            <div class="logo-title">
+                <h1>Manual de Instruções do Técnico</h1>
+                <p>Parte 2: Como Operar o SPARC, Atualização Claro e Relatório Final</p>
+            </div>
+        </div>
+        <div class="header-meta">
+            <div><strong>Processo Oficial</strong></div>
+            <div><strong>Homologação Claro</strong></div>
+        </div>
+    </div>
+
+    <!-- ALERTA DE FIRMWARE HOMOLOGADO PELA CLARO -->
+    <div class="card card-claro avoid-break" style="margin-bottom: 9px; padding: 7px 11px;">
+        <strong>⭐ ATUALIZAÇÃO DE FIRMWARE: OBRIGATÓRIA PELO PADRÃO CLARO</strong><br>
+        A <strong>Claro homologou novas versões oficiais de sistema</strong> para todos os modelos de roteadores da rede. Por isso, a atualização do firmware é <strong>praticamente certa e necessária em todos os atendimentos</strong>.<br>
+        • Tenha sempre salvos no seu notebook os arquivos homologados pela Claro (Cisco <code>.bin</code>, HPE <code>.ipe</code>, FortiGate <code>.out</code>).<br>
+        • Deixe a opção <strong>"Atualizar Firmware" marcada no SPARC</strong> e selecione o arquivo correspondente.<br>
+        • O SPARC avalia automaticamente: se o roteador já estiver com a versão homologada mais recente, ele avisa e poupa tempo; se estiver desatualizado, ele grava a versão nova e reinicia o roteador sozinho!
+    </div>
+
+    <h2>2. Como Executar o Processo Padrão no SPARC (Passo a Passo)</h2>
+    <p style="margin-bottom: 5px;">O processo foi feito para ser simples e automático. Siga estes 4 passos na tela do SPARC:</p>
+
+    <div class="step-list">
+        <div class="step-item avoid-break">
+            <div class="step-number">1</div>
+            <div class="step-content">
+                <h4>Abra o SPARC e Confira a Porta Serial</h4>
+                <p>Abra o SPARC pelo ícone na Área de Trabalho. No topo da tela, confirme a sua <strong>Porta Serial</strong> (ex: <code>COM3</code>, <code>COM4</code>).</p>
+            </div>
+        </div>
+        <div class="step-item avoid-break">
+            <div class="step-number">2</div>
+            <div class="step-content">
+                <h4>Carregue a Ficha SAIP do Cliente com 1 Clique</h4>
+                <p>Clique no botão vermelho de destaque <strong>"📂 Selecionar Arquivo SAIP (.pdf / .txt)"</strong> e selecione o arquivo. O nome do cliente, designação e os IPs aparecem preenchidos na tela automaticamente.</p>
+            </div>
+        </div>
+        <div class="step-item avoid-break">
+            <div class="step-number">3</div>
+            <div class="step-content">
+                <h4>Selecione o Adaptador de Rede e o Firmware Homologado</h4>
+                <p>Escolha a sua placa Ethernet e mantenha marcada a caixa <strong>"Atualizar Firmware"</strong>, indicando o arquivo homologado pela Claro (Cisco <code>.bin</code>, HPE <code>.ipe</code> ou FortiGate <code>.out</code>).</p>
+            </div>
+        </div>
+        <div class="step-item avoid-break">
+            <div class="step-number">4</div>
+            <div class="step-content">
+                <h4>Clique no Botão Verde: "INICIAR PROVISIONAMENTO AUTOMÁTICO"</h4>
+                <p>Pronto! O SPARC assume o controle do equipamento e executa todo o fluxo de forma 100% autônoma:</p>
+                <ul style="margin: 3px 0 0 0; padding-left: 18px; color: #475569; font-size: 11.5px;">
+                    <li>Restaura as configurações de fábrica e remove senhas antigas;</li>
+                    <li>Grava a versão oficial de firmware homologada pela Claro e reinicia o roteador;</li>
+                    <li>Aplica todas as regras e rotas da Ficha SAIP;</li>
+                    <li>Configura a placa de rede do seu notebook e testa o Ping na LAN, na WAN e na Internet;</li>
+                    <li>Gera e abre o relatório de homologação em PDF com selo de aprovação para anexar na OS.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <h2>3. O Que Fazer Durante o Atendimento? (Dúvidas Rápidas)</h2>
+    <div class="avoid-break">
+        <div class="card card-tip" style="margin-bottom: 6px; font-size: 11.5px; padding: 6px 10px;">
+            <strong>📄 Relatório de Homologação em PDF (Pronto para a OS):</strong><br>
+            Assim que a barra atingir 100%, o SPARC gera e abre na tela um <strong>relatório oficial em PDF com selo de aprovação</strong> contendo todos os testes validados. O arquivo fica salvo na pasta <code>C:\SPARC\Relatorios</code> pronto para você anexar na sua Ordem de Serviço (OS).
+        </div>
+
+        <div class="card card-info" style="margin-bottom: 6px; font-size: 11.5px; padding: 6px 10px;">
+            <strong>🔑 Se o equipamento pedir senha antiga na tela:</strong><br>
+            Se você souber a senha que estava no roteador, digite-a para ganhar tempo. Se não souber a senha antiga, basta clicar na opção <em>"Zerar Configuração de Fábrica"</em> que o SPARC recupera o equipamento sozinho pelo modo de manutenção.
+        </div>
+
+        <div class="card card-tip" style="margin-bottom: 6px; font-size: 11.5px; padding: 6px 10px;">
+            <strong>📋 Se o SPARC não preencher os dados ao carregar a Ficha SAIP:</strong><br>
+            Isso ocorre quando o arquivo recebido não possui camada de texto (gerado incorretamente pelo suporte). Solicite ao <strong>Suporte Office / Backoffice</strong> o reenvio da Ficha SAIP emitida conforme as instruções da <strong>Página 3</strong> deste manual.
+        </div>
+
+        <div class="card card-alert" style="margin-bottom: 0; font-size: 11.5px; padding: 6px 10px;">
+            <strong>⚠️ Se a porta serial não aparecer ou der erro de conexão:</strong><br>
+            Desconecte o plugue USB do notebook, aguarde 3 segundos, conecte novamente em outra porta USB e clique no botão de atualizar ao lado da lista de portas. Lembre-se de verificar o driver do cabo no Gerenciador de Dispositivos (conforme explicado na Página 1).
+        </div>
+    </div>
+
+    <div class="footer-note">
+        <span>SPARC — Sistema de Provisionamento e Ativação Rápida de Circuitos</span>
+        <span>Página 2 de 3</span>
+    </div>
+
+    <div class="page-break"></div>
+
+    <!-- ==================== PÁGINA 3: DIRETRIZES PARA O SUPORTE OFFICE (EMISSÃO SAIP) ==================== -->
+    <div class="header-bar">
+        <div class="logo-area">
+            <div class="logo-badge">SPARC</div>
+            <div class="logo-title">
+                <h1>Manual de Instruções — Suporte Office</h1>
+                <p>Parte 3: Diretrizes de Emissão da Ficha SAIP em PDF (Backoffice / NOC / Despacho)</p>
+            </div>
+        </div>
+        <div class="header-meta">
+            <div><strong>Uso: Suporte Office & NOC</strong></div>
+            <div><strong>Emissão de OTS / Ficha SAIP</strong></div>
+        </div>
+    </div>
+
+    <div class="card card-info avoid-break" style="margin-bottom: 6px; padding: 6px 10px;">
+        <strong>🏢 Atenção, Equipes de Apoio Técnico, Planejamento, NOC e Despacho:</strong><br>
+        O SPARC utiliza leitura automatizada inteligente para extrair diretamente da Ficha SAIP os dados de designação, cliente, IPs e rotas. Para que a automação em campo funcione sem retrabalho, <strong>a Ficha SAIP deve ser obrigatoriamente gerada com camada de texto vetorial ativa (texto selecionável)</strong>.
+    </div>
+
+    <h2>4. Como Emitir o PDF da Ficha SAIP Corretamente (Passo a Passo)</h2>
+    <p style="margin-bottom: 4px;">Siga estas instruções ao gerar o arquivo PDF no sistema SaIP para envio ao técnico de campo:</p>
+
+    <div class="step-list">
+        <div class="step-item avoid-break">
+            <div class="step-number">1</div>
+            <div class="step-content">
+                <h4>Acesse a OTS no Navegador de Internet (Google Chrome ou Microsoft Edge)</h4>
+                <p>No portal do sistema SaIP, localize e abra a OTS do circuito. Em seguida, abra o diálogo de impressão pressionando <kbd style="background:#E2E8F0; padding:1px 4px; border-radius:3px; font-weight:700;">Ctrl</kbd> + <kbd style="background:#E2E8F0; padding:1px 4px; border-radius:3px; font-weight:700;">P</kbd> (ou clique no menu do navegador &gt; <em>Imprimir</em>).</p>
+            </div>
+        </div>
+
+        <div class="step-item avoid-break">
+            <div class="step-number">2</div>
+            <div class="step-content">
+                <h4>Destino da Impressão: Selecione "Salvar como PDF" (Nativo do Navegador)</h4>
+                <p>No campo <strong>Destino</strong> da caixa de impressão, escolha obrigatoriamente <strong>"Salvar como PDF"</strong> nativo do Chrome ou Edge.</p>
+                <div class="card card-alert" style="margin-top: 4px; margin-bottom: 0; padding: 4px 8px; font-size: 11px; line-height: 1.35;">
+                    <strong>⛔ O QUE NUNCA UTILIZAR:</strong> Jamais use impressoras virtuais externas (<em>CutePDF Writer</em>, <em>PDFCreator</em>, <em>Foxit PDF Printer</em> ou <em>Microsoft XPS</em>) e nunca marque a opção <em>"Imprimir como imagem"</em>. Essas ferramentas rasterizam as letras transformando o documento em uma foto opaca, impedindo a leitura dos dados pelo SPARC.
+                </div>
+            </div>
+        </div>
+
+        <div class="step-item avoid-break">
+            <div class="step-number">3</div>
+            <div class="step-content">
+                <h4>Definições de Layout e Formatação da Página</h4>
+                <p>Configure exatamente os seguintes parâmetros na tela de impressão:</p>
+                <ul style="margin: 2px 0 0 0; padding-left: 17px; color: #334155; font-size: 11.2px;">
+                    <li><strong>Layout:</strong> Selecione obrigatoriamente <strong>"Retrato"</strong> (formato vertical A4 oficial de 2 páginas). <em>Não use paisagem</em>.</li>
+                    <li><strong>Tamanho do Papel:</strong> <strong>A4</strong> | <strong>Margens:</strong> <strong>Padrão</strong> | <strong>Escala:</strong> <strong>100%</strong> (Padrão).</li>
+                    <li><strong>Opções:</strong> Marque obrigatoriamente a opção <strong>"Gráficos de segundo plano"</strong> (preserva as cores das tabelas e divisórias da OTS).</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="step-item avoid-break">
+            <div class="step-number">4</div>
+            <div class="step-content">
+                <h4>Regra de Ouro da Validação: Teste do Mouse (Antes de Anexar na OS)</h4>
+                <p>Antes de despachar o arquivo ao técnico de campo ou anexar no chamado, faça o teste de 3 segundos:</p>
+                <ol style="margin: 2px 0 0 0; padding-left: 17px; color: #334155; font-size: 11.2px;">
+                    <li>Abra o PDF recém-gerado no leitor de PDF ou no próprio navegador.</li>
+                    <li>Com o cursor do mouse, clique e arraste sobre o nome do cliente ou o endereço IP WAN/LAN para selecionar as palavras.</li>
+                    <li>Pressione <kbd style="background:#E2E8F0; padding:1px 4px; border-radius:3px; font-weight:700;">Ctrl</kbd> + <kbd style="background:#E2E8F0; padding:1px 4px; border-radius:3px; font-weight:700;">C</kbd> e cole (<kbd style="background:#E2E8F0; padding:1px 4px; border-radius:3px; font-weight:700;">Ctrl</kbd> + <kbd style="background:#E2E8F0; padding:1px 4px; border-radius:3px; font-weight:700;">V</kbd>) em qualquer bloco de notas.</li>
+                </ol>
+                <div style="display: flex; gap: 8px; margin-top: 4px;">
+                    <div class="card card-tip" style="flex: 1; margin: 0; padding: 4px 8px; font-size: 10.8px;">
+                        <strong>✅ TESTE APROVADO:</strong> Texto copiado normalmente como caracteres legíveis. O arquivo está homologado e o SPARC fará a leitura 100% imediata!
+                    </div>
+                    <div class="card card-alert" style="flex: 1; margin: 0; padding: 4px 8px; font-size: 10.8px;">
+                        <strong>❌ TESTE REPROVADO:</strong> O mouse não seleciona as letras (age como foto). Refaça a exportação usando "Salvar como PDF" nativo.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <h2>5. Guia Rápido de Boas Práticas — Emissão de PDF</h2>
+    <table class="porta-table avoid-break" style="margin-top: 3px;">
+        <thead>
+            <tr>
+                <th>Item de Configuração</th>
+                <th>Padrão Homologado (Correto)</th>
+                <th>O Que Evitar (Causa Incompatibilidade)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Destino de Impressão</strong></td>
+                <td><span class="badge-lan">👉 Salvar como PDF (Nativo Chrome/Edge)</span></td>
+                <td><span class="badge-wan">CutePDF, PDFCreator, Foxit, Microsoft XPS</span></td>
+            </tr>
+            <tr>
+                <td><strong>Orientação do Documento</strong></td>
+                <td><span class="badge-lan">👉 Retrato (Vertical A4 — 2 Páginas)</span></td>
+                <td><span class="badge-wan">Paisagem (Horizontal) ou dividido em 4 páginas</span></td>
+            </tr>
+            <tr>
+                <td><strong>Camada de Conteúdo</strong></td>
+                <td><span class="badge-lan">👉 Texto Vetorial Selecionável com Mouse</span></td>
+                <td><span class="badge-wan">Bitmap / Imagem Rasterizada ("Imprimir como imagem")</span></td>
+            </tr>
+            <tr>
+                <td><strong>Elementos Visuais</strong></td>
+                <td><span class="badge-lan">👉 Gráficos de Segundo Plano Ativados</span></td>
+                <td><span class="badge-wan">Gráficos desmarcados (faz tabelas e caixas sumirem)</span></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="footer-note">
+        <span>SPARC — Sistema de Provisionamento e Ativação Rápida de Circuitos</span>
+        <span>Página 3 de 3</span>
+    </div>
+
+</body>
+</html>

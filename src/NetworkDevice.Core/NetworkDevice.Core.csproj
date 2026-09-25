@@ -9,6 +9,7 @@
   <ItemGroup>
     <PackageReference Include="PdfPig" Version="0.1.15" />
     <InternalsVisibleTo Include="NetworkDevice.Tests" />
+    <PackageReference Include="SharpPcap" Version="6.3.1" />
   </ItemGroup>
 
 </Project>

@@ -4,11 +4,12 @@
         Title="SPARC — Sistema de Provisionamento e Ativação de Roteadores Claro"
         Icon="Assets/sparc.ico"
         Height="820" Width="1060"
-        MinHeight="700" MinWidth="920"
+        MinHeight="520" MinWidth="780"
         WindowStartupLocation="CenterScreen"
         Background="#18181B"
         Loaded="Window_Loaded"
-        PreviewKeyDown="MainWindow_PreviewKeyDown">
+        PreviewKeyDown="MainWindow_PreviewKeyDown"
+        PreviewMouseWheel="MainWindow_PreviewMouseWheel">
 
     <Window.Resources>
         <!-- Gradiente Claro S.A. (Vinho #881337 para Vermelho #DA291C) -->
@@ -64,7 +65,10 @@
         </Style>
     </Window.Resources>
 
-    <Grid Margin="4">
+    <Grid x:Name="RootLayoutGrid" Margin="4">
+        <Grid.LayoutTransform>
+            <ScaleTransform x:Name="UiScaleTransform" ScaleX="1.0" ScaleY="1.0" />
+        </Grid.LayoutTransform>
 
         <!-- ========================================================================= -->
         <!-- 1. TELA INICIAL DE ABERTURA: DEFINIÇÃO DE INSUMOS DO CIRCUITO             -->
@@ -74,14 +78,15 @@
             <Border Background="#27272A" BorderBrush="#52525B" BorderThickness="1" CornerRadius="10" Padding="14,10" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="2">
                 <StackPanel>
                     <!-- CABEÇALHO COMPACTO E LIMPO -->
-                    <StackPanel HorizontalAlignment="Center" Margin="0,0,0,8">
-                        <Border Background="{StaticResource BetaBadgeBrush}" CornerRadius="10" Padding="12,2.5" HorizontalAlignment="Center" Margin="0,0,0,4">
+                    <StackPanel Margin="0,0,0,8">
+                        <Border Background="{StaticResource BetaBadgeBrush}" CornerRadius="10" Padding="12,2.5" HorizontalAlignment="Center" Margin="0,0,0,6">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="🔴" FontSize="10.5" VerticalAlignment="Center" Margin="0,0,6,0" />
                                 <TextBlock Text="VERSÃO BETA — CLARO S.A. — ATIVAÇÃO SC" FontWeight="Black" FontSize="11.5" Foreground="#FFFFFF" VerticalAlignment="Center" />
                             </StackPanel>
                         </Border>
-                        <TextBlock Text="SPARC — Sistema de Provisionamento e Ativação de Roteadores" FontWeight="Black" FontSize="18" Foreground="#EE1C25" HorizontalAlignment="Center" />
+                        <!-- Logo centralizado ampliado -->
+                        <Image Source="Assets/sparc_logo_horizontal.png" Height="86" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,4,0,6" RenderOptions.BitmapScalingMode="HighQuality" ToolTip="SPARC — Sistema de Provisionamento e Ativação de Roteadores da Claro" />
                         <TextBlock Text="Configure o equipamento, informe os dados e escolha como deseja executar o provisionamento."
                                    FontSize="13" Foreground="#A1A1AA" Margin="0,2,0,0" HorizontalAlignment="Center" />
                     </StackPanel>
@@ -324,6 +329,13 @@
                             HorizontalAlignment="Stretch" Click="BtnSemiAutoAtalho_Click" IsEnabled="True" Visibility="Collapsed"
                             ToolTip="Atalho: Ctrl+Shift+V — Acessa a esteira em modo passo a passo" />
 
+                    <!-- BOTÃO ANALISADOR DE DADOS VIA ATALHO CTRL+SHIFT+V -->
+                    <Button x:Name="BtnAnalisadorDados" Content="📊 Analisador de Dados (Y.1564 / Loop Digital / VIAVI)"
+                            Padding="12,7" Background="#0369A1" Foreground="White" BorderBrush="#0284C7" BorderThickness="1"
+                            FontWeight="Bold" FontSize="13" Cursor="Hand" Margin="0,4,0,0"
+                            HorizontalAlignment="Stretch" Click="BtnAnalisadorDados_Click" Visibility="Collapsed"
+                            ToolTip="Atalho: Ctrl+Shift+V — Abre o Analisador de Dados com testes ITU-T Y.1564, Loop Digital (Refletor VIAVI/JDSU), ajuste de parâmetros de SLA, MTU e banda" />
+
                     <!-- BOTÃO RECUPERAÇÃO FORTINET 40F VIA ATALHO CTRL+SHIFT+V -->
                     <Button x:Name="BtnRecuperacaoFortinet" Content="🛠️ Recuperação Fortinet 40F (Bootloader)"
                             Padding="12,7" Background="#881337" Foreground="White" BorderBrush="#BE123C" BorderThickness="1"
@@ -331,12 +343,6 @@
                             HorizontalAlignment="Stretch" Click="BtnRecuperacaoFortinet_Click" Visibility="Collapsed"
                             ToolTip="Atalho: Ctrl+Shift+V — Abre a janela avançada de recuperação autônoma e bootloader (BIOS) do FortiGate 40F" />
 
-                    <!-- BOTÃO SIMULAR FORTIGATE 40F EM MODO BIOS (SEM FIRMWARE) -->
-                    <Button x:Name="BtnSimularFortiBiosRecovery" Content="🧪 Simular FortiGate 40F sem Firmware (BIOS TFTP)"
-                            Padding="10,6" Background="#7F1D1D" Foreground="White" BorderBrush="#DC2626" BorderThickness="1"
-                            FontWeight="Bold" FontSize="12" Cursor="Hand" Margin="0,4,0,0"
-                            HorizontalAlignment="Stretch" Click="BtnSimularFortiBiosRecovery_Click" Visibility="Collapsed"
-                            ToolTip="Atalho: Ctrl+Shift+V — Simula um FortiGate 40F com firmware corrompido ou ausente para teste em bancada" />
 
                     <!-- OPÇÃO SECRETA NAT (LAB) — mesmo atalho, default DESLIGADA -->
                     <CheckBox x:Name="ChkNatLab" Content="🌐 Habilitar NAT (LAB) — modem de acesso 4G / bancada"
@@ -349,12 +355,29 @@
                         <Button x:Name="BtnAbrirManualInicial" Content="📖 Abrir Manual de Instruções (PDF)" Background="Transparent" Foreground="#A1A1AA" FontWeight="Bold" BorderThickness="0" Cursor="Hand" Click="BtnAbrirManual_Click" ToolTip="Guia ilustrado de cabeamento e tempos de boot" />
                     </StackPanel>
 
-                    <!-- RODAPÉ COMPACTO -->
+                    <!-- RODAPÉ COMPACTO COM CONTROLE DE ZOOM / ESCALA DA UI -->
                     <Border Background="#3F3F46" BorderBrush="#52525B" BorderThickness="1" CornerRadius="4" Padding="10,5" Margin="0,2,0,0">
                         <DockPanel>
-                            <TextBlock Text="✉ Desenvolvido por:" FontWeight="Bold" FontSize="11.5" Foreground="#A1A1AA" VerticalAlignment="Center" Margin="0,0,4,0" />
-                            <TextBlock Text="george.calcmann@claro.com.br" FontWeight="Bold" FontSize="11.5" Foreground="#EE1C25" VerticalAlignment="Center" />
-                            <TextBlock Text="Claro S.A. — Ativação SC" HorizontalAlignment="Right" FontSize="11.5" FontWeight="SemiBold" Foreground="#A1A1AA" VerticalAlignment="Center" />
+                            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="✉ Desenvolvido por:" FontWeight="Bold" FontSize="11.5" Foreground="#A1A1AA" VerticalAlignment="Center" Margin="0,0,4,0" />
+                                <TextBlock Text="george.calcmann@claro.com.br" FontWeight="Bold" FontSize="11.5" Foreground="#EE1C25" VerticalAlignment="Center" Margin="0,0,16,0" />
+                            </StackPanel>
+
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Border Background="#18181B" BorderBrush="#52525B" BorderThickness="1" CornerRadius="3" Padding="6,2" Margin="0,0,10,0" VerticalAlignment="Center">
+                                    <TextBlock x:Name="TxtAppVersionInicial" Text="Release v0.8.8 Beta" FontSize="11" FontWeight="SemiBold" Foreground="#F87171" VerticalAlignment="Center" ToolTip="Versão de Release do SPARC" />
+                                </Border>
+                                <TextBlock Text="Claro S.A. — Ativação SC" FontSize="11.5" FontWeight="SemiBold" Foreground="#A1A1AA" VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            <!-- CONTROLE DINÂMICO DE ESCALA UI (14" 1080P / DPI ZOOM) -->
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock Text="🔍 Escala UI:" FontWeight="Bold" FontSize="11" Foreground="#A1A1AA" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                <Button x:Name="BtnZoomMinus" Content="−" Width="22" Height="20" Padding="0" Background="#27272A" Foreground="#E4E4E7" BorderBrush="#52525B" BorderThickness="1" FontWeight="Bold" FontSize="12" Cursor="Hand" ToolTip="Reduzir escala da interface (Ctrl + - ou Ctrl + Scroll)" Click="BtnZoomMinus_Click" />
+                                <TextBlock x:Name="TxtZoomLevel" Text="100%" Width="46" TextAlignment="Center" FontWeight="Bold" FontSize="11.5" Foreground="#F87171" VerticalAlignment="Center" />
+                                <Button x:Name="BtnZoomPlus" Content="+" Width="22" Height="20" Padding="0" Background="#27272A" Foreground="#E4E4E7" BorderBrush="#52525B" BorderThickness="1" FontWeight="Bold" FontSize="12" Cursor="Hand" ToolTip="Aumentar escala da interface (Ctrl + + ou Ctrl + Scroll)" Click="BtnZoomPlus_Click" />
+                                <Button x:Name="BtnZoomAuto" Content="Auto" Padding="6,1" Height="20" Margin="5,0,0,0" Background="#27272A" Foreground="#A1A1AA" BorderBrush="#52525B" BorderThickness="1" FontSize="10.5" FontWeight="Bold" Cursor="Hand" ToolTip="Ajustar automaticamente conforme a tela atual (Ctrl + 0)" Click="BtnZoomAuto_Click" />
+                            </StackPanel>
                         </DockPanel>
                     </Border>
                 </StackPanel>
@@ -366,12 +389,13 @@
         <!-- 1b. TELA MODO AUTOMÁTICO — BARRA GERAL + STATUS POR ETAPA (SEM ESTEIRA)     -->
         <!-- ========================================================================= -->
         <Grid x:Name="GridModoAutomatico" Visibility="Collapsed" Background="#18181B">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <Border Background="#27272A" BorderBrush="#52525B" BorderThickness="1" CornerRadius="12" Padding="18" VerticalAlignment="Center" HorizontalAlignment="Stretch" Margin="8">
                 <StackPanel>
                     <Border Background="{StaticResource BetaBadgeBrush}" CornerRadius="10" Padding="12,4" HorizontalAlignment="Center" Margin="0,0,0,6">
                         <TextBlock Text="🔴 VERSÃO BETA — CLARO S.A. — ATIVAÇÃO SC" FontWeight="Black" FontSize="12.5" Foreground="#FFFFFF" />
                     </Border>
-                    <TextBlock Text="⚡ MODO AUTOMÁTICO EM EXECUÇÃO" FontWeight="Black" FontSize="20" Foreground="#EE1C25" HorizontalAlignment="Center" />
+                    <TextBlock Text="⚡ MODO AUTOMÁTICO EM EXECUÇÃO" FontWeight="Black" FontSize="20" Foreground="#EE1C25" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,4,0,6" />
                     <TextBlock x:Name="TxtAutoStatusGeral" Text="Preparando..." FontSize="14" Foreground="#A1A1AA" HorizontalAlignment="Center" Margin="0,4,0,14" />
                     <ProgressBar x:Name="PbAutoGeral" Height="14" Minimum="0" Maximum="100" Value="0" Foreground="#EE1C25" Background="#27272A" BorderThickness="0" Margin="0,0,0,6" />
                     <TextBlock x:Name="TxtAutoPorcentagem" Text="0%" FontWeight="Bold" Foreground="#EE1C25" HorizontalAlignment="Center" Margin="0,0,0,16" />
@@ -393,6 +417,7 @@
                         <Button x:Name="BtnAutoRestaurarRede" Content="↩ Restaurar configuração IP do Windows" Padding="12,6" Margin="4,3" Background="#0F766E" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnAutoRestaurarRede_Click" Visibility="Collapsed" ToolTip="Volta a placa de rede ao IP/DHCP anterior ao teste (ou mantém para mais testes)" />
                         <Button x:Name="BtnAutoRetestarBanda" Content="🔄 Re-testar Largura de Banda" Padding="12,6" Margin="4,3" Background="#D97706" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnAutoRetestarBanda_Click" Visibility="Collapsed" ToolTip="Executa novamente o teste de velocidade/largura de banda da Fase 7 e atualiza o relatório técnico" />
                         <Button x:Name="BtnAutoSalvarScript" Content="📝 Salvar script TXT" Padding="12,6" Margin="4,3" Background="#3F3F46" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnAutoSalvarScript_Click" Visibility="Collapsed" ToolTip="Salva em TXT as configurações aplicadas no equipamento (running-config)" />
+                        <Button x:Name="BtnAutoCertidaoY1564" Content="📜 CERTIDÃO DE NASCIMENTO - Y.1564" Padding="12,6" Margin="4,3" Background="#DC2626" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnAutoCertidaoY1564_Click" Visibility="Collapsed" ToolTip="Abre as opções e executa o teste oficial ITU-T Y.1564 contra o QT VIAVI/JDSU remoto, gerando a Certidão de Nascimento em PDF" />
                         <Button x:Name="BtnAutoVoltar" Content="← Voltar à Esteira" Padding="14,6" Margin="4,3" Background="#64748B" Foreground="White" BorderThickness="0" Click="BtnAutoVoltar_Click" Visibility="Collapsed" />
                     </WrapPanel>
                     <Border Background="#0A0E14" CornerRadius="6" Margin="0,14,0,0" MaxHeight="200">
@@ -400,8 +425,15 @@
                             <TextBlock x:Name="TxtAutoLog" Text="Aguardando início..." Foreground="#94A3B8" FontFamily="Consolas" FontSize="12.5" Padding="8" TextWrapping="Wrap" />
                         </ScrollViewer>
                     </Border>
+                    <DockPanel Margin="0,6,2,0">
+                        <TextBlock Text="Claro S.A. — Ativação SC" FontSize="11" FontWeight="SemiBold" Foreground="#71717A" VerticalAlignment="Center" />
+                        <Border DockPanel.Dock="Right" Background="#18181B" BorderBrush="#52525B" BorderThickness="1" CornerRadius="3" Padding="6,2" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <TextBlock x:Name="TxtAppVersionAuto" Text="Release v0.8.8 Beta" FontSize="11" FontWeight="SemiBold" Foreground="#F87171" VerticalAlignment="Center" ToolTip="Versão de Release do SPARC" />
+                        </Border>
+                    </DockPanel>
                 </StackPanel>
             </Border>
+            </ScrollViewer>
         </Grid>
 
         <!-- ========================================================================= -->
@@ -413,6 +445,9 @@
             <Border DockPanel.Dock="Top" Background="#27272A" BorderBrush="#52525B" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,0,0,6">
                 <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
                 <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
+
+                    <!-- Logo Emblema SPARC -->
+                    <Image Source="Assets/sparc_emblem.png" Height="28" Margin="0,0,12,0" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" ToolTip="SPARC — Sistema de Provisionamento e Ativação de Roteadores da Claro" />
 
                     <!-- Porta Serial -->
                     <TextBlock Text="Porta Serial:" VerticalAlignment="Center" FontWeight="Bold" Foreground="#EE1C25" Margin="0,4,8,4" />
@@ -498,6 +533,17 @@
                 <StatusBarItem x:Name="StatusTexto" Content="Pronto para iniciar a esteira." FontWeight="SemiBold" Foreground="#EE1C25" />
                 <StatusBarItem HorizontalAlignment="Right">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <!-- CONTROLE DE ESCALA / ZOOM NA ESTEIRA -->
+                        <TextBlock Text="🔍 Zoom:" FontWeight="Bold" FontSize="11.5" Foreground="#A1A1AA" VerticalAlignment="Center" Margin="0,0,4,0" />
+                        <Button Content="−" Width="20" Height="20" Padding="0" Background="#27272A" Foreground="#E4E4E7" BorderBrush="#52525B" BorderThickness="1" FontWeight="Bold" FontSize="12" Cursor="Hand" ToolTip="Reduzir escala da interface (Ctrl + -)" Click="BtnZoomMinus_Click" />
+                        <TextBlock x:Name="TxtZoomLevelEsteira" Text="100%" Width="42" TextAlignment="Center" FontWeight="Bold" FontSize="11" Foreground="#F87171" VerticalAlignment="Center" />
+                        <Button Content="+" Width="20" Height="20" Padding="0" Background="#27272A" Foreground="#E4E4E7" BorderBrush="#52525B" BorderThickness="1" FontWeight="Bold" FontSize="12" Cursor="Hand" ToolTip="Aumentar escala da interface (Ctrl + +)" Click="BtnZoomPlus_Click" />
+                        <Button Content="Auto" Padding="5,1" Height="20" Margin="3,0,12,0" Background="#27272A" Foreground="#A1A1AA" BorderBrush="#52525B" BorderThickness="1" FontSize="10" FontWeight="Bold" Cursor="Hand" ToolTip="Ajustar automaticamente conforme a tela atual (Ctrl + 0)" Click="BtnZoomAuto_Click" />
+
+                        <Border Background="#18181B" BorderBrush="#52525B" BorderThickness="1" CornerRadius="3" Padding="6,2" Margin="0,0,12,0" VerticalAlignment="Center">
+                            <TextBlock x:Name="TxtAppVersionEsteira" Text="Release v0.8.8 Beta" FontSize="11" FontWeight="SemiBold" Foreground="#F87171" VerticalAlignment="Center" ToolTip="Versão de Release do SPARC" />
+                        </Border>
+
                         <TextBlock Text="✉ Contato:" FontWeight="Bold" FontSize="12.5" Foreground="#A1A1AA" VerticalAlignment="Center" Margin="0,0,4,0" />
                         <TextBlock Text="george.calcmann@claro.com.br" FontWeight="Bold" FontSize="12.5" Foreground="#EE1C25" VerticalAlignment="Center" Margin="0,0,12,0" />
                         <Button x:Name="BtnAbrirManualFooter" Content="📖 Manual de Instruções (PDF)" Padding="10,3" Margin="0,0,8,0" Background="#B91C1C" Foreground="White" BorderThickness="0" FontWeight="Bold" FontSize="13" Cursor="Hand" Click="BtnAbrirManual_Click" ToolTip="Abrir Manual Ilustrado com diagrama de cabos e portas WAN/LAN" />

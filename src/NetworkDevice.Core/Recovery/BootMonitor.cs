@@ -58,9 +58,23 @@ public sealed class BootMonitor
                 continue;
             }
 
-            var chunk = Encoding.UTF8.GetString(_readBuffer, 0, bytesRead);
-            chunk = chunk.Replace("\r", "");
+            // Descarta bytes 0x00 (erros de enquadramento / ruído de Break de chips USB como CH340)
+            var validBytes = 0;
+            for (var i = 0; i < bytesRead; i++)
+            {
+                if (_readBuffer[i] != 0x00)
+                {
+                    _readBuffer[validBytes++] = _readBuffer[i];
+                }
+            }
+            if (validBytes == 0)
+                continue;
+
+            var chunk = Encoding.UTF8.GetString(_readBuffer, 0, validBytes);
+            chunk = chunk.Replace("\r", "").Replace("\0", "").Replace("\uFFFD", "");
             chunk = AnsiEscape.Replace(chunk, "");
+            if (string.IsNullOrEmpty(chunk))
+                continue;
 
             lock (_capturedOutput)
             {
@@ -86,7 +100,10 @@ public sealed class BootMonitor
                 lineBuffer.Append(lines[^1]);
             }
 
-            // Checa imediatamente o buffer pendente (prompts não terminam em \n)
+            // Checa se casou com ROMMON no pendingTail, nas linhas ou no buffer acumulado recente
+            var isRommon = false;
+            string? matchedRommonText = null;
+
             var pendingTail = lineBuffer.ToString().Trim();
             if (!string.IsNullOrEmpty(pendingTail))
             {
@@ -94,37 +111,72 @@ public sealed class BootMonitor
                 {
                     if (regex.IsMatch(pendingTail))
                     {
-                        EventReceived?.Invoke(new BootEvent(
-                            BootEventType.RommonDetected,
-                            pendingTail,
-                            MatchedPattern: regex.ToString(),
-                            Line: pendingTail));
-                        return;
+                        isRommon = true;
+                        matchedRommonText = pendingTail;
+                        break;
                     }
                 }
             }
 
+            if (!isRommon)
+            {
+                for (var i = 0; i < lines.Length; i++)
+                {
+                    var line = lines[i].Trim();
+                    if (string.IsNullOrEmpty(line))
+                        continue;
+
+                    foreach (var regex in _profile.RommonPatterns)
+                    {
+                        if (regex.IsMatch(line))
+                        {
+                            isRommon = true;
+                            matchedRommonText = line;
+                            break;
+                        }
+                    }
+                    if (isRommon) break;
+                }
+            }
+
+            if (!isRommon)
+            {
+                // Fallback: busca nos últimos 500 caracteres do buffer acumulado
+                string recent;
+                lock (_capturedOutput)
+                {
+                    var len = Math.Min(500, _capturedOutput.Length);
+                    recent = _capturedOutput.ToString(_capturedOutput.Length - len, len);
+                }
+                foreach (var regex in _profile.RommonPatterns)
+                {
+                    var match = regex.Match(recent);
+                    if (match.Success)
+                    {
+                        isRommon = true;
+                        matchedRommonText = match.Value.Trim();
+                        break;
+                    }
+                }
+            }
+
+            if (isRommon && !string.IsNullOrEmpty(matchedRommonText))
+            {
+                EventReceived?.Invoke(new BootEvent(
+                    BootEventType.RommonDetected,
+                    matchedRommonText,
+                    MatchedPattern: "rommon",
+                    Line: matchedRommonText));
+                return;
+            }
+
+            // 2. Checa se casou com Boot do SO (OS Boot)
             for (var i = 0; i < lines.Length; i++)
             {
                 var line = lines[i].Trim();
                 if (string.IsNullOrEmpty(line))
                     continue;
 
-                // 1. Checa se casou com ROMMON
-                foreach (var regex in _profile.RommonPatterns)
-                {
-                    if (regex.IsMatch(line))
-                    {
-                        EventReceived?.Invoke(new BootEvent(
-                            BootEventType.RommonDetected,
-                            line,
-                            MatchedPattern: regex.ToString(),
-                            Line: line));
-                        return;
-                    }
-                }
-
-                // 2. Checa se casou com Boot do SO (OS Boot)
                 foreach (var regex in _profile.OsBootPatterns)
                 {
                     if (regex.IsMatch(line))

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Threading.Tasks;
@@ -20,6 +20,20 @@ public partial class CliDiagnosticWindow : Window
     public CliDiagnosticWindow()
     {
         InitializeComponent();
+        Loaded += (s, e) =>
+        {
+            try
+            {
+                var workArea = SystemParameters.WorkArea;
+                MaxHeight = workArea.Height;
+                MaxWidth = workArea.Width;
+                if (Height > workArea.Height - 30)
+                    Height = Math.Max(MinHeight, workArea.Height - 30);
+                if (Width > workArea.Width - 30)
+                    Width = Math.Max(MinWidth, workArea.Width - 30);
+            }
+            catch { }
+        };
     }
 
     public void SetPortInfo(string porta, int baud)

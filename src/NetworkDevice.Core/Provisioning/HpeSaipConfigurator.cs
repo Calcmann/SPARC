@@ -636,9 +636,19 @@ public sealed class HpeSaipConfigurator
         // Janela de estabilização pós undo shutdown: evita falso DOWN se verificado logo em sequência
         await Task.Delay(3000, cancellationToken);
 
-        for (var attempt = 1; attempt <= 15; attempt++)
+        for (var attempt = 1; attempt <= 45; attempt++)
         {
-            var output = await session.SendCommandAsync("display ip interface brief", TimeSpan.FromSeconds(8), cancellationToken);
+            string output = string.Empty;
+            try
+            {
+                output = await session.SendCommandAsync("display ip interface brief", TimeSpan.FromSeconds(12), cancellationToken);
+            }
+            catch (SessionTimeoutException)
+            {
+                await session.WriteLineAsync(string.Empty, cancellationToken);
+                await Task.Delay(1000, cancellationToken);
+                continue;
+            }
 
             var isLanUp = Regex.IsMatch(output, $@"(?i)(?:{cleanLan}|GE0/1)\s+UP\s+(?:UP|\S+)");
             var isWanUp = Regex.IsMatch(output, $@"(?i)(?:{cleanWan}|GE0/0)\s+UP\s+(?:UP|\S+)");
@@ -651,7 +661,7 @@ public sealed class HpeSaipConfigurator
             }
 
             // Só notifica operador após 2 tentativas (evita falso negativo durante auto-negotiation)
-            if (requestOperatorAction != null && attempt >= 3)
+            if (requestOperatorAction != null && attempt == 3)
             {
                 var msg = isWanUp
                     ? $"[ATENÇÃO] O cabo do laptop está conectado na porta GE0 (WAN / recovery).\n\n" +
@@ -666,6 +676,8 @@ public sealed class HpeSaipConfigurator
                       $"Clique em OK após realizar as conexões.";
 
                 await requestOperatorAction(msg, cancellationToken);
+                await session.WriteLineAsync(string.Empty, cancellationToken);
+                await Task.Delay(800, cancellationToken);
             }
 
             await Task.Delay(2000, cancellationToken);

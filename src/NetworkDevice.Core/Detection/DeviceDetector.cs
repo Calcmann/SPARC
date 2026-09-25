@@ -22,12 +22,12 @@ public sealed class DeviceDetector : IDeviceDetector
         RegexOptions.Compiled);
 
     private static readonly Regex HpePromptRegex = new(
-        @"[\<\[][^\r\n>\]]+[\>\]]\s*$",
-        RegexOptions.Compiled);
+        @"^[ \t]*[\<\[][A-Za-z0-9_\-\.\/]+[\>\]]\s*$",
+        RegexOptions.Compiled | RegexOptions.Multiline);
 
     private static readonly Regex CiscoPromptRegex = new(
-        @"[^\r\n>#]+[>#]\s*$",
-        RegexOptions.Compiled);
+        @"^[ \t]*[A-Za-z0-9_\-\.\/]+(?:\([A-Za-z0-9_\-\.\/]+\))?[>#]\s*$",
+        RegexOptions.Compiled | RegexOptions.Multiline);
 
     public static readonly Regex FortiPromptRegex = new(
         @"(?i)(?:FortiGate|FGT)[A-Za-z0-9_\-]*\s*(?:\([^()\r\n]*\))?\s*[#$]\s*$",
@@ -174,14 +174,26 @@ public sealed class DeviceDetector : IDeviceDetector
         // 2. Detecção de Senha / Bloqueio / Prompt Aberto (PasswordProtected / OpenPrompt)
         var lines = rawPrompt.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
         var lastLine = lines.LastOrDefault()?.Trim() ?? rawPrompt;
+
+        // Se a última linha de saída do console for um prompt de autenticação, tem precedência absoluta
+        var isAuthAtEnd = PasswordPromptRegex.IsMatch(lastLine)
+                       || UserAuthPromptRegex.IsMatch(lastLine)
+                       || PasswordOnlyPromptRegex.IsMatch(lastLine)
+                       || lastLine.EndsWith(":", StringComparison.Ordinal);
+
         // Procura a última linha que corresponda a um prompt HPE/Cisco/Fortinet em todo o buffer,
-        // pois o buffer pode conter output de comandos (ex.: 'display version' ou 'get system status') após o prompt.
-        var promptLine = lines.LastOrDefault(l => HpePromptRegex.IsMatch(l) || CiscoPromptRegex.IsMatch(l) || FortiPromptRegex.IsMatch(l)) ?? lastLine;
-        var isOpenPrompt = (HpePromptRegex.IsMatch(promptLine) || CiscoPromptRegex.IsMatch(promptLine) || FortiPromptRegex.IsMatch(promptLine)) && !PasswordPromptRegex.IsMatch(promptLine);
+        // apenas se o console não estiver parado pedindo credenciais no final.
+        var promptLine = isAuthAtEnd
+            ? lastLine
+            : (lines.LastOrDefault(l => HpePromptRegex.IsMatch(l) || CiscoPromptRegex.IsMatch(l) || FortiPromptRegex.IsMatch(l)) ?? lastLine);
+
+        var isOpenPrompt = !isAuthAtEnd
+            && (HpePromptRegex.IsMatch(promptLine) || CiscoPromptRegex.IsMatch(promptLine) || FortiPromptRegex.IsMatch(promptLine))
+            && !PasswordPromptRegex.IsMatch(promptLine);
 
         var isUserAuth = !isOpenPrompt && (UserAuthPromptRegex.IsMatch(rawPrompt) || rawPrompt.Contains("Login incorrect", StringComparison.OrdinalIgnoreCase) || rawPrompt.Contains("Login failed", StringComparison.OrdinalIgnoreCase));
-        var isPasswordOnly = !isOpenPrompt && PasswordOnlyPromptRegex.IsMatch(rawPrompt);
-        var isPasswordLocked = !isOpenPrompt && (isUserAuth || isPasswordOnly || PasswordPromptRegex.IsMatch(rawPrompt) || rawPrompt.Contains("Verifying password", StringComparison.OrdinalIgnoreCase));
+        var isPasswordOnly = !isOpenPrompt && !isUserAuth && PasswordOnlyPromptRegex.IsMatch(rawPrompt);
+        var isPasswordLocked = !isOpenPrompt && (isUserAuth || isPasswordOnly || isAuthAtEnd || PasswordPromptRegex.IsMatch(rawPrompt) || rawPrompt.Contains("Verifying password", StringComparison.OrdinalIgnoreCase));
 
         var isComwareReady = isOpenPrompt
                           || rawPrompt.Contains("Press ENTER to get started", StringComparison.OrdinalIgnoreCase)

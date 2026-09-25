@@ -21,8 +21,8 @@ public class CliDebugWindow : Window
         WindowStartupLocation = WindowStartupLocation.Manual;
         Left = 50;
         Top = 50;
-        Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0A0E14"));
-        Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E2E8F0"));
+        Background = UiBrushes.Get("#0A0E14");
+        Foreground = UiBrushes.Get("#E2E8F0");
         Icon = null;
         Topmost = false;
 
@@ -34,8 +34,8 @@ public class CliDebugWindow : Window
         {
             IsReadOnly = true,
             Background = Brushes.Transparent,
-            Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#C8D6E5")),
-            CaretBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#10B981")),
+            Foreground = UiBrushes.Get("#C8D6E5"),
+            CaretBrush = UiBrushes.Get("#10B981"),
             FontFamily = new FontFamily("Consolas"),
             FontSize = 13,
             TextWrapping = TextWrapping.Wrap,
@@ -63,9 +63,9 @@ public class CliDebugWindow : Window
             Padding = new Thickness(12, 4, 12, 4),
             Margin = new Thickness(4),
             FontSize = 12,
-            Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E293B")),
-            Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E2E8F0")),
-            BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#334155")),
+            Background = UiBrushes.Get("#1E293B"),
+            Foreground = UiBrushes.Get("#E2E8F0"),
+            BorderBrush = UiBrushes.Get("#334155"),
             Cursor = System.Windows.Input.Cursors.Hand
         };
         btnCopy.Click += (_, _) =>
@@ -79,9 +79,9 @@ public class CliDebugWindow : Window
             Padding = new Thickness(12, 4, 12, 4),
             Margin = new Thickness(4),
             FontSize = 12,
-            Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E293B")),
-            Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E2E8F0")),
-            BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#334155")),
+            Background = UiBrushes.Get("#1E293B"),
+            Foreground = UiBrushes.Get("#E2E8F0"),
+            BorderBrush = UiBrushes.Get("#334155"),
             Cursor = System.Windows.Input.Cursors.Hand
         };
         btnClear.Click += (_, _) => _textBox.Clear();
