@@ -334,3 +334,4 @@ public sealed class Y1564Tests
         try { File.Delete(generated); } catch { }
     }
 }
+

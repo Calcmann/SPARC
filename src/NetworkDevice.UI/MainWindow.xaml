@@ -365,7 +365,7 @@
 
                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                                 <Border Background="#18181B" BorderBrush="#52525B" BorderThickness="1" CornerRadius="3" Padding="6,2" Margin="0,0,10,0" VerticalAlignment="Center">
-                                    <TextBlock x:Name="TxtAppVersionInicial" Text="Release v0.8.8 Beta" FontSize="11" FontWeight="SemiBold" Foreground="#F87171" VerticalAlignment="Center" ToolTip="Versão de Release do SPARC" />
+                                    <TextBlock x:Name="TxtAppVersionInicial" Text="Release v0.8.23 Beta" FontSize="11" FontWeight="SemiBold" Foreground="#F87171" VerticalAlignment="Center" ToolTip="Versão de Release do SPARC" />
                                 </Border>
                                 <TextBlock Text="Claro S.A. — Ativação SC" FontSize="11.5" FontWeight="SemiBold" Foreground="#A1A1AA" VerticalAlignment="Center" />
                             </StackPanel>
@@ -428,7 +428,7 @@
                     <DockPanel Margin="0,6,2,0">
                         <TextBlock Text="Claro S.A. — Ativação SC" FontSize="11" FontWeight="SemiBold" Foreground="#71717A" VerticalAlignment="Center" />
                         <Border DockPanel.Dock="Right" Background="#18181B" BorderBrush="#52525B" BorderThickness="1" CornerRadius="3" Padding="6,2" HorizontalAlignment="Right" VerticalAlignment="Center">
-                            <TextBlock x:Name="TxtAppVersionAuto" Text="Release v0.8.8 Beta" FontSize="11" FontWeight="SemiBold" Foreground="#F87171" VerticalAlignment="Center" ToolTip="Versão de Release do SPARC" />
+                            <TextBlock x:Name="TxtAppVersionAuto" Text="Release v0.8.23 Beta" FontSize="11" FontWeight="SemiBold" Foreground="#F87171" VerticalAlignment="Center" ToolTip="Versão de Release do SPARC" />
                         </Border>
                     </DockPanel>
                 </StackPanel>
@@ -541,7 +541,7 @@
                         <Button Content="Auto" Padding="5,1" Height="20" Margin="3,0,12,0" Background="#27272A" Foreground="#A1A1AA" BorderBrush="#52525B" BorderThickness="1" FontSize="10" FontWeight="Bold" Cursor="Hand" ToolTip="Ajustar automaticamente conforme a tela atual (Ctrl + 0)" Click="BtnZoomAuto_Click" />
 
                         <Border Background="#18181B" BorderBrush="#52525B" BorderThickness="1" CornerRadius="3" Padding="6,2" Margin="0,0,12,0" VerticalAlignment="Center">
-                            <TextBlock x:Name="TxtAppVersionEsteira" Text="Release v0.8.8 Beta" FontSize="11" FontWeight="SemiBold" Foreground="#F87171" VerticalAlignment="Center" ToolTip="Versão de Release do SPARC" />
+                            <TextBlock x:Name="TxtAppVersionEsteira" Text="Release v0.8.23 Beta" FontSize="11" FontWeight="SemiBold" Foreground="#F87171" VerticalAlignment="Center" ToolTip="Versão de Release do SPARC" />
                         </Border>
 
                         <TextBlock Text="✉ Contato:" FontWeight="Bold" FontSize="12.5" Foreground="#A1A1AA" VerticalAlignment="Center" Margin="0,0,4,0" />

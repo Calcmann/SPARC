@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="NetworkDevice.Android.Views.ProvisioningPage"
+             Title="Provisionamento">
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="14">
+            <!-- Cabeçalho -->
+            <Frame BackgroundColor="#1E293B" CornerRadius="12" Padding="14" HasShadow="True">
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="SPARC Mobile • Console &amp; Provisionamento" FontSize="16" FontAttributes="Bold" TextColor="#38BDF8" />
+                    <Label Text="Identificação e Configuração Automatizada de Roteadores via USB Serial" FontSize="11" TextColor="#94A3B8" />
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- 1. Conexão Serial USB OTG -->
+            <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#334155">
+                <VerticalStackLayout Spacing="10">
+                    <Grid ColumnDefinitions="*, Auto">
+                        <Label Grid.Column="0" Text="1. Conexão Serial USB (OTG)" FontSize="14" FontAttributes="Bold" TextColor="#F8FAFC" VerticalOptions="Center" />
+                        <Label Grid.Column="1" x:Name="ConnectionBadge" Text="DESCONECTADO" FontSize="11" FontAttributes="Bold" TextColor="#EF4444" VerticalOptions="Center" />
+                    </Grid>
+
+                    <Picker x:Name="UsbDevicePicker" Title="Selecione o Adaptador Serial USB" TextColor="White" TitleColor="#94A3B8" BackgroundColor="#1E293B" />
+
+                    <Grid ColumnDefinitions="*, *" ColumnSpacing="8">
+                        <Button Grid.Column="0" Text="🔄 Escanear USB" Clicked="OnScanUsbClicked" BackgroundColor="#334155" TextColor="White" CornerRadius="8" FontSize="12" HeightRequest="38" />
+                        <Button Grid.Column="1" x:Name="ConnectUsbBtn" Text="🔌 Conectar" Clicked="OnConnectUsbClicked" BackgroundColor="#059669" TextColor="White" CornerRadius="8" FontAttributes="Bold" FontSize="12" HeightRequest="38" />
+                    </Grid>
+
+                    <Label x:Name="UsbStatusLabel" Text="Conecte o cabo USB OTG ao roteador e clique em Escanear." FontSize="11" TextColor="#64748B" />
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- 2. Identificação do Roteador -->
+            <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#334155">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="2. Identificação do Roteador" FontSize="14" FontAttributes="Bold" TextColor="#F8FAFC" />
+
+                    <Button x:Name="IdentifyBtn" Text="🔍 Identificar Equipamento / Prompt" Clicked="OnIdentifyClicked" BackgroundColor="#0284C7" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="38" />
+
+                    <Grid ColumnDefinitions="Auto, *" RowDefinitions="Auto, Auto, Auto" RowSpacing="6" ColumnSpacing="10">
+                        <Label Grid.Row="0" Grid.Column="0" Text="Fabricante:" TextColor="#94A3B8" FontAttributes="Bold" FontSize="12" />
+                        <Label Grid.Row="0" Grid.Column="1" x:Name="ManufacturerLabel" Text="-" TextColor="White" FontAttributes="Bold" FontSize="12" />
+
+                        <Label Grid.Row="1" Grid.Column="0" Text="Modelo / Série:" TextColor="#94A3B8" FontAttributes="Bold" FontSize="12" />
+                        <Label Grid.Row="1" Grid.Column="1" x:Name="ModelLabel" Text="-" TextColor="#38BDF8" FontAttributes="Bold" FontSize="12" />
+
+                        <Label Grid.Row="2" Grid.Column="0" Text="Estado Operacional:" TextColor="#94A3B8" FontAttributes="Bold" FontSize="12" />
+                        <Label Grid.Row="2" Grid.Column="1" x:Name="StateLabel" Text="-" TextColor="#4ADE80" FontAttributes="Bold" FontSize="12" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- 3. Ficha SAIP (Dados do Circuito) -->
+            <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#334155">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="3. Ficha SAIP (Dados do Circuito)" FontSize="14" FontAttributes="Bold" TextColor="#F8FAFC" />
+
+                    <Grid ColumnDefinitions="*, *" ColumnSpacing="8">
+                        <Button Grid.Column="0" Text="📂 Carregar PDF" Clicked="OnLoadPdfClicked" BackgroundColor="#2563EB" TextColor="White" CornerRadius="8" FontSize="12" HeightRequest="38" />
+                        <Button Grid.Column="1" Text="📋 Colar Ficha" Clicked="OnPasteSaipClicked" BackgroundColor="#0D9488" TextColor="White" CornerRadius="8" FontSize="12" HeightRequest="38" />
+                    </Grid>
+
+                    <VerticalStackLayout x:Name="CircuitDetailsLayout" Spacing="4" IsVisible="False">
+                        <Label x:Name="SaipClientLabel" Text="Cliente: -" TextColor="White" FontAttributes="Bold" FontSize="12" />
+                        <Label x:Name="SaipCircuitLabel" Text="Designação / OTS: -" TextColor="#94A3B8" FontSize="11" />
+                        <Label x:Name="SaipWanLabel" Text="WAN: -" TextColor="#38BDF8" FontSize="11" />
+                        <Label x:Name="SaipLanLabel" Text="LAN: -" TextColor="#4ADE80" FontSize="11" />
+                        <Label x:Name="SaipBandwidthLabel" Text="Banda: -" TextColor="#FBBF24" FontSize="11" />
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- 4. Aplicação da Configuração -->
+            <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#334155">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="4. Aplicação da Configuração" FontSize="14" FontAttributes="Bold" TextColor="#F8FAFC" />
+
+                    <Button x:Name="ApplyConfigBtn" Text="⚡ APLICAR CONFIGURAÇÃO NO ROTEADOR" Clicked="OnApplyConfigClicked" BackgroundColor="#E11D48" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="44" FontSize="13" />
+
+                    <Editor x:Name="ProgressLogEditor" HeightRequest="150" IsReadOnly="True" BackgroundColor="#000000" TextColor="#4ADE80" FontFamily="OpenSansRegular" FontSize="11" Text="[SPARC Mobile] Aguardando conexão serial e carregamento de ficha..." />
+                </VerticalStackLayout>
+            </Frame>
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

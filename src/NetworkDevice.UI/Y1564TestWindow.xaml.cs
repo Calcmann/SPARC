@@ -15,6 +15,7 @@ using System.Windows.Media;
 using Microsoft.Win32;
 using NetworkDevice.Core.Diagnostics;
 using NetworkDevice.Core.Provisioning;
+using NetworkDevice.Protocols.Serial;
 
 namespace NetworkDevice.UI;
 
@@ -32,6 +33,12 @@ public partial class Y1564TestWindow : Window
     private PromiscuousLoopbackService? _promiscuousLoopService;
     private readonly PathMtuDiscoveryService _mtuService = new();
 
+    private RouterLoopbackProfile? _selectedRouterProfile;
+    private RouterLoopbackMethodInfo? _selectedRouterMethod;
+    private SerialTransport? _activeRouterTransport;
+    private bool _isRouterLoopActive;
+    private bool _suppressRouterScriptUpdate;
+
     public Y1564TestWindow(SaipCircuitData? circuit, string? sourceIpAddress = null, int initialTabIndex = 0)
     {
         InitializeComponent();
@@ -40,11 +47,12 @@ public partial class Y1564TestWindow : Window
 
         if (TcAnalisador != null)
         {
-            TcAnalisador.SelectedIndex = Math.Clamp(initialTabIndex, 0, 2);
+            TcAnalisador.SelectedIndex = Math.Clamp(initialTabIndex, 0, 3);
         }
 
         CarregarAdaptadoresDeRede();
         VerificarNpcapStatus();
+        InicializarAbaLoopRoteador();
 
         if (_circuit != null)
         {
@@ -826,6 +834,93 @@ public partial class Y1564TestWindow : Window
         }
     }
 
+    private async void BtnOtimizarPlaca_Click(object sender, RoutedEventArgs e)
+    {
+        string adapterNameOrIp = string.Empty;
+        if (CmbLoopInterface?.SelectedItem is ComboBoxItem cbi)
+        {
+            adapterNameOrIp = cbi.Tag?.ToString() ?? cbi.Content?.ToString() ?? "Ethernet";
+        }
+
+        var msg =
+            "🔧 CALIBRAÇÃO DE PLACA DE REDE (MTS-5800 / SAMComplete Y.1564)\n\n" +
+            $"Interface: '{adapterNameOrIp}'\n\n" +
+            "Selecione uma das opções abaixo:\n\n" +
+            "• Clique 'SIM' para Calibrar Anti-Bufferbloat (Baixo RTD < 2ms):\n" +
+            "  - Buffers de recepção calibrados em 256 (elimina bufferbloat e latência excessiva)\n" +
+            "  - Desativação de Controle de Fluxo (Flow Control OFF - evita pausas no teste)\n" +
+            "  - Desativação de Economia de Energia (EEE / Green Ethernet OFF)\n" +
+            "  - Moderação de Interrupções balanceada\n\n" +
+            "• Clique 'NÃO' para RESTAURAR OS PADRÕES ORIGINAIS DE FÁBRICA da placa de rede.\n\n" +
+            "• Clique 'CANCELAR' para abrir o Gerenciador de Redes do Windows (ncpa.cpl).";
+
+        var res = MessageBox.Show(this, msg, "Calibração e Restauração de Placa de Rede", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+        if (res == MessageBoxResult.Yes)
+        {
+            BtnOtimizarPlaca.IsEnabled = false;
+            try
+            {
+                LogLoop($"[HARDWARE] ⚡ Calibrando '{adapterNameOrIp}' para Baixo RTD & Anti-Bufferbloat...");
+                var (success, logs) = await HostNetworkManager.OptimizeAdapterHardwareAsync(adapterNameOrIp);
+                foreach (var l in logs)
+                {
+                    LogLoop($"[HARDWARE] {l}");
+                }
+
+                var summary = string.Join("\n• ", logs);
+                MessageBox.Show(this, $"Calibração concluída!\n\nAjustes aplicados:\n• {summary}",
+                    "Placa Calibrada (Anti-Bufferbloat)", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"Erro ao calibrar placa: {ex.Message}", "Aviso", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally
+            {
+                BtnOtimizarPlaca.IsEnabled = true;
+            }
+        }
+        else if (res == MessageBoxResult.No)
+        {
+            BtnOtimizarPlaca.IsEnabled = false;
+            try
+            {
+                LogLoop($"[HARDWARE] 🔄 Restaurando padrões originais de fábrica para '{adapterNameOrIp}'...");
+                var (success, logs) = await HostNetworkManager.RestoreAdapterHardwareDefaultsAsync(adapterNameOrIp);
+                foreach (var l in logs)
+                {
+                    LogLoop($"[HARDWARE] {l}");
+                }
+
+                MessageBox.Show(this, "Todas as propriedades da placa de rede foram restauradas para os padrões originais de fábrica!",
+                    "Padrões de Fábrica Restaurados", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"Erro ao restaurar placa: {ex.Message}", "Aviso", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            finally
+            {
+                BtnOtimizarPlaca.IsEnabled = true;
+            }
+        }
+        else
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "ncpa.cpl",
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, $"Não foi possível abrir as Conexões de Rede: {ex.Message}", "Aviso", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+    }
+
     private void CmbLoopMode_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (CmbLoopMode?.SelectedItem is ComboBoxItem cbi && cbi.Tag is string tag)
@@ -896,7 +991,7 @@ public partial class Y1564TestWindow : Window
                 _promiscuousLoopService.StatsUpdated += OnPromiscuousStatsUpdated;
                 _promiscuousLoopService.LogMessage += LogLoop;
 
-                _promiscuousLoopService.Start(adapterNameOrIp, loopMode, bufferSizeBytes, enableBpf);
+                _promiscuousLoopService.Start(adapterNameOrIp, loopMode, bufferSizeBytes, enableBpf, workerCount);
 
                 BadgeLoopStatus.Background = new SolidColorBrush(Color.FromRgb(22, 163, 74));
                 TxtLoopStatus.Text = selectedMode == "PromiscuousL2" 
@@ -1247,5 +1342,523 @@ public partial class Y1564TestWindow : Window
             }
             catch { }
         }
+
+        if (_activeRouterTransport != null)
+        {
+            try
+            {
+                await _activeRouterTransport.CloseAsync();
+                await _activeRouterTransport.DisposeAsync();
+                _activeRouterTransport = null;
+            }
+            catch { }
+        }
     }
+
+    #region Aba 3: Loopback no Roteador (Refletor QT Remoto)
+
+    private void InicializarAbaLoopRoteador()
+    {
+        _suppressRouterScriptUpdate = true;
+        try
+        {
+            CmbRouterProfile.Items.Clear();
+            foreach (var profile in RouterRemoteLoopbackService.Profiles)
+            {
+                var item = new ComboBoxItem
+                {
+                    Content = profile.DisplayName,
+                    Tag = profile
+                };
+                CmbRouterProfile.Items.Add(item);
+            }
+
+            if (CmbRouterProfile.Items.Count > 0)
+            {
+                CmbRouterProfile.SelectedIndex = 0;
+            }
+
+            AtualizarPortasComRoteador();
+
+            if (_circuit != null)
+            {
+                if (!string.IsNullOrWhiteSpace(_circuit.WanGateway))
+                {
+                    TxtRouterTargetIp.Text = _circuit.WanGateway;
+                }
+                else if (!string.IsNullOrWhiteSpace(_circuit.HostLanIp))
+                {
+                    TxtRouterTargetIp.Text = _circuit.HostLanIp;
+                }
+            }
+        }
+        finally
+        {
+            _suppressRouterScriptUpdate = false;
+        }
+
+        AtualizarMetodosLoopRoteador();
+        AtualizarScriptVisualizacao();
+    }
+
+    private void AtualizarPortasComRoteador()
+    {
+        if (CmbRouterComPort == null) return;
+
+        var currentSelected = (CmbRouterComPort.SelectedItem as ComboBoxItem)?.Tag as string;
+        CmbRouterComPort.Items.Clear();
+
+        var ports = SerialPorts.Available();
+        if (ports.Count > 0)
+        {
+            int selectedIdx = 0;
+            for (int i = 0; i < ports.Count; i++)
+            {
+                var p = ports[i];
+                var item = new ComboBoxItem
+                {
+                    Content = $"🔌 {p}",
+                    Tag = p
+                };
+                CmbRouterComPort.Items.Add(item);
+                if (string.Equals(p, currentSelected, StringComparison.OrdinalIgnoreCase))
+                {
+                    selectedIdx = i;
+                }
+            }
+            CmbRouterComPort.SelectedIndex = selectedIdx;
+        }
+        else
+        {
+            CmbRouterComPort.Items.Add(new ComboBoxItem
+            {
+                Content = "⚠️ Nenhuma porta COM detectada",
+                Tag = ""
+            });
+            CmbRouterComPort.SelectedIndex = 0;
+        }
+    }
+
+    private void CmbRouterProfile_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (CmbRouterProfile.SelectedItem is ComboBoxItem item && item.Tag is RouterLoopbackProfile profile)
+        {
+            _selectedRouterProfile = profile;
+            AtualizarMetodosLoopRoteador();
+            AtualizarScriptVisualizacao();
+        }
+    }
+
+    private void AtualizarMetodosLoopRoteador()
+    {
+        if (CmbRouterLoopMethod == null) return;
+
+        if (_selectedRouterProfile == null)
+        {
+            if (CmbRouterProfile.SelectedItem is ComboBoxItem item && item.Tag is RouterLoopbackProfile profile)
+            {
+                _selectedRouterProfile = profile;
+            }
+            else
+            {
+                _selectedRouterProfile = RouterRemoteLoopbackService.Profiles[0];
+            }
+        }
+
+        _suppressRouterScriptUpdate = true;
+        try
+        {
+            CmbRouterLoopMethod.Items.Clear();
+            foreach (var m in _selectedRouterProfile.SupportedMethods)
+            {
+                var item = new ComboBoxItem
+                {
+                    Content = $"[{m.LayerCategory}] {m.Name}",
+                    Tag = m,
+                    ToolTip = m.Description
+                };
+                CmbRouterLoopMethod.Items.Add(item);
+            }
+
+            if (CmbRouterLoopMethod.Items.Count > 0)
+            {
+                CmbRouterLoopMethod.SelectedIndex = 0;
+            }
+
+            if (TxtRouterInterface != null)
+            {
+                TxtRouterInterface.Text = _selectedRouterProfile.DefaultInterface;
+            }
+        }
+        finally
+        {
+            _suppressRouterScriptUpdate = false;
+        }
+
+        AtualizarInputsParametrosMetodo();
+    }
+
+    private void CmbRouterLoopMethod_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        AtualizarInputsParametrosMetodo();
+        AtualizarScriptVisualizacao();
+    }
+
+    private void AtualizarInputsParametrosMetodo()
+    {
+        if (CmbRouterLoopMethod?.SelectedItem is ComboBoxItem item && item.Tag is RouterLoopbackMethodInfo info)
+        {
+            _selectedRouterMethod = info;
+            if (TxtRouterTargetIp != null)
+            {
+                TxtRouterTargetIp.IsEnabled = info.RequiresIp;
+                TxtRouterTargetIp.Opacity = info.RequiresIp ? 1.0 : 0.45;
+                if (LblRouterTargetIp != null)
+                {
+                    LblRouterTargetIp.Opacity = info.RequiresIp ? 1.0 : 0.5;
+                }
+            }
+            if (TxtRouterPort != null)
+            {
+                TxtRouterPort.IsEnabled = info.RequiresPort;
+                TxtRouterPort.Opacity = info.RequiresPort ? 1.0 : 0.45;
+                if (LblRouterPort != null)
+                {
+                    LblRouterPort.Opacity = info.RequiresPort ? 1.0 : 0.5;
+                }
+            }
+        }
+    }
+
+    private void TxtRouterParam_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!_suppressRouterScriptUpdate)
+        {
+            AtualizarScriptVisualizacao();
+        }
+    }
+
+    private void CmbRouterRollback_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_suppressRouterScriptUpdate)
+        {
+            AtualizarScriptVisualizacao();
+        }
+    }
+
+    private void CmbRouterConnectionMode_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (CmbRouterConnectionMode?.SelectedItem is ComboBoxItem item && item.Tag is string mode)
+        {
+            bool isSerial = mode == "Serial";
+            if (PnlRouterComPort != null) PnlRouterComPort.Visibility = isSerial ? Visibility.Visible : Visibility.Collapsed;
+            if (PnlRouterBaudRate != null) PnlRouterBaudRate.Visibility = isSerial ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    private void BtnRefreshRouterCom_Click(object sender, RoutedEventArgs e)
+    {
+        AtualizarPortasComRoteador();
+    }
+
+    private RouterLoopbackConfig ObterConfiguracaoAtual()
+    {
+        var profile = _selectedRouterProfile ?? RouterRemoteLoopbackService.Profiles[0];
+        var method = _selectedRouterMethod?.Method ?? profile.SupportedMethods[0].Method;
+        var iface = string.IsNullOrWhiteSpace(TxtRouterInterface?.Text) ? profile.DefaultInterface : TxtRouterInterface.Text.Trim();
+        var ip = string.IsNullOrWhiteSpace(TxtRouterTargetIp?.Text) ? "192.168.1.1" : TxtRouterTargetIp.Text.Trim();
+        int.TryParse(TxtRouterPort?.Text, out var port);
+        if (port <= 0) port = 5001;
+
+        int rollbackMinutes = 30;
+        if (CmbRouterRollback?.SelectedItem is ComboBoxItem rollItem && rollItem.Tag != null)
+        {
+            int.TryParse(rollItem.Tag.ToString(), out rollbackMinutes);
+        }
+
+        return new RouterLoopbackConfig(
+            Profile: profile,
+            Method: method,
+            InterfaceName: iface,
+            TargetIp: ip,
+            Port: port,
+            SafetyRollbackMinutes: rollbackMinutes
+        );
+    }
+
+    private void AtualizarScriptVisualizacao()
+    {
+        if (TxtRouterExplanation == null || TxtRouterRollbackInfo == null) return;
+
+        var config = ObterConfiguracaoAtual();
+        var script = RouterRemoteLoopbackService.GenerateScript(config);
+
+        TxtRouterExplanation.Text = script.Explanation;
+
+        if (!string.IsNullOrEmpty(script.RollbackTimerCommand))
+        {
+            TxtRouterRollbackInfo.Text = $"Comando: '{script.RollbackTimerCommand}'\r\nCancelamento: '{script.RollbackCancelCommand}'";
+        }
+        else
+        {
+            TxtRouterRollbackInfo.Text = "Sem temporizador automático (desativação manual).";
+        }
+
+        if (!_isRouterLoopActive && TxtRouterLogOutput != null)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== SCRIPT DE ATIVAÇÃO NO ROTEADOR ===");
+            if (!string.IsNullOrEmpty(script.RollbackTimerCommand))
+            {
+                sb.AppendLine($"# Temporizador de segurança (Fail-Safe):\r\n{script.RollbackTimerCommand}");
+            }
+            foreach (var cmd in script.EnableCommands)
+            {
+                sb.AppendLine(cmd);
+            }
+            sb.AppendLine();
+            sb.AppendLine("=== SCRIPT DE REVERSÃO / RESTAURAÇÃO ===");
+            foreach (var cmd in script.DisableCommands)
+            {
+                sb.AppendLine(cmd);
+            }
+            if (!string.IsNullOrEmpty(script.RollbackCancelCommand))
+            {
+                sb.AppendLine(script.RollbackCancelCommand);
+            }
+            TxtRouterLogOutput.Text = sb.ToString();
+        }
+    }
+
+    private async void BtnAtivarLoopRoteador_Click(object sender, RoutedEventArgs e)
+    {
+        var config = ObterConfiguracaoAtual();
+        var script = RouterRemoteLoopbackService.GenerateScript(config);
+
+        var mode = (CmbRouterConnectionMode?.SelectedItem as ComboBoxItem)?.Tag as string ?? "Serial";
+
+        if (mode == "ScriptOnly")
+        {
+            var text = string.Join("\r\n", script.EnableCommands);
+            try { Clipboard.SetText(text); } catch { }
+            MessageBox.Show(
+                "Script de ativação copiado para a Área de Transferência!\r\nCole no terminal/console do roteador para ativar o loopback.",
+                "Script Gerado",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        // Modo Serial
+        var portName = (CmbRouterComPort?.SelectedItem as ComboBoxItem)?.Tag as string;
+        if (string.IsNullOrWhiteSpace(portName))
+        {
+            MessageBox.Show(
+                "Nenhuma porta serial COM selecionada.\r\nConecte o cabo console e clique em '🔄 Atualizar'.",
+                "Porta COM Não Encontrada",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        int baud = 9600;
+        if (CmbRouterBaudRate?.SelectedItem is ComboBoxItem bItem && bItem.Tag != null)
+        {
+            int.TryParse(bItem.Tag.ToString(), out baud);
+        }
+
+        BtnAtivarLoopRoteador.IsEnabled = false;
+        BtnDesativarLoopRoteador.IsEnabled = true;
+        BadgeRouterLoopStatus.Background = new SolidColorBrush(Color.FromRgb(217, 119, 6)); // Laranja/Aplicando
+        TxtRouterLoopStatus.Text = "🟡 ENVIANDO COMANDOS AO ROTEADOR...";
+        TxtRouterLogOutput.Text = $"[Iniciando comunicação via {portName} @ {baud} bps...]\r\n";
+
+        try
+        {
+            if (_activeRouterTransport != null)
+            {
+                await _activeRouterTransport.CloseAsync();
+                await _activeRouterTransport.DisposeAsync();
+                _activeRouterTransport = null;
+            }
+
+            _activeRouterTransport = new SerialTransport(portName, baud);
+
+            var commandsToSend = new List<string>();
+            if (!string.IsNullOrEmpty(script.RollbackTimerCommand))
+            {
+                commandsToSend.Add(script.RollbackTimerCommand);
+            }
+            commandsToSend.AddRange(script.EnableCommands);
+
+            var result = await RouterRemoteLoopbackService.ExecuteCommandsAsync(
+                _activeRouterTransport,
+                commandsToSend,
+                output => Dispatcher.Invoke(() =>
+                {
+                    TxtRouterLogOutput.AppendText(output);
+                    TxtRouterLogOutput.ScrollToEnd();
+                }));
+
+            if (result.Success)
+            {
+                _isRouterLoopActive = true;
+                BadgeRouterLoopStatus.Background = new SolidColorBrush(Color.FromRgb(5, 150, 105)); // Verde
+                TxtRouterLoopStatus.Text = "🟢 LOOP ATIVO NO ROTEADOR (Devolvendo ao QT)";
+                TxtRouterLogOutput.AppendText("\r\n✅ [SUCESSO]: Comandos executados no roteador. O circuito agora está em loopback refletindo para o QT.\r\n");
+            }
+            else
+            {
+                BadgeRouterLoopStatus.Background = new SolidColorBrush(Color.FromRgb(185, 28, 28)); // Vermelho
+                TxtRouterLoopStatus.Text = "🔴 FALHA DE COMUNICAÇÃO SERIAL";
+                TxtRouterLogOutput.AppendText($"\r\n❌ Falha: {result.ErrorMessage}\r\n");
+                BtnAtivarLoopRoteador.IsEnabled = true;
+                BtnDesativarLoopRoteador.IsEnabled = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            BadgeRouterLoopStatus.Background = new SolidColorBrush(Color.FromRgb(185, 28, 28));
+            TxtRouterLoopStatus.Text = "🔴 ERRO INESPERADO";
+            TxtRouterLogOutput.AppendText($"\r\n❌ Erro: {ex.Message}\r\n");
+            BtnAtivarLoopRoteador.IsEnabled = true;
+            BtnDesativarLoopRoteador.IsEnabled = false;
+        }
+    }
+
+    private async void BtnDesativarLoopRoteador_Click(object sender, RoutedEventArgs e)
+    {
+        var config = ObterConfiguracaoAtual();
+        var script = RouterRemoteLoopbackService.GenerateScript(config);
+
+        var mode = (CmbRouterConnectionMode?.SelectedItem as ComboBoxItem)?.Tag as string ?? "Serial";
+
+        if (mode == "ScriptOnly")
+        {
+            var text = string.Join("\r\n", script.DisableCommands);
+            try { Clipboard.SetText(text); } catch { }
+            MessageBox.Show(
+                "Script de reversão copiado para a Área de Transferência!\r\nCole no terminal do roteador para desligar o loopback e restaurar a porta.",
+                "Script de Reversão Copiado",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        BtnDesativarLoopRoteador.IsEnabled = false;
+        TxtRouterLogOutput.AppendText("\r\n[Enviando comandos de restauração e cancelamento de rollback...]\r\n");
+
+        try
+        {
+            var portName = (CmbRouterComPort?.SelectedItem as ComboBoxItem)?.Tag as string;
+            int baud = 9600;
+            if (CmbRouterBaudRate?.SelectedItem is ComboBoxItem bItem && bItem.Tag != null)
+            {
+                int.TryParse(bItem.Tag.ToString(), out baud);
+            }
+
+            if (_activeRouterTransport == null || !_activeRouterTransport.IsOpen)
+            {
+                if (!string.IsNullOrWhiteSpace(portName))
+                {
+                    _activeRouterTransport = new SerialTransport(portName, baud);
+                }
+            }
+
+            if (_activeRouterTransport != null)
+            {
+                var commandsToSend = new List<string>(script.DisableCommands);
+                if (!string.IsNullOrEmpty(script.RollbackCancelCommand))
+                {
+                    commandsToSend.Add(script.RollbackCancelCommand);
+                }
+
+                await RouterRemoteLoopbackService.ExecuteCommandsAsync(
+                    _activeRouterTransport,
+                    commandsToSend,
+                    output => Dispatcher.Invoke(() =>
+                    {
+                        TxtRouterLogOutput.AppendText(output);
+                        TxtRouterLogOutput.ScrollToEnd();
+                    }));
+
+                await _activeRouterTransport.CloseAsync();
+                await _activeRouterTransport.DisposeAsync();
+                _activeRouterTransport = null;
+            }
+
+            _isRouterLoopActive = false;
+            BadgeRouterLoopStatus.Background = new SolidColorBrush(Color.FromRgb(39, 39, 42)); // Cinza
+            TxtRouterLoopStatus.Text = "⚪ LOOP NO ROTEADOR DESLIGADO";
+            TxtRouterLogOutput.AppendText("\r\n✅ [RESTAURADO]: Loopback desativado e porta restaurada com sucesso.\r\n");
+            BtnAtivarLoopRoteador.IsEnabled = true;
+        }
+        catch (Exception ex)
+        {
+            TxtRouterLogOutput.AppendText($"\r\n❌ Erro ao desativar: {ex.Message}\r\n");
+            BtnAtivarLoopRoteador.IsEnabled = true;
+            BtnDesativarLoopRoteador.IsEnabled = true;
+        }
+    }
+
+    private void BtnCopiarScriptAtivacao_Click(object sender, RoutedEventArgs e)
+    {
+        var config = ObterConfiguracaoAtual();
+        var script = RouterRemoteLoopbackService.GenerateScript(config);
+        var sb = new System.Text.StringBuilder();
+        if (!string.IsNullOrEmpty(script.RollbackTimerCommand))
+        {
+            sb.AppendLine(script.RollbackTimerCommand);
+        }
+        foreach (var cmd in script.EnableCommands)
+        {
+            sb.AppendLine(cmd);
+        }
+
+        try
+        {
+            Clipboard.SetText(sb.ToString().TrimEnd());
+            MessageBox.Show("Script de ativação copiado para a Área de Transferência!", "Copiado", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Falha ao copiar: {ex.Message}", "Erro", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void BtnCopiarScriptRestauracao_Click(object sender, RoutedEventArgs e)
+    {
+        var config = ObterConfiguracaoAtual();
+        var script = RouterRemoteLoopbackService.GenerateScript(config);
+        var sb = new System.Text.StringBuilder();
+        foreach (var cmd in script.DisableCommands)
+        {
+            sb.AppendLine(cmd);
+        }
+        if (!string.IsNullOrEmpty(script.RollbackCancelCommand))
+        {
+            sb.AppendLine(script.RollbackCancelCommand);
+        }
+
+        try
+        {
+            Clipboard.SetText(sb.ToString().TrimEnd());
+            MessageBox.Show("Script de reversão/restauração copiado para a Área de Transferência!", "Copiado", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Falha ao copiar: {ex.Message}", "Erro", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void BtnLimparLogRoteador_Click(object sender, RoutedEventArgs e)
+    {
+        if (TxtRouterLogOutput != null)
+        {
+            TxtRouterLogOutput.Clear();
+            AtualizarScriptVisualizacao();
+        }
+    }
+
+    #endregion
 }

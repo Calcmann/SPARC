@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="NetworkDevice.Android.Views.TerminalPage"
+             Title="Console CLI">
+    <Grid RowDefinitions="Auto, *, Auto, Auto" Padding="14" RowSpacing="10">
+        <!-- Status Bar -->
+        <Frame Grid.Row="0" BackgroundColor="#1E293B" CornerRadius="10" Padding="12" HasShadow="False">
+            <Grid ColumnDefinitions="*, Auto">
+                <VerticalStackLayout Grid.Column="0" Spacing="2">
+                    <Label Text="Console Serial CLI • Roteador" FontSize="14" FontAttributes="Bold" TextColor="#38BDF8" />
+                    <Label x:Name="ConsoleStatusLabel" Text="Status: Pronto" FontSize="11" TextColor="#94A3B8" />
+                </VerticalStackLayout>
+                <Button Grid.Column="1" Text="Limpar Tela" Clicked="OnClearTerminalClicked" BackgroundColor="#334155" TextColor="White" CornerRadius="6" FontSize="11" HeightRequest="32" Padding="10,0" />
+            </Grid>
+        </Frame>
+
+        <!-- Área de Saída do Terminal Monoespaçado -->
+        <Frame Grid.Row="1" BackgroundColor="#050811" CornerRadius="8" Padding="10" BorderColor="#1E293B">
+            <ScrollView x:Name="TerminalScrollView">
+                <Label x:Name="TerminalOutput" Text="[SPARC Mobile Console Serial Iniciado]&#10;Conecte o cabo USB OTG ao roteador e use o terminal interativo.&#10;" TextColor="#4ADE80" FontFamily="OpenSansRegular" FontSize="11" LineBreakMode="WordWrap" />
+            </ScrollView>
+        </Frame>
+
+        <!-- Atalhos Rápidos Cisco / HPE / Fortinet -->
+        <ScrollView Grid.Row="2" Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
+            <HorizontalStackLayout Spacing="6">
+                <Button Text="Ctrl+C" Clicked="OnCtrlCClicked" BackgroundColor="#DC2626" TextColor="White" CornerRadius="6" FontSize="11" HeightRequest="32" Padding="8,0" FontAttributes="Bold" />
+                <Button Text="Enter ↵" Clicked="OnEnterClicked" BackgroundColor="#334155" TextColor="White" CornerRadius="6" FontSize="11" HeightRequest="32" Padding="8,0" />
+                <Button Text="enable" Clicked="OnShortcutClicked" CommandParameter="enable" BackgroundColor="#1E293B" TextColor="#38BDF8" CornerRadius="6" FontSize="11" HeightRequest="32" Padding="8,0" />
+                <Button Text="sh ip int br" Clicked="OnShortcutClicked" CommandParameter="show ip interface brief" BackgroundColor="#1E293B" TextColor="#38BDF8" CornerRadius="6" FontSize="11" HeightRequest="32" Padding="8,0" />
+                <Button Text="sh ip route" Clicked="OnShortcutClicked" CommandParameter="show ip route" BackgroundColor="#1E293B" TextColor="#38BDF8" CornerRadius="6" FontSize="11" HeightRequest="32" Padding="8,0" />
+                <Button Text="sh run" Clicked="OnShortcutClicked" CommandParameter="show running-config" BackgroundColor="#1E293B" TextColor="#38BDF8" CornerRadius="6" FontSize="11" HeightRequest="32" Padding="8,0" />
+                <Button Text="terminal length 0" Clicked="OnShortcutClicked" CommandParameter="terminal length 0" BackgroundColor="#1E293B" TextColor="#FBBF24" CornerRadius="6" FontSize="11" HeightRequest="32" Padding="8,0" />
+                <Button Text="write memory" Clicked="OnShortcutClicked" CommandParameter="write memory" BackgroundColor="#1E293B" TextColor="#4ADE80" CornerRadius="6" FontSize="11" HeightRequest="32" Padding="8,0" />
+            </HorizontalStackLayout>
+        </ScrollView>
+
+        <!-- Campo de Envio de Comando -->
+        <Grid Grid.Row="3" ColumnDefinitions="*, Auto" ColumnSpacing="8">
+            <Entry Grid.Column="0" x:Name="CommandInput" Placeholder="Comando CLI..." TextColor="White" BackgroundColor="#1E293B" Completed="OnSendCommandClicked" />
+            <Button Grid.Column="1" Text="Enviar ↵" Clicked="OnSendCommandClicked" BackgroundColor="#0284C7" TextColor="White" CornerRadius="8" FontAttributes="Bold" />
+        </Grid>
+    </Grid>
+</ContentPage>

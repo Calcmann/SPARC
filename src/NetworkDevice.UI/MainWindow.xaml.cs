@@ -54,7 +54,9 @@ public partial class MainWindow : Window
     private string? _lastResolvedPass;
     private TripleIcmpResult? _lastIcmpResult;
 
-    public const string AppReleaseVersion = "Release v0.8.8 Beta";
+    public static readonly string AppReleaseVersion = 
+        System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(MainWindow).Assembly)?.InformationalVersion?.Split('+')[0]
+        ?? $"Release v{typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.8.23"} Beta";
 
     public MainWindow()
     {

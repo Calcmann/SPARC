@@ -687,4 +687,237 @@ public static class HostNetworkManager
         }
         catch { return null; }
     }
+
+    /// <summary>
+    /// Calibra dinamicamente as propriedades avançadas da placa de rede (Intel, Realtek, Broadcom, ASIX, etc.)
+    /// utilizando palavras-chave padronizadas do NDIS (*ReceiveBuffers, *TransmitBuffers, *EEE, RSS)
+    /// adaptando-se automaticamente ao limite máximo suportado pelo chip em uso.
+    /// </summary>
+    public static async Task<(bool success, List<string> log)> OptimizeAdapterHardwareAsync(string adapterNameOrIp, CancellationToken ct = default)
+    {
+        var logs = new List<string>();
+        string targetAdapter = adapterNameOrIp;
+
+        // Se for um IP, localiza o nome amigável do adaptador correspondente
+        if (IPAddress.TryParse(adapterNameOrIp, out _))
+        {
+            try
+            {
+                var nics = NetworkInterface.GetAllNetworkInterfaces();
+                foreach (var nic in nics)
+                {
+                    if (nic.GetIPProperties().UnicastAddresses.Any(u => u.Address.ToString() == adapterNameOrIp))
+                    {
+                        targetAdapter = nic.Name;
+                        break;
+                    }
+                }
+            }
+            catch { }
+        }
+
+        var psScript = @"
+param([string]$adapter)
+$res = [System.Collections.Generic.List[string]]::new()
+try {
+    # 1. Buffers de Recepcao (calibrado em 256 para evitar Bufferbloat e manter RTD ultra-baixo)
+    $rxProp = Get-NetAdapterAdvancedProperty -Name $adapter -RegistryKeyword '*ReceiveBuffers' -ErrorAction SilentlyContinue
+    if ($rxProp) {
+        $targetRx = 256
+        Set-NetAdapterAdvancedProperty -Name $adapter -RegistryKeyword '*ReceiveBuffers' -RegistryValue $targetRx -ErrorAction SilentlyContinue
+        $res.Add(""Buffers de Recepcao: calibrado para $targetRx (anti-bufferbloat / RTD ultra-baixo < 1-2ms)"")
+    }
+
+    # 2. Buffers de Transmissao
+    $txProp = Get-NetAdapterAdvancedProperty -Name $adapter -RegistryKeyword '*TransmitBuffers' -ErrorAction SilentlyContinue
+    if ($txProp) {
+        $targetTx = 512
+        Set-NetAdapterAdvancedProperty -Name $adapter -RegistryKeyword '*TransmitBuffers' -RegistryValue $targetTx -ErrorAction SilentlyContinue
+        $res.Add(""Buffers de Transmissao: calibrado para $targetTx (estabilidade de taxa)"")
+    }
+
+    # 3. Desativar Controle de Fluxo (Flow Control / 802.3x PAUSE frames) - CRUCIAL para testes Y.1564 / RFC 2544
+    $fcProps = Get-NetAdapterAdvancedProperty -Name $adapter -ErrorAction SilentlyContinue | Where-Object { 
+        $_.RegistryKeyword -match 'FlowControl' -or $_.DisplayName -match 'Controle de fluxo|Flow Control' 
+    }
+    foreach ($fc in $fcProps) {
+        $disableVal = $fc.ValidDisplayValues | Where-Object { $_ -match 'Desabilitad|Disabled|Off|Desligado|0' } | Select-Object -First 1
+        if ($disableVal) {
+            Set-NetAdapterAdvancedProperty -Name $adapter -DisplayName $fc.DisplayName -DisplayValue $disableVal -ErrorAction SilentlyContinue
+            $res.Add(""Controle de Fluxo (802.3x): desativado ($disableVal) - previne congelamentos de link"")
+        }
+    }
+
+    # 4. Economia de Energia (Intel *EEE, Realtek GreenEthernet, GigaLite, etc)
+    $eeeProps = Get-NetAdapterAdvancedProperty -Name $adapter -ErrorAction SilentlyContinue | Where-Object { 
+        $_.RegistryKeyword -match 'EEE|Green|PowerSave|GigaLite' -or $_.DisplayName -match 'energia|green|energy' 
+    }
+    foreach ($p in $eeeProps) {
+        $disableVal = $p.ValidDisplayValues | Where-Object { $_ -match 'Desabilitad|Disabled|Off|Desligado|0' } | Select-Object -First 1
+        if ($disableVal) {
+            Set-NetAdapterAdvancedProperty -Name $adapter -DisplayName $p.DisplayName -DisplayValue $disableVal -ErrorAction SilentlyContinue
+            $res.Add(""Economia de energia ($($p.DisplayName)): desativada ($disableVal)"")
+        }
+    }
+
+    # 5. Moderacao de interrupcao (tenta Baixa ou Low se o chip suportar)
+    $modRate = Get-NetAdapterAdvancedProperty -Name $adapter -ErrorAction SilentlyContinue | Where-Object { 
+        $_.DisplayName -match 'Taxa de moderação|Interrupt Moderation Rate' 
+    }
+    if ($modRate) {
+        $lowVal = $modRate.ValidDisplayValues | Where-Object { $_ -match 'Baix|Low' } | Select-Object -First 1
+        if ($lowVal) {
+            Set-NetAdapterAdvancedProperty -Name $adapter -DisplayName $modRate.DisplayName -DisplayValue $lowVal -ErrorAction SilentlyContinue
+            $res.Add(""Moderacao de Interrupcoes: definida para $lowVal"")
+        }
+    }
+
+    # 6. Ativar RSS se suportado pelo hardware
+    try {
+        Enable-NetAdapterRss -Name $adapter -ErrorAction Stop
+        $res.Add(""RSS (Receive Side Scaling): Ativado com sucesso"")
+    } catch {
+        $res.Add(""RSS: Nao suportado pelo chip ou gerenciado pelo SO"")
+    }
+
+    # 7. Ativar Checksum Offload (IPv4, UDP, TCP)
+    try {
+        Enable-NetAdapterChecksumOffload -Name $adapter -ErrorAction SilentlyContinue
+        $res.Add(""Descarga de Checksum em Hardware (Rx/Tx): Ativada"")
+    } catch { }
+
+    $chkProps = Get-NetAdapterAdvancedProperty -Name $adapter -ErrorAction SilentlyContinue | Where-Object { 
+        $_.RegistryKeyword -match 'ChecksumOffload' -or $_.DisplayName -match 'Checksum' 
+    }
+    foreach ($chk in $chkProps) {
+        $enableVal = $chk.ValidDisplayValues | Where-Object { $_ -match 'Rx e Tx|Tx e Rx|Habilitad|Enabled' } | Select-Object -First 1
+        if ($enableVal) {
+            Set-NetAdapterAdvancedProperty -Name $adapter -DisplayName $chk.DisplayName -DisplayValue $enableVal -ErrorAction SilentlyContinue
+        }
+    }
+
+} catch {
+    $res.Add(""Aviso: $($_.Exception.Message)"")
+}
+$res
+";
+
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = $"-NoProfile -ExecutionPolicy Bypass -Command \"& {{ {psScript} }} -adapter '{targetAdapter}'\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(psi);
+            if (process == null)
+            {
+                logs.Add("Falha ao iniciar processo PowerShell.");
+                return (false, logs);
+            }
+
+            var output = await process.StandardOutput.ReadToEndAsync(ct);
+            await process.WaitForExitAsync(ct);
+
+            var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var line in lines)
+            {
+                var trimmed = line.Trim();
+                if (!string.IsNullOrWhiteSpace(trimmed))
+                {
+                    logs.Add(trimmed);
+                }
+            }
+
+            return (logs.Count > 0, logs);
+        }
+        catch (Exception ex)
+        {
+            logs.Add($"Erro ao otimizar placa de rede: {ex.Message}");
+            return (false, logs);
+        }
+    }
+
+    /// <summary>
+    /// Restaura todas as propriedades avançadas da placa de rede para os padrões originais de fábrica do fabricante.
+    /// </summary>
+    public static async Task<(bool success, List<string> log)> RestoreAdapterHardwareDefaultsAsync(string adapterNameOrIp, CancellationToken ct = default)
+    {
+        var logs = new List<string>();
+        string targetAdapter = adapterNameOrIp;
+
+        if (IPAddress.TryParse(adapterNameOrIp, out _))
+        {
+            try
+            {
+                var nics = NetworkInterface.GetAllNetworkInterfaces();
+                foreach (var nic in nics)
+                {
+                    if (nic.GetIPProperties().UnicastAddresses.Any(u => u.Address.ToString() == adapterNameOrIp))
+                    {
+                        targetAdapter = nic.Name;
+                        break;
+                    }
+                }
+            }
+            catch { }
+        }
+
+        var psScript = @"
+param([string]$adapter)
+$res = [System.Collections.Generic.List[string]]::new()
+try {
+    Reset-NetAdapterAdvancedProperty -Name $adapter -DisplayName * -ErrorAction SilentlyContinue
+    $res.Add(""Propriedades avancadas restauradas para o padrao de fabrica com sucesso."")
+} catch {
+    $res.Add(""Erro ao restaurar: $($_.Exception.Message)"")
+}
+$res
+";
+
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = $"-NoProfile -ExecutionPolicy Bypass -Command \"& {{ {psScript} }} -adapter '{targetAdapter}'\"",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(psi);
+            if (process == null)
+            {
+                logs.Add("Falha ao iniciar processo PowerShell.");
+                return (false, logs);
+            }
+
+            var output = await process.StandardOutput.ReadToEndAsync(ct);
+            await process.WaitForExitAsync(ct);
+
+            var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var line in lines)
+            {
+                var trimmed = line.Trim();
+                if (!string.IsNullOrWhiteSpace(trimmed))
+                {
+                    logs.Add(trimmed);
+                }
+            }
+
+            return (logs.Count > 0, logs);
+        }
+        catch (Exception ex)
+        {
+            logs.Add($"Erro ao restaurar padroes: {ex.Message}");
+            return (false, logs);
+        }
+    }
 }

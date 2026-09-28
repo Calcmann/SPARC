@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Shell
+    x:Class="NetworkDevice.Android.AppShell"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:views="clr-namespace:NetworkDevice.Android.Views"
+    Shell.FlyoutBehavior="Disabled"
+    Title="SPARC Mobile">
+
+    <TabBar>
+        <Tab Title="Provisionamento">
+            <ShellContent ContentTemplate="{DataTemplate views:ProvisioningPage}" Route="ProvisioningPage" />
+        </Tab>
+        <Tab Title="Console CLI">
+            <ShellContent ContentTemplate="{DataTemplate views:TerminalPage}" Route="TerminalPage" />
+        </Tab>
+    </TabBar>
+
+</Shell>

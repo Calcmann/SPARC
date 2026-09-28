@@ -29,4 +29,5 @@ $RECYCLE.BIN/
 speedtest_tmp/
 *.log
 dist-beta/*.exe
+dist-beta/*.apk
 scratch*/
