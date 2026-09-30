@@ -1,0 +1,15 @@
+name = "sparc-firmware-proxy"
+main = "src/index.js"
+compatibility_date = "2024-09-01"
+
+[vars]
+# Chave de autorização padrão exigida na URL do roteador (?key=CR@PS)
+SPARC_SECRET_KEY = "CR@PS"
+REPO_OWNER = "Calcmann"
+REPO_NAME = "repo"
+RELEASE_TAG = "homologados"
+
+# NOTA DE SEGURANÇA:
+# O token GITHUB_PAT deve ser configurado como segredo criptografado no Cloudflare:
+# execute: npx wrangler secret put GITHUB_PAT
+# Ou defina nas variáveis de ambiente da interface web do Cloudflare Workers.

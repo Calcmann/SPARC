@@ -1,0 +1,16 @@
+{
+  "name": "sparc-firmware-proxy",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker Proxy para download seguro e direto de firmwares homologados pelo roteador (Cisco, HPE, Fortinet)",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "keywords": ["sparc", "cisco", "firmware", "proxy", "cloudflare-workers"],
+  "author": "SPARC Team",
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "^3.114.0"
+  }
+}

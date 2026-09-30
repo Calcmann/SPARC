@@ -42,3 +42,6 @@ firmwares/*.out
 firmwares/
 
 beta/requests/*.json
+
+node_modules/
+.wrangler/
