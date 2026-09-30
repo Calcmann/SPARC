@@ -1,0 +1,18 @@
+[
+  {
+    "MachineGuid": "guid-12345-abcde",
+    "MachineFingerprint": "fingerprint-67890-xyz",
+    "FirstName": "Técnico",
+    "LastName": "Campo (Teste)",
+    "Phone": "(11) 98765-4321",
+    "Email": "tecnico.teste@claro.com.br",
+    "ClientVersion": "0.8.2",
+    "FirstRegisteredUtc": "2026-09-30T10:00:00Z",
+    "LastSeenUtc": "2026-09-30T12:00:00Z",
+    "ExpirationDateIso": "2026-10-30",
+    "ValidDays": 30,
+    "Status": "Active",
+    "AuthorizedToken": "SPB1.eyJnIjoiZ3VpZC0xMjM0NS1hYmNkZSIsImYiOiJmaW5nZXJwcmludC02Nzg5MC14eXoiLCJleHAiOiIyMDI2LTEwLTMwVDAwOjAwOjAwWiJ9.E_uIhS2OpQIJwBgkn4WTcYC33fLRE6xFbuPZ0n12MjueA94MYJxRkJURPvrji-tAUaW4YbKEHnH28gYFAnKRyaFQxEca15wlc657hzMg5Su-NRar-nwNDrYqSjw9Qaep412YJ6HibYtkoBb2MeM-iOYSdTWMYIXPIfxtD66LMxQQHSzobyK4s0QGZqWwWSP4BbeHTyVlF4ejT7L68QT79f2oNZqKdsOQmpR6UKHpC_C4hYKlA_nktxu1Niwr70H_wdncsQ0gJrbJAy-gJ3maQi0jRQpN-w1Bqu58mHZuJZ0dGqG6Zd7zrrtUlqK-vyb8hn3Zg1qrhzHpGqEcS_WQtw",
+    "Notes": "Homologação Inicial"
+  }
+]

@@ -1,5 +1,4 @@
-# SPARC NetworkDevice Launcher & Auto-Updater - sempre carrega versao atualizada ao iniciar
-param ([switch]$ForceRebuild)
+param ([switch]$ForceRebuild, [string]$AppArgs = "")
 
 $ErrorActionPreference = "Continue"
 $sparcDir = if (Test-Path "C:\SPARC") { "C:\SPARC" } else { (Resolve-Path "$PSScriptRoot\..").Path }
@@ -106,9 +105,19 @@ if (Test-Path $uiExe) {
     Log "[*] Iniciando $uiExe" Cyan
     $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     if ($isAdmin) {
-        Start-Process -FilePath $uiExe -WorkingDirectory $sparcDir
+        if ([string]::IsNullOrWhiteSpace($AppArgs)) {
+            Start-Process -FilePath $uiExe -WorkingDirectory $sparcDir
+        } else {
+            Start-Process -FilePath $uiExe -ArgumentList $AppArgs -WorkingDirectory $sparcDir
+        }
     } else {
-        try { Start-Process -FilePath $uiExe -WorkingDirectory $sparcDir -Verb RunAs } catch {
+        try {
+            if ([string]::IsNullOrWhiteSpace($AppArgs)) {
+                Start-Process -FilePath $uiExe -WorkingDirectory $sparcDir -Verb RunAs
+            } else {
+                Start-Process -FilePath $uiExe -ArgumentList $AppArgs -WorkingDirectory $sparcDir -Verb RunAs
+            }
+        } catch {
             Log "[WARN] UAC negado, iniciando sem elevação (IP pode falhar)" Yellow
             Start-Process -FilePath $uiExe -WorkingDirectory $sparcDir
         }

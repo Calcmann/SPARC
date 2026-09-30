@@ -15,6 +15,7 @@ public partial class ProvisioningPage : ContentPage
         InitializeComponent();
         _connManager.OnConnectionStateChanged += UpdateConnectionState;
         _connManager.OnDeviceIdentified += UpdateIdentifiedDevice;
+        _connManager.OnProbeProgress += msg => MainThread.BeginInvokeOnMainThread(() => AppendLog(msg));
         ScanUsb();
     }
 
@@ -43,6 +44,12 @@ public partial class ProvisioningPage : ContentPage
         UsbStatusLabel.Text = $"{_discoveredDevices.Count} dispositivo(s) serial USB detectado(s).";
     }
 
+    protected override void OnAppearing()
+    {
+        base.OnAppearing();
+        ScanUsb();
+    }
+
     private async void OnConnectUsbClicked(object? sender, EventArgs e)
     {
         if (_connManager.IsConnected)
@@ -51,23 +58,35 @@ public partial class ProvisioningPage : ContentPage
             return;
         }
 
-        if (UsbDevicePicker.SelectedIndex < 0 || UsbDevicePicker.SelectedIndex >= _discoveredDevices.Count)
-        {
-            await DisplayAlert("Aviso", "Selecione um adaptador USB na lista ou clique em Escanear USB.", "OK");
-            return;
-        }
-
-        var targetDevice = _discoveredDevices[UsbDevicePicker.SelectedIndex];
         ConnectUsbBtn.IsEnabled = false;
 
         try
         {
-            UsbStatusLabel.Text = "Conectando ao console serial USB (9600 8N1)...";
-            await _connManager.ConnectUsbAsync(targetDevice, baudRate: 9600);
-            AppendLog("[✓] Console serial USB conectado com sucesso!");
+            ScanUsb();
 
-            // Tenta identificação automática ao conectar
-            await Task.Delay(500);
+            UsbDevice? targetDevice = null;
+            if (UsbDevicePicker.SelectedIndex >= 0 && UsbDevicePicker.SelectedIndex < _discoveredDevices.Count)
+            {
+                targetDevice = _discoveredDevices[UsbDevicePicker.SelectedIndex];
+            }
+
+            UsbStatusLabel.Text = "Conectando ao console serial USB...";
+            AppendLog("[*] Iniciando conexão com o adaptador serial USB...");
+
+            await _connManager.ConnectUsbAsync(targetDevice, baudRate: 9600, status =>
+            {
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    UsbStatusLabel.Text = status;
+                    AppendLog(status);
+                });
+            });
+
+            ScanUsb();
+            AppendLog("[✓] Porta serial USB aberta e pronta para operação!");
+
+            // Executa identificação autônoma multi-padrão (9600 Cisco/HPE -> 115200 Fortinet)
+            await Task.Delay(400);
             await RunDeviceIdentificationAsync();
         }
         catch (Exception ex)
@@ -87,11 +106,13 @@ public partial class ProvisioningPage : ContentPage
         {
             if (isConnected)
             {
+                var baud = (_connManager.CurrentTransport as AndroidUsbSerialTransport)?.BaudRate ?? 9600;
                 ConnectionBadge.Text = "CONECTADO";
                 ConnectionBadge.TextColor = Color.FromArgb("#4ADE80");
                 ConnectUsbBtn.Text = "❌ Desconectar";
                 ConnectUsbBtn.BackgroundColor = Color.FromArgb("#DC2626");
-                UsbStatusLabel.Text = "Porta serial aberta a 9600 bps.";
+                UsbStatusLabel.Text = $"Porta serial conectada a {baud} bps.";
+                NegotiatedBaudBadge.Text = $"Taxa Serial Ativa: {baud} bps";
             }
             else
             {
@@ -100,6 +121,7 @@ public partial class ProvisioningPage : ContentPage
                 ConnectUsbBtn.Text = "🔌 Conectar";
                 ConnectUsbBtn.BackgroundColor = Color.FromArgb("#059669");
                 UsbStatusLabel.Text = "Console serial desconectado.";
+                NegotiatedBaudBadge.Text = "Taxa Serial: Automática (9600 Cisco/HPE • 115200 Fortinet)";
             }
         });
     }
@@ -118,14 +140,34 @@ public partial class ProvisioningPage : ContentPage
         }
 
         IdentifyBtn.IsEnabled = false;
-        AppendLog("[*] Interrogando o equipamento na porta serial CLI...");
+        AppendLog("[*] Iniciando identificação autônoma do roteador na porta serial...");
 
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             var result = await _connManager.IdentifyDeviceAsync(cts.Token);
             UpdateIdentifiedDevice(result);
-            AppendLog($"[✓] Identificado: {result.Manufacturer} {result.Series} (Estado: {result.OperatingState})");
+
+            if (result.Manufacturer == DeviceManufacturer.Unknown)
+            {
+                AppendLog("[!] Nenhuma resposta recebida em 9600 bps e 115200 bps.");
+                AppendLog("    • Certifique-se de que o cabo RJ45 Console está plugado na porta CONSOLE do roteador.");
+                AppendLog("    • Certifique-se de que o roteador está ligado à energia.");
+                AppendLog("    • Pressione a tecla ENTER na aba 'Console CLI' para testar a comunicação manual.");
+            }
+            else
+            {
+                var activeBaud = (_connManager.CurrentTransport as AndroidUsbSerialTransport)?.BaudRate ?? 9600;
+                AppendLog($"[✓] EQUIPAMENTO IDENTIFICADO COM SUCESSO!");
+                AppendLog($"    Fabricante: {result.Manufacturer}");
+                AppendLog($"    Modelo: {result.Series}");
+                AppendLog($"    Velocidade Negociada: {activeBaud} bps");
+                AppendLog($"    Estado Operacional: {result.OperatingState}");
+                if (!string.IsNullOrWhiteSpace(result.RawPrompt))
+                {
+                    AppendLog($"    Prompt Serial: '{result.RawPrompt.Trim()}'");
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -142,9 +184,12 @@ public partial class ProvisioningPage : ContentPage
     {
         MainThread.BeginInvokeOnMainThread(() =>
         {
+            var activeBaud = (_connManager.CurrentTransport as AndroidUsbSerialTransport)?.BaudRate ?? 9600;
             ManufacturerLabel.Text = res.Manufacturer.ToString();
             ModelLabel.Text = res.Series == DeviceSeries.Unknown ? "Não identificado (Genérico)" : res.Series.ToString();
+            BaudLabel.Text = $"{activeBaud} bps";
             StateLabel.Text = res.OperatingState.ToString();
+            PromptLabel.Text = string.IsNullOrWhiteSpace(res.RawPrompt) ? "(Sem resposta serial)" : res.RawPrompt.Trim();
 
             if (res.OperatingState == DeviceOperatingState.Ready)
                 StateLabel.TextColor = Color.FromArgb("#4ADE80");

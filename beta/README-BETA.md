@@ -12,9 +12,11 @@ powershell -ExecutionPolicy Bypass -File C:\SPARC\beta\Build-Beta.ps1 -Dias 30 -
 
 ## Ativar num notebook de teste
 1. Rode o exe - a tela mostra ID + dados de ativacao (SPBREQ...).
-2. Tecnico envia os dados; responsavel roda:
-   powershell -ExecutionPolicy Bypass -File C:\SPARC\beta\Gerar-ChaveBeta.ps1 -Req "SPBREQ..." -Dias 30
-3. Cole a chave SPB1... na tela - vale 30 dias naquela maquina.
+2. Tecnico envia o codigo SPBREQ; o gestor gera a chave de liberacao:
+   - **Via SPARC Admin (Recomendado)**: Abra pelo atalho no Desktop `SPARC Admin` ou execute `C:\SPARC\Iniciar_Admin.cmd`. Cole o SPBREQ, escolha os dias e clique em "Gerar Chave" (com opcao de copiar direto formatado para WhatsApp!).
+   - **Via CLI PowerShell**:
+     powershell -ExecutionPolicy Bypass -File C:\SPARC\beta\Gerar-ChaveBeta.ps1 -Req "SPBREQ..." -Dias 30
+3. O técnico cola a chave SPB1... na tela - licenca ativada e amarrada a maquina.
 
 ## Regras embutidas
 - Time-bomb: build expira (padrao: build + 30 dias) - precisa de novo build.

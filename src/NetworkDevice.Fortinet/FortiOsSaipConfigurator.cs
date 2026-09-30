@@ -75,6 +75,34 @@ public sealed class FortiOsSaipConfigurator
     }
 
     /// <summary>
+    /// Normaliza o terminal para o shell raiz do FortiOS (ex: 'FGT40F #'), saindo de
+    /// qualquer bloco de configuração ('FGT40F (interface) #', '(admin) #', '(static) #',
+    /// '(policy) #'...) com 'end'. Sem isso, um console parado dentro de um bloco
+    /// (provisionamento anterior interrompido) faz 'get system interface' retornar
+    /// 'Command fail' e os blocos 'config ...' aninharem com erro — o mesmo defeito
+    /// do Cisco 1905 parado em (config)#. Análogo ao EnsurePrivilegedExecAsync do IOS
+    /// e ao EnsureSystemViewAsync do Comware.
+    /// </summary>
+    public static async Task EnsureRootShellAsync(DeviceSession session, CancellationToken cancellationToken = default)
+    {
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            var output = await session.SendCommandAsync(string.Empty, TimeSpan.FromSeconds(5), cancellationToken);
+            var prompt = (session.CurrentPrompt ?? output?.Trim().Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.Trim() ?? string.Empty).Trim();
+
+            // Bloco de configuração FortiOS: hostname (bloco) # — ex: 'FGT40F (interface) #'
+            if (Regex.IsMatch(prompt, @"\([^()\r\n]+\)\s*[#$]\s*$"))
+            {
+                await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
+                await Task.Delay(200, cancellationToken);
+                continue;
+            }
+
+            return;
+        }
+    }
+
+    /// <summary>
     /// Gera a lista de linhas CLI FortiOS para provisionamento da Ficha SAIP.
     /// Cada item é uma linha a enviar na sessão (blocos config/edit/next/end inclusos).
     /// FortiOS persiste automaticamente a cada 'end' — sem 'write memory'.
@@ -235,6 +263,11 @@ public sealed class FortiOsSaipConfigurator
             await Task.Delay(200, cancellationToken);
         }
         catch { }
+
+        // 1b. Normaliza para o shell raiz (sai de blocos config residuais com 'end').
+        // Console parado em '(interface) #' etc. quebra o 'get' do passo 2 e aninha
+        // os blocos 'config ...' com erro — mesmo defeito do 1905 em (config)#.
+        await EnsureRootShellAsync(session, cancellationToken);
 
         // 2. Mapeia interfaces reais (best-effort; mantém defaults wan/lan em caso de falha).
         try

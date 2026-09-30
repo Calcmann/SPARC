@@ -9,6 +9,7 @@ internal static class BetaConfig
     public const string Tag = "%%BETA_TAG%%";
     public const string ExpiresUtcIso = "%%BETA_EXPIRES_UTC%%"; // yyyy-MM-ddTHH:mm:ssZ
     public const string PublicKeyPem = @"%%BETA_PUBLIC_KEY_PEM%%";
+    public const string GitHubReadOnlyToken = "%%BETA_GITHUB_TOKEN%%";
 
     public static DateTime ExpiresUtc
     {

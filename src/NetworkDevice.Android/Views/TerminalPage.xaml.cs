@@ -24,7 +24,8 @@ public partial class TerminalPage : ContentPage
     {
         if (_connManager.IsConnected)
         {
-            ConsoleStatusLabel.Text = "Porta Serial: Aberta (9600 8N1)";
+            var baud = (_connManager.CurrentTransport as AndroidUsbSerialTransport)?.BaudRate ?? 9600;
+            ConsoleStatusLabel.Text = $"Porta Serial: Aberta ({baud} 8N1)";
             ConsoleStatusLabel.TextColor = Color.FromArgb("#4ADE80");
         }
         else

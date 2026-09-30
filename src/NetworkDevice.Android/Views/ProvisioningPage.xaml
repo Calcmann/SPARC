@@ -23,6 +23,8 @@
 
                     <Picker x:Name="UsbDevicePicker" Title="Selecione o Adaptador Serial USB" TextColor="White" TitleColor="#94A3B8" BackgroundColor="#1E293B" />
 
+                    <Label x:Name="NegotiatedBaudBadge" Text="Taxa Serial: Automática (9600 Cisco/HPE • 115200 Fortinet)" FontSize="11" TextColor="#38BDF8" />
+
                     <Grid ColumnDefinitions="*, *" ColumnSpacing="8">
                         <Button Grid.Column="0" Text="🔄 Escanear USB" Clicked="OnScanUsbClicked" BackgroundColor="#334155" TextColor="White" CornerRadius="8" FontSize="12" HeightRequest="38" />
                         <Button Grid.Column="1" x:Name="ConnectUsbBtn" Text="🔌 Conectar" Clicked="OnConnectUsbClicked" BackgroundColor="#059669" TextColor="White" CornerRadius="8" FontAttributes="Bold" FontSize="12" HeightRequest="38" />
@@ -35,19 +37,25 @@
             <!-- 2. Identificação do Roteador -->
             <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#334155">
                 <VerticalStackLayout Spacing="10">
-                    <Label Text="2. Identificação do Roteador" FontSize="14" FontAttributes="Bold" TextColor="#F8FAFC" />
+                    <Label Text="2. Identificação Autônoma do Roteador" FontSize="14" FontAttributes="Bold" TextColor="#F8FAFC" />
 
-                    <Button x:Name="IdentifyBtn" Text="🔍 Identificar Equipamento / Prompt" Clicked="OnIdentifyClicked" BackgroundColor="#0284C7" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="38" />
+                    <Button x:Name="IdentifyBtn" Text="🔍 Identificar Roteador Automaticamente" Clicked="OnIdentifyClicked" BackgroundColor="#0284C7" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="38" />
 
-                    <Grid ColumnDefinitions="Auto, *" RowDefinitions="Auto, Auto, Auto" RowSpacing="6" ColumnSpacing="10">
+                    <Grid ColumnDefinitions="Auto, *" RowDefinitions="Auto, Auto, Auto, Auto, Auto" RowSpacing="6" ColumnSpacing="10">
                         <Label Grid.Row="0" Grid.Column="0" Text="Fabricante:" TextColor="#94A3B8" FontAttributes="Bold" FontSize="12" />
                         <Label Grid.Row="0" Grid.Column="1" x:Name="ManufacturerLabel" Text="-" TextColor="White" FontAttributes="Bold" FontSize="12" />
 
                         <Label Grid.Row="1" Grid.Column="0" Text="Modelo / Série:" TextColor="#94A3B8" FontAttributes="Bold" FontSize="12" />
                         <Label Grid.Row="1" Grid.Column="1" x:Name="ModelLabel" Text="-" TextColor="#38BDF8" FontAttributes="Bold" FontSize="12" />
 
-                        <Label Grid.Row="2" Grid.Column="0" Text="Estado Operacional:" TextColor="#94A3B8" FontAttributes="Bold" FontSize="12" />
-                        <Label Grid.Row="2" Grid.Column="1" x:Name="StateLabel" Text="-" TextColor="#4ADE80" FontAttributes="Bold" FontSize="12" />
+                        <Label Grid.Row="2" Grid.Column="0" Text="Taxa Negociada:" TextColor="#94A3B8" FontAttributes="Bold" FontSize="12" />
+                        <Label Grid.Row="2" Grid.Column="1" x:Name="BaudLabel" Text="-" TextColor="#FBBF24" FontAttributes="Bold" FontSize="12" />
+
+                        <Label Grid.Row="3" Grid.Column="0" Text="Estado Operacional:" TextColor="#94A3B8" FontAttributes="Bold" FontSize="12" />
+                        <Label Grid.Row="3" Grid.Column="1" x:Name="StateLabel" Text="-" TextColor="#4ADE80" FontAttributes="Bold" FontSize="12" />
+
+                        <Label Grid.Row="4" Grid.Column="0" Text="Prompt Detectado:" TextColor="#94A3B8" FontAttributes="Bold" FontSize="12" />
+                        <Label Grid.Row="4" Grid.Column="1" x:Name="PromptLabel" Text="-" TextColor="#E2E8F0" FontSize="12" LineBreakMode="TailTruncation" />
                     </Grid>
                 </VerticalStackLayout>
             </Frame>

@@ -202,20 +202,21 @@ public sealed class CiscoSaipConfigurator
         }
         catch { }
 
-        // 2. Garante modo privilegiado (enable)
-        var prompt = await session.SendCommandAsync(string.Empty, TimeSpan.FromSeconds(5), cancellationToken);
-        if (prompt?.Trim().EndsWith(">") == true || session.CurrentPrompt?.Trim().EndsWith(">") == true)
-        {
-            await ProgressAsync("[*] Acessando modo privilegiado: enviando 'enable'...");
-            var enableRes = await session.SendCommandAsync("enable", TimeSpan.FromSeconds(10), cancellationToken);
-            await Task.Delay(300, cancellationToken);
-        }
+        // 2. Normaliza o modo do terminal para PrivilegedExec (#) antes de qualquer 'show'.
+        // Cenário que quebrava o 1905 com configuração: console parado em (config)# ou
+        // (config-if)# faz 'show ip interface brief' retornar '% Invalid input' (no IOS o
+        // correto dentro de config seria 'do show ...'), o DetectInterfaces caía no fallback
+        // GE4/GE5 (inexistentes no 1905 = GE0/0 + GE0/1) e toda a esteira errava.
+        await EnsurePrivilegedExecAsync(session, cancellationToken);
+
+        // 2b. Desativa paginação (--More--) para os 'show' não truncarem em equipo com config
+        try { await session.SendCommandAsync("terminal length 0", TimeSpan.FromSeconds(5), cancellationToken); } catch { }
 
         // 3. Obtém as interfaces reais do equipamento
         string briefOutput = string.Empty;
         try
         {
-            briefOutput = await session.SendCommandAsync("show ip interface brief", TimeSpan.FromSeconds(15), cancellationToken);
+            briefOutput = await SendShowAsync(session, "show ip interface brief", TimeSpan.FromSeconds(15), cancellationToken);
             var (detectedWan, detectedLan) = DetectInterfaces(briefOutput, wanInterface, lanInterface);
             wanInterface = detectedWan;
             lanInterface = detectedLan;
@@ -236,7 +237,7 @@ public sealed class CiscoSaipConfigurator
             await session.SendCommandAsync("no ip domain lookup", TimeSpan.FromSeconds(5), cancellationToken);
             await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
             // 4a. Remove todas as rotas default antigas (qualquer gateway)
-            var showRoutes = await session.SendCommandAsync("show running-config | include ip route", TimeSpan.FromSeconds(10), cancellationToken);
+            var showRoutes = await SendShowAsync(session, "show running-config | include ip route", TimeSpan.FromSeconds(10), cancellationToken);
             var routeMatches = Regex.Matches(showRoutes, @"(?im)^\s*ip\s+route\s+0\.0\.0\.0\s+0\.0\.0\.0\s+(\S+)(?:\s+\S+)*");
             foreach (Match m in routeMatches)
             {
@@ -360,6 +361,56 @@ public sealed class CiscoSaipConfigurator
 
         await ProgressAsync("[OK] Configuração Cisco gravada permanentemente na NVRAM com config-register 0x2102!");
         await ProgressAsync("[*] PROVISIONAMENTO SAIP CONCLUÍDO COM SUCESSO (Acesso Telnet EBT/PRO1AN ativo)!");
+    }
+
+    /// <summary>
+    /// Normaliza o terminal para PrivilegedExec (hostname#), saindo de qualquer submodo
+    /// de configuração ((config)# / (config-if)#) com 'end' e subindo de UserExec (>) com
+    /// 'enable'. Sem isso, 'show ...' executado dentro de config retorna '% Invalid input'
+    /// e a detecção de interfaces cai no fallback errado (ex: 1905 sem GE4/GE5).
+    /// </summary>
+    public static async Task EnsurePrivilegedExecAsync(DeviceSession session, CancellationToken cancellationToken = default)
+    {
+        for (var attempt = 0; attempt < 6; attempt++)
+        {
+            var output = await session.SendCommandAsync(string.Empty, TimeSpan.FromSeconds(5), cancellationToken);
+            var prompt = (session.CurrentPrompt ?? output?.Trim().Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.Trim() ?? string.Empty).Trim();
+            var mode = session.Mode;
+
+            var inConfig = mode is ExecMode.GlobalConfig or ExecMode.ConfigSubmode
+                || (prompt.Contains("(config", StringComparison.OrdinalIgnoreCase) && prompt.EndsWith("#"));
+            if (inConfig)
+            {
+                await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
+                await Task.Delay(200, cancellationToken);
+                continue;
+            }
+
+            if (prompt.EndsWith(">") || mode == ExecMode.UserExec)
+            {
+                await session.SendCommandAsync("enable", TimeSpan.FromSeconds(10), cancellationToken);
+                await Task.Delay(300, cancellationToken);
+                continue;
+            }
+
+            if (prompt.EndsWith("#") || mode is ExecMode.PrivilegedExec or ExecMode.GlobalConfig)
+                return;
+        }
+    }
+
+    /// <summary>
+    /// Executa um comando 'show' com segurança em qualquer modo: dentro de config-mode o
+    /// IOS exige o prefixo 'do' ('do show ...'); fora dele, o comando vai puro.
+    /// </summary>
+    public static async Task<string> SendShowAsync(DeviceSession session, string showCommand, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
+    {
+        var prompt = (session.CurrentPrompt ?? string.Empty).Trim();
+        var inConfig = session.Mode is ExecMode.GlobalConfig or ExecMode.ConfigSubmode
+            || (prompt.Contains("(config", StringComparison.OrdinalIgnoreCase) && prompt.EndsWith("#"));
+        var cmd = inConfig && !showCommand.TrimStart().StartsWith("do ", StringComparison.OrdinalIgnoreCase)
+            ? "do " + showCommand
+            : showCommand;
+        return await session.SendCommandAsync(cmd, timeout ?? TimeSpan.FromSeconds(15), cancellationToken);
     }
 
     private async Task ProgressAsync(string message)

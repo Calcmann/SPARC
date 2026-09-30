@@ -17,27 +17,27 @@ public sealed record FirmwareValidationResult(
 public static class FirmwareCompatibilityValidator
 {
     private static readonly Regex Cisco900FirmwareRegex = new(
-        @"(?i)^c900[-_]|^c92[0-9][-_]",
+        @"(?i)^c900|^c92[0-9]",
         RegexOptions.Compiled);
 
     private static readonly Regex Cisco841FirmwareRegex = new(
-        @"(?i)^c841[-_]|^c800[-_]|^c800m[-_]|^c841m[-_]",
+        @"(?i)^c841|^c800|^c800m|^c841m",
         RegexOptions.Compiled);
 
     private static readonly Regex Cisco1900FirmwareRegex = new(
-        @"(?i)^c19[0-9]{2}[-_]",
+        @"(?i)^c19[0-9]{2}",
         RegexOptions.Compiled);
 
     private static readonly Regex Hpe954FirmwareRegex = new(
-        @"(?i)msr95[0-9][-_]|msr954",
+        @"(?i)msr95[0-9]|msr954",
         RegexOptions.Compiled);
 
     private static readonly Regex Hpe930FirmwareRegex = new(
-        @"(?i)msr93[0-9][-_]|msr930",
+        @"(?i)msr93[0-9x]|msr930",
         RegexOptions.Compiled);
 
     private static readonly Regex Hpe1002FirmwareRegex = new(
-        @"(?i)msr100[0-9][-_]|msr1002|msr1003|msr1000",
+        @"(?i)msr100[0-9]|msr1002|msr1003|msr1000",
         RegexOptions.Compiled);
 
     public static FirmwareValidationResult Validate(DeviceSeries series, string? filePathOrName)

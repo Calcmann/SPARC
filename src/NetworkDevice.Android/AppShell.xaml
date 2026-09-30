@@ -14,6 +14,12 @@
         <Tab Title="Console CLI">
             <ShellContent ContentTemplate="{DataTemplate views:TerminalPage}" Route="TerminalPage" />
         </Tab>
+        <Tab Title="Quebra de Senha">
+            <ShellContent ContentTemplate="{DataTemplate views:RecoveryPage}" Route="RecoveryPage" />
+        </Tab>
+        <Tab Title="Firmware">
+            <ShellContent ContentTemplate="{DataTemplate views:FirmwarePage}" Route="FirmwarePage" />
+        </Tab>
     </TabBar>
 
 </Shell>

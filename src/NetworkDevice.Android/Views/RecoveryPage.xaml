@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="NetworkDevice.Android.Views.RecoveryPage"
+             Title="Quebra de Senha">
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="14">
+
+            <Frame BackgroundColor="#1E293B" CornerRadius="12" Padding="14" HasShadow="True">
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="SPARC Mobile • Quebra de Senha e Reset" FontSize="16" FontAttributes="Bold" TextColor="#F87171" />
+                    <Label Text="Login direto ou zeramento autônomo (ROMMON / BootWare / Reset físico)" FontSize="11" TextColor="#94A3B8" />
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Estado do equipamento -->
+            <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#334155">
+                <VerticalStackLayout Spacing="10">
+                    <Grid ColumnDefinitions="*, Auto">
+                        <Label Grid.Column="0" Text="Equipamento Conectado" FontSize="14" FontAttributes="Bold" TextColor="#F8FAFC" VerticalOptions="Center" />
+                        <Label Grid.Column="1" x:Name="LockBadge" Text="NÃO VERIFICADO" FontSize="11" FontAttributes="Bold" TextColor="#94A3B8" VerticalOptions="Center" />
+                    </Grid>
+
+                    <Label x:Name="DetectedInfoLabel" Text="Conecte o console na aba Provisionamento e toque em Verificar." FontSize="12" TextColor="#94A3B8" />
+
+                    <Button x:Name="CheckLockBtn" Text="🔍 Verificar Bloqueio" Clicked="OnCheckLockClicked" BackgroundColor="#0284C7" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="38" />
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Opção 1: Login direto -->
+            <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#334155">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Opção 1 • Login Direto (tenho as credenciais)" FontSize="14" FontAttributes="Bold" TextColor="#F8FAFC" />
+
+                    <Grid ColumnDefinitions="Auto, *" RowDefinitions="Auto, Auto" RowSpacing="8" ColumnSpacing="10">
+                        <Label Grid.Row="0" Grid.Column="0" Text="Usuário:" TextColor="#94A3B8" FontAttributes="Bold" FontSize="12" VerticalOptions="Center" />
+                        <Entry Grid.Row="0" Grid.Column="1" x:Name="LoginUserEntry" Placeholder="Ex: admin, EBT, cisco" TextColor="White" BackgroundColor="#1E293B" FontSize="13" />
+
+                        <Label Grid.Row="1" Grid.Column="0" Text="Senha:" TextColor="#94A3B8" FontAttributes="Bold" FontSize="12" VerticalOptions="Center" />
+                        <Entry Grid.Row="1" Grid.Column="1" x:Name="LoginPassEntry" Placeholder="Senha de acesso" IsPassword="True" TextColor="White" BackgroundColor="#1E293B" FontSize="13" />
+                    </Grid>
+
+                    <Button x:Name="TryLoginBtn" Text="🔑 Testar Login e Pular Quebra" Clicked="OnTryLoginClicked" BackgroundColor="#059669" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="40" />
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Opção 2: Quebra -->
+            <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#7F1D1D">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Opção 2 • Quebrar Senha e Zerar (não tenho acesso)" FontSize="14" FontAttributes="Bold" TextColor="#FCA5A5" />
+                    <Label Text="Cisco: exige DESLIGAR/RELIGAR na tomada (o app envia Break/Ctrl+C e guia na tela). HPE: Ctrl+B automático no BootWare. FortiGate: segure o RESET traseiro até o LED piscar rápido. Mantenha a tela ligada!" FontSize="11" TextColor="#94A3B8" />
+
+                    <Button x:Name="BreakBtn" Text="⚡ QUEBRAR SENHA E ZERAR EQUIPAMENTO" Clicked="OnBreakClicked" BackgroundColor="#B91C1C" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="44" FontSize="13" />
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Log -->
+            <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#334155">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Progresso da Recuperação" FontSize="14" FontAttributes="Bold" TextColor="#F8FAFC" />
+                    <Editor x:Name="RecoveryLogEditor" HeightRequest="180" IsReadOnly="True" BackgroundColor="#000000" TextColor="#FBBF24" FontSize="11" Text="[SPARC Mobile] Aguardando verificação de bloqueio..." />
+                </VerticalStackLayout>
+            </Frame>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

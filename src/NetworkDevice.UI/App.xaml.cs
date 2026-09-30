@@ -24,18 +24,44 @@ public partial class App : Application
             ev.Handled = true;
         };
 
-        // Instância única: evita duas janelas do SPARC competindo pela mesma COM serial
-        // (causa comum de "seleção 1 solta" e binários antigos sendo usados em paralelo).
-        _singleInstance = new Mutex(true, @"Local\SPARC_Claro_SingleInstance", out bool firstInstance);
-        if (!firstInstance)
-        {
-            MessageBox.Show("O SPARC já está em execução.\nFeche a janela existente e tente novamente.", "SPARC — Instância única", MessageBoxButton.OK, MessageBoxImage.Information);
-            Shutdown();
-            return;
-        }
-
-        EncerraProcessosAntigos();
         base.OnStartup(e);
+
+        var args = Environment.GetCommandLineArgs();
+        bool isAdminMode = args.Any(a => a.Equals("--admin", StringComparison.OrdinalIgnoreCase) || 
+                                         a.Equals("-admin", StringComparison.OrdinalIgnoreCase));
+
+        if (isAdminMode)
+        {
+            _singleInstance = new Mutex(true, @"Local\SPARC_Admin_SingleInstance", out bool firstAdminInstance);
+            if (!firstAdminInstance)
+            {
+                MessageBox.Show("O SPARC Admin já está em execução.\nFeche a janela existente e tente novamente.", "SPARC Admin — Instância única", MessageBoxButton.OK, MessageBoxImage.Information);
+                Shutdown();
+                return;
+            }
+
+            var adminWin = new AdminWindow();
+            MainWindow = adminWin;
+            adminWin.Show();
+        }
+        else
+        {
+            // Instância única: evita duas janelas do SPARC competindo pela mesma COM serial
+            // (causa comum de "seleção 1 solta" e binários antigos sendo usados em paralelo).
+            _singleInstance = new Mutex(true, @"Local\SPARC_Claro_SingleInstance", out bool firstInstance);
+            if (!firstInstance)
+            {
+                MessageBox.Show("O SPARC já está em execução.\nFeche a janela existente e tente novamente.", "SPARC — Instância única", MessageBoxButton.OK, MessageBoxImage.Information);
+                Shutdown();
+                return;
+            }
+
+            EncerraProcessosAntigos();
+
+            var mainWin = new MainWindow();
+            MainWindow = mainWin;
+            mainWin.Show();
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)

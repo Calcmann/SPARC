@@ -53,6 +53,7 @@ public partial class MainWindow : Window
     private string? _lastResolvedUser;
     private string? _lastResolvedPass;
     private TripleIcmpResult? _lastIcmpResult;
+    private readonly NetworkDevice.Core.Firmware.FirmwareRepositoryService _firmwareRepoService = new();
 
     public static readonly string AppReleaseVersion = 
         System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(MainWindow).Assembly)?.InformationalVersion?.Split('+')[0]
@@ -73,12 +74,15 @@ public partial class MainWindow : Window
         if (TxtAppVersionEsteira != null) TxtAppVersionEsteira.Text = AppReleaseVersion;
         if (TxtAppVersionAuto != null) TxtAppVersionAuto.Text = AppReleaseVersion;
 
+
         CbModeloRoteadorInicial.SelectedIndex = 0;
         CbInterrupt.SelectedIndex = -1;
         _serialOk = false;
         AtualizarPortas();
         AtualizarAdaptadoresRede();
         AtualizarEstadoBotoes();
+        _firmwareRepoService.EnsureLocalRepositoryStructure();
+        AtualizarSelecaoFirmwarePorModelo(feedbackVisual: false);
         AtualizarBotaoProsseguir();
         SelecionarFase("A");
 
@@ -445,7 +449,14 @@ public partial class MainWindow : Window
 
     private void CbModeloRoteadorInicial_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        RevalidarFirmwareCarregadoAoMudarModelo();
+        if (RbFirmwareRepo?.IsChecked == true)
+        {
+            AtualizarSelecaoFirmwarePorModelo(feedbackVisual: false);
+        }
+        else
+        {
+            RevalidarFirmwareCarregadoAoMudarModelo();
+        }
         AtualizarBotaoProsseguir();
         if (_syncingCombos || CbInterrupt is null || CbModeloRoteadorInicial is null)
             return;
@@ -3241,7 +3252,14 @@ public partial class MainWindow : Window
             }
         }
 
-        if (isCtrl && isShift && (e.Key == Key.V || e.Key == Key.A || e.Key == Key.T))
+        if (isCtrl && isShift && e.Key == Key.A)
+        {
+            e.Handled = true;
+            AbrirJanelaAdmin();
+            return;
+        }
+
+        if (isCtrl && isShift && (e.Key == Key.V || e.Key == Key.T))
         {
             e.Handled = true;
             if (BtnSemiAutoAtalho != null)
@@ -3374,6 +3392,417 @@ public partial class MainWindow : Window
                     AtualizarBotaoProsseguir();
                 }
             }
+        }
+    }
+
+    private void RbFirmwareOrigin_Changed(object sender, RoutedEventArgs e)
+    {
+        if (RbFirmwareRepo?.IsChecked == true)
+        {
+            AtualizarSelecaoFirmwarePorModelo(feedbackVisual: false);
+        }
+        else
+        {
+            if (string.IsNullOrEmpty(_selectedIosBinPath) || !_selectedIosBinPath.StartsWith(_firmwareRepoService.LocalRepositoryRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                // mantém se o usuário já tinha selecionado manualmente fora do repo
+            }
+            else
+            {
+                _selectedIosBinPath = null;
+                if (TxtFirmwareAutoInfo != null)
+                    TxtFirmwareAutoInfo.Text = "Nenhum arquivo local selecionado (clique em Arquivo Local...)";
+                if (TxtIosImageInfo != null)
+                    TxtIosImageInfo.Text = TxtFirmwareAutoInfo?.Text ?? string.Empty;
+            }
+        }
+        AtualizarBotaoProsseguir();
+    }
+
+    private void AtualizarSelecaoFirmwarePorModelo(bool feedbackVisual)
+    {
+        var serie = ObterSerieAtualSelecionadaOuDetectada();
+        if (serie == DeviceSeries.Unknown)
+        {
+            if (TxtFirmwareAutoInfo != null)
+                TxtFirmwareAutoInfo.Text = "Selecione o modelo do equipamento no Passo 1";
+            AtualizarBotaoProsseguir();
+            return;
+        }
+
+        if (RbFirmwareRepo?.IsChecked == true)
+        {
+            var local = _firmwareRepoService.GetLocalFirmware(serie);
+            if (local != null)
+            {
+                _selectedIosBinPath = local.LocalFilePath;
+                var info = $"[Cache Local] {local.FileName} ({local.DisplaySize})";
+                if (TxtFirmwareAutoInfo != null) TxtFirmwareAutoInfo.Text = info;
+                if (TxtIosImageInfo != null) TxtIosImageInfo.Text = info;
+
+                if (feedbackVisual)
+                {
+                    EscreverLinha($"[*] [Firmware Repo] Carregado arquivo homologado em cache: {local.FileName} ({local.DisplaySize})");
+                }
+            }
+            else
+            {
+                _selectedIosBinPath = null;
+                var def = NetworkDevice.Core.Firmware.FirmwareModelMap.GetDefinition(serie);
+                var pasta = def?.FolderName ?? "modelo";
+                var info = $"[Pendente] Nenhum firmware no repositório local (pasta {pasta}). Clique em '🌐 Buscar Online'.";
+                if (TxtFirmwareAutoInfo != null) TxtFirmwareAutoInfo.Text = info;
+                if (TxtIosImageInfo != null) TxtIosImageInfo.Text = info;
+            }
+        }
+
+        AtualizarBotaoProsseguir();
+    }
+
+    private async void BtnBuscarFirmwareOnline_Click(object sender, RoutedEventArgs e)
+    {
+        var serie = ObterSerieAtualSelecionadaOuDetectada();
+        if (serie == DeviceSeries.Unknown)
+        {
+            MessageBox.Show(
+                "Por favor, selecione primeiro o modelo do equipamento no Passo 1.",
+                "Modelo Não Selecionado",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        var def = NetworkDevice.Core.Firmware.FirmwareModelMap.GetDefinition(serie);
+        var nomeModelo = def?.DisplayName ?? serie.ToString();
+
+        BtnBuscarFirmwareOnline.IsEnabled = false;
+        BtnAtualizarBaseFirmwares.IsEnabled = false;
+        BtnSelecionarFirmwareAuto.IsEnabled = false;
+        PbDownloadFirmware.Visibility = Visibility.Visible;
+        PbDownloadFirmware.IsIndeterminate = true;
+        TxtFirmwareAutoInfo.Text = $"Consultando repositório online GitHub para {nomeModelo}...";
+
+        try
+        {
+            var remote = await _firmwareRepoService.QueryRemoteForSeriesAsync(serie);
+
+            if (remote == null)
+            {
+                PbDownloadFirmware.Visibility = Visibility.Collapsed;
+                PbDownloadFirmware.IsIndeterminate = false;
+
+                var localCached = _firmwareRepoService.GetLocalFirmware(serie);
+                var tokenConfigurado = !string.IsNullOrWhiteSpace(_firmwareRepoService.GitHubToken);
+
+                var sbMsg = new System.Text.StringBuilder();
+                sbMsg.AppendLine($"Nenhum arquivo de firmware foi localizado no repositório online para '{def?.FolderName}'.\n");
+
+                if (!tokenConfigurado)
+                {
+                    sbMsg.AppendLine("• Motivo: O repositório oficial é Privado e requer autenticação. Configure o Token PAT de Leitura no SPARC Admin (aba Repositório de Firmwares).");
+                }
+                else
+                {
+                    sbMsg.AppendLine("• Motivo: A Release ('homologados') com os arquivos ainda não foi publicada no GitHub ou o equipamento ainda não foi anexado.");
+                }
+
+                if (localCached != null)
+                {
+                    sbMsg.AppendLine($"\n✅ DICA: O firmware homologado já está pronto no seu cache local:\n'{localCached.FileName}' ({localCached.DisplaySize})\n\nEle foi selecionado automaticamente para este provisionamento.");
+                    _selectedIosBinPath = localCached.LocalFilePath;
+                    var info = $"[Cache Local] {localCached.FileName} ({localCached.DisplaySize})";
+                    if (TxtFirmwareAutoInfo != null) TxtFirmwareAutoInfo.Text = info;
+                    if (TxtIosImageInfo != null) TxtIosImageInfo.Text = info;
+                }
+                else
+                {
+                    sbMsg.AppendLine("\n• Você pode fornecer um arquivo local clicando em '📂 Arquivo Local...'.");
+                }
+
+                MessageBox.Show(
+                    sbMsg.ToString(),
+                    "Repositório Online",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+
+                AtualizarSelecaoFirmwarePorModelo(feedbackVisual: false);
+                return;
+            }
+
+            var local = _firmwareRepoService.GetLocalFirmware(serie);
+            var mesmoArquivo = local != null &&
+                               local.FileName.Equals(remote.FileName, StringComparison.OrdinalIgnoreCase) &&
+                               (remote.SizeBytes <= 0 || Math.Abs(local.SizeBytes - remote.SizeBytes) < 1024);
+
+            if (mesmoArquivo)
+            {
+                PbDownloadFirmware.Visibility = Visibility.Collapsed;
+                PbDownloadFirmware.IsIndeterminate = false;
+                _selectedIosBinPath = local!.LocalFilePath;
+                var info = $"[Cache Atualizado] {local.FileName} ({local.DisplaySize})";
+                TxtFirmwareAutoInfo.Text = info;
+                if (TxtIosImageInfo != null) TxtIosImageInfo.Text = info;
+                EscreverLinha($"[*] [Firmware Repo] O arquivo homologado '{local.FileName}' já é a versão mais recente em cache.");
+                AtualizarBotaoProsseguir();
+            }
+            else
+            {
+                PbDownloadFirmware.IsIndeterminate = false;
+                var prog = new Progress<NetworkDevice.Core.Firmware.FirmwareDownloadProgress>(p =>
+                {
+                    PbDownloadFirmware.Value = p.Percentage;
+                    TxtFirmwareAutoInfo.Text = p.StatusText;
+                });
+
+                EscreverLinha($"[*] [Firmware Repo] Baixando {remote.FileName} ({remote.DisplaySize}) do GitHub...");
+                var localPath = await _firmwareRepoService.DownloadFirmwareAsync(remote, prog);
+
+                PbDownloadFirmware.Visibility = Visibility.Collapsed;
+                _selectedIosBinPath = localPath;
+                var info = $"[Homologado Online] {remote.FileName} ({remote.DisplaySize})";
+                TxtFirmwareAutoInfo.Text = info;
+                if (TxtIosImageInfo != null) TxtIosImageInfo.Text = info;
+                EscreverLinha($"[OK] [Firmware Repo] Download concluído com sucesso: {remote.FileName} salvo em {localPath}");
+                AtualizarBotaoProsseguir();
+            }
+
+            // CRÍTICA REQUISITADA: Identificação de novas versões para outros modelos no Git
+            try
+            {
+                var report = await _firmwareRepoService.CheckUpdatesAsync();
+                var outrosPendentes = report.PendingUpdates
+                    .Where(p => p.Model.Series != serie && p.Remote != null)
+                    .ToList();
+
+                if (outrosPendentes.Count > 0)
+                {
+                    var sb = new System.Text.StringBuilder();
+                    sb.AppendLine("Foram identificadas novas versões homologadas no repositório online para outros modelos:\n");
+                    foreach (var item in outrosPendentes)
+                    {
+                        var statusTag = item.Status == NetworkDevice.Core.Firmware.FirmwareComparisonStatus.MissingLocally ? "Ausente no cache" : "Nova versão";
+                        sb.AppendLine($"• {item.Model.DisplayName}: {item.Remote!.FileName} ({item.Remote.DisplaySize}) [{statusTag}]");
+                    }
+                    sb.AppendLine("\nDeseja atualizar a base local agora com essas versões mais recentes?");
+
+                    var resp = MessageBox.Show(
+                        sb.ToString(),
+                        "Atualização da Base de Firmwares Homologados",
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Question);
+
+                    if (resp == MessageBoxResult.Yes)
+                    {
+                        await SincronizarModelosAsync(outrosPendentes);
+                    }
+                }
+            }
+            catch (Exception exSync)
+            {
+                System.Diagnostics.Debug.WriteLine($"[CheckUpdates] Erro silencioso: {exSync.Message}");
+            }
+        }
+        catch (Exception ex)
+        {
+            PbDownloadFirmware.Visibility = Visibility.Collapsed;
+            PbDownloadFirmware.IsIndeterminate = false;
+            MessageBox.Show(
+                $"Falha ao buscar firmware no repositório online:\n\n{ex.Message}",
+                "Erro de Conexão",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+        finally
+        {
+            BtnBuscarFirmwareOnline.IsEnabled = true;
+            BtnAtualizarBaseFirmwares.IsEnabled = true;
+            BtnSelecionarFirmwareAuto.IsEnabled = true;
+            AtualizarBotaoProsseguir();
+        }
+    }
+
+    private async Task SincronizarModelosAsync(IReadOnlyList<NetworkDevice.Core.Firmware.FirmwareSyncItem> items)
+    {
+        PbDownloadFirmware.Visibility = Visibility.Visible;
+        PbDownloadFirmware.IsIndeterminate = false;
+
+        var total = items.Count;
+        var idx = 0;
+
+        foreach (var it in items)
+        {
+            if (it.Remote == null) continue;
+            idx++;
+            EscreverLinha($"[*] [Sincronização {idx}/{total}] Baixando firmware homologado {it.Model.DisplayName} ({it.Remote.FileName})...");
+
+            var prog = new Progress<NetworkDevice.Core.Firmware.FirmwareDownloadProgress>(p =>
+            {
+                PbDownloadFirmware.Value = p.Percentage;
+                TxtFirmwareAutoInfo.Text = $"[{idx}/{total}] {p.StatusText}";
+            });
+
+            try
+            {
+                await _firmwareRepoService.DownloadFirmwareAsync(it.Remote, prog);
+                EscreverLinha($"[OK] {it.Model.DisplayName}: {it.Remote.FileName} salvo com sucesso!");
+            }
+            catch (Exception ex)
+            {
+                EscreverLinha($"[ERRO] Falha ao sincronizar {it.Model.DisplayName}: {ex.Message}");
+            }
+        }
+
+        PbDownloadFirmware.Visibility = Visibility.Collapsed;
+        AtualizarSelecaoFirmwarePorModelo(feedbackVisual: false);
+        MessageBox.Show(
+            $"Sincronização da base de firmwares concluída com sucesso ({total} modelo(s) processados)!",
+            "Base de Firmwares Atualizada",
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+    }
+
+    private async void BtnAtualizarBaseFirmwares_Click(object sender, RoutedEventArgs e)
+    {
+        BtnBuscarFirmwareOnline.IsEnabled = false;
+        BtnAtualizarBaseFirmwares.IsEnabled = false;
+        PbDownloadFirmware.Visibility = Visibility.Visible;
+        PbDownloadFirmware.IsIndeterminate = true;
+        TxtFirmwareAutoInfo.Text = "Verificando repositório online para todos os modelos...";
+
+        try
+        {
+            var report = await _firmwareRepoService.CheckUpdatesAsync();
+            PbDownloadFirmware.IsIndeterminate = false;
+
+            if (!report.HasInternetAccess && report.PendingUpdates.Count == 0)
+            {
+                PbDownloadFirmware.Visibility = Visibility.Collapsed;
+                MessageBox.Show(
+                    "Não foi possível conectar ao repositório online no GitHub. Verifique a conexão de internet.",
+                    "Sem Conexão",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            var pendentes = report.PendingUpdates.Where(p => p.Remote != null).ToList();
+
+            if (pendentes.Count == 0)
+            {
+                PbDownloadFirmware.Visibility = Visibility.Collapsed;
+                MessageBox.Show(
+                    "Todos os firmwares homologados do repositório já estão atualizados no seu computador (cache local em C:\\SPARC\\firmwares)!",
+                    "Base 100% Atualizada",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"Foram encontrados {pendentes.Count} firmware(s) para atualizar ou baixar na base local:\n");
+            foreach (var item in pendentes)
+            {
+                var tag = item.Status == NetworkDevice.Core.Firmware.FirmwareComparisonStatus.MissingLocally ? "Download inicial" : "Nova versão homologada";
+                sb.AppendLine($"• {item.Model.DisplayName}: {item.Remote!.FileName} ({item.Remote.DisplaySize}) [{tag}]");
+            }
+            sb.AppendLine("\nDeseja iniciar o download agora?");
+
+            var confirm = MessageBox.Show(
+                sb.ToString(),
+                "Atualizar Base de Firmwares Homologados",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (confirm == MessageBoxResult.Yes)
+            {
+                await SincronizarModelosAsync(pendentes);
+            }
+            else
+            {
+                PbDownloadFirmware.Visibility = Visibility.Collapsed;
+            }
+        }
+        catch (Exception ex)
+        {
+            PbDownloadFirmware.Visibility = Visibility.Collapsed;
+            MessageBox.Show(
+                $"Erro durante a verificação da base:\n\n{ex.Message}",
+                "Erro",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+        finally
+        {
+            BtnBuscarFirmwareOnline.IsEnabled = true;
+            BtnAtualizarBaseFirmwares.IsEnabled = true;
+            AtualizarBotaoProsseguir();
+        }
+    }
+
+    private void BtnAbrirPastaFirmwares_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            _firmwareRepoService.EnsureLocalRepositoryStructure();
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = _firmwareRepoService.LocalRepositoryRoot,
+                UseShellExecute = true,
+                Verb = "open"
+            });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Erro ao abrir pasta: {ex.Message}", "Repositório Local", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void BtnUsarFirmwareRepoManual_Click(object sender, RoutedEventArgs e)
+    {
+        var serie = ObterSerieAtualSelecionadaOuDetectada();
+        if (serie == DeviceSeries.Unknown)
+        {
+            MessageBox.Show("Selecione primeiro o modelo do equipamento.", "Aviso", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var local = _firmwareRepoService.GetLocalFirmware(serie);
+        if (local == null)
+        {
+            MessageBox.Show(
+                $"Nenhum firmware encontrado na pasta local do repositório para este modelo (C:\\SPARC\\firmwares\\{NetworkDevice.Core.Firmware.FirmwareModelMap.GetDefinition(serie)?.FolderName}).\n\n" +
+                $"Utilize a opção '🌐 Buscar Online' no Passo 3 da tela inicial para baixar o firmware homologado.",
+                "Firmware Não Encontrado",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        _selectedIosBinPath = local.LocalFilePath;
+        TxtIosImageInfo.Text = $"{local.FileName} ({local.DisplaySize}) [REPO LOCAL]";
+        EscreverLinha($"[*] [Manual] Firmware homologado carregado do repositório local: {local.FileName} ({local.DisplaySize})");
+        AtualizarEstadoBotoes();
+    }
+
+    private void BtnAbrirAdmin_Click(object sender, RoutedEventArgs e)
+    {
+        AbrirJanelaAdmin();
+    }
+
+    private void AbrirJanelaAdmin()
+    {
+        try
+        {
+            var adminWin = new AdminWindow
+            {
+                Owner = this
+            };
+            adminWin.ShowDialog();
+            AtualizarSelecaoFirmwarePorModelo(feedbackVisual: false);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Erro ao abrir Central de Administração: {ex.Message}", "Erro SPARC Admin", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 

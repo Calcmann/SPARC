@@ -50,7 +50,12 @@ Write-Host "== [3/6] Injetando guard (copia) + config..."
 Copy-Item (Join-Path $betaRoot "guard\*.cs") "$tmp\src\NetworkDevice.UI\"
 $cfg = Join-Path $tmp "src\NetworkDevice.UI\BetaConfig.cs"
 $c = [IO.File]::ReadAllText($cfg)
-$c = $c.Replace("%%BETA_TAG%%", $Tag).Replace("%%BETA_EXPIRES_UTC%%", $expiresIso).Replace("%%BETA_PUBLIC_KEY_PEM%%", $pubPem)
+$tokenPath = Join-Path $betaRoot "github_token.txt"
+$ghToken = ""
+if (Test-Path $tokenPath) {
+    $ghToken = [IO.File]::ReadAllText($tokenPath).Trim()
+}
+$c = $c.Replace("%%BETA_TAG%%", $Tag).Replace("%%BETA_EXPIRES_UTC%%", $expiresIso).Replace("%%BETA_PUBLIC_KEY_PEM%%", $pubPem).Replace("%%BETA_GITHUB_TOKEN%%", $ghToken)
 [IO.File]::WriteAllText($cfg, $c)
 if ($c.Contains("%%BETA_")) { throw "placeholders nao substituidos" }
 

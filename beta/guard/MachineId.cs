@@ -22,11 +22,40 @@ internal static class MachineId
         return new MachineIdentity(guid, fp, display);
     }
 
-    public static string BuildRequest(MachineIdentity id)
+    public static string BuildRequest(
+        MachineIdentity id,
+        string? firstName = null,
+        string? lastName = null,
+        string? phone = null,
+        string? email = null,
+        string? cluster = null,
+        string? uf = null,
+        string? clientVersion = null)
     {
-        var json = "{\"g\":\"" + id.MachineGuid + "\",\"f\":\"" + id.Fingerprint + "\"}";
+        var fn = EscapeJson(firstName ?? "");
+        var ln = EscapeJson(lastName ?? "");
+        var ph = EscapeJson(phone ?? "");
+        var em = EscapeJson(email ?? "");
+        var cl = EscapeJson(cluster ?? "");
+        var u = EscapeJson(uf ?? "");
+        var ver = EscapeJson(clientVersion ?? "0.8");
+        var ts = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
+
+        var json = "{\"g\":\"" + id.MachineGuid + "\",\"f\":\"" + id.Fingerprint + "\""
+                 + ",\"n\":\"" + fn + "\""
+                 + ",\"s\":\"" + ln + "\""
+                 + ",\"p\":\"" + ph + "\""
+                 + ",\"e\":\"" + em + "\""
+                 + ",\"c\":\"" + cl + "\""
+                 + ",\"u\":\"" + u + "\""
+                 + ",\"v\":\"" + ver + "\""
+                 + ",\"t\":\"" + ts + "\"}";
+
         return "SPBREQ." + Base64Url.Encode(Encoding.UTF8.GetBytes(json));
     }
+
+    private static string EscapeJson(string s) =>
+        s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "").Replace("\n", "");
 
     public static bool TryParseRequest(string req, out string guid, out string fp)
     {

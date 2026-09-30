@@ -35,7 +35,10 @@ public sealed class DeviceSession : IAsyncDisposable
 
     public async Task ConnectAsync(CancellationToken cancellationToken = default)
     {
-        await _transport.OpenAsync(cancellationToken);
+        if (!_transport.IsOpen)
+        {
+            await _transport.OpenAsync(cancellationToken);
+        }
         try
         {
             // 1. Aguarda estabilização dos sinais DTR/RTS do conversor USB-Serial UART (150ms)
@@ -181,6 +184,12 @@ public sealed class DeviceSession : IAsyncDisposable
                 else if (stage.Kind == LoginStageKind.InitialDialogNo)
                 {
                     await _transport.WriteAsync(Text("no\r\n"), cancellationToken);
+                    await Task.Delay(400, cancellationToken);
+                }
+                else if (stage.Kind == LoginStageKind.AutoInstallConfirm)
+                {
+                    // "Would you like to terminate autoinstall? [yes]:" — ENTER aceita o default [yes]
+                    await _transport.WriteAsync(Text("\r\n"), cancellationToken);
                     await Task.Delay(400, cancellationToken);
                 }
                 else if (stage.Kind == LoginStageKind.PressEnter)
@@ -398,7 +407,10 @@ public sealed class DeviceSession : IAsyncDisposable
     public async Task CloseAsync()
     {
         _connected = false;
-        await _transport.CloseAsync();
+        if (!_options.LeaveOpen)
+        {
+            await _transport.CloseAsync();
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -572,6 +584,8 @@ public sealed class DeviceSession : IAsyncDisposable
             return LoginStageKind.InteractiveYesNo;
         if (Regex.IsMatch(lastLine, @"(?i)initial configuration dialog\?\s*\[yes/no\]"))
             return LoginStageKind.InitialDialogNo;
+        if (Regex.IsMatch(lastLine, @"(?i)terminate\s+autoinstall"))
+            return LoginStageKind.AutoInstallConfirm;
         if (Regex.IsMatch(lastLine, @"(?i)to get started"))
             return LoginStageKind.PressEnter;
         if (Regex.IsMatch(lastLine, @"(?i)press\s+enter"))
@@ -684,6 +698,7 @@ public sealed class DeviceSession : IAsyncDisposable
         ConfirmPassword,
         InteractiveYesNo,
         InitialDialogNo,
+        AutoInstallConfirm,
         PressEnter,
         BootWareMenu,
         BootWareCountdown,

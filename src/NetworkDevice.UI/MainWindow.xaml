@@ -79,12 +79,15 @@
                 <StackPanel>
                     <!-- CABEÇALHO COMPACTO E LIMPO -->
                     <StackPanel Margin="0,0,0,8">
-                        <Border Background="{StaticResource BetaBadgeBrush}" CornerRadius="10" Padding="12,2.5" HorizontalAlignment="Center" Margin="0,0,0,6">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="🔴" FontSize="10.5" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                <TextBlock Text="VERSÃO BETA — CLARO S.A. — ATIVAÇÃO SC" FontWeight="Black" FontSize="11.5" Foreground="#FFFFFF" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Border>
+                        <Grid Margin="0,0,0,6">
+                            <Border Background="{StaticResource BetaBadgeBrush}" CornerRadius="10" Padding="12,2.5" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="🔴" FontSize="10.5" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                    <TextBlock Text="VERSÃO BETA — CLARO S.A. — ATIVAÇÃO SC" FontWeight="Black" FontSize="11.5" Foreground="#FFFFFF" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
+                            <Button x:Name="BtnAbrirAdmin" Content="🛡️ Painel Admin" HorizontalAlignment="Right" VerticalAlignment="Center" Padding="10,4" Background="#3F3F46" Foreground="#F4F4F5" BorderThickness="0" FontWeight="Bold" FontSize="11" Cursor="Hand" Click="BtnAbrirAdmin_Click" ToolTip="Central de Administração: Geração de Chaves de Ativação RSA e Gestão de Firmwares (Ctrl+Shift+A)" />
+                        </Grid>
                         <!-- Logo centralizado ampliado -->
                         <Image Source="Assets/sparc_logo_horizontal.png" Height="86" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,4,0,6" RenderOptions.BitmapScalingMode="HighQuality" ToolTip="SPARC — Sistema de Provisionamento e Ativação de Roteadores da Claro" />
                         <TextBlock Text="Configure o equipamento, informe os dados e escolha como deseja executar o provisionamento."
@@ -244,13 +247,35 @@
                             </DockPanel>
 
                             <!-- SELEÇÃO / ATUALIZAÇÃO DE FIRMWARE -->
-                            <Border x:Name="PanelFirmwareObrigatorio" Visibility="Visible" Background="#3B1818" BorderBrush="#52525B" BorderThickness="1" CornerRadius="5" Padding="6,4" Margin="0,5,0,0">
+                            <Border x:Name="PanelFirmwareObrigatorio" Visibility="Visible" Background="#27272A" BorderBrush="#52525B" BorderThickness="1" CornerRadius="6" Padding="8,6" Margin="0,5,0,0">
                                 <StackPanel>
-                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                                        <Button x:Name="BtnSelecionarFirmwareAuto" Content="📂 Selecionar Firmware" Padding="14,7" FontWeight="Black" FontSize="14" Background="#B91C1C" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnSelecionarFirmwareAuto_Click" MinWidth="220" />
-                                        <CheckBox x:Name="ChkAtualizarFirmwareAuto" IsChecked="True" Content="Atualizar / Validar Firmware (.ipe / .bin) via TFTP" FontWeight="Bold" FontSize="12" Foreground="#E4E4E7" VerticalAlignment="Center" Margin="12,0,0,0" Checked="ChkAtualizarFirmwareAuto_Changed" Unchecked="ChkAtualizarFirmwareAuto_Changed" />
+                                    <DockPanel Margin="0,0,0,5">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="Origem:" FontWeight="Bold" FontSize="11.5" Foreground="#A1A1AA" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                            <RadioButton x:Name="RbFirmwareRepo" Content="Repositório Homologado (Online / Cache)" IsChecked="True" Foreground="#F4F4F5" FontWeight="Bold" FontSize="11.5" Margin="0,0,12,0" Checked="RbFirmwareOrigin_Changed" VerticalAlignment="Center" />
+                                            <RadioButton x:Name="RbFirmwareLocal" Content="Arquivo Local Manual" Foreground="#D4D4D8" FontSize="11.5" Margin="0,0,10,0" Checked="RbFirmwareOrigin_Changed" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <CheckBox x:Name="ChkAtualizarFirmwareAuto" IsChecked="True" Content="Atualizar / Validar Firmware (.ipe / .bin) via TFTP" FontWeight="Bold" FontSize="11.5" Foreground="#E4E4E7" HorizontalAlignment="Right" VerticalAlignment="Center" Checked="ChkAtualizarFirmwareAuto_Changed" Unchecked="ChkAtualizarFirmwareAuto_Changed" />
+                                    </DockPanel>
+
+                                    <Grid Margin="0,0,0,4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <Button Grid.Column="0" x:Name="BtnBuscarFirmwareOnline" Content="🌐 Buscar Online" Padding="12,5" FontWeight="Black" FontSize="12.5" Background="#2563EB" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,6,0" Click="BtnBuscarFirmwareOnline_Click" ToolTip="Verifica e baixa a versão homologada mais recente no GitHub para este modelo" />
+                                        <Button Grid.Column="1" x:Name="BtnAtualizarBaseFirmwares" Content="🔄 Atualizar Base de Firmwares" Padding="10,5" FontWeight="Bold" FontSize="12" Background="#0D9488" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,6,0" Click="BtnAtualizarBaseFirmwares_Click" ToolTip="Verifica e sincroniza todas as versões de firmwares homologados de todos os modelos no repositório local" />
+                                        <Button Grid.Column="2" x:Name="BtnSelecionarFirmwareAuto" Content="📂 Arquivo Local..." Padding="10,5" FontWeight="Bold" FontSize="12" Background="#4B5563" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,10,0" Click="BtnSelecionarFirmwareAuto_Click" ToolTip="Selecionar manualmente um arquivo do disco (.bin, .out, .ipe)" />
+                                        <Button Grid.Column="3" x:Name="BtnAbrirPastaFirmwares" Content="📁 Abrir Pasta C:\SPARC\firmwares" Padding="8,5" FontWeight="SemiBold" FontSize="11" Background="#3F3F46" Foreground="#E4E4E7" BorderThickness="0" Cursor="Hand" HorizontalAlignment="Right" Click="BtnAbrirPastaFirmwares_Click" ToolTip="Abre o repositório local de firmwares no Windows Explorer" />
+                                    </Grid>
+
+                                    <StackPanel Margin="0,2,0,0">
+                                        <TextBlock x:Name="TxtFirmwareAutoInfo" Text="Nenhum firmware selecionado (clique em Buscar Online ou Selecionar Firmware)" Margin="0,2,0,0" Foreground="#FCA5A5" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                        <ProgressBar x:Name="PbDownloadFirmware" Height="5" Margin="0,4,0,0" Visibility="Collapsed" Minimum="0" Maximum="100" Value="0" Foreground="#38BDF8" Background="#18181B" />
                                     </StackPanel>
-                                    <TextBlock x:Name="TxtFirmwareAutoInfo" Text="Nenhum firmware selecionado (clique em Selecionar Firmware)" Margin="0,2,0,0" Foreground="#FCA5A5" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                                 </StackPanel>
                             </Border>
                         </StackPanel>
@@ -747,10 +772,12 @@
                                 <Grid Margin="0,0,0,8">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <Button Grid.Column="0" x:Name="BtnSelecionarIos" Content="📂 Selecionar Firmware (.ipe / .bin)" Padding="12,5" FontWeight="Bold" Background="#EE1C25" Foreground="White" Click="BtnSelecionarIos_Click" />
-                                    <TextBlock Grid.Column="1" x:Name="TxtIosImageInfo" Text="Nenhum arquivo de firmware selecionado (opcional para a esteira)."
+                                    <Button Grid.Column="0" x:Name="BtnUsarFirmwareRepoManual" Content="🌐 Usar Homologado (Repo)" Padding="10,5" FontWeight="Bold" Background="#2563EB" Foreground="White" BorderThickness="0" Margin="0,0,8,0" Click="BtnUsarFirmwareRepoManual_Click" ToolTip="Carrega automaticamente o firmware homologado correspondente ao modelo atual do repositório local" />
+                                    <Button Grid.Column="1" x:Name="BtnSelecionarIos" Content="📂 Selecionar Arquivo..." Padding="10,5" FontWeight="Bold" Background="#4B5563" Foreground="White" BorderThickness="0" Click="BtnSelecionarIos_Click" />
+                                    <TextBlock Grid.Column="2" x:Name="TxtIosImageInfo" Text="Nenhum arquivo de firmware selecionado (opcional para a esteira)."
                                                VerticalAlignment="Center" Margin="12,0,0,0" Foreground="#EE1C25" FontSize="13.5" TextTrimming="CharacterEllipsis" />
                                 </Grid>
                                 <TextBlock Text="Inicia o servidor TFTP integrado, transfere o arquivo para a Flash, grava no bootloader e executa o reload automático para subir na nova versão." Foreground="#A1A1AA" FontSize="13" />

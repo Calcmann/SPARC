@@ -31,3 +31,12 @@ speedtest_tmp/
 dist-beta/*.exe
 dist-beta/*.apk
 scratch*/
+
+*github_token.txt
+beta/keys/private.pem
+beta/keys/private.xml
+firmwares/*.bin
+firmwares/*.ipe
+firmwares/*.out
+
+firmwares/
