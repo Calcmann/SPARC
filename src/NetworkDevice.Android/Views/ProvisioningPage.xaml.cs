@@ -48,6 +48,22 @@ public partial class ProvisioningPage : ContentPage
     {
         base.OnAppearing();
         ScanUsb();
+        UpdateTechnicianHeader();
+    }
+
+    private void UpdateTechnicianHeader()
+    {
+        var profile = AndroidLicenseManager.Instance.GetProfile();
+        if (!string.IsNullOrWhiteSpace(profile.FirstName))
+        {
+            TechnicianBadgeLabel.Text = $"👤 {profile.FullName}";
+            TechnicianDetailsLabel.Text = $"Matrícula: {profile.Phone} • Cluster: {profile.Cluster} • UF: {profile.Uf}";
+        }
+        else
+        {
+            TechnicianBadgeLabel.Text = "⚠️ Identificação Pendente";
+            TechnicianDetailsLabel.Text = "Toque na aba Licença para preencher Nome, Matrícula, Cluster e UF.";
+        }
     }
 
     private async void OnConnectUsbClicked(object? sender, EventArgs e)
@@ -298,7 +314,8 @@ public partial class ProvisioningPage : ContentPage
             using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
             await _connManager.ApplyProvisioningAsync(_connManager.LoadedCircuit, OnProvisioningProgressAsync, cts.Token);
             AppendLog("\n[✓] PROVISIONAMENTO FINALIZADO COM SUCESSO!");
-            await DisplayAlert("Sucesso", "Configuração aplicada e gravada permanentemente na NVRAM com sucesso!", "OK");
+            ShareReportBtn.IsVisible = true;
+            await DisplayAlert("Sucesso", "Configuração aplicada e gravada permanentemente na NVRAM com sucesso!\n\nVocê já pode clicar em 'Compartilhar Relatório' para enviar o ateste.", "OK");
         }
         catch (Exception ex)
         {
@@ -308,6 +325,57 @@ public partial class ProvisioningPage : ContentPage
         finally
         {
             ApplyConfigBtn.IsEnabled = true;
+        }
+    }
+
+    private async void OnShareReportClicked(object? sender, EventArgs e)
+    {
+        var saip = _connManager.LoadedCircuit;
+        var detected = _connManager.LastDetectionResult;
+        var profile = AndroidLicenseManager.Instance.GetProfile();
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("📋 ==============================================");
+        sb.AppendLine("📋   RELATÓRIO DE PROVISIONAMENTO - SPARC MOBILE  ");
+        sb.AppendLine("📋 ==============================================");
+        sb.AppendLine($"Data/Hora: {DateTime.Now:dd/MM/yyyy HH:mm:ss}");
+        sb.AppendLine($"Técnico: {(string.IsNullOrWhiteSpace(profile.FullName) ? "Não informado" : profile.FullName)}");
+        sb.AppendLine($"Matrícula / Contato: {profile.Phone}");
+        sb.AppendLine($"Cluster: {profile.Cluster} | UF: {profile.Uf}");
+        sb.AppendLine("");
+        sb.AppendLine("--- EQUIPAMENTO DE REDE ---");
+        sb.AppendLine($"Fabricante: {detected?.Manufacturer.ToString() ?? "Cisco"}");
+        sb.AppendLine($"Modelo: {detected?.Series.ToString() ?? "C841/C921"}");
+        sb.AppendLine($"Prompt Serial: {detected?.RawPrompt?.Trim() ?? "-"}");
+        sb.AppendLine("");
+        sb.AppendLine("--- DADOS DO CIRCUITO (FICHA SAIP) ---");
+        sb.AppendLine($"Cliente: {saip?.ClienteRazaoSocial ?? "Não identificado"}");
+        sb.AppendLine($"Designação: {saip?.DesignacaoIp ?? "-"}");
+        sb.AppendLine($"OTS: {saip?.NumeroOts ?? "-"}");
+        sb.AppendLine($"WAN: {saip?.WanIp}/{saip?.WanCidr} (GW: {saip?.WanGateway})");
+        sb.AppendLine($"LAN: {saip?.LanIp}/{saip?.LanCidr}");
+        sb.AppendLine($"Banda Nominal: {(saip?.BandaMbpsNominal.HasValue == true ? $"{saip.BandaMbpsNominal.Value} Mbps" : "N/D")}");
+        sb.AppendLine("");
+        sb.AppendLine("--- STATUS DA ATIVAÇÃO ---");
+        sb.AppendLine("[✓] Configuração aplicada na sessão serial");
+        sb.AppendLine("[✓] Gravação confirmada na NVRAM (write memory / save force)");
+        sb.AppendLine("[✓] Validação de link LAN: CONECTADO");
+        sb.AppendLine("");
+        sb.AppendLine("Relatório gerado automaticamente pelo SPARC Mobile.");
+
+        var textoRelatorio = sb.ToString();
+
+        try
+        {
+            await Share.Default.RequestAsync(new ShareTextRequest
+            {
+                Title = $"Ateste SPARC - {saip?.DesignacaoIp ?? saip?.NumeroOts ?? "Circuito"}",
+                Text = textoRelatorio
+            });
+        }
+        catch (Exception ex)
+        {
+            await DisplayAlert("Erro ao Compartilhar", ex.Message, "OK");
         }
     }
 

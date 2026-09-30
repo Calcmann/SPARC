@@ -8,8 +8,11 @@
             <!-- Cabeçalho -->
             <Frame BackgroundColor="#1E293B" CornerRadius="12" Padding="14" HasShadow="True">
                 <VerticalStackLayout Spacing="4">
-                    <Label Text="SPARC Mobile • Console &amp; Provisionamento" FontSize="16" FontAttributes="Bold" TextColor="#38BDF8" />
-                    <Label Text="Identificação e Configuração Automatizada de Roteadores via USB Serial" FontSize="11" TextColor="#94A3B8" />
+                    <Grid ColumnDefinitions="*, Auto">
+                        <Label Grid.Column="0" Text="SPARC Mobile • Provisionamento" FontSize="16" FontAttributes="Bold" TextColor="#38BDF8" VerticalOptions="Center" />
+                        <Label Grid.Column="1" x:Name="TechnicianBadgeLabel" Text="👤 Técnico Ativo" FontSize="11" FontAttributes="Bold" TextColor="#4ADE80" VerticalOptions="Center" />
+                    </Grid>
+                    <Label x:Name="TechnicianDetailsLabel" Text="Identificação pendente na aba Licença." FontSize="11" TextColor="#94A3B8" />
                 </VerticalStackLayout>
             </Frame>
 
@@ -88,6 +91,8 @@
                     <Button x:Name="ApplyConfigBtn" Text="⚡ APLICAR CONFIGURAÇÃO NO ROTEADOR" Clicked="OnApplyConfigClicked" BackgroundColor="#E11D48" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="44" FontSize="13" />
 
                     <Editor x:Name="ProgressLogEditor" HeightRequest="150" IsReadOnly="True" BackgroundColor="#000000" TextColor="#4ADE80" FontFamily="OpenSansRegular" FontSize="11" Text="[SPARC Mobile] Aguardando conexão serial e carregamento de ficha..." />
+
+                    <Button x:Name="ShareReportBtn" Text="📤 Compartilhar Relatório de Ativação (WhatsApp / E-mail)" Clicked="OnShareReportClicked" BackgroundColor="#0D9488" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="44" FontSize="13" IsVisible="False" Margin="0,4,0,0" />
                 </VerticalStackLayout>
             </Frame>
         </VerticalStackLayout>

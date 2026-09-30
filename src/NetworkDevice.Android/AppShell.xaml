@@ -20,6 +20,9 @@
         <Tab Title="Firmware">
             <ShellContent ContentTemplate="{DataTemplate views:FirmwarePage}" Route="FirmwarePage" />
         </Tab>
+        <Tab Title="Licença">
+            <ShellContent ContentTemplate="{DataTemplate views:ActivationPage}" Route="ActivationPage" />
+        </Tab>
     </TabBar>
 
 </Shell>

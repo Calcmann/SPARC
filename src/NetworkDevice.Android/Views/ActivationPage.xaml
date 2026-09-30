@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="NetworkDevice.Android.Views.ActivationPage"
+             Title="Ativação &amp; Identificação"
+             BackgroundColor="#0B132B">
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="14">
+            
+            <!-- Cabeçalho -->
+            <Frame BackgroundColor="#1E293B" CornerRadius="12" Padding="14" BorderColor="#38BDF8" HasShadow="True">
+                <VerticalStackLayout Spacing="4">
+                    <Label Text="SPARC Mobile • Ativação de Campo" FontSize="16" FontAttributes="Bold" TextColor="#38BDF8" />
+                    <Label Text="Controle de cópias e identificação obrigatória do técnico em campo." FontSize="11" TextColor="#94A3B8" />
+                    <Label x:Name="AppVersionLabel" Text="Versão: 0.8.30 Beta" FontSize="10" TextColor="#64748B" Margin="0,2,0,0" />
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- 1. Identificação do Técnico -->
+            <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#334155">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="1. Dados de Identificação do Técnico" FontSize="14" FontAttributes="Bold" TextColor="#F8FAFC" />
+
+                    <Grid ColumnDefinitions="*, *" ColumnSpacing="8">
+                        <VerticalStackLayout Grid.Column="0" Spacing="2">
+                            <Label Text="Nome:" TextColor="#94A3B8" FontSize="11" />
+                            <Entry x:Name="FirstNameEntry" Placeholder="Ex: João" TextColor="White" BackgroundColor="#1E293B" FontSize="12" />
+                        </VerticalStackLayout>
+                        <VerticalStackLayout Grid.Column="1" Spacing="2">
+                            <Label Text="Sobrenome:" TextColor="#94A3B8" FontSize="11" />
+                            <Entry x:Name="LastNameEntry" Placeholder="Ex: Silva" TextColor="White" BackgroundColor="#1E293B" FontSize="12" />
+                        </VerticalStackLayout>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="*, *" ColumnSpacing="8">
+                        <VerticalStackLayout Grid.Column="0" Spacing="2">
+                            <Label Text="Telefone / Matrícula:" TextColor="#94A3B8" FontSize="11" />
+                            <Entry x:Name="PhoneEntry" Placeholder="DDD + Número ou Matrícula" TextColor="White" BackgroundColor="#1E293B" FontSize="12" Keyboard="Telephone" />
+                        </VerticalStackLayout>
+                        <VerticalStackLayout Grid.Column="1" Spacing="2">
+                            <Label Text="E-mail (opcional):" TextColor="#94A3B8" FontSize="11" />
+                            <Entry x:Name="EmailEntry" Placeholder="tecnico@empresa.com.br" TextColor="White" BackgroundColor="#1E293B" FontSize="12" Keyboard="Email" />
+                        </VerticalStackLayout>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="*, *" ColumnSpacing="8">
+                        <VerticalStackLayout Grid.Column="0" Spacing="2">
+                            <Label Text="Cluster de Atuação:" TextColor="#94A3B8" FontSize="11" FontAttributes="Bold" />
+                            <Entry x:Name="ClusterEntry" Placeholder="Ex: SP-INTERIOR, PR-CURITIBA" TextColor="White" BackgroundColor="#1E293B" FontSize="12" />
+                        </VerticalStackLayout>
+                        <VerticalStackLayout Grid.Column="1" Spacing="2">
+                            <Label Text="UF:" TextColor="#94A3B8" FontSize="11" FontAttributes="Bold" />
+                            <Entry x:Name="UfEntry" Placeholder="Ex: SP, RJ, PR" TextColor="White" BackgroundColor="#1E293B" FontSize="12" MaxLength="2" />
+                        </VerticalStackLayout>
+                    </Grid>
+
+                    <Button Text="💾 Salvar Identificação" Clicked="OnSaveProfileClicked" BackgroundColor="#334155" TextColor="White" CornerRadius="8" FontSize="12" HeightRequest="36" />
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- 2. Solicitação de Ativação Online (1 Clique) -->
+            <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#16A34A">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="2. Solicitação de Ativação Online (Recomendado)" FontSize="14" FontAttributes="Bold" TextColor="#4ADE80" />
+                    <Label Text="Envia os dados do seu aparelho diretamente para o SPARC Admin corporativo para liberação imediata pelo supervisor." FontSize="11" TextColor="#94A3B8" />
+
+                    <Button x:Name="SolicitarOnlineBtn" Text="🚀 SOLICITAR ATIVAÇÃO ONLINE (1 CLIQUE)" Clicked="OnSolicitarOnlineClicked" BackgroundColor="#16A34A" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="44" FontSize="12" />
+                    <Button x:Name="ChecarAprovacaoBtn" Text="🔄 Verificar Aprovação do Administrador" Clicked="OnChecarAprovacaoClicked" BackgroundColor="#0284C7" TextColor="White" CornerRadius="8" FontSize="12" HeightRequest="38" />
+
+                    <Label x:Name="OnlineStatusLabel" Text="Preencha sua identificação e solicite a ativação." FontSize="11" TextColor="#64748B" />
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- 3. Ativação Manual por Chave (Offline) -->
+            <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#334155">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="3. Ativação Manual (Código / Chave)" FontSize="14" FontAttributes="Bold" TextColor="#F8FAFC" />
+
+                    <Grid ColumnDefinitions="*, Auto" ColumnSpacing="6">
+                        <VerticalStackLayout Grid.Column="0" Spacing="2">
+                            <Label Text="ID deste Dispositivo (Node-Lock):" TextColor="#94A3B8" FontSize="11" />
+                            <Label x:Name="DeviceDisplayIdLabel" Text="CARREGANDO..." TextColor="#38BDF8" FontAttributes="Bold" FontSize="12" />
+                        </VerticalStackLayout>
+                        <Button Grid.Column="1" Text="📋 Copiar ID" Clicked="OnCopyDeviceIdClicked" BackgroundColor="#334155" TextColor="White" CornerRadius="6" FontSize="11" HeightRequest="32" Padding="10,0" />
+                    </Grid>
+
+                    <Button Text="📤 Copiar Solicitação Completa (SPBREQ...)" Clicked="OnCopyFullRequestClicked" BackgroundColor="#1E293B" TextColor="#38BDF8" CornerRadius="6" FontSize="11" HeightRequest="34" />
+
+                    <VerticalStackLayout Spacing="4">
+                        <Label Text="Chave de Liberação (fornecida pelo Administrador):" TextColor="#94A3B8" FontSize="11" />
+                        <Editor x:Name="LicenseKeyEditor" Placeholder="Cole aqui a chave SPB1.xxxxx..." HeightRequest="70" TextColor="White" BackgroundColor="#1E293B" FontSize="11" />
+                    </VerticalStackLayout>
+
+                    <Button x:Name="AtivarManualBtn" Text="🔑 ATIVAR COM ESTA CHAVE" Clicked="OnAtivarManualClicked" BackgroundColor="#7C3AED" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="40" FontSize="12" />
+                </VerticalStackLayout>
+            </Frame>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

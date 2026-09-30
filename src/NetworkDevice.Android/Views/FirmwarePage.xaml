@@ -2,70 +2,69 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="NetworkDevice.Android.Views.FirmwarePage"
-             Title="Firmware">
+             Title="Firmware"
+             BackgroundColor="#0B132B">
     <ScrollView>
         <VerticalStackLayout Padding="16" Spacing="14">
 
-            <Frame BackgroundColor="#1E293B" CornerRadius="12" Padding="14" HasShadow="True">
+            <!-- Cabeçalho -->
+            <Frame BackgroundColor="#1E293B" CornerRadius="12" Padding="14" BorderColor="#38BDF8" HasShadow="True">
                 <VerticalStackLayout Spacing="4">
-                    <Label Text="SPARC Mobile • Atualização de Firmware" FontSize="16" FontAttributes="Bold" TextColor="#38BDF8" />
-                    <Label Text="Cisco via HTTP (8080) • HPE/Fortinet via FTP (2121) • CLI híbrida Telnet/console" FontSize="11" TextColor="#94A3B8" />
+                    <Label Text="SPARC Mobile • Base Homologada &amp; Firmware" FontSize="16" FontAttributes="Bold" TextColor="#38BDF8" />
+                    <Label Text="Auditoria de conformidade e download direto pelo roteador via link WAN/Internet." FontSize="11" TextColor="#94A3B8" />
                 </VerticalStackLayout>
             </Frame>
 
-            <!-- 0. Fabricante -->
+            <!-- 1. Auditoria e Conformidade com a Base Homologada -->
             <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#334155">
                 <VerticalStackLayout Spacing="10">
-                    <Label Text="0. Fabricante (auto pela detecção)" FontSize="14" FontAttributes="Bold" TextColor="#F8FAFC" />
-                    <Picker x:Name="VendorPicker" Title="Selecione o fabricante" TextColor="White" TitleColor="#94A3B8" BackgroundColor="#1E293B" SelectedIndexChanged="OnVendorChanged" />
-                </VerticalStackLayout>
-            </Frame>
-
-            <!-- 1. Arquivo -->
-            <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#334155">
-                <VerticalStackLayout Spacing="10">
-                    <Label Text="1. Imagem IOS (.bin)" FontSize="14" FontAttributes="Bold" TextColor="#F8FAFC" />
-                    <Button x:Name="PickFwBtn" Text="📂 Selecionar Firmware" Clicked="OnPickFirmwareClicked" BackgroundColor="#2563EB" TextColor="White" CornerRadius="8" FontSize="12" HeightRequest="38" />
-                    <Label x:Name="FwInfoLabel" Text="Nenhum arquivo selecionado." FontSize="11" TextColor="#64748B" />
-                    <Label x:Name="FwCompatLabel" Text="" FontSize="11" FontAttributes="Bold" TextColor="#94A3B8" />
-                    <Entry x:Name="Md5Entry" Placeholder="MD5 esperado (opcional)" TextColor="White" BackgroundColor="#1E293B" FontSize="12" />
-                </VerticalStackLayout>
-            </Frame>
-
-            <!-- 2. Rede -->
-            <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#334155">
-                <VerticalStackLayout Spacing="10">
-                    <Label Text="2. Rede (adaptador Ethernet OTG na LAN)" FontSize="14" FontAttributes="Bold" TextColor="#F8FAFC" />
-                    <Label Text="IP do celular nesta rede:" FontSize="11" TextColor="#94A3B8" />
-                    <Picker x:Name="PhoneIpPicker" Title="Selecione o IP do celular" TextColor="White" TitleColor="#94A3B8" BackgroundColor="#1E293B" />
-                    <Grid ColumnDefinitions="Auto, *" RowDefinitions="Auto, Auto, Auto, Auto" RowSpacing="8" ColumnSpacing="10">
-                        <Label Grid.Row="0" Grid.Column="0" Text="IP roteador:" TextColor="#94A3B8" FontAttributes="Bold" FontSize="12" VerticalOptions="Center" />
-                        <Entry Grid.Row="0" Grid.Column="1" x:Name="RouterIpEntry" Placeholder="Ex: 192.168.10.1" TextColor="White" BackgroundColor="#1E293B" FontSize="13" Keyboard="Numeric" />
-                        <Label Grid.Row="1" Grid.Column="0" Text="Telnet user:" TextColor="#94A3B8" FontAttributes="Bold" FontSize="12" VerticalOptions="Center" />
-                        <Entry Grid.Row="1" Grid.Column="1" x:Name="TelnetUserEntry" Placeholder="EBT" Text="EBT" TextColor="White" BackgroundColor="#1E293B" FontSize="13" />
-                        <Label Grid.Row="2" Grid.Column="0" Text="Telnet pass:" TextColor="#94A3B8" FontAttributes="Bold" FontSize="12" VerticalOptions="Center" />
-                        <Entry Grid.Row="2" Grid.Column="1" x:Name="TelnetPassEntry" Placeholder="PRO1AN" Text="PRO1AN" IsPassword="True" TextColor="White" BackgroundColor="#1E293B" FontSize="13" />
-                        <Label Grid.Row="3" Grid.Column="0" Text="FTP user/pass:" TextColor="#94A3B8" FontAttributes="Bold" FontSize="12" VerticalOptions="Center" />
-                        <Grid Grid.Row="3" Grid.Column="1" ColumnDefinitions="*, *" ColumnSpacing="8">
-                            <Entry Grid.Column="0" x:Name="FtpUserEntry" Placeholder="usuário" Text="sparc" TextColor="White" BackgroundColor="#1E293B" FontSize="12" />
-                            <Entry Grid.Column="1" x:Name="FtpPassEntry" Placeholder="senha" Text="sparc" IsPassword="True" TextColor="White" BackgroundColor="#1E293B" FontSize="12" />
-                        </Grid>
+                    <Grid ColumnDefinitions="*, Auto">
+                        <Label Grid.Column="0" Text="1. Auditoria de Firmware Homologado" FontSize="14" FontAttributes="Bold" TextColor="#F8FAFC" VerticalOptions="Center" />
+                        <Label Grid.Column="1" x:Name="ComplianceBadge" Text="NÃO AUDITADO" FontSize="11" FontAttributes="Bold" TextColor="#94A3B8" VerticalOptions="Center" />
                     </Grid>
-                    <Label Text="Roteador zerado (sem IP)? Preencha o IP temporário da LAN:" FontSize="11" TextColor="#94A3B8" />
-                    <Grid ColumnDefinitions="*, *" ColumnSpacing="8">
-                        <Entry x:Name="TempIpEntry" Placeholder="IP temp. (opcional)" TextColor="White" BackgroundColor="#1E293B" FontSize="12" Keyboard="Numeric" />
-                        <Entry x:Name="TempMaskEntry" Placeholder="Máscara" Text="255.255.255.0" TextColor="White" BackgroundColor="#1E293B" FontSize="12" Keyboard="Numeric" />
+
+                    <Grid ColumnDefinitions="Auto, *" RowDefinitions="Auto, Auto, Auto" RowSpacing="6" ColumnSpacing="10">
+                        <Label Grid.Row="0" Grid.Column="0" Text="Modelo Serial:" TextColor="#94A3B8" FontSize="12" FontAttributes="Bold" />
+                        <Label Grid.Row="0" Grid.Column="1" x:Name="AuditModelLabel" Text="-" TextColor="White" FontSize="12" FontAttributes="Bold" />
+
+                        <Label Grid.Row="1" Grid.Column="0" Text="Versão no Roteador:" TextColor="#94A3B8" FontSize="12" FontAttributes="Bold" />
+                        <Label Grid.Row="1" Grid.Column="1" x:Name="AuditCurrentVersionLabel" Text="-" TextColor="#FBBF24" FontSize="12" />
+
+                        <Label Grid.Row="2" Grid.Column="0" Text="Versão Homologada:" TextColor="#94A3B8" FontSize="12" FontAttributes="Bold" />
+                        <Label Grid.Row="2" Grid.Column="1" x:Name="AuditOfficialLabel" Text="-" TextColor="#4ADE80" FontSize="12" FontAttributes="Bold" />
                     </Grid>
+
+                    <Button x:Name="AuditarFwBtn" Text="🔍 AUDITAR CONFORMIDADE DO ROTEADOR" Clicked="OnAuditarFwClicked" BackgroundColor="#0284C7" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="40" FontSize="12" />
+
+                    <Label x:Name="AuditStatusMsgLabel" Text="Conecte o roteador na console serial e toque em Auditar." FontSize="11" TextColor="#64748B" />
                 </VerticalStackLayout>
             </Frame>
 
-            <!-- 3. Execução -->
+            <!-- 2. Download Direto no Roteador via WAN (Pós-Provisionamento) -->
+            <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#7C3AED">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="2. Download Direto pelo Roteador (Via WAN)" FontSize="14" FontAttributes="Bold" TextColor="#C084FC" />
+                    <Label Text="O roteador utiliza o link WAN já provisionado para transferir o arquivo oficial direto para a flash, sem intermediários no celular." FontSize="11" TextColor="#94A3B8" />
+
+                    <VerticalStackLayout Spacing="2">
+                        <Label Text="URL ou Endereço do Pacote Homologado:" TextColor="#94A3B8" FontSize="11" />
+                        <Entry x:Name="FirmwareUrlEntry" Placeholder="http:// ou https:// ou ftp://..." TextColor="White" BackgroundColor="#1E293B" FontSize="12" />
+                    </VerticalStackLayout>
+
+                    <VerticalStackLayout Spacing="2">
+                        <Label Text="Nome do Arquivo de Destino na Flash:" TextColor="#94A3B8" FontSize="11" />
+                        <Entry x:Name="FirmwareFileNameEntry" Placeholder="Ex: c800m-universalk9-mz.SPA.159-3.M12.bin" TextColor="White" BackgroundColor="#1E293B" FontSize="12" />
+                    </VerticalStackLayout>
+
+                    <Button x:Name="TriggerRouterDownloadBtn" Text="🚀 EXECUTAR DOWNLOAD NO ROTEADOR (VIA WAN)" Clicked="OnTriggerRouterDownloadClicked" BackgroundColor="#7C3AED" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="44" FontSize="12" />
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- 3. Console de Acompanhamento -->
             <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#334155">
                 <VerticalStackLayout Spacing="10">
-                    <Label Text="3. Execução" FontSize="14" FontAttributes="Bold" TextColor="#F8FAFC" />
-                    <Label Text="Mantenha a tela ligada! Cópia + reload levam vários minutos. ROMMON (flash vazia) não é atendido pelo celular — use notebook com TFTP." FontSize="11" TextColor="#94A3B8" />
-                    <Button x:Name="UpgradeBtn" Text="⬆️ ATUALIZAR FIRMWARE" Clicked="OnUpgradeClicked" BackgroundColor="#7C3AED" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="44" FontSize="13" />
-                    <Editor x:Name="FwLogEditor" HeightRequest="180" IsReadOnly="True" BackgroundColor="#000000" TextColor="#4ADE80" FontSize="11" Text="[SPARC Mobile] Selecione o firmware e configure a rede..." />
+                    <Label Text="3. Registro da Operação" FontSize="14" FontAttributes="Bold" TextColor="#F8FAFC" />
+                    <Editor x:Name="FwLogEditor" HeightRequest="170" IsReadOnly="True" BackgroundColor="#000000" TextColor="#4ADE80" FontFamily="OpenSansRegular" FontSize="11" Text="[SPARC Mobile] Aguardando comando de auditoria ou download..." />
                 </VerticalStackLayout>
             </Frame>
 

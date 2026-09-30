@@ -1,4 +1,4 @@
-﻿namespace NetworkDevice.Android;
+namespace NetworkDevice.Android;
 
 public partial class App : Application
 {
@@ -6,6 +6,13 @@ public partial class App : Application
 	{
 		InitializeComponent();
 
-		MainPage = new AppShell();
+		if (Services.AndroidLicenseManager.Instance.IsActivated(out _))
+		{
+			MainPage = new AppShell();
+		}
+		else
+		{
+			MainPage = new NavigationPage(new Views.ActivationPage());
+		}
 	}
 }

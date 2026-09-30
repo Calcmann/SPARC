@@ -1,0 +1,230 @@
+using System;
+using System.Security.Cryptography;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Maui.Storage;
+using NetworkDevice.Core.Licensing;
+
+namespace NetworkDevice.Android.Services;
+
+public sealed class TechnicianProfile
+{
+    public string FirstName { get; set; } = string.Empty;
+    public string LastName { get; set; } = string.Empty;
+    public string Phone { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string Cluster { get; set; } = string.Empty;
+    public string Uf { get; set; } = string.Empty;
+
+    public string FullName => $"{FirstName} {LastName}".Trim();
+
+    public string DisplaySummary =>
+        $"{FullName} • Matrícula/Tel: {Phone} • {Cluster}/{Uf}";
+}
+
+public sealed class AndroidLicenseManager
+{
+    private static readonly Lazy<AndroidLicenseManager> _instance = new(() => new AndroidLicenseManager());
+    public static AndroidLicenseManager Instance => _instance.Value;
+
+    private readonly CloudLicenseService _cloudService = new();
+
+    private AndroidLicenseManager() { }
+
+    public string GetMachineGuid()
+    {
+        var guid = Preferences.Default.Get("sparc_mobile_machine_guid", string.Empty);
+        if (string.IsNullOrWhiteSpace(guid))
+        {
+            guid = Guid.NewGuid().ToString("D").ToLowerInvariant();
+            Preferences.Default.Set("sparc_mobile_machine_guid", guid);
+        }
+        return guid;
+    }
+
+    public string GetFingerprint()
+    {
+        var guid = GetMachineGuid();
+        var model = DeviceInfo.Model ?? "AndroidDevice";
+        var mfr = DeviceInfo.Manufacturer ?? "Mobile";
+        var raw = $"{guid}|{mfr}|{model}|SPARC-MOBILE";
+        using var sha = SHA256.Create();
+        var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(raw));
+        var sb = new StringBuilder();
+        foreach (var b in hash) sb.Append(b.ToString("x2"));
+        return sb.ToString();
+    }
+
+    public string GetDisplayId()
+    {
+        var fp = GetFingerprint();
+        if (fp.Length >= 16)
+            return $"{fp[..4]}-{fp.Substring(4, 4)}-{fp.Substring(8, 4)}-{fp.Substring(12, 4)}".ToUpperInvariant();
+        return fp.ToUpperInvariant();
+    }
+
+    public TechnicianProfile GetProfile()
+    {
+        return new TechnicianProfile
+        {
+            FirstName = Preferences.Default.Get("sparc_tech_firstname", string.Empty),
+            LastName = Preferences.Default.Get("sparc_tech_lastname", string.Empty),
+            Phone = Preferences.Default.Get("sparc_tech_phone", string.Empty),
+            Email = Preferences.Default.Get("sparc_tech_email", string.Empty),
+            Cluster = Preferences.Default.Get("sparc_tech_cluster", string.Empty),
+            Uf = Preferences.Default.Get("sparc_tech_uf", string.Empty)
+        };
+    }
+
+    public void SaveProfile(TechnicianProfile profile)
+    {
+        Preferences.Default.Set("sparc_tech_firstname", profile.FirstName?.Trim() ?? string.Empty);
+        Preferences.Default.Set("sparc_tech_lastname", profile.LastName?.Trim() ?? string.Empty);
+        Preferences.Default.Set("sparc_tech_phone", profile.Phone?.Trim() ?? string.Empty);
+        Preferences.Default.Set("sparc_tech_email", profile.Email?.Trim() ?? string.Empty);
+        Preferences.Default.Set("sparc_tech_cluster", profile.Cluster?.Trim().ToUpperInvariant() ?? string.Empty);
+        Preferences.Default.Set("sparc_tech_uf", profile.Uf?.Trim().ToUpperInvariant() ?? string.Empty);
+    }
+
+    public string? GetStoredLicenseToken()
+    {
+        var token = Preferences.Default.Get("sparc_mobile_license_token", string.Empty);
+        return string.IsNullOrWhiteSpace(token) ? null : token.Trim();
+    }
+
+    public bool IsActivated(out string statusMessage)
+    {
+        var profile = GetProfile();
+        if (string.IsNullOrWhiteSpace(profile.FirstName) || string.IsNullOrWhiteSpace(profile.Cluster) || string.IsNullOrWhiteSpace(profile.Uf))
+        {
+            statusMessage = "Identificação do técnico pendente.";
+            return false;
+        }
+
+        var token = GetStoredLicenseToken();
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            statusMessage = "Aplicativo não ativado.";
+            return false;
+        }
+
+        if (!SparcLicenseValidator.TryValidate(token, out var info) || info == null)
+        {
+            statusMessage = "Chave de ativação inválida ou corrompida.";
+            return false;
+        }
+
+        if (!SparcLicenseValidator.IsAuthorized(info, GetMachineGuid(), GetFingerprint(), DateTime.UtcNow, out var reason))
+        {
+            statusMessage = reason;
+            return false;
+        }
+
+        var diasRestantes = (info.ExpiresUtc.Date - DateTime.UtcNow.Date).Days;
+        statusMessage = $"Ativado até {info.ExpiresUtc:dd/MM/yyyy} ({diasRestantes} dia(s) restante(s)).";
+        return true;
+    }
+
+    public string BuildActivationRequestString()
+    {
+        var p = GetProfile();
+        return SparcLicenseValidator.BuildRequest(
+            GetMachineGuid(),
+            GetFingerprint(),
+            p.FirstName,
+            p.LastName,
+            p.Phone,
+            p.Email,
+            p.Cluster,
+            p.Uf,
+            AppInfo.VersionString);
+    }
+
+    public async Task<(bool Success, string Message)> SubmitOnlineActivationAsync(CancellationToken ct = default)
+    {
+        var p = GetProfile();
+        if (string.IsNullOrWhiteSpace(p.FirstName))
+            return (false, "Preencha o Nome do técnico.");
+        if (string.IsNullOrWhiteSpace(p.Cluster))
+            return (false, "Preencha o Cluster de atuação.");
+        if (string.IsNullOrWhiteSpace(p.Uf))
+            return (false, "Preencha a UF.");
+
+        var reqString = BuildActivationRequestString();
+        var req = new OnlineActivationRequest
+        {
+            MachineGuid = GetMachineGuid(),
+            MachineFingerprint = GetFingerprint(),
+            FirstName = p.FirstName,
+            LastName = p.LastName,
+            Phone = p.Phone,
+            Email = p.Email,
+            Cluster = p.Cluster,
+            Uf = p.Uf,
+            ClientVersion = AppInfo.VersionString,
+            RawRequestCode = reqString,
+            RequestedAtUtc = DateTime.UtcNow,
+            Status = "Pending",
+            AdminNotes = $"Plataforma: Android • ID: {GetDisplayId()}"
+        };
+
+        return await _cloudService.SubmitActivationRequestAsync(req, ct);
+    }
+
+    public async Task<(bool Approved, string Message)> CheckOnlineApprovalAsync(CancellationToken ct = default)
+    {
+        var (found, req, msg) = await _cloudService.CheckActivationRequestStatusAsync(GetMachineGuid(), ct);
+        if (!found || req == null)
+        {
+            return (false, "Nenhuma solicitação encontrada na nuvem para este dispositivo.");
+        }
+
+        if (string.Equals(req.Status, "Approved", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!string.IsNullOrWhiteSpace(req.ApprovedToken))
+            {
+                var activateOk = ActivateWithKey(req.ApprovedToken, out var actMsg);
+                if (activateOk)
+                {
+                    return (true, "Solicitação aprovada pelo Administrador! O SPARC Mobile foi ativado com sucesso.");
+                }
+                return (false, $"Chave aprovada, mas falhou ao validar: {actMsg}");
+            }
+            return (false, "Solicitação consta como aprovada, mas o token ainda não foi gerado.");
+        }
+
+        if (string.Equals(req.Status, "Rejected", StringComparison.OrdinalIgnoreCase))
+        {
+            return (false, $"Solicitação recusada pelo Administrador. Motivo: {req.RejectionReason ?? "Não informado"}.");
+        }
+
+        return (false, "Solicitação ainda está pendente de aprovação pelo Administrador no SPARC Admin.");
+    }
+
+    public bool ActivateWithKey(string licenseKey, out string message)
+    {
+        if (string.IsNullOrWhiteSpace(licenseKey))
+        {
+            message = "Chave não informada.";
+            return false;
+        }
+
+        licenseKey = licenseKey.Trim();
+        if (!SparcLicenseValidator.TryValidate(licenseKey, out var info) || info == null)
+        {
+            message = "Formato de chave inválido ou assinatura digital incompatível.";
+            return false;
+        }
+
+        if (!SparcLicenseValidator.IsAuthorized(info, GetMachineGuid(), GetFingerprint(), DateTime.UtcNow, out var reason))
+        {
+            message = reason;
+            return false;
+        }
+
+        Preferences.Default.Set("sparc_mobile_license_token", licenseKey);
+        message = $"Ativação concluída com sucesso! Válida até {info.ExpiresUtc:dd/MM/yyyy}.";
+        return true;
+    }
+}

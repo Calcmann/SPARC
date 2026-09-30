@@ -1,12 +1,18 @@
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Maui.Controls;
 using NetworkDevice.Android.Services;
-using NetworkDevice.Core.Validation;
+using NetworkDevice.Core.Domain;
+using NetworkDevice.Core.Firmware;
 
 namespace NetworkDevice.Android.Views;
 
 public partial class FirmwarePage : ContentPage
 {
     private readonly DeviceConnectionManager _connManager = DeviceConnectionManager.Instance;
-    private string? _firmwarePath;
+    private readonly FirmwareRepositoryService _firmwareRepo = new();
+    private RemoteFirmwareInfo? _cachedOfficialRemote;
 
     public FirmwarePage()
     {
@@ -16,203 +22,184 @@ public partial class FirmwarePage : ContentPage
     protected override void OnAppearing()
     {
         base.OnAppearing();
-        RefreshLocalIps();
+        UpdateDeviceDisplay();
+    }
 
-        if (VendorPicker.ItemsSource == null)
-            VendorPicker.ItemsSource = new List<string> { "Cisco (HTTP :8080)", "HPE Comware (FTP :2121)", "Fortinet FortiGate (FTP :2121)" };
-
+    private void UpdateDeviceDisplay()
+    {
         var detected = _connManager.LastDetectionResult;
-        if (detected != null)
+        if (detected != null && detected.Series != DeviceSeries.Unknown)
         {
-            VendorPicker.SelectedIndex = detected.Manufacturer switch
-            {
-                NetworkDevice.Core.Domain.DeviceManufacturer.Hpe => 1,
-                NetworkDevice.Core.Domain.DeviceManufacturer.Fortinet => 2,
-                _ => 0,
-            };
-        }
-        else if (VendorPicker.SelectedIndex < 0)
-        {
-            VendorPicker.SelectedIndex = 0;
-        }
-    }
-
-    private void OnVendorChanged(object? sender, EventArgs e)
-    {
-        UpgradeBtn.Text = VendorPicker.SelectedIndex switch
-        {
-            1 => "⬆️ ATUALIZAR COMWARE VIA FTP",
-            2 => "⬆️ RESTAURAR FORTIOS VIA FTP",
-            _ => "⬆️ ATUALIZAR IOS VIA HTTP",
-        };
-    }
-
-    private void RefreshLocalIps()
-    {
-        var ips = DeviceConnectionManager.GetLocalIpv4Addresses().ToList();
-        PhoneIpPicker.ItemsSource = ips;
-        if (ips.Count == 0)
-        {
-            PhoneIpPicker.Title = "Sem rede ativa (conecte o Ethernet OTG)";
+            AuditModelLabel.Text = $"{detected.Manufacturer} {detected.Series}";
         }
         else
         {
-            // Prefere eth (OTG) a wlan
-            var eth = ips.FindIndex(s => s.StartsWith("eth", StringComparison.OrdinalIgnoreCase) || s.Contains("eth"));
-            PhoneIpPicker.SelectedIndex = eth >= 0 ? eth : 0;
+            AuditModelLabel.Text = "Nenhum equipamento identificado no console.";
         }
     }
 
-    private async void OnPickFirmwareClicked(object? sender, EventArgs e)
-    {
-        try
-        {
-            var result = await FilePicker.Default.PickAsync(new PickOptions
-            {
-                PickerTitle = "Selecione a imagem IOS (.bin)",
-                FileTypes = new FilePickerFileType(new Dictionary<DevicePlatform, IEnumerable<string>>
-                {
-                    { DevicePlatform.Android, new[] { "application/octet-stream" } }
-                })
-            });
-
-            if (result == null)
-                return;
-
-            var dest = Path.Combine(FileSystem.CacheDirectory, result.FileName);
-            using (var src = await result.OpenReadAsync())
-            using (var dst = File.Create(dest))
-            {
-                await src.CopyToAsync(dst);
-            }
-
-            _firmwarePath = dest;
-            var sizeMb = (new FileInfo(dest).Length / (1024.0 * 1024.0)).ToString("N1");
-            FwInfoLabel.Text = $"{result.FileName} ({sizeMb} MB)";
-            AppendLog($"[*] Firmware: {result.FileName} ({sizeMb} MB)");
-
-            // Validação de compatibilidade com o modelo detectado (se houver)
-            var detected = _connManager.LastDetectionResult;
-            if (detected != null)
-            {
-                var validation = FirmwareCompatibilityValidator.Validate(detected.Series, result.FileName);
-                FwCompatLabel.Text = validation.IsCompatible
-                    ? $"✓ Compatível com {detected.Series}"
-                    : $"✗ {validation.ErrorMessage}";
-                FwCompatLabel.TextColor = validation.IsCompatible
-                    ? Color.FromArgb("#4ADE80")
-                    : Color.FromArgb("#EF4444");
-                if (!validation.IsCompatible)
-                    AppendLog($"[!] INCOMPATÍVEL: {validation.ErrorMessage} ({validation.ExpectedFormatDescription})");
-            }
-            else
-            {
-                FwCompatLabel.Text = "Modelo não identificado ainda (verifique na aba Provisionamento).";
-            }
-        }
-        catch (Exception ex)
-        {
-            await DisplayAlert("Erro", ex.Message, "OK");
-        }
-    }
-
-    private async void OnUpgradeClicked(object? sender, EventArgs e)
+    private async void OnAuditarFwClicked(object? sender, EventArgs e)
     {
         if (!_connManager.IsConnected)
         {
-            await DisplayAlert("Aviso", "Conecte o console serial USB do roteador primeiro (aba Provisionamento).", "OK");
-            return;
-        }
-        if (string.IsNullOrWhiteSpace(_firmwarePath) || !File.Exists(_firmwarePath))
-        {
-            await DisplayAlert("Aviso", "Selecione a imagem IOS (.bin) primeiro.", "OK");
+            await DisplayAlert("Aviso", "Conecte o console serial USB na aba Provisionamento antes de auditar.", "OK");
             return;
         }
 
-        var phoneIpRaw = PhoneIpPicker.SelectedItem as string;
-        var phoneIp = phoneIpRaw?.Split(' ')[0].Trim();
-        if (string.IsNullOrWhiteSpace(phoneIp))
-        {
-            await DisplayAlert("Sem rede",
-                "Nenhum IP ativo no celular. Conecte o adaptador Ethernet OTG à LAN do roteador (ou configure IP estático nas configurações do Android).",
-                "OK");
-            return;
-        }
-
-        var routerIp = RouterIpEntry.Text?.Trim() ?? string.Empty;
-        var vendor = VendorPicker.SelectedIndex; // 0 Cisco • 1 HPE • 2 Fortinet
-
-        var confirm = await DisplayAlert("Confirmar Upgrade",
-            vendor switch
-            {
-                1 => $"Baixar '{Path.GetFileName(_firmwarePath)}' via FTP ({phoneIp}), aplicar boot-loader + reboot?\n\nMantenha a TELA LIGADA.",
-                2 => $"Restaurar '{Path.GetFileName(_firmwarePath)}' via FTP ({phoneIp})? O FortiGate GRAVA e REINICIA imediatamente.\n\nMantenha a TELA LIGADA.",
-                _ => $"Transferir '{Path.GetFileName(_firmwarePath)}' via HTTP ({phoneIp}) e aplicar boot + reload?\n\nMantenha a TELA LIGADA — leva vários minutos.",
-            },
-            "SIM, ATUALIZAR", "CANCELAR");
-        if (!confirm) return;
-
-        UpgradeBtn.IsEnabled = false;
-        AppendLog("[*] =================================================================");
-        AppendLog("[*]           ATUALIZAÇÃO DE FIRMWARE" + vendor switch { 1 => " HPE VIA FTP", 2 => " FORTIOS VIA FTP", _ => " CISCO VIA HTTP" });
-        AppendLog("[*] =================================================================");
+        AuditarFwBtn.IsEnabled = false;
+        AuditStatusMsgLabel.Text = "Auditando firmware e consultando repositório central...";
+        AppendLog("[*] Iniciando auditoria de firmware...");
 
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(20));
-            bool ok;
-            if (vendor == 1)
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+            // 1. Identifica o equipamento se ainda não identificado
+            if (_connManager.LastDetectionResult == null || _connManager.LastDetectionResult.Series == DeviceSeries.Unknown)
             {
-                ok = await _connManager.UpgradeFirmwareHpeFtpAsync(
-                    _firmwarePath, phoneIp,
-                    string.IsNullOrWhiteSpace(FtpUserEntry.Text) ? "sparc" : FtpUserEntry.Text.Trim(),
-                    FtpPassEntry.Text ?? string.Empty,
-                    OnFwProgressAsync, cts.Token);
+                AppendLog("[*] Identificando série do roteador na serial...");
+                await _connManager.IdentifyDeviceAsync(cts.Token);
             }
-            else if (vendor == 2)
+
+            var detected = _connManager.LastDetectionResult;
+            if (detected == null || detected.Series == DeviceSeries.Unknown)
             {
-                ok = await _connManager.RestoreFirmwareFortiFtpAsync(
-                    _firmwarePath, phoneIp,
-                    string.IsNullOrWhiteSpace(FtpUserEntry.Text) ? null : FtpUserEntry.Text.Trim(),
-                    FtpPassEntry.Text,
-                    OnFwProgressAsync, cts.Token);
+                AppendLog("[!] Não foi possível identificar o modelo do roteador.");
+                await DisplayAlert("Erro", "Não foi possível identificar o modelo do roteador.", "OK");
+                return;
+            }
+
+            AuditModelLabel.Text = $"{detected.Manufacturer} {detected.Series}";
+
+            // 2. Consulta o repositório central de firmwares homologados
+            AppendLog($"[*] Consultando repositório central para '{detected.Series}'...");
+            try
+            {
+                _cachedOfficialRemote = await _firmwareRepo.QueryRemoteForSeriesAsync(detected.Series, cts.Token);
+            }
+            catch (Exception ex)
+            {
+                AppendLog($"[AVISO] Consulta ao repositório central falhou ({ex.Message}).");
+            }
+
+            if (_cachedOfficialRemote != null)
+            {
+                AuditOfficialLabel.Text = $"{_cachedOfficialRemote.FileName} ({_cachedOfficialRemote.DisplaySize})";
+                FirmwareFileNameEntry.Text = _cachedOfficialRemote.FileName;
+                FirmwareUrlEntry.Text = _cachedOfficialRemote.DownloadUrl;
             }
             else
             {
-                ok = await _connManager.UpgradeFirmwareCiscoHttpAsync(
-                    _firmwarePath,
-                    phoneIp,
-                    routerIp,
-                    string.IsNullOrWhiteSpace(TelnetUserEntry.Text) ? null : TelnetUserEntry.Text.Trim(),
-                    TelnetPassEntry.Text ?? string.Empty,
-                    string.IsNullOrWhiteSpace(TempIpEntry.Text) ? null : TempIpEntry.Text.Trim(),
-                    string.IsNullOrWhiteSpace(TempMaskEntry.Text) ? null : TempMaskEntry.Text.Trim(),
-                    lanInterface: null,
-                    expectedMd5: string.IsNullOrWhiteSpace(Md5Entry.Text) ? null : Md5Entry.Text.Trim(),
-                    OnFwProgressAsync,
-                    cts.Token);
+                AuditOfficialLabel.Text = "Nenhum arquivo homologado cadastrado.";
             }
 
-            AppendLog(ok ? "\n[✓] FIRMWARE ATUALIZADO E VERIFICADO!" : "\n[!] Upgrade sem verificação final — confira 'show version'.");
-            await DisplayAlert(ok ? "Sucesso" : "Atenção",
-                ok ? "Firmware atualizado e versão confirmada pós-reload!" : "Upgrade executado, mas valide 'show version' manualmente.",
-                "OK");
+            // 3. Executa a auditoria no roteador
+            if (_connManager.CurrentSession == null)
+            {
+                AppendLog("[!] Sessão serial interativa não disponível. Conecte na aba Provisionamento.");
+                return;
+            }
+
+            var updater = new RouterDirectFirmwareUpdater(msg =>
+            {
+                MainThread.BeginInvokeOnMainThread(() => AppendLog(msg));
+                return Task.CompletedTask;
+            });
+
+            var result = await updater.AuditComplianceAsync(_connManager.CurrentSession, detected.Series, _cachedOfficialRemote, cts.Token);
+
+            AuditCurrentVersionLabel.Text = result.CurrentVersion;
+            AuditStatusMsgLabel.Text = result.Message;
+
+            if (result.IsCompliant)
+            {
+                ComplianceBadge.Text = "CONFORME";
+                ComplianceBadge.TextColor = Color.FromArgb("#4ADE80");
+            }
+            else
+            {
+                ComplianceBadge.Text = "ATUALIZAÇÃO RECOMENDADA";
+                ComplianceBadge.TextColor = Color.FromArgb("#F87171");
+            }
+
+            AppendLog($"[✓] Auditoria concluída: {result.Message}");
         }
         catch (Exception ex)
         {
-            AppendLog($"\n[X] FALHA NO UPGRADE: {ex.Message}");
-            await DisplayAlert("Erro no Upgrade", ex.Message, "OK");
+            AppendLog($"[!] Erro durante auditoria: {ex.Message}");
+            await DisplayAlert("Falha na Auditoria", ex.Message, "OK");
         }
         finally
         {
-            UpgradeBtn.IsEnabled = true;
+            AuditarFwBtn.IsEnabled = true;
         }
     }
 
-    private Task OnFwProgressAsync(string message)
+    private async void OnTriggerRouterDownloadClicked(object? sender, EventArgs e)
     {
-        MainThread.BeginInvokeOnMainThread(() => AppendLog(message));
-        return Task.CompletedTask;
+        if (!_connManager.IsConnected)
+        {
+            await DisplayAlert("Aviso", "Conecte o console serial USB primeiro.", "OK");
+            return;
+        }
+
+        var url = FirmwareUrlEntry.Text?.Trim();
+        var fileName = FirmwareFileNameEntry.Text?.Trim();
+
+        if (string.IsNullOrWhiteSpace(url) || string.IsNullOrWhiteSpace(fileName))
+        {
+            await DisplayAlert("Campos Obrigatórios", "Informe a URL do pacote e o nome do arquivo na flash.", "OK");
+            return;
+        }
+
+        var confirm = await DisplayAlert("Confirmar Transferência",
+            $"Deseja instruir o roteador a baixar '{fileName}' diretamente pelo link WAN?\n\nEsta operação transfere o arquivo direto para a flash e atualiza o comando de boot.",
+            "SIM, EXECUTAR", "CANCELAR");
+
+        if (!confirm) return;
+
+        TriggerRouterDownloadBtn.IsEnabled = false;
+        AppendLog("[*] Iniciando processo de download no roteador...");
+
+        try
+        {
+            var detected = _connManager.LastDetectionResult;
+            var series = detected?.Series ?? DeviceSeries.Isr841;
+
+            if (_connManager.CurrentSession == null)
+            {
+                await DisplayAlert("Aviso", "Sessão serial interativa não disponível.", "OK");
+                return;
+            }
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(15));
+            var updater = new RouterDirectFirmwareUpdater(msg =>
+            {
+                MainThread.BeginInvokeOnMainThread(() => AppendLog(msg));
+                return Task.CompletedTask;
+            });
+
+            var ok = await updater.TriggerDownloadOnRouterAsync(_connManager.CurrentSession, series, url, fileName, cts.Token);
+            if (ok)
+            {
+                AppendLog("\n[✓] PROCESSO DE FIRMWARE FINALIZADO COM SUCESSO NO ROTEADOR!");
+                await DisplayAlert("Sucesso", "Download concluído e gravado na flash do roteador!\nO boot system foi atualizado.", "OK");
+            }
+            else
+            {
+                AppendLog("\n[!] Transferência não confirmada pelo roteador. Verifique o log.");
+                await DisplayAlert("Aviso", "O roteador não confirmou o término da transferência. Confira as mensagens no registro.", "OK");
+            }
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"\n[X] Falha na operação: {ex.Message}");
+            await DisplayAlert("Erro", ex.Message, "OK");
+        }
+        finally
+        {
+            TriggerRouterDownloadBtn.IsEnabled = true;
+        }
     }
 
     private void AppendLog(string message)
