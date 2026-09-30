@@ -126,7 +126,7 @@ export default {
       responseHeaders.set("Content-Type", "application/octet-stream");
       responseHeaders.set("Content-Length", matchedAsset.size.toString());
       responseHeaders.set("Content-Disposition", `attachment; filename="${matchedAsset.name}"`);
-      responseHeaders.set("X-Sparc-Model": requestedModel);
+      responseHeaders.set("X-Sparc-Model", requestedModel);
       responseHeaders.set("X-Sparc-Firmware", matchedAsset.name);
       responseHeaders.set("Cache-Control", "public, max-age=86400");
 
