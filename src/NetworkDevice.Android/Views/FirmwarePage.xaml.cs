@@ -86,7 +86,7 @@ public partial class FirmwarePage : ContentPage
             {
                 AuditOfficialLabel.Text = $"{_cachedOfficialRemote.FileName} ({_cachedOfficialRemote.DisplaySize})";
                 FirmwareFileNameEntry.Text = _cachedOfficialRemote.FileName;
-                FirmwareUrlEntry.Text = _cachedOfficialRemote.DownloadUrl;
+                FirmwareUrlEntry.Text = RouterDirectFirmwareUpdater.BuildDirectDownloadUrl(detected.Series);
             }
             else
             {

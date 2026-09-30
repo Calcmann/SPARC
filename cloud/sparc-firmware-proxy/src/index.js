@@ -44,7 +44,8 @@ export default {
     }
 
     // 2. Validação do Token do GitHub
-    const githubToken = env.GITHUB_PAT || env.GITHUB_TOKEN;
+    const rawToken = env.GITHUB_PAT || env.GITHUB_TOKEN || "";
+    const githubToken = rawToken.trim();
     if (!githubToken) {
       return new Response("500 Erro de Configuração: Token GITHUB_PAT não configurado no Worker.\n", {
         status: 500,

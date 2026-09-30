@@ -641,17 +641,17 @@ public class Y1564TestService
             if (!noLocalDrop || !bandMet)
             {
                 summaryText = "FAIL";
-                detailsMsg = $"Validação de Link REPROVADA (FAIL). A interface local ou o link não suportou a taxa de {targetMbps:F0} Mbps (Taxa Tx escoada: {actualTxMbps:F2} Mbps, {finalTxDropped:N0} descartes de buffer local).";
+                detailsMsg = $"Validação de Link REPROVADA (FAIL). A interface local ou o link não suportou a taxa de {targetMbps:F0} Mbps contra o Gateway {config.RemoteIp} (Taxa Tx escoada: {actualTxMbps:F2} Mbps, {finalTxDropped:N0} descartes de buffer local).";
             }
             else if (!lossMet)
             {
                 summaryText = "FAIL";
-                detailsMsg = $"Validação de Link REPROVADA (FAIL). Saturação de link detectada sob carga de {targetMbps:F0} Mbps! Perda de pacotes das sondas: {probeLossPct:F2}% (Limite SLA: <= {config.SlaLossPercent:F2}%).";
+                detailsMsg = $"Validação de Link REPROVADA (FAIL). Saturação de link detectada sob carga de {targetMbps:F0} Mbps contra o Gateway {config.RemoteIp}! Perda de pacotes das sondas: {probeLossPct:F2}% (Limite SLA: <= {config.SlaLossPercent:F2}%).";
             }
             else if (!delayMet || !jitterMet)
             {
                 summaryText = "FAIL";
-                detailsMsg = $"Validação de Link REPROVADA (FAIL). Congestionamento de link (Bufferbloat) sob carga de {targetMbps:F0} Mbps! Latência: {finalAvgDelay:F2} ms (SLA: <= {config.SlaDelayMs:F0} ms), Jitter: {finalMaxJitter:F2} ms (SLA: <= {config.SlaJitterMs:F0} ms).";
+                detailsMsg = $"Validação de Link REPROVADA (FAIL). Congestionamento de link (Bufferbloat) sob carga de {targetMbps:F0} Mbps contra o Gateway {config.RemoteIp}! Latência: {finalAvgDelay:F2} ms (SLA: <= {config.SlaDelayMs:F0} ms), Jitter: {finalMaxJitter:F2} ms (SLA: <= {config.SlaJitterMs:F0} ms).";
             }
             else
             {

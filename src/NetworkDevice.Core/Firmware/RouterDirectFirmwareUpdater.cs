@@ -21,6 +21,27 @@ public sealed record RouterFirmwareStatus(
 /// </summary>
 public sealed class RouterDirectFirmwareUpdater
 {
+    public const string DefaultProxyBaseUrl = "http://sparc-firmware-proxy.calcmann.workers.dev/download";
+    public const string DefaultProxyKey = "CR@PS";
+
+    public static string BuildDirectDownloadUrl(DeviceSeries series, string? baseUrl = null, string? secretKey = null)
+    {
+        var modelSlug = series switch
+        {
+            DeviceSeries.Isr841 => "c841",
+            DeviceSeries.Isr921 => "c921",
+            DeviceSeries.Series1900 => "c1900",
+            DeviceSeries.FortiGate40F => "fgt40f",
+            DeviceSeries.Msr954 => "msr954",
+            DeviceSeries.Msr930 => "msr930",
+            DeviceSeries.Msr1002 => "msr1002",
+            _ => "c841"
+        };
+        var baseUri = (baseUrl ?? DefaultProxyBaseUrl).TrimEnd('/');
+        var key = secretKey ?? DefaultProxyKey;
+        return $"{baseUri}/{modelSlug}?key={Uri.EscapeDataString(key)}";
+    }
+
     private readonly Func<string, Task> _logger;
 
     public RouterDirectFirmwareUpdater(Func<string, Task> logger)
