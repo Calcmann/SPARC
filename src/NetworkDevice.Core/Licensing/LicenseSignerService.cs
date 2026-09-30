@@ -342,4 +342,46 @@ public sealed class LicenseSignerService
             // Histórico é não-bloqueante
         }
     }
+
+    /// <summary>
+    /// Exclui uma chave específica do histórico de licenças geradas.
+    /// </summary>
+    public bool DeleteHistoryItem(string licenseToken)
+    {
+        if (string.IsNullOrWhiteSpace(licenseToken)) return false;
+
+        try
+        {
+            var list = LoadHistory().ToList();
+            var removed = list.RemoveAll(i => string.Equals(i.LicenseToken, licenseToken, StringComparison.Ordinal));
+            if (removed > 0)
+            {
+                var json = JsonSerializer.Serialize(list, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(_historyFilePath, json);
+                return true;
+            }
+        }
+        catch { }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Limpa todo o histórico de chaves geradas.
+    /// </summary>
+    public bool ClearHistory()
+    {
+        try
+        {
+            if (File.Exists(_historyFilePath))
+            {
+                File.WriteAllText(_historyFilePath, "[]");
+            }
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 }

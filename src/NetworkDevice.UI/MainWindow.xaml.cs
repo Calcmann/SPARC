@@ -3252,10 +3252,10 @@ public partial class MainWindow : Window
             }
         }
 
-        if (isCtrl && isShift && e.Key == Key.A)
+        if (isCtrl && isShift && e.Key == Key.F12)
         {
             e.Handled = true;
-            AbrirJanelaAdmin();
+            DesbloquearAdminComSenha();
             return;
         }
 
@@ -3480,7 +3480,7 @@ public partial class MainWindow : Window
         BtnSelecionarFirmwareAuto.IsEnabled = false;
         PbDownloadFirmware.Visibility = Visibility.Visible;
         PbDownloadFirmware.IsIndeterminate = true;
-        TxtFirmwareAutoInfo.Text = $"Consultando repositório online GitHub para {nomeModelo}...";
+        TxtFirmwareAutoInfo.Text = $"Consultando repositório de firmwares para {nomeModelo}...";
 
         try
         {
@@ -3492,19 +3492,10 @@ public partial class MainWindow : Window
                 PbDownloadFirmware.IsIndeterminate = false;
 
                 var localCached = _firmwareRepoService.GetLocalFirmware(serie);
-                var tokenConfigurado = !string.IsNullOrWhiteSpace(_firmwareRepoService.GitHubToken);
 
                 var sbMsg = new System.Text.StringBuilder();
-                sbMsg.AppendLine($"Nenhum arquivo de firmware foi localizado no repositório online para '{def?.FolderName}'.\n");
-
-                if (!tokenConfigurado)
-                {
-                    sbMsg.AppendLine("• Motivo: O repositório oficial é Privado e requer autenticação. Configure o Token PAT de Leitura no SPARC Admin (aba Repositório de Firmwares).");
-                }
-                else
-                {
-                    sbMsg.AppendLine("• Motivo: A Release ('homologados') com os arquivos ainda não foi publicada no GitHub ou o equipamento ainda não foi anexado.");
-                }
+                sbMsg.AppendLine($"Nenhum arquivo de firmware homologado foi localizado no repositório central para '{def?.DisplayName ?? nomeModelo}'.\n");
+                sbMsg.AppendLine("• Motivo: O arquivo deste equipamento ainda não foi cadastrado na base central ou verifique sua conexão com a internet.");
 
                 if (localCached != null)
                 {
@@ -3554,7 +3545,7 @@ public partial class MainWindow : Window
                     TxtFirmwareAutoInfo.Text = p.StatusText;
                 });
 
-                EscreverLinha($"[*] [Firmware Repo] Baixando {remote.FileName} ({remote.DisplaySize}) do GitHub...");
+                EscreverLinha($"[*] [Firmware Repo] Baixando {remote.FileName} ({remote.DisplaySize}) do repositório central...");
                 var localPath = await _firmwareRepoService.DownloadFirmwareAsync(remote, prog);
 
                 PbDownloadFirmware.Visibility = Visibility.Collapsed;
@@ -3678,7 +3669,7 @@ public partial class MainWindow : Window
             {
                 PbDownloadFirmware.Visibility = Visibility.Collapsed;
                 MessageBox.Show(
-                    "Não foi possível conectar ao repositório online no GitHub. Verifique a conexão de internet.",
+                    "Não foi possível conectar ao repositório central de firmwares. Verifique a conexão com a internet.",
                     "Sem Conexão",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
@@ -3787,6 +3778,19 @@ public partial class MainWindow : Window
     private void BtnAbrirAdmin_Click(object sender, RoutedEventArgs e)
     {
         AbrirJanelaAdmin();
+    }
+
+    private void DesbloquearAdminComSenha()
+    {
+        var dlg = new AdminPasswordDialog(this);
+        if (dlg.ShowDialog() == true && dlg.IsAuthenticated)
+        {
+            if (BtnAbrirAdmin != null)
+            {
+                BtnAbrirAdmin.Visibility = Visibility.Visible;
+            }
+            AbrirJanelaAdmin();
+        }
     }
 
     private void AbrirJanelaAdmin()

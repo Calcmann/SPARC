@@ -73,8 +73,93 @@
         <!-- CONTEÚDO PRINCIPAL: ABAS -->
         <TabControl Grid.Row="1" Background="#27272A" BorderBrush="#3F3F46" BorderThickness="1" Padding="14">
             
-            <!-- ABA 1: GERADOR DE ATIVAÇÕES / LICENÇAS -->
-            <TabItem Header="🔑 Chaves de Ativação (Licenciamento)">
+            <!-- ABA 1: SOLICITAÇÕES DE ATIVAÇÃO ONLINE (1 CLIQUE) -->
+            <TabItem Header="🔔 Solicitações Online (1 Clique)">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- BARRA SUPERIOR DE STATUS E FILTRO -->
+                    <Border Grid.Row="0" Background="#18181B" BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="8" Padding="12,10" Margin="0,0,0,10">
+                        <DockPanel>
+                            <!-- Contadores / Status -->
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Border Background="#713F12" CornerRadius="6" Padding="10,5" Margin="0,0,8,0">
+                                    <TextBlock x:Name="TxtSolicitacoesPendentesCount" Text="⏳ Pendentes: 0" FontWeight="Bold" FontSize="12" Foreground="#FDE047" />
+                                </Border>
+                                <Border Background="#14532D" CornerRadius="6" Padding="10,5" Margin="0,0,8,0">
+                                    <TextBlock x:Name="TxtSolicitacoesAprovadasCount" Text="✅ Aprovadas: 0" FontWeight="Bold" FontSize="12" Foreground="#4ADE80" />
+                                </Border>
+                                <Border Background="#7F1D1D" CornerRadius="6" Padding="10,5" Margin="0,0,8,0">
+                                    <TextBlock x:Name="TxtSolicitacoesRejeitadasCount" Text="❌ Rejeitadas: 0" FontWeight="Bold" FontSize="12" Foreground="#F87171" />
+                                </Border>
+                            </StackPanel>
+
+                            <!-- Busca e Botão Atualizar -->
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <TextBlock Text="🔍 Filtrar:" Foreground="#A1A1AA" VerticalAlignment="Center" Margin="0,0,6,0" FontSize="11.5" />
+                                <TextBox x:Name="TxtFiltroSolicitacoes" Width="180" Height="28" Padding="6,4" Background="#27272A" Foreground="White" BorderBrush="#52525B" FontSize="11.5" TextChanged="TxtFiltroSolicitacoes_TextChanged" />
+                                <Button x:Name="BtnAtualizarSolicitacoesOnline" Content="🔄 Buscar da Nuvem / Atualizar" Padding="12,5" Margin="8,0,0,0" Background="#0D9488" Foreground="White" FontWeight="Bold" FontSize="11.5" BorderThickness="0" Cursor="Hand" Click="BtnAtualizarSolicitacoesOnline_Click" />
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+
+                    <!-- TABELA DE SOLICITAÇÕES -->
+                    <Border Grid.Row="1" Background="#18181B" BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+
+                            <DockPanel Grid.Row="0" Margin="0,0,0,8">
+                                <TextBlock Text="Fila de Solicitações de Ativação Online (Direto das Máquinas dos Técnicos)" FontWeight="Bold" FontSize="13" Foreground="#F4F4F5" VerticalAlignment="Center" />
+                                <TextBlock Text="Selecione um técnico para Aprovar com 1 Clique ou Rejeitar" FontSize="11" Foreground="#38BDF8" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                            </DockPanel>
+
+                            <DataGrid Grid.Row="1" x:Name="DgSolicitacoesOnline" AutoGenerateColumns="False" IsReadOnly="True"
+                                      Background="#27272A" Foreground="#E4E4E7" RowBackground="#1F1F23" AlternatingRowBackground="#27272A"
+                                      GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#3F3F46" BorderBrush="#3F3F46" BorderThickness="1"
+                                      SelectionMode="Single" SelectionChanged="DgSolicitacoesOnline_SelectionChanged">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Status" Binding="{Binding StatusBadge}" FontWeight="Bold" Width="150" />
+                                    <DataGridTextColumn Header="Data / Hora (UTC)" Binding="{Binding RequestedAtUtc, StringFormat='dd/MM/yyyy HH:mm'}" Width="125" />
+                                    <DataGridTextColumn Header="Técnico" Binding="{Binding FullName}" FontWeight="Bold" Width="160" />
+                                    <DataGridTextColumn Header="Cluster" Binding="{Binding Cluster}" Width="120" />
+                                    <DataGridTextColumn Header="UF" Binding="{Binding Uf}" Width="45" />
+                                    <DataGridTextColumn Header="WhatsApp / Tel" Binding="{Binding Phone}" Width="125" />
+                                    <DataGridTextColumn Header="E-mail" Binding="{Binding Email}" Width="160" />
+                                    <DataGridTextColumn Header="Versão" Binding="{Binding ClientVersion}" Width="75" />
+                                    <DataGridTextColumn Header="Machine GUID" Binding="{Binding MachineGuid}" Width="*" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </Border>
+
+                    <!-- PAINEL DE AÇÕES DA SOLICITAÇÃO SELECIONADA -->
+                    <Border Grid.Row="2" Background="#18181B" BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="8" Padding="12,10">
+                        <DockPanel>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="Ações de Liberação:" FontWeight="Bold" FontSize="11.5" Foreground="#A1A1AA" VerticalAlignment="Center" Margin="0,0,10,0" />
+                                <Button x:Name="BtnAprovarSolicitacao30" Content="⚡ APROVAR (30 DIAS)" Padding="14,6" Background="#16A34A" Foreground="White" FontWeight="Black" FontSize="12" BorderThickness="0" Cursor="Hand" Margin="0,0,6,0" Click="BtnAprovarSolicitacao30_Click" ToolTip="Assina criptograficamente e libera o acesso online por 30 dias" />
+                                <Button x:Name="BtnAprovarSolicitacao60" Content="➕ 60 Dias" Padding="10,6" Background="#15803D" Foreground="White" FontWeight="Bold" FontSize="11.5" BorderThickness="0" Cursor="Hand" Margin="0,0,6,0" Click="BtnAprovarSolicitacao60_Click" />
+                                <Button x:Name="BtnAprovarSolicitacao90" Content="➕ 90 Dias" Padding="10,6" Background="#047857" Foreground="White" FontWeight="Bold" FontSize="11.5" BorderThickness="0" Cursor="Hand" Margin="0,0,6,0" Click="BtnAprovarSolicitacao90_Click" />
+                                <Button x:Name="BtnRejeitarSolicitacao" Content="❌ Rejeitar" Padding="10,6" Background="#7F1D1D" Foreground="White" FontWeight="Bold" FontSize="11.5" BorderThickness="0" Cursor="Hand" Margin="0,0,6,0" Click="BtnRejeitarSolicitacao_Click" />
+                                <Button x:Name="BtnExcluirSolicitacao" Content="🗑️ Excluir" Padding="10,6" Background="#450A0A" Foreground="#FCA5A5" BorderBrush="#991B1B" BorderThickness="1" FontWeight="Bold" FontSize="11.5" Cursor="Hand" Margin="0,0,6,0" Click="BtnExcluirSolicitacao_Click" ToolTip="Exclui definitivamente esta solicitação da nuvem e do cache local" />
+                                <Button x:Name="BtnWhatsAppSolicitante" Content="💬 WhatsApp" Padding="10,6" Background="#25D366" Foreground="Black" FontWeight="Bold" FontSize="11.5" BorderThickness="0" Cursor="Hand" Click="BtnWhatsAppSolicitante_Click" />
+                            </StackPanel>
+
+                            <TextBlock x:Name="TxtSolicitacaoSelecionadaInfo" Text="Selecione uma solicitação na lista acima" FontSize="11.5" Foreground="#38BDF8" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                        </DockPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <!-- ABA 2: GERADOR DE ATIVAÇÕES / LICENÇAS (MANUAL) -->
+            <TabItem Header="🔑 Chaves de Ativação (Manual)">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="0,0,0,8">
                         
@@ -169,7 +254,11 @@
                             <StackPanel>
                                 <DockPanel>
                                     <TextBlock Text="Histórico de Chaves Emitidas Recentemente" FontWeight="Bold" FontSize="13" Foreground="#F4F4F5" VerticalAlignment="Center" />
-                                    <Button Content="🔄 Atualizar Histórico" HorizontalAlignment="Right" Padding="8,4" Background="#3F3F46" Foreground="White" BorderThickness="0" FontSize="11" Cursor="Hand" Click="BtnAtualizarHistorico_Click" />
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button x:Name="BtnExcluirChaveHistorico" Content="🗑️ Excluir Selecionada" Padding="8,4" Margin="0,0,6,0" Background="#450A0A" Foreground="#FCA5A5" BorderThickness="0" FontSize="11" Cursor="Hand" Click="BtnExcluirChaveHistorico_Click" ToolTip="Exclui a chave selecionada do histórico" />
+                                        <Button x:Name="BtnLimparHistoricoChaves" Content="🧹 Limpar Histórico" Padding="8,4" Margin="0,0,6,0" Background="#27272A" Foreground="#A1A1AA" BorderThickness="1" BorderBrush="#3F3F46" FontSize="11" Cursor="Hand" Click="BtnLimparHistoricoChaves_Click" ToolTip="Limpa todos os registros do histórico de testes" />
+                                        <Button Content="🔄 Atualizar" Padding="8,4" Background="#3F3F46" Foreground="White" BorderThickness="0" FontSize="11" Cursor="Hand" Click="BtnAtualizarHistorico_Click" />
+                                    </StackPanel>
                                 </DockPanel>
 
                                 <DataGrid x:Name="DgHistoricoChaves" Height="170" AutoGenerateColumns="False" IsReadOnly="True"
@@ -272,7 +361,8 @@
                                         <Button x:Name="BtnConceder60Dias" Content="➕ +60 Dias" Padding="10,5" Background="#15803D" Foreground="White" FontWeight="Bold" FontSize="11.5" BorderThickness="0" Cursor="Hand" Margin="0,0,6,0" Click="BtnConceder60Dias_Click" ToolTip="Estende a validade da licença em +60 dias" />
                                         <Button x:Name="BtnConceder90Dias" Content="➕ +90 Dias" Padding="10,5" Background="#047857" Foreground="White" FontWeight="Bold" FontSize="11.5" BorderThickness="0" Cursor="Hand" Margin="0,0,6,0" Click="BtnConceder90Dias_Click" ToolTip="Estende a validade da licença em +90 dias" />
                                         <Button x:Name="BtnChamarWhatsApp" Content="💬 WhatsApp" Padding="10,5" Background="#25D366" Foreground="Black" FontWeight="Bold" FontSize="11.5" BorderThickness="0" Cursor="Hand" Margin="0,0,6,0" Click="BtnChamarWhatsApp_Click" ToolTip="Abre conversa direta no WhatsApp Web com o técnico" />
-                                        <Button x:Name="BtnRevogarAcesso" Content="🚫 Revogar Acesso" Padding="10,5" Background="#7F1D1D" Foreground="White" FontWeight="Bold" FontSize="11.5" BorderThickness="0" Cursor="Hand" Click="BtnRevogarAcesso_Click" ToolTip="Bloqueia imediatamente a execução do SPARC nesta máquina" />
+                                        <Button x:Name="BtnRevogarAcesso" Content="🚫 Revogar Acesso" Padding="10,5" Background="#7F1D1D" Foreground="White" FontWeight="Bold" FontSize="11.5" BorderThickness="0" Cursor="Hand" Margin="0,0,6,0" Click="BtnRevogarAcesso_Click" ToolTip="Bloqueia imediatamente a execução do SPARC nesta máquina" />
+                                        <Button x:Name="BtnExcluirCopia" Content="🗑️ Remover Registro" Padding="10,5" Background="#450A0A" Foreground="#FCA5A5" BorderBrush="#991B1B" BorderThickness="1" FontWeight="Bold" FontSize="11.5" Cursor="Hand" Click="BtnExcluirCopia_Click" ToolTip="Exclui definitivamente este registro de teste da lista" />
                                     </StackPanel>
 
                                     <TextBlock x:Name="TxtCopiaSelecionadaInfo" Text="Selecione um técnico na tabela acima para gerenciar a licença" FontSize="11" Foreground="#38BDF8" HorizontalAlignment="Right" VerticalAlignment="Center" />

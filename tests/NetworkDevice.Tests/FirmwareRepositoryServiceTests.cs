@@ -115,6 +115,7 @@ public class FirmwareRepositoryServiceTests : IDisposable
     [InlineData("MSR93X-CMW520-R2512P04.BIN", DeviceSeries.Msr930)]
     [InlineData("MSR954-CMW710-R6749P43.ipe", DeviceSeries.Msr954)]
     [InlineData("MSR1002-CMW710-R6749P43.ipe", DeviceSeries.Msr1002)]
+    [InlineData("MSR100X-CMW710-R6749P43.ipe", DeviceSeries.Msr1002)]
     public void MatchSeriesFromFileName_MapsAllRealAssetsCorrectly(string fileName, DeviceSeries expected)
     {
         var matched = FirmwareModelMap.MatchSeriesFromFileName(fileName);

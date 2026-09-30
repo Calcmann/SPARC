@@ -55,6 +55,32 @@ $ghToken = ""
 if (Test-Path $tokenPath) {
     $ghToken = [IO.File]::ReadAllText($tokenPath).Trim()
 }
+
+# Cifra o token para que não fique exposto em texto simples no binário compilado
+$tokenVaultPath = Join-Path $tmp "src\NetworkDevice.Core\Security\EmbeddedTokenVault.cs"
+if (Test-Path $tokenVaultPath) {
+    $tv = [IO.File]::ReadAllText($tokenVaultPath)
+    if (![string]::IsNullOrWhiteSpace($ghToken)) {
+        $salt = (Get-Date).ToString("yyyyMMddHHmmss")
+        $seed = [byte[]]@(0x53, 0x50, 0x41, 0x52, 0x43, 0x2D, 0x43, 0x4C, 0x41, 0x52, 0x4F, 0x2D, 0x53, 0x45, 0x43, 0x55, 0x52, 0x45, 0x2D, 0x56, 0x41, 0x55, 0x4C, 0x54, 0x2D, 0x32, 0x30, 0x32, 0x36, 0x2D, 0x42, 0x54)
+        $saltBytes = [System.Text.Encoding]::UTF8.GetBytes($salt)
+        $kdf = [System.Security.Cryptography.Rfc2898DeriveBytes]::new($seed, $saltBytes, 1000, [System.Security.Cryptography.HashAlgorithmName]::SHA256)
+        $key = $kdf.GetBytes(32)
+        $iv = $kdf.GetBytes(16)
+        $aes = [System.Security.Cryptography.Aes]::Create()
+        $aes.Key = $key
+        $aes.IV = $iv
+        $enc = $aes.CreateEncryptor()
+        $plainBytes = [System.Text.Encoding]::UTF8.GetBytes($ghToken)
+        $cipherBytes = $enc.TransformFinalBlock($plainBytes, 0, $plainBytes.Length)
+        $b64 = [Convert]::ToBase64String($cipherBytes)
+        $tv = $tv.Replace("%%BETA_ENCRYPTED_TOKEN_B64%%", $b64).Replace("%%BETA_BUILD_SALT%%", $salt)
+    } else {
+        $tv = $tv.Replace("%%BETA_ENCRYPTED_TOKEN_B64%%", "").Replace("%%BETA_BUILD_SALT%%", "")
+    }
+    [IO.File]::WriteAllText($tokenVaultPath, $tv)
+}
+
 $c = $c.Replace("%%BETA_TAG%%", $Tag).Replace("%%BETA_EXPIRES_UTC%%", $expiresIso).Replace("%%BETA_PUBLIC_KEY_PEM%%", $pubPem).Replace("%%BETA_GITHUB_TOKEN%%", $ghToken)
 [IO.File]::WriteAllText($cfg, $c)
 if ($c.Contains("%%BETA_")) { throw "placeholders nao substituidos" }

@@ -86,4 +86,137 @@ public class CloudLicenseServiceTests : IDisposable
         var dev = new OnlineDeviceRecord { Phone = "(11) 98765-4321" };
         Assert.Equal("https://wa.me/5511987654321", dev.WhatsAppUrl);
     }
+
+    [Fact]
+    public async System.Threading.Tasks.Task SubmitActivationRequest_And_CheckStatus_WorksLocally()
+    {
+        var svc = new CloudLicenseService(_tempFile);
+        var req = new OnlineActivationRequest
+        {
+            MachineGuid = "test-machine-guid-123",
+            MachineFingerprint = "test-fp-123",
+            FirstName = "Carlos",
+            LastName = "Ferreira",
+            Phone = "19988776655",
+            Email = "carlos@empresa.com",
+            Cluster = "Campinas",
+            Uf = "SP",
+            ClientVersion = "0.8.28",
+            RawRequestCode = "SPBREQ.test.request"
+        };
+
+        var (subOk, subMsg) = await svc.SubmitActivationRequestAsync(req);
+        Assert.True(subOk);
+
+        var (found, fetched, msg) = await svc.CheckActivationRequestStatusAsync("test-machine-guid-123");
+        Assert.True(found);
+        Assert.NotNull(fetched);
+        Assert.Equal("Carlos", fetched.FirstName);
+        Assert.Equal("Campinas", fetched.Cluster);
+        Assert.Equal("SP", fetched.Uf);
+        Assert.Equal("Pending", fetched.Status);
+        Assert.Equal("⏳ Pendente de Aprovação", fetched.StatusBadge);
+
+        var list = await svc.ListActivationRequestsAsync();
+        Assert.Contains(list, r => r.MachineGuid == "test-machine-guid-123");
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task ApproveActivationRequest_GeneratesSignedLicense_And_UpdatesRecord()
+    {
+        var svc = new CloudLicenseService(_tempFile);
+        var signer = new LicenseSignerService();
+
+        var req = new OnlineActivationRequest
+        {
+            MachineGuid = "approve-guid-456",
+            MachineFingerprint = "approve-fp-456",
+            FirstName = "Renato",
+            LastName = "Alves",
+            Phone = "21988887777",
+            Email = "renato@teste.com",
+            Cluster = "Rio Centro",
+            Uf = "RJ",
+            ClientVersion = "0.8.28",
+            RawRequestCode = "SPBREQ.dummy.req"
+        };
+
+        await svc.SubmitActivationRequestAsync(req);
+
+        var (appOk, appMsg, token) = await svc.ApproveActivationRequestAsync(req, 30, signer, "Aprovado no teste");
+        Assert.True(appOk);
+        Assert.False(string.IsNullOrWhiteSpace(token));
+
+        var (found, updated, _) = await svc.CheckActivationRequestStatusAsync("approve-guid-456");
+        Assert.True(found);
+        Assert.NotNull(updated);
+        Assert.Equal("Approved", updated.Status);
+        Assert.Equal(token, updated.ApprovedToken);
+        Assert.Equal(30, updated.ValidDays);
+
+        // Dispositivo deve ter sido adicionado à lista de cópias ativas monitoradas (devices.json)
+        var devices = svc.LoadLocalDevices();
+        Assert.Contains(devices, d => d.MachineGuid == "approve-guid-456" && d.Status == "Active");
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task RejectActivationRequest_UpdatesStatusToRejected()
+    {
+        var svc = new CloudLicenseService(_tempFile);
+        var req = new OnlineActivationRequest
+        {
+            MachineGuid = "reject-guid-789",
+            FirstName = "Pedro",
+            LastName = "Santos"
+        };
+
+        await svc.SubmitActivationRequestAsync(req);
+        var (rejOk, rejMsg) = await svc.RejectActivationRequestAsync(req, "Documentação incompleta");
+        Assert.True(rejOk);
+
+        var (found, updated, _) = await svc.CheckActivationRequestStatusAsync("reject-guid-789");
+        Assert.True(found);
+        Assert.NotNull(updated);
+        Assert.Equal("Rejected", updated.Status);
+        Assert.Equal("Documentação incompleta", updated.RejectionReason);
+        Assert.Equal("❌ Rejeitada", updated.StatusBadge);
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task DeleteActivationRequest_And_DeleteDevice_RemovesRecords()
+    {
+        var svc = new CloudLicenseService(_tempFile);
+        var req = new OnlineActivationRequest
+        {
+            MachineGuid = "del-test-guid-001",
+            FirstName = "Teste",
+            LastName = "Excluir"
+        };
+
+        await svc.SubmitActivationRequestAsync(req);
+        var (found, _, _) = await svc.CheckActivationRequestStatusAsync("del-test-guid-001");
+        Assert.True(found);
+
+        var (delOk, delMsg) = await svc.DeleteActivationRequestAsync(req);
+        Assert.True(delOk);
+
+        var (foundAfter, _, _) = await svc.CheckActivationRequestStatusAsync("del-test-guid-001");
+        Assert.False(foundAfter);
+
+        // Teste de remoção de dispositivo
+        var actReq = new ActivationRequestData("req", "dev-to-delete", "fp", true, null, "Nome", "Sobrenome");
+        var lic = new GeneratedLicenseResult(true, "tok", "2026-10-30", DateTime.UtcNow.AddDays(30), 30, null);
+        svc.RegisterOrUpdateDevice(actReq, lic);
+
+        var devices = svc.LoadLocalDevices();
+        Assert.Contains(devices, d => d.MachineGuid == "dev-to-delete");
+
+        var (delDevOk, _) = svc.DeleteDevice("dev-to-delete");
+        Assert.True(delDevOk);
+
+        devices = svc.LoadLocalDevices();
+        Assert.DoesNotContain(devices, d => d.MachineGuid == "dev-to-delete");
+    }
 }
+
+

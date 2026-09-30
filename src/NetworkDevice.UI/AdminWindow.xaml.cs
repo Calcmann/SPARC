@@ -43,6 +43,7 @@ public partial class AdminWindow : Window
     private void AdminWindow_Loaded(object sender, RoutedEventArgs e)
     {
         VerificarChaveRsa();
+        CarregarSolicitacoesOnlineAsync();
         CarregarHistoricoChaves();
         CarregarCopiasCampo();
         CarregarModelosFirmware();
@@ -69,7 +70,201 @@ public partial class AdminWindow : Window
         }
     }
 
-    #region Aba 1: Licenciamento / Chaves de Ativação
+    #region Aba 1: Solicitações de Ativação Online (1 Clique)
+
+    private List<OnlineActivationRequest> _cachedSolicitacoes = new();
+
+    private async void CarregarSolicitacoesOnlineAsync()
+    {
+        try
+        {
+            BtnAtualizarSolicitacoesOnline.IsEnabled = false;
+            BtnAtualizarSolicitacoesOnline.Content = "⏳ Buscando...";
+
+            _cachedSolicitacoes = await _cloudLicenseService.ListActivationRequestsAsync();
+            AtualizarMetricasSolicitacoes(_cachedSolicitacoes);
+            FiltrarSolicitacoes();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Falha ao carregar solicitações online: {ex.Message}", "Aviso", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            BtnAtualizarSolicitacoesOnline.IsEnabled = true;
+            BtnAtualizarSolicitacoesOnline.Content = "🔄 Buscar da Nuvem / Atualizar";
+        }
+    }
+
+    private void AtualizarMetricasSolicitacoes(List<OnlineActivationRequest> list)
+    {
+        var pendentes = list.Count(r => string.Equals(r.Status, "Pending", StringComparison.OrdinalIgnoreCase) || string.IsNullOrEmpty(r.Status));
+        var aprovadas = list.Count(r => string.Equals(r.Status, "Approved", StringComparison.OrdinalIgnoreCase));
+        var rejeitadas = list.Count(r => string.Equals(r.Status, "Rejected", StringComparison.OrdinalIgnoreCase));
+
+        TxtSolicitacoesPendentesCount.Text = $"⏳ Pendentes: {pendentes}";
+        TxtSolicitacoesAprovadasCount.Text = $"✅ Aprovadas: {aprovadas}";
+        TxtSolicitacoesRejeitadasCount.Text = $"❌ Rejeitadas: {rejeitadas}";
+    }
+
+    private void FiltrarSolicitacoes()
+    {
+        var filtro = TxtFiltroSolicitacoes?.Text?.Trim().ToLowerInvariant() ?? "";
+        if (string.IsNullOrWhiteSpace(filtro))
+        {
+            DgSolicitacoesOnline.ItemsSource = _cachedSolicitacoes;
+        }
+        else
+        {
+            DgSolicitacoesOnline.ItemsSource = _cachedSolicitacoes.Where(r =>
+                r.FullName.ToLowerInvariant().Contains(filtro) ||
+                r.Cluster.ToLowerInvariant().Contains(filtro) ||
+                r.Uf.ToLowerInvariant().Contains(filtro) ||
+                r.Phone.Contains(filtro) ||
+                r.Email.ToLowerInvariant().Contains(filtro) ||
+                r.MachineGuid.ToLowerInvariant().Contains(filtro) ||
+                r.Status.ToLowerInvariant().Contains(filtro)).ToList();
+        }
+    }
+
+    private void TxtFiltroSolicitacoes_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        FiltrarSolicitacoes();
+    }
+
+    private void BtnAtualizarSolicitacoesOnline_Click(object sender, RoutedEventArgs e)
+    {
+        CarregarSolicitacoesOnlineAsync();
+    }
+
+    private void DgSolicitacoesOnline_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        var req = DgSolicitacoesOnline.SelectedItem as OnlineActivationRequest;
+        if (req != null)
+        {
+            var reg = !string.IsNullOrWhiteSpace(req.Cluster) ? $" [{req.Cluster}/{req.Uf}]" : "";
+            TxtSolicitacaoSelecionadaInfo.Text = $"Técnico: {req.FullName}{reg} ({req.Phone}) - Status: {req.StatusBadge}";
+            BtnAprovarSolicitacao30.IsEnabled = _licenseService.HasPrivateKey;
+            BtnAprovarSolicitacao60.IsEnabled = _licenseService.HasPrivateKey;
+            BtnAprovarSolicitacao90.IsEnabled = _licenseService.HasPrivateKey;
+            BtnRejeitarSolicitacao.IsEnabled = true;
+            BtnWhatsAppSolicitante.IsEnabled = !string.IsNullOrWhiteSpace(req.Phone);
+        }
+        else
+        {
+            TxtSolicitacaoSelecionadaInfo.Text = "Selecione uma solicitação na lista acima";
+            BtnAprovarSolicitacao30.IsEnabled = false;
+            BtnAprovarSolicitacao60.IsEnabled = false;
+            BtnAprovarSolicitacao90.IsEnabled = false;
+            BtnRejeitarSolicitacao.IsEnabled = false;
+            BtnWhatsAppSolicitante.IsEnabled = false;
+        }
+    }
+
+    private async void AprovarSolicitacaoSelecionada(int dias)
+    {
+        var req = DgSolicitacoesOnline.SelectedItem as OnlineActivationRequest;
+        if (req == null)
+        {
+            MessageBox.Show("Selecione um técnico na lista para aprovar.", "Aviso", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        if (!_licenseService.HasPrivateKey)
+        {
+            MessageBox.Show("Chave privada RSA do Administrador não encontrada para assinatura!", "Erro", MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
+
+        try
+        {
+            var (success, msg, token) = await _cloudLicenseService.ApproveActivationRequestAsync(req, dias, _licenseService, $"Aprovado online ({dias} dias)");
+            if (success)
+            {
+                CarregarSolicitacoesOnlineAsync();
+                CarregarCopiasCampo(); // Atualiza também a lista de dispositivos monitorados
+                MessageBox.Show(
+                    $"✅ Solicitação de {req.FullName} aprovada com sucesso por {dias} dias!\n\n" +
+                    $"A licença criptográfica foi salva na nuvem. A máquina do técnico ativará automaticamente assim que consultar a internet.",
+                    "Aprovação Concluída", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                MessageBox.Show($"Falha ao aprovar: {msg}", "Erro", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Erro: {ex.Message}", "Exceção", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void BtnAprovarSolicitacao30_Click(object sender, RoutedEventArgs e) => AprovarSolicitacaoSelecionada(30);
+    private void BtnAprovarSolicitacao60_Click(object sender, RoutedEventArgs e) => AprovarSolicitacaoSelecionada(60);
+    private void BtnAprovarSolicitacao90_Click(object sender, RoutedEventArgs e) => AprovarSolicitacaoSelecionada(90);
+
+    private async void BtnRejeitarSolicitacao_Click(object sender, RoutedEventArgs e)
+    {
+        var req = DgSolicitacoesOnline.SelectedItem as OnlineActivationRequest;
+        if (req == null) return;
+
+        var confirm = MessageBox.Show($"Deseja realmente rejeitar a solicitação de {req.FullName}?", "Confirmar Rejeição", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (confirm != MessageBoxResult.Yes) return;
+
+        var (success, msg) = await _cloudLicenseService.RejectActivationRequestAsync(req, "Rejeitado pelo Administrador");
+        if (success)
+        {
+            CarregarSolicitacoesOnlineAsync();
+            MessageBox.Show($"Solicitação rejeitada.", "Concluído", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+    }
+
+    private async void BtnExcluirSolicitacao_Click(object sender, RoutedEventArgs e)
+    {
+        var req = DgSolicitacoesOnline.SelectedItem as OnlineActivationRequest;
+        if (req == null)
+        {
+            MessageBox.Show("Selecione uma solicitação na lista para excluir.", "Aviso", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var confirm = MessageBox.Show(
+            $"Deseja realmente excluir permanentemente a solicitação de {req.FullName} ({req.RegionInfo})?\n\nIsso removerá o arquivo da nuvem e do cache local de testes.",
+            "Confirmar Exclusão de Teste", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (confirm != MessageBoxResult.Yes) return;
+
+        try
+        {
+            BtnExcluirSolicitacao.IsEnabled = false;
+            var (ok, msg) = await _cloudLicenseService.DeleteActivationRequestAsync(req);
+            CarregarSolicitacoesOnlineAsync();
+            MessageBox.Show(msg, "Concluído", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Erro ao excluir solicitação: {ex.Message}", "Erro", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            BtnExcluirSolicitacao.IsEnabled = true;
+        }
+    }
+
+    private void BtnWhatsAppSolicitante_Click(object sender, RoutedEventArgs e)
+    {
+        var req = DgSolicitacoesOnline.SelectedItem as OnlineActivationRequest;
+        if (req == null || string.IsNullOrWhiteSpace(req.WhatsAppUrl)) return;
+
+        try
+        {
+            Process.Start(new ProcessStartInfo { FileName = req.WhatsAppUrl, UseShellExecute = true });
+        }
+        catch { }
+    }
+
+    #endregion
+
+    #region Aba 2: Licenciamento / Chaves de Ativação (Manual)
 
     private void TxtPedidoReq_TextChanged(object sender, TextChangedEventArgs e)
     {
@@ -245,6 +440,41 @@ public partial class AdminWindow : Window
         CarregarHistoricoChaves();
     }
 
+    private void BtnExcluirChaveHistorico_Click(object sender, RoutedEventArgs e)
+    {
+        var item = DgHistoricoChaves.SelectedItem as ActivationKeyHistoryItem;
+        if (item == null)
+        {
+            MessageBox.Show("Selecione uma chave na tabela para excluir.", "Aviso", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var confirm = MessageBox.Show(
+            $"Deseja remover esta chave do histórico?\n\nTécnico: {item.TechnicianName}\nExpira: {item.ExpirationDate}",
+            "Confirmar Exclusão de Chave", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (confirm != MessageBoxResult.Yes) return;
+
+        if (_licenseService.DeleteHistoryItem(item.LicenseToken))
+        {
+            CarregarHistoricoChaves();
+            MessageBox.Show("Chave excluída do histórico com sucesso.", "Concluído", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+    }
+
+    private void BtnLimparHistoricoChaves_Click(object sender, RoutedEventArgs e)
+    {
+        var confirm = MessageBox.Show(
+            "Deseja realmente limpar TODO o histórico de chaves geradas para organização dos testes?",
+            "Limpar Todo o Histórico", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (confirm != MessageBoxResult.Yes) return;
+
+        if (_licenseService.ClearHistory())
+        {
+            CarregarHistoricoChaves();
+            MessageBox.Show("Histórico de chaves limpo com sucesso.", "Concluído", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+    }
+
     #endregion
 
     #region Aba 2: Gestão de Cópias em Campo & Licenças Online
@@ -385,6 +615,28 @@ public partial class AdminWindow : Window
             var (success, msg) = _cloudLicenseService.RevokeDevice(dev.MachineGuid, "Revogado pelo administrador");
             CarregarCopiasCampo();
             MessageBox.Show(msg, "Revogação", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+    }
+
+    private void BtnExcluirCopia_Click(object sender, RoutedEventArgs e)
+    {
+        var dev = DgCopiasCampo.SelectedItem as OnlineDeviceRecord;
+        if (dev == null)
+        {
+            MessageBox.Show("Selecione um técnico na tabela para remover.", "Aviso", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var confirm = MessageBox.Show(
+            $"Deseja realmente remover o registro de {dev.FullName} ({dev.MachineGuid}) da lista de dispositivos monitorados?",
+            "Confirmar Remoção de Teste", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+        if (confirm != MessageBoxResult.Yes) return;
+
+        var (ok, msg) = _cloudLicenseService.DeleteDevice(dev.MachineGuid);
+        if (ok)
+        {
+            CarregarCopiasCampo();
+            MessageBox.Show(msg, "Concluído", MessageBoxButton.OK, MessageBoxImage.Information);
         }
     }
 

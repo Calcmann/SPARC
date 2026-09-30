@@ -21,10 +21,12 @@ internal sealed class ActivationWindow : Window
     private readonly TextBox _txtUf;
     private readonly TextBox _txtReq;
     private readonly Button _btnCopy;
+    private readonly Button _btnSolicitarOnline;
     private readonly TextBox _txtLicense;
     private readonly TextBlock _txtStatus;
     private readonly MachineIdentity _machine;
     private readonly string _userProfilePath;
+    private System.Windows.Threading.DispatcherTimer? _pollTimer;
 
     public ActivationWindow(string reason, MachineIdentity machine, DateTime betaExpires)
     {
@@ -125,20 +127,48 @@ internal sealed class ActivationWindow : Window
 
         _txtStatus = new TextBlock { Foreground = new SolidColorBrush(Color.FromRgb(0xF8, 0x71, 0x71)), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6), FontSize = 11.5 };
         
+        var pnlActionsOnline = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
+        _btnSolicitarOnline = new Button 
+        { 
+            Content = "🌐 Solicitar Ativacao Online (1 Clique)", 
+            Width = 260, 
+            Height = 32, 
+            Margin = new Thickness(0, 0, 8, 0), 
+            FontWeight = FontWeights.Bold,
+            Background = new SolidColorBrush(Color.FromRgb(0x25, 0x63, 0xEB)),
+            Foreground = Brushes.White,
+            BorderThickness = new Thickness(0),
+            Cursor = System.Windows.Input.Cursors.Hand
+        };
+        _btnSolicitarOnline.Click += async (_, _) => await SolicitarAtivacaoOnlineAsync();
+        pnlActionsOnline.Children.Add(_btnSolicitarOnline);
+
+        var btnCheckOnline = new Button 
+        { 
+            Content = "🔄 Checar Aprovacao", 
+            Width = 160, 
+            Height = 32, 
+            Background = new SolidColorBrush(Color.FromRgb(0x0D, 0x94, 0x88)), 
+            Foreground = Brushes.White, 
+            BorderThickness = new Thickness(0), 
+            FontWeight = FontWeights.SemiBold,
+            Cursor = System.Windows.Input.Cursors.Hand
+        };
+        btnCheckOnline.Click += async (_, _) => await VerificarLiberacaoOnlineAsync(exibirMensagemSeNaoAprovado: true);
+        pnlActionsOnline.Children.Add(btnCheckOnline);
+
+        root.Children.Add(pnlActionsOnline);
+
         var pnlCopy = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
-        _btnCopy = new Button { Content = "📋 Copiar Solicitacao de Ativacao", Width = 230, Height = 28, Margin = new Thickness(0, 0, 8, 0), FontWeight = FontWeights.SemiBold };
+        _btnCopy = new Button { Content = "📋 Copiar para Envio Manual / WhatsApp", Width = 260, Height = 28, Margin = new Thickness(0, 0, 8, 0), FontWeight = FontWeights.Normal, FontSize = 11 };
         _btnCopy.Click += (_, _) => CopiarSolicitacao();
         pnlCopy.Children.Add(_btnCopy);
-
-        var btnCheckOnline = new Button { Content = "🔄 Verificar Liberacao Online", Width = 200, Height = 28, Background = new SolidColorBrush(Color.FromRgb(0x0D, 0x94, 0x88)), Foreground = Brushes.White, BorderThickness = new Thickness(0), FontWeight = FontWeights.SemiBold };
-        btnCheckOnline.Click += async (_, _) => await VerificarLiberacaoOnlineAsync();
-        pnlCopy.Children.Add(btnCheckOnline);
 
         root.Children.Add(pnlCopy);
         root.Children.Add(_txtStatus);
 
         // SECAO 3: CHAVE DE ATIVACAO
-        root.Children.Add(new TextBlock { Text = "3) Cole aqui a chave recebida do Administrador:", Foreground = Brushes.LightGray, FontWeight = FontWeights.SemiBold });
+        root.Children.Add(new TextBlock { Text = "3) Chave de Ativacao (Preenchida automaticamente online ou cole manualmente):", Foreground = Brushes.LightGray, FontWeight = FontWeights.SemiBold });
         _txtLicense = new TextBox { TextWrapping = TextWrapping.Wrap, Height = 56, Margin = new Thickness(0, 4, 0, 10), FontFamily = new FontFamily("Consolas"), FontSize = 10, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         root.Children.Add(_txtLicense);
 
@@ -161,6 +191,8 @@ internal sealed class ActivationWindow : Window
         _txtEmail.TextChanged += (_, _) => AtualizarRequisicao();
         _txtCluster.TextChanged += (_, _) => AtualizarRequisicao();
         _txtUf.TextChanged += (_, _) => AtualizarRequisicao();
+
+        Closed += (_, _) => { _pollTimer?.Stop(); };
 
         AtualizarRequisicao();
     }
@@ -221,7 +253,8 @@ internal sealed class ActivationWindow : Window
             _txtReq.Text = "(Preencha Nome, Sobrenome, Telefone, E-mail, Cluster e UF acima para gerar o codigo de ativacao)";
             _txtReq.Foreground = Brushes.Gray;
             _btnCopy.IsEnabled = false;
-            _txtStatus.Text = "Preencha todos os campos cadastrais acima para liberar a geracao do codigo.";
+            _btnSolicitarOnline.IsEnabled = false;
+            _txtStatus.Text = "Preencha todos os campos cadastrais acima para liberar a solicitacao de ativacao.";
             _txtStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xFB, 0xBF, 0x24));
         }
         else
@@ -231,7 +264,8 @@ internal sealed class ActivationWindow : Window
             _txtReq.Text = req;
             _txtReq.Foreground = Brushes.White;
             _btnCopy.IsEnabled = true;
-            _txtStatus.Text = "Cadastro preenchido! Clique em 'Copiar Solicitacao de Ativacao' e envie ao gestor.";
+            _btnSolicitarOnline.IsEnabled = true;
+            _txtStatus.Text = "Cadastro completo! Clique em 'Solicitar Ativacao Online (1 Clique)' ou envie manualmente pelo WhatsApp.";
             _txtStatus.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
         }
     }
@@ -263,60 +297,160 @@ internal sealed class ActivationWindow : Window
         catch { }
     }
 
-    private async System.Threading.Tasks.Task VerificarLiberacaoOnlineAsync()
+    private async System.Threading.Tasks.Task SolicitarAtivacaoOnlineAsync()
     {
-        _txtStatus.Text = "Consultando base de licencas no GitHub...";
-        _txtStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xFB, 0xBF, 0x24));
+        var fn = _txtFirstName.Text.Trim();
+        var ln = _txtLastName.Text.Trim();
+        var ph = _txtPhone.Text.Trim();
+        var em = _txtEmail.Text.Trim();
+        var cl = _txtCluster.Text.Trim();
+        var uf = _txtUf.Text.Trim().ToUpperInvariant();
+        var reqCode = _txtReq.Text.Trim();
+
+        if (string.IsNullOrWhiteSpace(fn) || string.IsNullOrWhiteSpace(ln) ||
+            string.IsNullOrWhiteSpace(ph) || string.IsNullOrWhiteSpace(em) ||
+            string.IsNullOrWhiteSpace(cl) || string.IsNullOrWhiteSpace(uf))
+        {
+            _txtStatus.Text = "Preencha todos os campos cadastrais antes de solicitar a ativacao online.";
+            _txtStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xFB, 0xBF, 0x24));
+            return;
+        }
+
+        _btnSolicitarOnline.IsEnabled = false;
+        _txtStatus.Text = "Enviando solicitacao de ativacao para o painel do Administrador...";
+        _txtStatus.Foreground = new SolidColorBrush(Color.FromRgb(0x38, 0xBD, 0xF8));
 
         try
         {
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-            client.DefaultRequestHeaders.Add("User-Agent", "SPARC-Beta");
-            var url = "https://raw.githubusercontent.com/Calcmann/repo/main/devices.json";
-            var resp = await client.GetAsync(url);
-            if (!resp.IsSuccessStatusCode)
+            var reqObj = new NetworkDevice.Core.Licensing.OnlineActivationRequest
             {
-                _txtStatus.Text = "Nenhuma liberacao online encontrada ainda. Cole a chave recebida manualmente.";
-                _txtStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xF8, 0x71, 0x71));
-                return;
-            }
+                MachineGuid = _machine.MachineGuid,
+                MachineFingerprint = _machine.Fingerprint,
+                RawRequestCode = reqCode,
+                FirstName = fn,
+                LastName = ln,
+                Phone = ph,
+                Email = em,
+                Cluster = cl,
+                Uf = uf,
+                ClientVersion = BetaConfig.Tag
+            };
 
-            var json = await resp.Content.ReadAsStringAsync();
-            using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.ValueKind != JsonValueKind.Array) return;
+            var svc = new NetworkDevice.Core.Licensing.CloudLicenseService(customToken: BetaConfig.GitHubReadOnlyToken);
+            var (ok, msg) = await svc.SubmitActivationRequestAsync(reqObj);
 
-            foreach (var item in doc.RootElement.EnumerateArray())
+            if (ok)
             {
-                var g = item.TryGetProperty("MachineGuid", out var gp) ? gp.GetString() : null;
-                var f = item.TryGetProperty("MachineFingerprint", out var fp) ? fp.GetString() : null;
-                if (string.Equals(g, _machine.MachineGuid, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(f, _machine.Fingerprint, StringComparison.OrdinalIgnoreCase))
-                {
-                    var status = item.TryGetProperty("Status", out var sp) ? sp.GetString() : null;
-                    if (string.Equals(status, "Revoked", StringComparison.OrdinalIgnoreCase))
-                    {
-                        _txtStatus.Text = "Licenca revogada pelo Administrador.";
-                        _txtStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xF8, 0x71, 0x71));
-                        return;
-                    }
+                _btnSolicitarOnline.Content = "⏳ Solicitacao Enviada! Aguardando...";
+                _txtStatus.Text = "✅ Solicitacao online enviada ao Administrador! O SPARC sera ativado automaticamente assim que for aprovado no painel.";
+                _txtStatus.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
 
-                    var token = item.TryGetProperty("AuthorizedToken", out var tp) ? tp.GetString() : null;
-                    if (!string.IsNullOrWhiteSpace(token))
-                    {
-                        _txtLicense.Text = token;
-                        TentarAtivar();
-                        return;
-                    }
-                }
+                IniciarPollingAprovacao();
             }
-
-            _txtStatus.Text = "Dispositivo ainda nao aprovado no painel online do Administrador.";
-            _txtStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xFB, 0xBF, 0x24));
+            else
+            {
+                _btnSolicitarOnline.IsEnabled = true;
+                _txtStatus.Text = "Aviso ao enviar: " + msg + " Voce pode usar o botao manual de Copiar/WhatsApp.";
+                _txtStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xFB, 0xBF, 0x24));
+            }
         }
         catch (Exception ex)
         {
-            _txtStatus.Text = "Falha ao verificar online: " + ex.Message;
+            _btnSolicitarOnline.IsEnabled = true;
+            _txtStatus.Text = "Falha de conexao: " + ex.Message + ". Utilize o envio manual.";
             _txtStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xF8, 0x71, 0x71));
+        }
+    }
+
+    private void IniciarPollingAprovacao()
+    {
+        if (_pollTimer == null)
+        {
+            _pollTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(5)
+            };
+            _pollTimer.Tick += async (_, _) => await VerificarLiberacaoOnlineAsync(exibirMensagemSeNaoAprovado: false);
+        }
+        _pollTimer.Start();
+    }
+
+    private async System.Threading.Tasks.Task VerificarLiberacaoOnlineAsync(bool exibirMensagemSeNaoAprovado = false)
+    {
+        if (exibirMensagemSeNaoAprovado)
+        {
+            _txtStatus.Text = "Consultando status de aprovacao da sua maquina...";
+            _txtStatus.Foreground = new SolidColorBrush(Color.FromRgb(0x38, 0xBD, 0xF8));
+        }
+
+        try
+        {
+            var svc = new NetworkDevice.Core.Licensing.CloudLicenseService(customToken: BetaConfig.GitHubReadOnlyToken);
+
+            // 1. Checa a solicitacao individual em requests/{machineGuid}.json
+            var (found, req, msg) = await svc.CheckActivationRequestStatusAsync(_machine.MachineGuid);
+            if (found && req != null)
+            {
+                if (string.Equals(req.Status, "Approved", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(req.ApprovedToken))
+                {
+                    _pollTimer?.Stop();
+                    _txtStatus.Text = "🎉 Solicitacao aprovada pelo Administrador! Ativando SPARC...";
+                    _txtStatus.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
+                    _txtLicense.Text = req.ApprovedToken;
+                    TentarAtivar();
+                    return;
+                }
+                else if (string.Equals(req.Status, "Rejected", StringComparison.OrdinalIgnoreCase))
+                {
+                    _pollTimer?.Stop();
+                    _btnSolicitarOnline.IsEnabled = true;
+                    _btnSolicitarOnline.Content = "🌐 Solicitar Ativacao Online (1 Clique)";
+                    _txtStatus.Text = $"❌ Solicitacao rejeitada pelo Administrador: {req.RejectionReason ?? "Sem justificativa informada."}";
+                    _txtStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xF8, 0x71, 0x71));
+                    return;
+                }
+            }
+
+            // 2. Fallback: Checa na lista consolidada em devices.json
+            var remoteList = await svc.FetchRemoteDevicesAsync();
+            var dev = remoteList.FirstOrDefault(d =>
+                (!string.IsNullOrEmpty(_machine.MachineGuid) && d.MachineGuid.Equals(_machine.MachineGuid, StringComparison.OrdinalIgnoreCase)) ||
+                (!string.IsNullOrEmpty(_machine.Fingerprint) && d.MachineFingerprint.Equals(_machine.Fingerprint, StringComparison.OrdinalIgnoreCase)));
+
+            if (dev != null)
+            {
+                if (string.Equals(dev.Status, "Revoked", StringComparison.OrdinalIgnoreCase))
+                {
+                    _pollTimer?.Stop();
+                    _txtStatus.Text = "Licenca revogada pelo Administrador.";
+                    _txtStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xF8, 0x71, 0x71));
+                    return;
+                }
+
+                if (!string.IsNullOrWhiteSpace(dev.AuthorizedToken))
+                {
+                    _pollTimer?.Stop();
+                    _txtStatus.Text = "Liberacao localizada! Ativando...";
+                    _txtStatus.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
+                    _txtLicense.Text = dev.AuthorizedToken;
+                    TentarAtivar();
+                    return;
+                }
+            }
+
+            if (exibirMensagemSeNaoAprovado)
+            {
+                _txtStatus.Text = "Sua maquina ainda esta pendente de aprovacao no painel do Gestor.";
+                _txtStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xFB, 0xBF, 0x24));
+            }
+        }
+        catch (Exception ex)
+        {
+            if (exibirMensagemSeNaoAprovado)
+            {
+                _txtStatus.Text = "Falha ao verificar online: " + ex.Message;
+                _txtStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xF8, 0x71, 0x71));
+            }
         }
     }
 

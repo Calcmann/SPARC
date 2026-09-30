@@ -40,3 +40,5 @@ firmwares/*.ipe
 firmwares/*.out
 
 firmwares/
+
+beta/requests/*.json

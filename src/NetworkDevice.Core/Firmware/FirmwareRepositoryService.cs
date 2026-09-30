@@ -53,7 +53,11 @@ public sealed class FirmwareRepositoryService
 
     private static string? ResolveGitHubToken()
     {
-        // 1. Variável de ambiente
+        // 1. Token embutido e criptografado de fábrica no binário
+        var vaultToken = Security.EmbeddedTokenVault.ResolveEmbeddedToken();
+        if (!string.IsNullOrWhiteSpace(vaultToken)) return vaultToken;
+
+        // 2. Variável de ambiente
         var envToken = Environment.GetEnvironmentVariable("SPARC_GITHUB_TOKEN") ??
                        Environment.GetEnvironmentVariable("GITHUB_TOKEN");
         if (!string.IsNullOrWhiteSpace(envToken)) return envToken.Trim();

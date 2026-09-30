@@ -104,4 +104,40 @@ public class LicenseSignerServiceTests
         Assert.Equal("19988776655", decoded.Phone);
         Assert.Equal("roberto@empresa.com", decoded.Email);
     }
+
+    [Fact]
+    public void DeleteHistoryItem_And_ClearHistory_ModifiesHistoryCorrectly()
+    {
+        var tempBeta = Path.Combine(Path.GetTempPath(), "sparc_lic_test_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempBeta);
+        try
+        {
+            var svc = new LicenseSignerService(tempBeta);
+            var req = new ActivationRequestData("req", "guid-del-1", "fp-del-1", true, null, "Lucas", "Teste");
+            
+            // Simula adição manual ao histórico através de SaveToHistory (gerando licença dummy)
+            var histFile = Path.Combine(tempBeta, "historico_chaves.json");
+            File.WriteAllText(histFile, "[{\"LicenseToken\":\"SPB1.token1\",\"TechnicianName\":\"Lucas\"},{\"LicenseToken\":\"SPB1.token2\",\"TechnicianName\":\"Outro\"}]");
+
+            var loaded = svc.LoadHistory();
+            Assert.Equal(2, loaded.Count);
+
+            var deleted = svc.DeleteHistoryItem("SPB1.token1");
+            Assert.True(deleted);
+
+            loaded = svc.LoadHistory();
+            Assert.Single(loaded);
+            Assert.Equal("SPB1.token2", loaded[0].LicenseToken);
+
+            var cleared = svc.ClearHistory();
+            Assert.True(cleared);
+
+            loaded = svc.LoadHistory();
+            Assert.Empty(loaded);
+        }
+        finally
+        {
+            try { Directory.Delete(tempBeta, true); } catch { }
+        }
+    }
 }
