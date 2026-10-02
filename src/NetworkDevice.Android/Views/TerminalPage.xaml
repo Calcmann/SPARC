@@ -2,44 +2,74 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="NetworkDevice.Android.Views.TerminalPage"
-             Title="Console CLI">
-    <Grid RowDefinitions="Auto, *, Auto, Auto" Padding="14" RowSpacing="10">
-        <!-- Status Bar -->
-        <Frame Grid.Row="0" BackgroundColor="#1E293B" CornerRadius="10" Padding="12" HasShadow="False">
+             Title="Console CLI"
+             BackgroundColor="#0B0F19">
+    <Grid RowDefinitions="Auto, *, Auto, Auto, Auto" Padding="12" RowSpacing="8">
+        <!-- Status Bar & Controles Superiores -->
+        <Frame Grid.Row="0" BackgroundColor="#111827" BorderColor="#1F2937" CornerRadius="10" Padding="10,8" HasShadow="False">
             <Grid ColumnDefinitions="*, Auto">
-                <VerticalStackLayout Grid.Column="0" Spacing="2">
-                    <Label Text="Console Serial CLI • Roteador" FontSize="14" FontAttributes="Bold" TextColor="#38BDF8" />
-                    <Label x:Name="ConsoleStatusLabel" Text="Status: Pronto" FontSize="11" TextColor="#94A3B8" />
+                <VerticalStackLayout Grid.Column="0" Spacing="3" VerticalOptions="Center">
+                    <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
+                        <Label x:Name="LiveBadge" Text="🟢 CONSOLE LIVE" TextColor="#10B981" FontSize="11" FontAttributes="Bold" VerticalOptions="Center" />
+                        <Label x:Name="ConsoleStatusLabel" Text="COM USB OTG @ 9600 baud" FontSize="11" TextColor="#94A3B8" VerticalOptions="Center" />
+                    </HorizontalStackLayout>
                 </VerticalStackLayout>
-                <Button Grid.Column="1" Text="Limpar Tela" Clicked="OnClearTerminalClicked" BackgroundColor="#334155" TextColor="White" CornerRadius="6" FontSize="11" HeightRequest="32" Padding="10,0" />
+
+                <HorizontalStackLayout Grid.Column="1" Spacing="6" VerticalOptions="Center">
+                    <!-- Seletor de Baudrate -->
+                    <Button x:Name="BaudToggleBtn" Text="9600 bps" Clicked="OnToggleBaudClicked" BackgroundColor="#1E293B" TextColor="#38BDF8" CornerRadius="6" FontSize="11" HeightRequest="32" Padding="8,0" FontAttributes="Bold" />
+                    <Button Text="📋 Copiar" Clicked="OnCopyTerminalClicked" BackgroundColor="#1E293B" TextColor="#E2E8F0" CornerRadius="6" FontSize="11" HeightRequest="32" Padding="8,0" />
+                    <Button Text="🧹 Limpar" Clicked="OnClearTerminalClicked" BackgroundColor="#1E293B" TextColor="#E2E8F0" CornerRadius="6" FontSize="11" HeightRequest="32" Padding="8,0" />
+                </HorizontalStackLayout>
             </Grid>
         </Frame>
 
         <!-- Área de Saída do Terminal Monoespaçado -->
-        <Frame Grid.Row="1" BackgroundColor="#050811" CornerRadius="8" Padding="10" BorderColor="#1E293B">
+        <Frame Grid.Row="1" BackgroundColor="#030712" CornerRadius="8" Padding="10" BorderColor="#1F2937">
             <ScrollView x:Name="TerminalScrollView">
-                <Label x:Name="TerminalOutput" Text="[SPARC Mobile Console Serial Iniciado]&#10;Conecte o cabo USB OTG ao roteador e use o terminal interativo.&#10;" TextColor="#4ADE80" FontFamily="OpenSansRegular" FontSize="11" LineBreakMode="WordWrap" />
+                <Label x:Name="TerminalOutput" Text="[SPARC Mobile Console Serial Iniciado]&#10;Conecte o cabo USB OTG ao roteador e use o terminal interativo.&#10;" TextColor="#10B981" FontFamily="Consolas" FontSize="11.5" LineBreakMode="WordWrap" />
             </ScrollView>
         </Frame>
 
-        <!-- Atalhos Rápidos Cisco / HPE / Fortinet -->
+        <!-- Linha 1 de Atalhos: Sinais de Interrupção & BootWare HPE -->
         <ScrollView Grid.Row="2" Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
-            <HorizontalStackLayout Spacing="6">
-                <Button Text="Ctrl+C" Clicked="OnCtrlCClicked" BackgroundColor="#DC2626" TextColor="White" CornerRadius="6" FontSize="11" HeightRequest="32" Padding="8,0" FontAttributes="Bold" />
-                <Button Text="Enter ↵" Clicked="OnEnterClicked" BackgroundColor="#334155" TextColor="White" CornerRadius="6" FontSize="11" HeightRequest="32" Padding="8,0" />
-                <Button Text="enable" Clicked="OnShortcutClicked" CommandParameter="enable" BackgroundColor="#1E293B" TextColor="#38BDF8" CornerRadius="6" FontSize="11" HeightRequest="32" Padding="8,0" />
-                <Button Text="sh ip int br" Clicked="OnShortcutClicked" CommandParameter="show ip interface brief" BackgroundColor="#1E293B" TextColor="#38BDF8" CornerRadius="6" FontSize="11" HeightRequest="32" Padding="8,0" />
-                <Button Text="sh ip route" Clicked="OnShortcutClicked" CommandParameter="show ip route" BackgroundColor="#1E293B" TextColor="#38BDF8" CornerRadius="6" FontSize="11" HeightRequest="32" Padding="8,0" />
-                <Button Text="sh run" Clicked="OnShortcutClicked" CommandParameter="show running-config" BackgroundColor="#1E293B" TextColor="#38BDF8" CornerRadius="6" FontSize="11" HeightRequest="32" Padding="8,0" />
-                <Button Text="terminal length 0" Clicked="OnShortcutClicked" CommandParameter="terminal length 0" BackgroundColor="#1E293B" TextColor="#FBBF24" CornerRadius="6" FontSize="11" HeightRequest="32" Padding="8,0" />
-                <Button Text="write memory" Clicked="OnShortcutClicked" CommandParameter="write memory" BackgroundColor="#1E293B" TextColor="#4ADE80" CornerRadius="6" FontSize="11" HeightRequest="32" Padding="8,0" />
+            <HorizontalStackLayout Spacing="5">
+                <Label Text="Sinais &amp; BootWare:" TextColor="#64748B" FontSize="10.5" VerticalOptions="Center" Margin="0,0,4,0" FontAttributes="Bold" />
+                <Button Text="Ctrl+C" Clicked="OnCtrlCClicked" BackgroundColor="#991B1B" TextColor="White" CornerRadius="6" FontSize="10.5" HeightRequest="30" Padding="8,0" FontAttributes="Bold" />
+                <Button Text="Ctrl+B" Clicked="OnCtrlBClicked" BackgroundColor="#881337" TextColor="White" CornerRadius="6" FontSize="10.5" HeightRequest="30" Padding="8,0" FontAttributes="Bold" />
+                <Button Text="Enter ⏎" Clicked="OnEnterClicked" BackgroundColor="#374151" TextColor="White" CornerRadius="6" FontSize="10.5" HeightRequest="30" Padding="8,0" FontAttributes="Bold" />
+                <BoxView WidthRequest="1" HeightRequest="20" Color="#374151" Margin="2,0" VerticalOptions="Center" />
+                <Button Text="1 (Boot)" Clicked="OnShortcutClicked" CommandParameter="1" BackgroundColor="#1E293B" TextColor="#38BDF8" CornerRadius="6" FontSize="10.5" HeightRequest="30" Padding="6,0" />
+                <Button Text="2 (Flash)" Clicked="OnShortcutClicked" CommandParameter="2" BackgroundColor="#1E293B" TextColor="#38BDF8" CornerRadius="6" FontSize="10.5" HeightRequest="30" Padding="6,0" />
+                <Button Text="3 (Eth)" Clicked="OnShortcutClicked" CommandParameter="3" BackgroundColor="#1E293B" TextColor="#38BDF8" CornerRadius="6" FontSize="10.5" HeightRequest="30" Padding="6,0" />
+                <Button Text="5 (Param)" Clicked="OnShortcutClicked" CommandParameter="5" BackgroundColor="#1E293B" TextColor="#38BDF8" CornerRadius="6" FontSize="10.5" HeightRequest="30" Padding="6,0" />
+                <Button Text="0 (Sair)" Clicked="OnShortcutClicked" CommandParameter="0" BackgroundColor="#1E293B" TextColor="#38BDF8" CornerRadius="6" FontSize="10.5" HeightRequest="30" Padding="6,0" />
+            </HorizontalStackLayout>
+        </ScrollView>
+
+        <!-- Linha 2 de Atalhos: Comandos Operacionais (Cisco / Comware / FortiOS) -->
+        <ScrollView Grid.Row="3" Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
+            <HorizontalStackLayout Spacing="5">
+                <Label Text="Comandos:" TextColor="#64748B" FontSize="10.5" VerticalOptions="Center" Margin="0,0,4,0" FontAttributes="Bold" />
+                <Button Text="enable" Clicked="OnShortcutClicked" CommandParameter="enable" BackgroundColor="#1E293B" TextColor="#38BDF8" CornerRadius="6" FontSize="10.5" HeightRequest="30" Padding="7,0" />
+                <Button Text="sh ip int br" Clicked="OnShortcutClicked" CommandParameter="show ip interface brief" BackgroundColor="#1E293B" TextColor="#38BDF8" CornerRadius="6" FontSize="10.5" HeightRequest="30" Padding="7,0" />
+                <Button Text="sh ip route" Clicked="OnShortcutClicked" CommandParameter="show ip route" BackgroundColor="#1E293B" TextColor="#38BDF8" CornerRadius="6" FontSize="10.5" HeightRequest="30" Padding="7,0" />
+                <Button Text="sh run" Clicked="OnShortcutClicked" CommandParameter="show running-config" BackgroundColor="#1E293B" TextColor="#38BDF8" CornerRadius="6" FontSize="10.5" HeightRequest="30" Padding="7,0" />
+                <Button Text="disp ip int br" Clicked="OnShortcutClicked" CommandParameter="display ip interface brief" BackgroundColor="#1E293B" TextColor="#A78BFA" CornerRadius="6" FontSize="10.5" HeightRequest="30" Padding="7,0" />
+                <Button Text="disp current" Clicked="OnShortcutClicked" CommandParameter="display current-configuration" BackgroundColor="#1E293B" TextColor="#A78BFA" CornerRadius="6" FontSize="10.5" HeightRequest="30" Padding="7,0" />
+                <Button Text="get sys status" Clicked="OnShortcutClicked" CommandParameter="get system status" BackgroundColor="#1E293B" TextColor="#F87171" CornerRadius="6" FontSize="10.5" HeightRequest="30" Padding="7,0" />
+                <Button Text="term len 0" Clicked="OnShortcutClicked" CommandParameter="terminal length 0" BackgroundColor="#1E293B" TextColor="#FBBF24" CornerRadius="6" FontSize="10.5" HeightRequest="30" Padding="7,0" />
+                <Button Text="write mem" Clicked="OnShortcutClicked" CommandParameter="write memory" BackgroundColor="#1E293B" TextColor="#4ADE80" CornerRadius="6" FontSize="10.5" HeightRequest="30" Padding="7,0" />
             </HorizontalStackLayout>
         </ScrollView>
 
         <!-- Campo de Envio de Comando -->
-        <Grid Grid.Row="3" ColumnDefinitions="*, Auto" ColumnSpacing="8">
-            <Entry Grid.Column="0" x:Name="CommandInput" Placeholder="Comando CLI..." TextColor="White" BackgroundColor="#1E293B" Completed="OnSendCommandClicked" />
-            <Button Grid.Column="1" Text="Enviar ↵" Clicked="OnSendCommandClicked" BackgroundColor="#0284C7" TextColor="White" CornerRadius="8" FontAttributes="Bold" />
-        </Grid>
+        <Border Grid.Row="4" BackgroundColor="#111827" Stroke="#1F2937" StrokeShape="RoundRectangle 8" Padding="6,4">
+            <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="6">
+                <Label Grid.Column="0" Text="CLI >" TextColor="#10B981" FontSize="13" FontAttributes="Bold" VerticalOptions="Center" Margin="4,0" />
+                <Entry Grid.Column="1" x:Name="CommandInput" Placeholder="Comando CLI..." TextColor="White" BackgroundColor="#1F2937" FontSize="12.5" Completed="OnSendCommandClicked" />
+                <Button Grid.Column="2" Text="Enviar ⏎" Clicked="OnSendCommandClicked" BackgroundColor="#881337" TextColor="White" CornerRadius="6" FontSize="11" HeightRequest="36" Padding="12,0" FontAttributes="Bold" />
+            </Grid>
+        </Border>
     </Grid>
 </ContentPage>

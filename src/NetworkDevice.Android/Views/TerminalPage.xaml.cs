@@ -1,11 +1,13 @@
 using System.Text;
 using NetworkDevice.Android.Services;
+using NetworkDevice.Protocols.Telnet;
 
 namespace NetworkDevice.Android.Views;
 
 public partial class TerminalPage : ContentPage
 {
     private readonly DeviceConnectionManager _connManager = DeviceConnectionManager.Instance;
+    private int _currentBaudRate = 9600;
 
     public TerminalPage()
     {
@@ -24,14 +26,31 @@ public partial class TerminalPage : ContentPage
     {
         if (_connManager.IsConnected)
         {
-            var baud = (_connManager.CurrentTransport as AndroidUsbSerialTransport)?.BaudRate ?? 9600;
-            ConsoleStatusLabel.Text = $"Porta Serial: Aberta ({baud} 8N1)";
-            ConsoleStatusLabel.TextColor = Color.FromArgb("#4ADE80");
+            if (_connManager.CurrentTransport is AndroidUsbSerialTransport usb)
+            {
+                var baud = usb.BaudRate;
+                ConsoleStatusLabel.Text = $"COM USB OTG @ {baud} baud";
+                LiveBadge.Text = "🟢 CONSOLE LIVE";
+                LiveBadge.TextColor = Color.FromArgb("#10B981");
+            }
+            else if (_connManager.CurrentTransport is TcpTelnetTransport telnet)
+            {
+                ConsoleStatusLabel.Text = $"TELNET TCP: {telnet.Host}:{telnet.Port}";
+                LiveBadge.Text = "🟢 TELNET LIVE";
+                LiveBadge.TextColor = Color.FromArgb("#38BDF8");
+            }
+            else
+            {
+                ConsoleStatusLabel.Text = "Conexão Ativa";
+                LiveBadge.Text = "🟢 CONECTADO";
+                LiveBadge.TextColor = Color.FromArgb("#10B981");
+            }
         }
         else
         {
-            ConsoleStatusLabel.Text = "Porta Serial: Desconectada (conecte na aba Provisionamento)";
-            ConsoleStatusLabel.TextColor = Color.FromArgb("#EF4444");
+            ConsoleStatusLabel.Text = "Porta Desconectada";
+            LiveBadge.Text = "🔴 OFFLINE";
+            LiveBadge.TextColor = Color.FromArgb("#EF4444");
         }
     }
 
@@ -68,7 +87,7 @@ public partial class TerminalPage : ContentPage
 
     private async void OnCtrlCClicked(object? sender, EventArgs e)
     {
-        // Envia código ASCII 0x03 (ETX / Ctrl+C)
+        // ASCII 0x03 (ETX / Ctrl+C)
         if (_connManager.CurrentTransport == null || !_connManager.CurrentTransport.IsOpen)
         {
             await DisplayAlert("Aviso", "Console serial desconectado.", "OK");
@@ -87,11 +106,55 @@ public partial class TerminalPage : ContentPage
         }
     }
 
+    private async void OnCtrlBClicked(object? sender, EventArgs e)
+    {
+        // ASCII 0x02 (STX / Ctrl+B para BootWare HPE Comware)
+        if (_connManager.CurrentTransport == null || !_connManager.CurrentTransport.IsOpen)
+        {
+            await DisplayAlert("Aviso", "Console serial desconectado.", "OK");
+            return;
+        }
+
+        try
+        {
+            await _connManager.CurrentTransport.WriteAsync(new byte[] { 0x02 });
+            await Task.Delay(50);
+            TerminalOutput.Text += "\n[>>] Sinal Ctrl+B (BootWare Interruption) transmitido.\n";
+        }
+        catch (Exception ex)
+        {
+            TerminalOutput.Text += $"\n[X] Erro ao enviar Ctrl+B: {ex.Message}\n";
+        }
+    }
+
+    private async void OnToggleBaudClicked(object? sender, EventArgs e)
+    {
+        // Alterna entre 9600 e 115200
+        _currentBaudRate = _currentBaudRate == 9600 ? 115200 : 9600;
+        BaudToggleBtn.Text = $"{_currentBaudRate} bps";
+
+        if (_connManager.CurrentTransport is AndroidUsbSerialTransport usbTransport && usbTransport.IsOpen)
+        {
+            await usbTransport.ChangeBaudRateAsync(_currentBaudRate);
+            TerminalOutput.Text += $"\n[i] Velocidade da porta serial reconfigurada para {_currentBaudRate} bps.\n";
+        }
+        UpdateStatus();
+    }
+
+    private async void OnCopyTerminalClicked(object? sender, EventArgs e)
+    {
+        var text = TerminalOutput.Text;
+        if (string.IsNullOrWhiteSpace(text)) return;
+
+        await Clipboard.Default.SetTextAsync(text);
+        await DisplayAlert("Copiado", "O conteúdo do terminal foi copiado para a Área de Transferência.", "OK");
+    }
+
     private async Task SendToConsoleAsync(string text)
     {
         if (_connManager.CurrentTransport == null || !_connManager.CurrentTransport.IsOpen)
         {
-            await DisplayAlert("Aviso", "Console serial desconectado. Conecte o cabo USB na aba Provisionamento.", "OK");
+            await DisplayAlert("Aviso", "Console serial desconectado. Conecte o cabo USB na aba Ativação.", "OK");
             return;
         }
 

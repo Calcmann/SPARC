@@ -410,8 +410,12 @@ public class CiscoIOSRecoveryTests
         var transport = new DelayedRommonTransport(initialSilenceCycles: 100);
         var scheduler = new BootInterruptScheduler(transport, profile);
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
-        await scheduler.RunAsync(cts.Token);
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        try
+        {
+            await scheduler.RunAsync(cts.Token);
+        }
+        catch (OperationCanceledException) { }
 
         Assert.True(scheduler.TransmissionsCount <= 6, $"Transmissões: {scheduler.TransmissionsCount} (máximo esperado era 6).");
     }

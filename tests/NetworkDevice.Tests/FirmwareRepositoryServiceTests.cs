@@ -133,3 +133,4 @@ public class FirmwareRepositoryServiceTests : IDisposable
         Assert.Equal("https://github.com/Calcmann/repo/releases/new", svc.NewReleaseWebUrl);
     }
 }
+

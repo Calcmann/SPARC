@@ -17,7 +17,7 @@ public sealed class CiscoHttpUpgrader
         RegexOptions.Compiled);
 
     private static readonly Regex PromptLineRegex = new(
-        @"^[A-Za-z0-9_\-\.]+\s*[>#]",
+        @"^[A-Za-z0-9_\-\.]+(?:\(config[^\)]*\))?\s*[>#]\s*$",
         RegexOptions.Compiled);
 
     private readonly Func<string, Task>? _progress;

@@ -1,3 +1,5 @@
+using NetworkDevice.Core.Domain;
+
 namespace NetworkDevice.Core.Detection;
 
 // Porta WAN esperada por modelo + parsers de status (para a critica da Fase 5b).
@@ -10,6 +12,21 @@ public sealed record WanPortaInfo(
 
 public static class WanPortInspector
 {
+    public static WanPortaInfo? ObterPorSerie(DeviceSeries series)
+    {
+        return series switch
+        {
+            DeviceSeries.Isr841 => PorTagModelo("c841"),
+            DeviceSeries.Isr921 => PorTagModelo("921"),
+            DeviceSeries.Series1900 => PorTagModelo("1900"),
+            DeviceSeries.Msr930 => PorTagModelo("930"),
+            DeviceSeries.Msr954 => PorTagModelo("954"),
+            DeviceSeries.Msr1002 => PorTagModelo("1002"),
+            DeviceSeries.FortiGate40F => PorTagModelo("forti"),
+            _ => PorTagModelo(series.ToString())
+        };
+    }
+
     public static WanPortaInfo? PorTagModelo(string? tag)
     {
         var t = (tag ?? "").ToLowerInvariant();

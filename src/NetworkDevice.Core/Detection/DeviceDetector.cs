@@ -30,7 +30,7 @@ public sealed class DeviceDetector : IDeviceDetector
         RegexOptions.Compiled | RegexOptions.Multiline);
 
     public static readonly Regex FortiPromptRegex = new(
-        @"(?i)(?:FortiGate|FGT)[A-Za-z0-9_\-]*\s*(?:\([^()\r\n]*\))?\s*[#$]\s*$",
+        @"(?i)(?:FortiGate|FGT|FG)[A-Za-z0-9_\-]*\s*(?:\([^()\r\n]*\))?\s*[#$]\s*$",
         RegexOptions.Compiled);
 
     public static readonly Regex Cisco1900ModelRegex = new(
@@ -42,7 +42,7 @@ public sealed class DeviceDetector : IDeviceDetector
         RegexOptions.Compiled);
 
     public static readonly Regex Cisco841ModelRegex = new(
-        @"(?i)(?:\bC841\b|\bC841M\b|\bCISCO841\b|\bcisco\s+C?841\b|\b(?:C841|841|800M)\s*(?:BR|[A-Z]{2})?\s*(?:platform|Series|with|Integrated)\b|\bISR\s*841\b|\bc841-|\bc800-universalk9|\bc800m-|\bc841m-)",
+        @"(?i)(?:\bC841[A-Za-z0-9\-]*\b|\bCISCO\s*841[A-Za-z0-9\-]*\b|\bC800M\b|\bcisco\s+C?841\b|\b(?:C841|841|800M)\s*(?:BR|[A-Z]{2})?\s*(?:platform|Series|with|Integrated|Software)\b|\bISR\s*841\b|\bc841-|\bc800-universalk9|\bc800m-|\bc841m-)",
         RegexOptions.Compiled);
 
     public static readonly Regex Hpe1002ModelRegex = new(
@@ -59,7 +59,7 @@ public sealed class DeviceDetector : IDeviceDetector
 
     // Fortinet FortiGate 40F (aditivo — não altera os padrões Cisco/HPE acima).
     public static readonly Regex FortiGate40FModelRegex = new(
-        @"(?i)(?:\bFortiGate(?:-|\s*)40F\b|\bFGT-?40F\b|\bFGT40F\b|\bFortiOS\b.*\b40F\b)",
+        @"(?i)(?:\bFortiGate(?:-|\s*)40F\b|\bFGT-?40F\b|\bFGT40F\b|\bFG-?40F\b|\bFG40F\b|\bFortiOS\b.*\b40F\b)",
         RegexOptions.Compiled);
 
     public async Task<DeviceDetectionResult> DetectAsync(ITransport transport, CancellationToken ct = default)
@@ -101,6 +101,8 @@ public sealed class DeviceDetector : IDeviceDetector
                 if (PasswordPromptRegex.IsMatch(current) ||
                     HpePromptRegex.IsMatch(current) ||
                     CiscoPromptRegex.IsMatch(current) ||
+                    FortiPromptRegex.IsMatch(current) ||
+                    current.Contains("Verifying password", StringComparison.OrdinalIgnoreCase) ||
                     current.Contains("choice", StringComparison.OrdinalIgnoreCase) ||
                     current.Contains("rommon", StringComparison.OrdinalIgnoreCase) ||
                     current.Contains("BootWare", StringComparison.OrdinalIgnoreCase) ||
@@ -250,7 +252,11 @@ public sealed class DeviceDetector : IDeviceDetector
             || rawPrompt.Contains("config system", StringComparison.OrdinalIgnoreCase)
             || rawPrompt.Contains("config firewall", StringComparison.OrdinalIgnoreCase)
             || rawPrompt.Contains("FGT", StringComparison.OrdinalIgnoreCase)
+            || rawPrompt.Contains("FG40F", StringComparison.OrdinalIgnoreCase)
+            || rawPrompt.Contains("FG-40F", StringComparison.OrdinalIgnoreCase)
             || rawPrompt.Contains("FOS", StringComparison.OrdinalIgnoreCase)
+            || rawPrompt.Contains("Verifying password", StringComparison.OrdinalIgnoreCase)
+            || Regex.IsMatch(rawPrompt, @"(?i)(?:FortiGate|FGT|FG)[A-Za-z0-9_\-]*\s+login\s*[:?]")
             || userSelectedSeries == DeviceSeries.FortiGate40F;
 
         var isCisco = !isFortinet && (isRommon

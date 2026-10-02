@@ -30,15 +30,19 @@ internal static class MachineId
         string? email = null,
         string? cluster = null,
         string? uf = null,
-        string? clientVersion = null)
+        string? clientVersion = null,
+        string? company = null,
+        string? employeeId = null)
     {
-        var fn = EscapeJson(firstName ?? "");
-        var ln = EscapeJson(lastName ?? "");
-        var ph = EscapeJson(phone ?? "");
-        var em = EscapeJson(email ?? "");
-        var cl = EscapeJson(cluster ?? "");
-        var u = EscapeJson(uf ?? "");
+        var fn = EscapeJson(NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatPersonOrCompanyName(firstName));
+        var ln = EscapeJson(NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatPersonOrCompanyName(lastName));
+        var ph = EscapeJson(NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatPhone(phone));
+        var em = EscapeJson(NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatEmail(email));
+        var cl = EscapeJson(NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatCluster(cluster));
+        var u = EscapeJson(NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatUf(uf));
         var ver = EscapeJson(clientVersion ?? "0.8");
+        var cmp = EscapeJson(NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatPersonOrCompanyName(company));
+        var mat = EscapeJson(NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatEmployeeId(employeeId));
         var ts = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
 
         var json = "{\"g\":\"" + id.MachineGuid + "\",\"f\":\"" + id.Fingerprint + "\""
@@ -49,6 +53,9 @@ internal static class MachineId
                  + ",\"c\":\"" + cl + "\""
                  + ",\"u\":\"" + u + "\""
                  + ",\"v\":\"" + ver + "\""
+                 + ",\"plt\":\"Windows\""
+                 + ",\"cmp\":\"" + cmp + "\""
+                 + ",\"mat\":\"" + mat + "\""
                  + ",\"t\":\"" + ts + "\"}";
 
         return "SPBREQ." + Base64Url.Encode(Encoding.UTF8.GetBytes(json));

@@ -7,18 +7,21 @@ namespace NetworkDevice.Tests;
 
 public class CloudLicenseServiceTests : IDisposable
 {
+    private readonly string _tempDir;
     private readonly string _tempFile;
 
     public CloudLicenseServiceTests()
     {
-        _tempFile = Path.Combine(Path.GetTempPath(), $"devices_test_{Guid.NewGuid():N}.json");
+        _tempDir = Path.Combine(Path.GetTempPath(), $"sparc_test_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(_tempDir);
+        _tempFile = Path.Combine(_tempDir, "devices.json");
     }
 
     public void Dispose()
     {
-        if (File.Exists(_tempFile))
+        if (Directory.Exists(_tempDir))
         {
-            try { File.Delete(_tempFile); } catch { }
+            try { Directory.Delete(_tempDir, true); } catch { }
         }
     }
 
@@ -50,7 +53,7 @@ public class CloudLicenseServiceTests : IDisposable
         Assert.Equal("Lucas Moraes", record.FullName);
         Assert.Equal("Grande SP Leste", record.Cluster);
         Assert.Equal("SP", record.Uf);
-        Assert.Equal("11987654321", record.Phone);
+        Assert.Equal("(11) 98765-4321", record.Phone);
         Assert.Equal("lucas@claro.com.br", record.Email);
         Assert.Equal("SPB1.dummy.token", record.AuthorizedToken);
         Assert.Equal("Active", record.Status);
@@ -91,12 +94,16 @@ public class CloudLicenseServiceTests : IDisposable
     public async System.Threading.Tasks.Task SubmitActivationRequest_And_CheckStatus_WorksLocally()
     {
         var svc = new CloudLicenseService(_tempFile);
+        svc.ForceLocalOnly = true;
+        svc.GitHubToken = "none";
         var req = new OnlineActivationRequest
         {
             MachineGuid = "test-machine-guid-123",
             MachineFingerprint = "test-fp-123",
             FirstName = "Carlos",
             LastName = "Ferreira",
+            Company = "Claro Telecom",
+            EmployeeId = "MAT12345",
             Phone = "19988776655",
             Email = "carlos@empresa.com",
             Cluster = "Campinas",
@@ -133,6 +140,8 @@ public class CloudLicenseServiceTests : IDisposable
             MachineFingerprint = "approve-fp-456",
             FirstName = "Renato",
             LastName = "Alves",
+            Company = "Claro Telecom",
+            EmployeeId = "MAT99999",
             Phone = "21988887777",
             Email = "renato@teste.com",
             Cluster = "Rio Centro",
@@ -216,6 +225,38 @@ public class CloudLicenseServiceTests : IDisposable
 
         devices = svc.LoadLocalDevices();
         Assert.DoesNotContain(devices, d => d.MachineGuid == "dev-to-delete");
+    }
+
+    [Fact]
+    public void RegisterOrUpdateDevice_PreservesPlatform()
+    {
+        var svc = new CloudLicenseService(_tempFile);
+        var req = new ActivationRequestData(
+            RawRequest: "req",
+            MachineGuid: "and-guid-002",
+            MachineFingerprint: "and-fp-002",
+            IsValid: true,
+            ErrorMessage: null,
+            FirstName: "Carlos",
+            LastName: "Android",
+            Phone: "11988889999",
+            Email: "carlos@android.com",
+            Cluster: "Campinas",
+            Uf: "SP",
+            ClientVersion: "0.8.38",
+            Platform: "Android");
+
+        var lic = new GeneratedLicenseResult(true, "SPB1.dummy.token", "2026-10-30", DateTime.UtcNow.AddDays(30), 30, null);
+
+        var record = svc.RegisterOrUpdateDevice(req, lic, "Android Test");
+
+        Assert.Equal("Android", record.Platform);
+        Assert.Equal("📱 Android", record.PlatformBadge);
+
+        var loaded = svc.LoadLocalDevices();
+        Assert.Single(loaded);
+        Assert.Equal("Android", loaded[0].Platform);
+        Assert.Equal("📱 Android", loaded[0].PlatformBadge);
     }
 }
 

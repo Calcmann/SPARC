@@ -6,12 +6,37 @@ namespace NetworkDevice.Android.Views;
 public partial class RecoveryPage : ContentPage
 {
     private readonly DeviceConnectionManager _connManager = DeviceConnectionManager.Instance;
+    private readonly bool _isModalFlow;
+    public event Action<bool>? OnRecoveryCompleted;
 
-    public RecoveryPage()
+    public RecoveryPage() : this(false)
     {
+    }
+
+    public RecoveryPage(bool isModalFlow)
+    {
+        _isModalFlow = isModalFlow;
         InitializeComponent();
         _connManager.OnDeviceIdentified += res =>
             MainThread.BeginInvokeOnMainThread(() => ShowDetection(res));
+
+        if (_connManager.LastDetectionResult != null)
+        {
+            ShowDetection(_connManager.LastDetectionResult);
+        }
+    }
+
+    private async void OnCloseClicked(object? sender, EventArgs e)
+    {
+        OnRecoveryCompleted?.Invoke(false);
+        if (_isModalFlow)
+        {
+            await Navigation.PopModalAsync();
+        }
+        else if (Shell.Current != null)
+        {
+            await Shell.Current.GoToAsync("//ProvisioningPage");
+        }
     }
 
     private async void OnCheckLockClicked(object? sender, EventArgs e)
@@ -50,6 +75,19 @@ public partial class RecoveryPage : ContentPage
     private void ShowDetection(DeviceDetectionResult res)
     {
         DetectedInfoLabel.Text = $"{res.Manufacturer} | {res.Series} | {res.OperatingState}";
+        var serial = _connManager.LastDetectedSerial;
+        if (string.IsNullOrWhiteSpace(serial) && res.Details.Contains("S/N:"))
+        {
+            var idx = res.Details.IndexOf("S/N:");
+            serial = res.Details.Substring(idx + 4).Trim().Split(' ', ',', '\r', '\n')[0];
+        }
+
+        if (!string.IsNullOrWhiteSpace(serial))
+        {
+            TxtSerialNumber.Text = serial;
+            BorderSerialNumber.IsVisible = true;
+        }
+
         if (res.OperatingState == DeviceOperatingState.PasswordProtected)
         {
             LockBadge.Text = "🔒 BLOQUEADO";
@@ -65,6 +103,15 @@ public partial class RecoveryPage : ContentPage
             LockBadge.Text = res.OperatingState.ToString().ToUpperInvariant();
             LockBadge.TextColor = Color.FromArgb("#EF4444");
         }
+    }
+
+    private async void OnCopyLogClicked(object? sender, EventArgs e)
+    {
+        var log = RecoveryLogEditor.Text;
+        if (string.IsNullOrWhiteSpace(log)) return;
+
+        await Clipboard.Default.SetTextAsync(log);
+        await DisplayAlert("Copiado", "Log de recuperação copiado para a Área de Transferência.", "OK");
     }
 
     // ---------- OPÇÃO 1: login direto ----------
@@ -95,6 +142,13 @@ public partial class RecoveryPage : ContentPage
             }
 
             AppendLog("[✓] LOGIN ACEITO — quebra de senha dispensada!");
+            OnRecoveryCompleted?.Invoke(true);
+            if (_isModalFlow)
+            {
+                await DisplayAlert("Sucesso", "Login autenticado com sucesso!\n\nRetornando para a tela de Provisionamento...", "OK");
+                await Navigation.PopModalAsync();
+                return;
+            }
             await ContinueProvisioningAsync();
         }
         catch (Exception ex)
@@ -124,6 +178,7 @@ public partial class RecoveryPage : ContentPage
         if (!confirm) return;
 
         BreakBtn.IsEnabled = false;
+        DeviceDisplay.Current.KeepScreenOn = true;
         AppendLog("[*] =================================================================");
         AppendLog("[*]           QUEBRA DE SENHA E RESET DE FÁBRICA                    ");
         AppendLog("[*] =================================================================");
@@ -137,11 +192,20 @@ public partial class RecoveryPage : ContentPage
             if (!ok)
             {
                 AppendLog("[X] Recuperação não confirmada. Tente novamente.");
+                try { Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(250)); } catch { }
                 await DisplayAlert("Não confirmado", "O reset não foi confirmado. Tente novamente seguindo as instruções.", "OK");
                 return;
             }
 
             AppendLog("\n[✓] EQUIPAMENTO ZERADO E DESBLOQUEADO!");
+            try { Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(500)); } catch { }
+            OnRecoveryCompleted?.Invoke(true);
+            if (_isModalFlow)
+            {
+                await DisplayAlert("Sucesso", "Senha quebrada e equipamento liberado com sucesso!\n\nRetornando para a tela de Provisionamento...", "OK");
+                await Navigation.PopModalAsync();
+                return;
+            }
             await ContinueProvisioningAsync();
         }
         catch (OperationCanceledException)
@@ -151,10 +215,12 @@ public partial class RecoveryPage : ContentPage
         catch (Exception ex)
         {
             AppendLog($"[X] FALHA NA RECUPERAÇÃO: {ex.Message}");
+            try { Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(250)); } catch { }
             await DisplayAlert("Erro na Recuperação", ex.Message, "OK");
         }
         finally
         {
+            DeviceDisplay.Current.KeepScreenOn = false;
             BreakBtn.IsEnabled = true;
         }
     }

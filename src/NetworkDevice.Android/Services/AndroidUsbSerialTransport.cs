@@ -43,7 +43,8 @@ public sealed class AndroidUsbSerialTransport : ITransport
                 var match = allDevices.FirstOrDefault(d => d.DeviceId == _device.DeviceId)
                          ?? allDevices.FirstOrDefault(d => d.VendorId == _device.VendorId && d.ProductId == _device.ProductId)
                          ?? allDevices.FirstOrDefault(d => d.DeviceName == _device.DeviceName)
-                         ?? allDevices[0];
+                         ?? allDevices.FirstOrDefault(DeviceConnectionManager.IsSupportedSerialDevice)
+                         ?? _device;
                 _device = match;
             }
         }

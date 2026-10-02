@@ -2,10 +2,17 @@ using System;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using NetworkDevice.Core.Detection;
 using NetworkDevice.Core.Domain;
 using NetworkDevice.Core.Session;
 
 namespace NetworkDevice.Core.Firmware;
+
+public sealed record WanDiagnosticsResult(
+    string InterfaceName,
+    bool IsPhysicalUp,
+    bool HasInternet,
+    string Details);
 
 public sealed record RouterFirmwareStatus(
     bool IsWanReachable,
@@ -50,7 +57,14 @@ public sealed class RouterDirectFirmwareUpdater
     }
 
     /// <summary>
-    /// Audita a versão instalada no roteador comparando com a versão homologada na Nuvem.
+    /// Avaliador externo opcional plugado por camadas com dependências específicas (ex.: CiscoIOSFirmwareVersionInspector, FortiOsFirmwareVersionInspector).
+    /// Assinatura: (series, rawDeviceOutput, targetFileName) => bool isSameVersion
+    /// </summary>
+    public static Func<DeviceSeries, string, string, bool>? ExternalComplianceEvaluator { get; set; }
+
+    /// <summary>
+    /// Audita a versão instalada no roteador comparando de forma estrita com a versão homologada na Nuvem.
+    /// Previne falsos positivos (ex: M11 vs M12, 7.2.6 vs 7.2.11).
     /// </summary>
     public async Task<RouterFirmwareStatus> AuditComplianceAsync(
         DeviceSession session,
@@ -60,16 +74,35 @@ public sealed class RouterDirectFirmwareUpdater
     {
         await _logger("[*] [Auditoria] Verificando versão de firmware instalada no roteador...");
 
-        var currentVer = await DetectCurrentVersionAsync(session, series, ct).ConfigureAwait(false);
+        string rawOutput = string.Empty;
+        try
+        {
+            if (series is DeviceSeries.Msr930 or DeviceSeries.Msr954 or DeviceSeries.Msr1002)
+            {
+                rawOutput = await session.SendCommandAsync("display version", TimeSpan.FromSeconds(15), ct).ConfigureAwait(false);
+            }
+            else if (series == DeviceSeries.FortiGate40F)
+            {
+                rawOutput = await session.SendCommandAsync("get system status", TimeSpan.FromSeconds(15), ct).ConfigureAwait(false);
+            }
+            else
+            {
+                rawOutput = await session.SendCommandAsync("show version", TimeSpan.FromSeconds(15), ct).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            await _logger($"[AVISO] Falha ao coletar dados de versão: {ex.Message}");
+        }
+
+        var currentVer = ExtractDisplayVersion(series, rawOutput);
         var officialName = officialRemote?.FileName;
         var officialSize = officialRemote?.SizeBytes ?? 0L;
 
         bool compliant = false;
         if (!string.IsNullOrWhiteSpace(officialName))
         {
-            compliant = currentVer.Contains(officialName, StringComparison.OrdinalIgnoreCase) ||
-                        (!string.IsNullOrWhiteSpace(officialRemote?.DetectedVersion) &&
-                         currentVer.Contains(officialRemote.DetectedVersion, StringComparison.OrdinalIgnoreCase));
+            compliant = EvaluateComplianceStrict(series, rawOutput, currentVer, officialName, officialRemote?.DetectedVersion);
         }
 
         var reachable = await TestWanReachabilityAsync(session, series, ct).ConfigureAwait(false);
@@ -88,6 +121,173 @@ public sealed class RouterDirectFirmwareUpdater
     }
 
     /// <summary>
+    /// Avalia a conformidade de firmware de forma estrita, sem ambiguidades de substring.
+    /// </summary>
+    public static bool EvaluateComplianceStrict(
+        DeviceSeries series,
+        string rawDeviceOutput,
+        string currentVer,
+        string targetFileName,
+        string? targetDetectedVer = null)
+    {
+        if (string.IsNullOrWhiteSpace(targetFileName))
+            return false;
+
+        var cleanTarget = Path.GetFileName(targetFileName).Trim();
+
+        // 1. Avaliador externo plugado (ex.: CiscoIOSFirmwareVersionInspector / FortiOsFirmwareVersionInspector)
+        if (ExternalComplianceEvaluator != null)
+        {
+            try
+            {
+                return ExternalComplianceEvaluator(series, rawDeviceOutput, cleanTarget);
+            }
+            catch
+            {
+                // Fallback para avaliação estrita interna
+            }
+        }
+
+        // 2. Cisco IOS (ISR 841, ISR 921, 1900, etc.)
+        if (series is DeviceSeries.Isr841 or DeviceSeries.Isr921 or DeviceSeries.Series1900)
+        {
+            return EvaluateCiscoStrict(rawDeviceOutput, currentVer, cleanTarget);
+        }
+
+        // 3. Fortinet FortiGate 40F
+        if (series == DeviceSeries.FortiGate40F)
+        {
+            return EvaluateFortinetStrict(rawDeviceOutput, currentVer, cleanTarget);
+        }
+
+        // 4. HPE Comware
+        if (series is DeviceSeries.Msr930 or DeviceSeries.Msr954 or DeviceSeries.Msr1002)
+        {
+            return EvaluateHpeCompliance(rawDeviceOutput, cleanTarget, currentVer);
+        }
+
+        // Genérico: nome exato do arquivo presente
+        return cleanTarget.Equals(currentVer, StringComparison.OrdinalIgnoreCase) ||
+               (!string.IsNullOrWhiteSpace(rawDeviceOutput) && rawDeviceOutput.Contains(cleanTarget, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool EvaluateCiscoStrict(string rawOutput, string currentVer, string targetFileName)
+    {
+        // Se a saída contém o System image file idêntico
+        if (!string.IsNullOrWhiteSpace(rawOutput))
+        {
+            var imgMatch = Regex.Match(rawOutput, @"(?im)System\s+image\s+file\s+is\s+""(?:[^:\""]+:)?(?:\/)?(?<fileName>[^\""\r\n]+)""");
+            if (imgMatch.Success)
+            {
+                var runningFile = Path.GetFileName(imgMatch.Groups["fileName"].Value.Trim());
+                if (runningFile.Equals(targetFileName, StringComparison.OrdinalIgnoreCase) ||
+                    Path.GetFileNameWithoutExtension(runningFile).Equals(Path.GetFileNameWithoutExtension(targetFileName), StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+        }
+
+        // Extrai versão canônica do alvo (ex: 159-3.M12 -> 15.9(3)M12)
+        var targetCanonical = ExtractCiscoCanonical(targetFileName);
+        var runningCanonical = ExtractCiscoCanonical(currentVer) ?? (!string.IsNullOrWhiteSpace(rawOutput) ? ExtractCiscoCanonical(rawOutput) : null);
+
+        if (!string.IsNullOrWhiteSpace(targetCanonical) && !string.IsNullOrWhiteSpace(runningCanonical))
+        {
+            return string.Equals(targetCanonical, runningCanonical, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Se o nome do arquivo exato bate
+        if (currentVer.Equals(targetFileName, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return false;
+    }
+
+    private static string? ExtractCiscoCanonical(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+
+        // Formato 15.9(3)M12 ou 15.7(3)M9
+        var m1 = Regex.Match(text, @"(?im)\b(?<ver>\d+\.\d+\(\d+\)[A-Za-z0-9]+)");
+        if (m1.Success)
+            return Regex.Replace(m1.Groups["ver"].Value, @"\s+", "").ToUpperInvariant();
+
+        // Formato no binário: 159-3.M12 -> 15.9(3)M12
+        var m2 = Regex.Match(text, @"(?i)(?<maj>\d{2,3})-(?<min>\d+)\.(?<trn>[A-Za-z0-9]+)");
+        if (m2.Success)
+        {
+            var maj = m2.Groups["maj"].Value;
+            var min = m2.Groups["min"].Value;
+            var trn = m2.Groups["trn"].Value;
+            if (maj.Length == 3)
+            {
+                return $"{maj[0]}{maj[1]}.{maj[2]}({min}){trn}".ToUpperInvariant();
+            }
+        }
+
+        // Formato com ponto: 15.9-3.M12 -> 15.9(3)M12
+        var m3 = Regex.Match(text, @"(?i)(?<maj>\d+)\.(?<submaj>\d+)-(?<min>\d+)\.(?<trn>[A-Za-z0-9]+)");
+        if (m3.Success)
+        {
+            return $"{m3.Groups["maj"].Value}.{m3.Groups["submaj"].Value}({m3.Groups["min"].Value}){m3.Groups["trn"].Value}".ToUpperInvariant();
+        }
+
+        return null;
+    }
+
+    private static bool EvaluateFortinetStrict(string rawOutput, string currentVer, string targetFileName)
+    {
+        // Alvo: FGT_40F-v7.2.11.M-build1740-FORTINET.out
+        var tgtVerMatch = Regex.Match(targetFileName, @"(?i)v?(?<ver>\d+\.\d+\.\d+)");
+        var tgtBldMatch = Regex.Match(targetFileName, @"(?i)build(?<build>\d+)");
+
+        var text = $"{currentVer} {rawOutput}";
+        var curVerMatch = Regex.Match(text, @"(?i)v?(?<ver>\d+\.\d+\.\d+)");
+        var curBldMatch = Regex.Match(text, @"(?i)build(?<build>\d+)");
+
+        if (tgtVerMatch.Success && curVerMatch.Success)
+        {
+            if (!string.Equals(tgtVerMatch.Groups["ver"].Value, curVerMatch.Groups["ver"].Value, StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (tgtBldMatch.Success && curBldMatch.Success)
+            {
+                if (int.TryParse(tgtBldMatch.Groups["build"].Value, out var tb) &&
+                    int.TryParse(curBldMatch.Groups["build"].Value, out var cb))
+                {
+                    return tb == cb;
+                }
+            }
+            return true;
+        }
+
+        return false;
+    }
+
+    public static bool EvaluateHpeCompliance(string rawOutput, string targetFileName, string? currentVer = null)
+    {
+        // Alvo: MSR954-CMW710-R6749P43.ipe
+        var tgtRelMatch = Regex.Match(targetFileName, @"(?i)[-_]R(?<rel>\d{4}[A-Za-z0-9]+)");
+        var text = $"{currentVer} {rawOutput}";
+        var curRelMatch = Regex.Match(text, @"(?i)Release\s+(?<rel>\d{4}[A-Za-z0-9]+)|[-_]R(?<rel>\d{4}[A-Za-z0-9]+)");
+
+        if (tgtRelMatch.Success && curRelMatch.Success)
+        {
+            var tgtRel = tgtRelMatch.Groups["rel"].Value.TrimStart('0');
+            var curRel = curRelMatch.Groups["rel"].Value.TrimStart('0');
+            return string.Equals(tgtRel, curRel, StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (!string.IsNullOrWhiteSpace(targetFileName) && !string.IsNullOrWhiteSpace(rawOutput))
+        {
+            return rawOutput.Contains(targetFileName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Detecta a versão atual do sistema operacional no roteador via console serial.
     /// </summary>
     public static async Task<string> DetectCurrentVersionAsync(
@@ -100,34 +300,74 @@ public sealed class RouterDirectFirmwareUpdater
             if (series is DeviceSeries.Msr930 or DeviceSeries.Msr954 or DeviceSeries.Msr1002)
             {
                 var resp = await session.SendCommandAsync("display version", TimeSpan.FromSeconds(15), ct).ConfigureAwait(false);
-                var match = Regex.Match(resp, @"(?im)Comware\s+Software.*?(Release\s+[^\r\n]+)");
-                if (match.Success) return match.Value.Trim();
-                var bootMatch = Regex.Match(resp, @"(?im)Boot\s+Image:\s*([^\r\n]+)");
-                if (bootMatch.Success) return bootMatch.Groups[1].Value.Trim();
-                return "HPE Comware";
+                return ExtractDisplayVersion(series, resp);
             }
             else if (series == DeviceSeries.FortiGate40F)
             {
                 var resp = await session.SendCommandAsync("get system status", TimeSpan.FromSeconds(15), ct).ConfigureAwait(false);
-                var match = Regex.Match(resp, @"(?im)Version:\s*([^\r\n]+)");
-                if (match.Success) return match.Groups[1].Value.Trim();
-                return "FortiOS";
+                return ExtractDisplayVersion(series, resp);
             }
             else
             {
                 // Cisco IOS
                 var resp = await session.SendCommandAsync("show version", TimeSpan.FromSeconds(15), ct).ConfigureAwait(false);
-                var imgMatch = Regex.Match(resp, @"(?im)System\s+image\s+file\s+is\s+""(?:flash:)?([^""]+)""");
-                if (imgMatch.Success) return imgMatch.Groups[1].Value.Trim();
-
-                var verMatch = Regex.Match(resp, @"(?im)Cisco\s+IOS\s+Software.*?(Version\s+[^\r\n,]+)");
-                if (verMatch.Success) return verMatch.Groups[1].Value.Trim();
-                return "Cisco IOS";
+                return ExtractDisplayVersion(series, resp);
             }
         }
         catch
         {
             return "Não identificado";
+        }
+    }
+
+    public static string ExtractDisplayVersion(DeviceSeries series, string rawOutput)
+    {
+        if (string.IsNullOrWhiteSpace(rawOutput)) return "Não identificado";
+
+        if (series is DeviceSeries.Msr930 or DeviceSeries.Msr954 or DeviceSeries.Msr1002)
+        {
+            var match = Regex.Match(rawOutput, @"(?im)Comware\s+Software.*?(Release\s+[^\r\n]+)");
+            if (match.Success) return match.Value.Trim();
+            var bootMatch = Regex.Match(rawOutput, @"(?im)Boot\s+Image:\s*([^\r\n]+)");
+            if (bootMatch.Success) return bootMatch.Groups[1].Value.Trim();
+            return "HPE Comware";
+        }
+        else if (series == DeviceSeries.FortiGate40F)
+        {
+            var match = Regex.Match(rawOutput, @"(?im)Version:\s*([^\r\n]+)");
+            if (match.Success) return match.Groups[1].Value.Trim();
+            return "FortiOS";
+        }
+        else
+        {
+            // Cisco IOS
+            string? fileName = null;
+            var imgMatch = Regex.Match(rawOutput, @"(?im)System\s+image\s+file\s+is\s+""(?:[^:\""]+:)?(?:\/)?(?<fileName>[^\""\r\n]+)""");
+            if (imgMatch.Success)
+            {
+                fileName = Path.GetFileName(imgMatch.Groups["fileName"].Value.Trim());
+            }
+
+            string? ver = null;
+            var verMatch = Regex.Match(rawOutput, @"(?im)Cisco\s+IOS\s+Software.*?(?:Version\s+|,\s*Version\s*)(?<ver>[0-9]+\.[0-9]+\([0-9]+\)[A-Za-z0-9]+)");
+            if (verMatch.Success)
+            {
+                ver = verMatch.Groups["ver"].Value.Trim();
+            }
+            else
+            {
+                var genMatch = Regex.Match(rawOutput, @"(?im)\bVersion\s+(?<ver>[0-9]+\.[0-9]+\([0-9]+\)[A-Za-z0-9]+)");
+                if (genMatch.Success) ver = genMatch.Groups["ver"].Value.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(ver) && !string.IsNullOrWhiteSpace(fileName))
+                return $"{ver} ({fileName})";
+            if (!string.IsNullOrWhiteSpace(ver))
+                return ver;
+            if (!string.IsNullOrWhiteSpace(fileName))
+                return fileName;
+
+            return "Cisco IOS";
         }
     }
 
@@ -147,7 +387,12 @@ public sealed class RouterDirectFirmwareUpdater
                 : "ping 8.8.8.8 repeat 3";
 
             var resp = await session.SendCommandAsync(pingCmd, TimeSpan.FromSeconds(12), ct).ConfigureAwait(false);
-            if (resp.Contains("!") || resp.Contains("Success rate is") || resp.Contains("0% packet loss") || resp.Contains("bytes from 8.8.8.8"))
+            bool pingSuccess = resp.Contains("!") ||
+                               (resp.Contains("Success rate is") && !resp.Contains("Success rate is 0 percent")) ||
+                               (resp.Contains("packet loss") && !resp.Contains("100% packet loss") && !resp.Contains("100.0% packet loss") && (resp.Contains("0% packet loss") || resp.Contains("0.0% packet loss"))) ||
+                               resp.Contains("bytes from 8.8.8.8");
+
+            if (pingSuccess)
             {
                 await _logger("[✓] Conectividade WAN confirmada no roteador!");
                 return true;
@@ -160,6 +405,64 @@ public sealed class RouterDirectFirmwareUpdater
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// Diagnostica o status físico da porta WAN e a conectividade com a internet a partir do roteador.
+    /// </summary>
+    public async Task<WanDiagnosticsResult> CheckWanAndInternetAsync(
+        DeviceSession session,
+        DeviceSeries series,
+        CancellationToken ct = default)
+    {
+        var wanInfo = WanPortInspector.ObterPorSerie(series)
+                      ?? WanPortInspector.PorTagModelo(series.ToString())
+                      ?? new WanPortaInfo("Genérico", "WAN", new[] { "wan", "gigabitethernet0/4", "gigabitethernet4", "ge0/0" }, false);
+
+        await _logger($"[*] Verificando status físico da porta WAN ({wanInfo.InterfaceExibicao})...");
+
+        bool physicalUp = false;
+        try
+        {
+            if (wanInfo.IsForti || series == DeviceSeries.FortiGate40F)
+            {
+                var resp = await session.SendCommandAsync("get system interface physical", TimeSpan.FromSeconds(10), ct).ConfigureAwait(false);
+                var (found, down) = WanPortInspector.FortiWanStatus(resp, wanInfo.NomesBusca);
+                physicalUp = found && !down;
+            }
+            else if (wanInfo.IsHpe || series is DeviceSeries.Msr930 or DeviceSeries.Msr954 or DeviceSeries.Msr1002)
+            {
+                var resp = await session.SendCommandAsync("display interface brief", TimeSpan.FromSeconds(10), ct).ConfigureAwait(false);
+                var (found, down) = WanPortInspector.HpeWanStatus(resp, wanInfo.NomesBusca);
+                physicalUp = found && !down;
+            }
+            else
+            {
+                // Cisco IOS
+                var resp = await session.SendCommandAsync("show ip interface brief", TimeSpan.FromSeconds(10), ct).ConfigureAwait(false);
+                var (found, down) = WanPortInspector.CiscoWanStatus(resp, wanInfo.NomesBusca);
+                physicalUp = found && !down;
+            }
+        }
+        catch (Exception ex)
+        {
+            await _logger($"[AVISO] Falha ao consultar status da interface WAN: {ex.Message}");
+        }
+
+        if (!physicalUp)
+        {
+            await _logger($"[!] Porta WAN {wanInfo.InterfaceExibicao} está DOWN (sem link físico conectado).");
+            return new WanDiagnosticsResult(wanInfo.InterfaceExibicao, false, false, $"Porta WAN {wanInfo.InterfaceExibicao} está DOWN (sem link físico).");
+        }
+
+        await _logger($"[✓] Porta WAN {wanInfo.InterfaceExibicao} está UP (Link físico ativo).");
+        var hasInternet = await TestWanReachabilityAsync(session, series, ct).ConfigureAwait(false);
+
+        var details = hasInternet
+            ? $"Porta WAN {wanInfo.InterfaceExibicao} UP e Conectividade Internet OK."
+            : $"Porta WAN {wanInfo.InterfaceExibicao} UP, mas sem conectividade com a Internet.";
+
+        return new WanDiagnosticsResult(wanInfo.InterfaceExibicao, true, hasInternet, details);
     }
 
     /// <summary>

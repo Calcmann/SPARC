@@ -21,7 +21,10 @@ public sealed record ActivationRequestData(
     string? Cluster = null,
     string? Uf = null,
     string? ClientVersion = null,
-    DateTime? RequestTimeUtc = null)
+    DateTime? RequestTimeUtc = null,
+    string? Platform = "Windows",
+    string? Company = null,
+    string? EmployeeId = null)
 {
     public string FullName
     {
@@ -33,6 +36,12 @@ public sealed record ActivationRequestData(
             return string.IsNullOrWhiteSpace(combined) ? "(Técnico não informado)" : combined;
         }
     }
+
+    public string PlatformBadge =>
+        (string.Equals(Platform, "Android", StringComparison.OrdinalIgnoreCase) ||
+         ClientVersion?.Contains("Android", StringComparison.OrdinalIgnoreCase) == true)
+        ? "📱 Android"
+        : "🪟 Windows";
 }
 
 public sealed record GeneratedLicenseResult(
@@ -46,11 +55,14 @@ public sealed record GeneratedLicenseResult(
 public sealed class ActivationKeyHistoryItem
 {
     public DateTime GeneratedAtUtc { get; set; } = DateTime.UtcNow;
+    public string Platform { get; set; } = "Windows";
     public string TechnicianName { get; set; } = string.Empty;
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
     public string Phone { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
+    public string Company { get; set; } = string.Empty;
+    public string EmployeeId { get; set; } = string.Empty;
     public string Cluster { get; set; } = string.Empty;
     public string Uf { get; set; } = string.Empty;
     public string Notes { get; set; } = string.Empty;
@@ -59,6 +71,12 @@ public sealed class ActivationKeyHistoryItem
     public int ValidDays { get; set; } = 30;
     public string ExpirationDate { get; set; } = string.Empty;
     public string LicenseToken { get; set; } = string.Empty;
+
+    public string PlatformBadge =>
+        (string.Equals(Platform, "Android", StringComparison.OrdinalIgnoreCase) ||
+         Notes?.Contains("Android", StringComparison.OrdinalIgnoreCase) == true)
+        ? "📱 Android"
+        : "🪟 Windows";
 }
 
 /// <summary>
@@ -161,13 +179,31 @@ public sealed class LicenseSignerService
                 return new ActivationRequestData(clean, string.Empty, string.Empty, false, "Código sem identificação de hardware da máquina.");
             }
 
-            var n = root.TryGetProperty("n", out var nProp) ? nProp.GetString() : null;
-            var s = root.TryGetProperty("s", out var sProp) ? sProp.GetString() : null;
-            var p = root.TryGetProperty("p", out var pProp) ? pProp.GetString() : null;
-            var e = root.TryGetProperty("e", out var eProp) ? eProp.GetString() : null;
-            var c = root.TryGetProperty("c", out var cProp) ? cProp.GetString() : null;
-            var u = root.TryGetProperty("u", out var uProp) ? uProp.GetString() : null;
+            var n = root.TryGetProperty("n", out var nProp) ? SparcTextSanitizer.FormatPersonOrCompanyName(nProp.GetString()) : null;
+            var s = root.TryGetProperty("s", out var sProp) ? SparcTextSanitizer.FormatPersonOrCompanyName(sProp.GetString()) : null;
+            var p = root.TryGetProperty("p", out var pProp) ? SparcTextSanitizer.FormatPhone(pProp.GetString()) : null;
+            var e = root.TryGetProperty("e", out var eProp) ? SparcTextSanitizer.FormatEmail(eProp.GetString()) : null;
+            var c = root.TryGetProperty("c", out var cProp) ? SparcTextSanitizer.FormatCluster(cProp.GetString()) : null;
+            var u = root.TryGetProperty("u", out var uProp) ? SparcTextSanitizer.FormatUf(uProp.GetString()) : null;
             var v = root.TryGetProperty("v", out var vProp) ? vProp.GetString() : null;
+            var cmp = root.TryGetProperty("cmp", out var cmpProp) ? SparcTextSanitizer.FormatPersonOrCompanyName(cmpProp.GetString()) : null;
+            var mat = root.TryGetProperty("mat", out var matProp) ? SparcTextSanitizer.FormatEmployeeId(matProp.GetString()) : null;
+            var plt = root.TryGetProperty("plt", out var pltProp) ? pltProp.GetString() : null;
+            if (string.IsNullOrWhiteSpace(plt))
+            {
+                // Heurística de fallback: detecta Android via fingerprint ou versão
+                if ((v?.Contains("Android", StringComparison.OrdinalIgnoreCase) == true) ||
+                    clean.Contains("Android", StringComparison.OrdinalIgnoreCase) ||
+                    f.StartsWith("AND-", StringComparison.OrdinalIgnoreCase))
+                {
+                    plt = "Android";
+                }
+                else
+                {
+                    plt = "Windows";
+                }
+            }
+
             DateTime? reqTime = null;
             if (root.TryGetProperty("t", out var tProp) && DateTime.TryParse(tProp.GetString(), out var parsedTime))
             {
@@ -187,7 +223,10 @@ public sealed class LicenseSignerService
                 Cluster: c,
                 Uf: u,
                 ClientVersion: v,
-                RequestTimeUtc: reqTime);
+                RequestTimeUtc: reqTime,
+                Platform: plt,
+                Company: cmp,
+                EmployeeId: mat);
         }
         catch (Exception ex)
         {
@@ -233,11 +272,14 @@ public sealed class LicenseSignerService
             SaveToHistory(new ActivationKeyHistoryItem
             {
                 GeneratedAtUtc = DateTime.UtcNow,
+                Platform = req.Platform ?? "Windows",
                 TechnicianName = technicianName?.Trim() ?? req.FullName,
                 FirstName = req.FirstName ?? string.Empty,
                 LastName = req.LastName ?? string.Empty,
                 Phone = req.Phone ?? string.Empty,
                 Email = req.Email ?? string.Empty,
+                Company = req.Company ?? string.Empty,
+                EmployeeId = req.EmployeeId ?? string.Empty,
                 Cluster = req.Cluster ?? string.Empty,
                 Uf = req.Uf ?? string.Empty,
                 Notes = notes?.Trim() ?? string.Empty,

@@ -21,6 +21,8 @@ public sealed class OnlineDeviceRecord
     public string LastName { get; set; } = string.Empty;
     public string Phone { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
+    public string Company { get; set; } = string.Empty;
+    public string EmployeeId { get; set; } = string.Empty;
     public string Cluster { get; set; } = string.Empty;
     public string Uf { get; set; } = string.Empty;
     public string ClientVersion { get; set; } = "0.8";
@@ -31,6 +33,21 @@ public sealed class OnlineDeviceRecord
     public string Status { get; set; } = "Active"; // "Active", "Expired", "Revoked"
     public string AuthorizedToken { get; set; } = string.Empty;
     public string Notes { get; set; } = string.Empty;
+    public string Platform { get; set; } = "Windows";
+
+    public string PlatformBadge
+    {
+        get
+        {
+            if (string.Equals(Platform, "Android", StringComparison.OrdinalIgnoreCase) ||
+                Notes?.Contains("Android", StringComparison.OrdinalIgnoreCase) == true ||
+                ClientVersion?.Contains("Android", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                return "📱 Android";
+            }
+            return "🪟 Windows";
+        }
+    }
 
     public string FullName
     {

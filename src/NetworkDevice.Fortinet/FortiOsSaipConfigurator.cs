@@ -249,6 +249,17 @@ public sealed class FortiOsSaipConfigurator
         var aplicarNat = incluirPolicyNat ?? IncluirNatLab;
 
         await ProgressAsync($"[*] INICIANDO PROVISIONAMENTO SAIP NO FORTIGATE 40F ({circuit.DesignacaoIp ?? circuit.NumeroOts})...");
+
+        // Verificação impeditiva: se o equipamento estiver em BIOS / FortiBootLoader (sem SO)
+        var prompt = (session.CurrentPrompt ?? string.Empty).Trim();
+        if (session.Mode == ExecMode.Rommon ||
+            prompt.Contains("FortiBootLoader", StringComparison.OrdinalIgnoreCase) ||
+            prompt.Contains("Enter C,R,T,F,I,B,Q,or H:", StringComparison.OrdinalIgnoreCase) ||
+            prompt.Contains("Enter Selection:", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("O equipamento se encontra em modo BIOS/FortiBootLoader (sem sistema operacional carregado). É OBRIGATÓRIO executar a recuperação de firmware antes de provisionar.");
+        }
+
         if (aplicarNat)
             await ProgressAsync("[*] Opção secreta NAT (LAB) ATIVA: política de firewall com NAT ('set nat enable') habilitada para modem 4G.");
         else

@@ -12,6 +12,10 @@ public sealed class CiscoIOSUpgrader
         @"(?i)(?:Address or name of remote host|Source filename|Destination filename|erase flash|over-write|continue\?|\[confirm\]|\?)\s*$",
         RegexOptions.Compiled);
 
+    private static readonly Regex StrictPromptRegex = new(
+        @"^[A-Za-z0-9_\-\.]+(?:\(config[^\)]*\))?\s*[>#]\s*$",
+        RegexOptions.Compiled);
+
     private readonly Func<string, Task>? _progress;
     private readonly Action<int, string, string>? _onProgress;
 
@@ -193,9 +197,19 @@ public sealed class CiscoIOSUpgrader
                 var stopwatch = System.Diagnostics.Stopwatch.StartNew();
                 var lastUiUpdate = DateTime.MinValue;
                 var lastLoggedPct = -1;
+                long tftpTotalSent = 0;
+                bool tftpTransferStarted = false;
+                bool tftpTransferCompleted = false;
 
                 tftpServer.TransferProgress += (file, sent, total, pct) =>
                 {
+                    tftpTotalSent = sent;
+                    tftpTransferStarted = true;
+                    if (total > 0 && sent >= total)
+                    {
+                        tftpTransferCompleted = true;
+                    }
+
                     var now = DateTime.UtcNow;
                     var elapsedSec = stopwatch.Elapsed.TotalSeconds;
                     var sentMb = sent / (1024.0 * 1024.0);
@@ -271,62 +285,124 @@ public sealed class CiscoIOSUpgrader
                         await ProgressAsync($"[AVISO] Ping para o PC ({hostIpAddress}) ainda sem resposta. Prosseguindo com TFTP...");
                     }
 
+                    // Limpa buffers residuais do console antes de iniciar cópia
+                    try { await session.SendCommandAsync(string.Empty, TimeSpan.FromMilliseconds(500), cancellationToken); } catch { }
+
                     // Envia o comando de cópia TFTP para a flash
                     await ProgressAsync($"[*] Solicitando cópia TFTP: copy tftp://{hostIpAddress}/{binFileName} flash:{binFileName}...");
                     var copyCmd = $"copy tftp://{hostIpAddress}/{binFileName} flash:{binFileName}";
                     await session.WriteLineAsync(copyCmd, cancellationToken);
                     var fullOutput = new System.Text.StringBuilder();
 
-                    // 1. Responde a pergunta de confirmação de destino do Cisco IOS (Destination filename [...])
-                    var confirmConds = new StopCondition[]
+                    // Condições de parada para monitoramento do TFTP
+                    var copyConds = new StopCondition[]
                     {
                         new StopCondition.LineRegex("confirm", PromptConfirmRegex),
-                        new StopCondition.LineRegex("prompt", new Regex(@"^[A-Za-z0-9_\-\.]+\s*[>#]")),
-                        new StopCondition.Contains("error", "%Error"),
-                        new StopCondition.Contains("error_sp", "% Error")
-                    };
-
-                    try
-                    {
-                        var confirmExp = await session.WaitForAsync(confirmConds, TimeSpan.FromSeconds(15), cancellationToken);
-                        fullOutput.Append(confirmExp.Output);
-                        if (confirmExp.Matched is StopCondition.LineRegex lrConf && lrConf.Name == "confirm")
-                        {
-                            await session.WriteLineAsync(string.Empty, cancellationToken);
-                        }
-                    }
-                    catch (SessionTimeoutException)
-                    {
-                        // Se não solicitou confirmação de nome, continua monitorando
-                    }
-
-                    // 2. Monitora transferência do arquivo até a conclusão total (retorno do prompt)
-                    var transferConds = new StopCondition[]
-                    {
-                        new StopCondition.LineRegex("prompt", new Regex(@"^[A-Za-z0-9_\-\.]+\s*[>#]")),
+                        new StopCondition.LineRegex("prompt", StrictPromptRegex),
+                        new StopCondition.Contains("accessing", "Accessing tftp:"),
+                        new StopCondition.Contains("loading", "Loading "),
+                        new StopCondition.Contains("ok", "[OK"),
+                        new StopCondition.Contains("bytes_copied", "bytes copied"),
                         new StopCondition.Contains("error", "%Error"),
                         new StopCondition.Contains("error_sp", "% Error"),
                         new StopCondition.Contains("timed_out", "Timed out"),
-                        new StopCondition.Contains("socket_err", "Socket error")
+                        new StopCondition.Contains("socket_err", "Socket error"),
+                        new StopCondition.Contains("no_route", "No route to host")
                     };
 
-                    var copyTimeout = DateTime.UtcNow.AddMinutes(15);
+                    // 1. Responde a eventuais perguntas de confirmação do Cisco IOS (Destination filename, overwrite, erase flash, etc.)
+                    var confirmDeadline = DateTime.UtcNow.AddSeconds(45);
+                    while (DateTime.UtcNow < confirmDeadline && !cancellationToken.IsCancellationRequested)
+                    {
+                        if (tftpTransferStarted || tftpTotalSent > 0)
+                            break;
+
+                        try
+                        {
+                            var exp = await session.WaitForAsync(copyConds, TimeSpan.FromSeconds(5), cancellationToken);
+                            fullOutput.Append(exp.Output);
+
+                            if (exp.Matched is StopCondition.LineRegex lrConf && lrConf.Name == "confirm")
+                            {
+                                var lastLine = exp.Output.Trim().Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? "confirmação";
+                                await ProgressAsync($"[*] Confirmação solicitada pelo Cisco ({lastLine.Trim()}) — confirmando com ENTER...");
+                                await session.WriteLineAsync(string.Empty, cancellationToken);
+                                await Task.Delay(300, cancellationToken);
+                                continue;
+                            }
+
+                            if (exp.Matched is StopCondition.Contains c && (c.Text == "Accessing tftp:" || c.Text == "Loading "))
+                            {
+                                tftpTransferStarted = true;
+                                break;
+                            }
+
+                            if (exp.Matched is StopCondition.Contains cErr && (cErr.Text == "%Error" || cErr.Text == "% Error" || cErr.Text == "Timed out" || cErr.Text == "Socket error" || cErr.Text == "No route to host"))
+                            {
+                                throw new DeviceSessionException($"Falha ao iniciar TFTP no Cisco: {exp.Output.Trim()}");
+                            }
+
+                            if (exp.Matched is StopCondition.LineRegex lrPrompt && lrPrompt.Name == "prompt")
+                            {
+                                var curText = fullOutput.ToString();
+                                if (!tftpTransferStarted && tftpTotalSent == 0 && !curText.Contains("[OK"))
+                                {
+                                    throw new DeviceSessionException($"Cópia TFTP cancelada pelo Cisco antes do início da transferência. Resposta do roteador:\n{curText.Trim()}");
+                                }
+                                break;
+                            }
+                        }
+                        catch (SessionTimeoutException)
+                        {
+                            if (tftpTransferStarted || tftpTotalSent > 0)
+                                break;
+                        }
+                    }
+
+                    // 2. Monitora transferência do arquivo até a conclusão total (retorno de [OK ou prompt)
+                    var copyTimeout = DateTime.UtcNow.AddMinutes(20);
                     var isCopying = true;
 
                     while (isCopying && DateTime.UtcNow < copyTimeout && !cancellationToken.IsCancellationRequested)
                     {
                         try
                         {
-                            var exp = await session.WaitForAsync(transferConds, TimeSpan.FromSeconds(5), cancellationToken);
+                            var exp = await session.WaitForAsync(copyConds, TimeSpan.FromSeconds(5), cancellationToken);
                             fullOutput.Append(exp.Output);
 
-                            if (exp.Matched is StopCondition.LineRegex lr && lr.Name == "prompt")
+                            // Confirmação adicional tardia
+                            if (exp.Matched is StopCondition.LineRegex lrConf && lrConf.Name == "confirm")
                             {
+                                await session.WriteLineAsync(string.Empty, cancellationToken);
+                                continue;
+                            }
+
+                            if (exp.Matched is StopCondition.Contains cOk && (cOk.Text == "[OK" || cOk.Text == "bytes copied"))
+                            {
+                                await ProgressAsync("[OK] Cisco acusou recebimento e gravação completa do arquivo na Flash.");
+                                try
+                                {
+                                    var pExp = await session.WaitForAsync(new StopCondition[] { new StopCondition.LineRegex("prompt", StrictPromptRegex) }, TimeSpan.FromSeconds(15), cancellationToken);
+                                    fullOutput.Append(pExp.Output);
+                                }
+                                catch (SessionTimeoutException) { }
                                 isCopying = false;
                                 break;
                             }
 
-                            if (exp.Output.Contains("%Error") || exp.Output.Contains("% Error") || exp.Output.Contains("Socket error"))
+                            if (exp.Matched is StopCondition.LineRegex lr && lr.Name == "prompt")
+                            {
+                                var outStr = fullOutput.ToString();
+                                if (tftpTransferCompleted || outStr.Contains("[OK") || outStr.Contains("bytes copied") || tftpTotalSent >= fileSize * 0.90)
+                                {
+                                    isCopying = false;
+                                    break;
+                                }
+
+                                throw new DeviceSessionException($"Transferência TFTP interrompida abruptamente pelo Cisco IOS. Resposta do roteador:\n{outStr.Trim()}");
+                            }
+
+                            if (exp.Output.Contains("%Error") || exp.Output.Contains("% Error") || exp.Output.Contains("Socket error") || exp.Output.Contains("Timed out") || exp.Output.Contains("No route to host"))
                             {
                                 throw new DeviceSessionException($"Erro reportado pelo Cisco durante TFTP: {exp.Output.Trim()}");
                             }
@@ -343,6 +419,8 @@ public sealed class CiscoIOSUpgrader
                     {
                         throw new DeviceSessionException($"Falha na cópia TFTP da imagem {binFileName}. Resposta: {copyResultText.Trim()}");
                     }
+
+                    await Task.Delay(1500, cancellationToken);
                 }
                 finally
                 {
@@ -606,7 +684,7 @@ public sealed class CiscoIOSUpgrader
                             new StopCondition.LineRegex("dialog", new Regex(@"(?i)initial\s+configuration\s+dialog|\?\s*\[yes/no\]|\[yes\]")),
                             new StopCondition.LineRegex("autoinstall", new Regex(@"(?i)terminate\s+autoinstall")),
                             new StopCondition.LineRegex("press-return", new Regex(@"(?i)press\s+return\s+to\s+get\s+started|press\s+enter")),
-                            new StopCondition.LineRegex("cisco-prompt", new Regex(@"(?i)^[A-Za-z0-9_.+()/-]+[>#]")),
+                            new StopCondition.LineRegex("cisco-prompt", StrictPromptRegex),
                             new StopCondition.Prompt()
                         },
                         TimeSpan.FromSeconds(2),
@@ -1090,9 +1168,16 @@ public sealed class CiscoIOSUpgrader
 
         if (requestOperatorAction is not null)
         {
-            var is921Post = (lanInterface?.Contains("5") == true || lanInterface?.Contains("4") == true || binFileName.StartsWith("c900", StringComparison.OrdinalIgnoreCase) || binFileName.StartsWith("c8", StringComparison.OrdinalIgnoreCase));
-            var lanPostDisplay = is921Post ? "GigabitEthernet 5 (GE 5 / Porta 5 - LAN do Cliente)" : "GigabitEthernet 0/1 (GE 0/1 / Porta 1 - LAN do Cliente)";
-            var lanPostShort = is921Post ? "GE 5" : "GE 0/1";
+            var is841Post = (lanInterface?.Contains("0/5") == true || lanInterface?.Contains("0/4") == true || binFileName.StartsWith("c8", StringComparison.OrdinalIgnoreCase));
+            var is921Post = !is841Post && (lanInterface?.Contains("5") == true || lanInterface?.Contains("4") == true || binFileName.StartsWith("c900", StringComparison.OrdinalIgnoreCase));
+
+            var lanPostDisplay = is841Post ? "GigabitEthernet0/5 (Porta 5 / GE 0/5 - LAN do Cliente)" :
+                                 is921Post ? "GigabitEthernet 5 (Porta 5 / GE 5 - LAN do Cliente)" :
+                                 "GigabitEthernet 0/1 (Porta 1 / GE 0/1 - LAN do Cliente)";
+
+            var lanPostShort = is841Post ? "Porta 5 (GE 0/5)" :
+                               is921Post ? "Porta 5 (GE 5)" :
+                               "Porta 1 (GE 0/1)";
 
             await requestOperatorAction(
                 "✅ FIRMWARE RECUPERADO COM SUCESSO!\n\n" +
@@ -1102,6 +1187,17 @@ public sealed class CiscoIOSUpgrader
                 "Para prosseguir com o Provisionamento e os Testes de ICMP (LAN/WAN/WEB), Telnet e Teste de Banda.\n\n" +
                 $"Clique em OK assim que o cabo estiver conectado na porta {lanPostShort}.",
                 cancellationToken);
+
+            // Acorda imediatamente a console serial do Cisco IOS e absorve eventuais syslogs de cabo
+            try
+            {
+                await session.WriteLineAsync(string.Empty, cancellationToken);
+                await Task.Delay(500, cancellationToken);
+                await session.WriteLineAsync("enable", cancellationToken);
+                await Task.Delay(300, cancellationToken);
+                await session.WriteLineAsync("terminal length 0", cancellationToken);
+            }
+            catch { }
         }
 
         _onProgress?.Invoke(100, "Fase B Concluída!", $"Roteador recuperado e bootado com {binFileName}.");

@@ -349,6 +349,17 @@ public sealed class HpeSaipConfigurator
     {
         await ProgressAsync($"[*] [AUTO] HPE Comware identificado ({circuit.DesignacaoIp ?? circuit.NumeroOts})...");
 
+        // Verificação impeditiva: se o equipamento estiver em BootWare (sem SO)
+        var prompt = (session.CurrentPrompt ?? string.Empty).Trim();
+        if (session.Mode == ExecMode.Rommon ||
+            prompt.Contains("BootWare", StringComparison.OrdinalIgnoreCase) ||
+            prompt.Contains("choice(0-", StringComparison.OrdinalIgnoreCase) ||
+            prompt.Contains("choice (0-", StringComparison.OrdinalIgnoreCase) ||
+            prompt.Contains("<MAIN MENU>", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("O equipamento se encontra em menu BootWare (sem sistema operacional carregado). É OBRIGATÓRIO executar a recuperação de firmware antes de provisionar.");
+        }
+
         // Detecta versão do Comware (5.x para MSR930/MSR931, 7.x para modelos superiores)
         bool isComware5 = false;
         try
@@ -636,7 +647,12 @@ public sealed class HpeSaipConfigurator
         // Janela de estabilização pós undo shutdown: evita falso DOWN se verificado logo em sequência
         await Task.Delay(3000, cancellationToken);
 
-        for (var attempt = 1; attempt <= 45; attempt++)
+        var hpeLanPattern = @"(?:GigabitEthernet0/1|GE0/1|GigabitEthernet1|GE1)";
+        var hpeWanPattern = @"(?:GigabitEthernet0/0|GE0/0|GigabitEthernet0|GE0)";
+
+        var operatorNotified = false;
+
+        for (var attempt = 1; attempt <= 60; attempt++)
         {
             string output = string.Empty;
             try
@@ -650,38 +666,44 @@ public sealed class HpeSaipConfigurator
                 continue;
             }
 
-            var isLanUp = Regex.IsMatch(output, $@"(?i)(?:{cleanLan}|GE0/1)\s+UP\s+(?:UP|\S+)");
-            var isWanUp = Regex.IsMatch(output, $@"(?i)(?:{cleanWan}|GE0/0)\s+UP\s+(?:UP|\S+)");
+            var isLanUp = Regex.IsMatch(output, $@"(?im)^\s*{hpeLanPattern}\s+UP\s+(?:UP|\S+)");
+            var isWanUp = Regex.IsMatch(output, $@"(?im)^\s*{hpeWanPattern}\s+UP\s+(?:UP|\S+)");
 
             if (isLanUp)
             {
                 if (progress != null)
-                    await progress($"[OK] Porta LAN ({lanInterface}) confirmada com link ativo (UP).");
+                    await progress($"[OK] Porta LAN HPE ({lanInterface} / GE1 - Porta 1) confirmada com link ativo (UP).");
                 return true;
             }
 
-            // Só notifica operador após 2 tentativas (evita falso negativo durante auto-negotiation)
-            if (requestOperatorAction != null && attempt == 3)
+            // Notifica operador na tentativa 2 (após auto-negotiation inicial) ou periodicamente a cada 20 tentativas
+            if (requestOperatorAction != null && (!operatorNotified && attempt >= 2 || attempt == 20 || attempt == 40))
             {
+                operatorNotified = true;
                 var msg = isWanUp
-                    ? $"[ATENÇÃO] O cabo do laptop está conectado na porta GE0 (WAN / recovery).\n\n" +
-                      $"Por favor, conecte os cabos de rede nas portas correspondentes:\n" +
-                      $"👉 Conecte a porta GE1 (LAN / Porta 1) no Laptop/PC (para os testes de conectividade e banda);\n" +
-                      $"👉 Conecte a porta GE0 (WAN / Porta 0) no Acesso / Link da Operadora (WAN).\n\n" +
-                      $"Clique em OK após realizar as conexões."
-                    : $"[ATENÇÃO] Link físico não detectado na porta LAN (GE1).\n\n" +
-                      $"Por favor, conecte os cabos de rede nas portas correspondentes:\n" +
-                      $"👉 Conecte a porta GE1 (LAN / Porta 1) no Laptop/PC (para os testes de conectividade e banda);\n" +
-                      $"👉 Conecte a porta GE0 (WAN / Porta 0) no Acesso / Link da Operadora (WAN).\n\n" +
-                      $"Clique em OK após realizar as conexões.";
+                    ? $"❌ CABO CONECTADO NA PORTA INCORRETA (GE0 / WAN)!\n\n" +
+                      $"O cabo do notebook está conectado na porta GE0 (WAN / Recovery).\n\n" +
+                      $"👉 POR FAVOR, CONECTE OS CABOS NAS PORTAS CORRESPONDENTES:\n" +
+                      $"🟢 Conecte a porta GE1 (LAN / Porta 1) no Laptop/PC (para testes de conectividade e banda);\n" +
+                      $"🔴 Conecte a porta GE0 (WAN / Porta 0) no Acesso / Link da Operadora.\n\n" +
+                      $"Clique em OK após realizar as conexões na porta GE1 (LAN)."
+                    : $"⚠️ LINK FÍSICO NÃO DETECTADO NA PORTA LAN (GE1 / Porta 1)!\n\n" +
+                      $"A porta LAN do equipamento está com link físico DOWN.\n\n" +
+                      $"👉 Conecte o cabo de rede Ethernet do seu notebook na porta:\n" +
+                      $"🟢 Porta GE1 (LAN / Porta 1)\n\n" +
+                      $"Certifique-se de que o cabo está bem encaixado e o LED da porta física está aceso.\n\n" +
+                      $"Clique em OK após conectar o cabo na porta GE1.";
 
                 await requestOperatorAction(msg, cancellationToken);
                 await session.WriteLineAsync(string.Empty, cancellationToken);
-                await Task.Delay(800, cancellationToken);
+                await Task.Delay(1500, cancellationToken);
             }
 
             await Task.Delay(2000, cancellationToken);
         }
+
+        if (progress != null)
+            await progress($"[AVISO CRÍTICO] Tempo limite de espera para link na porta LAN HPE ({lanInterface}) esgotado.");
 
         return false;
     }

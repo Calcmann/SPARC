@@ -45,3 +45,7 @@ beta/requests/*.json
 
 node_modules/
 .wrangler/
+
+*.rar
+dist-beta/
+screen_a01.png

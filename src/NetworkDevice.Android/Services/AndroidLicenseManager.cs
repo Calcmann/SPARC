@@ -12,6 +12,8 @@ public sealed class TechnicianProfile
 {
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
+    public string Company { get; set; } = string.Empty;
+    public string EmployeeId { get; set; } = string.Empty;
     public string Phone { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string Cluster { get; set; } = string.Empty;
@@ -20,7 +22,7 @@ public sealed class TechnicianProfile
     public string FullName => $"{FirstName} {LastName}".Trim();
 
     public string DisplaySummary =>
-        $"{FullName} • Matrícula/Tel: {Phone} • {Cluster}/{Uf}";
+        $"{FullName} • {Company} (Mat: {EmployeeId}) • Tel: {Phone} • {Cluster}/{Uf}";
 }
 
 public sealed class AndroidLicenseManager
@@ -70,6 +72,8 @@ public sealed class AndroidLicenseManager
         {
             FirstName = Preferences.Default.Get("sparc_tech_firstname", string.Empty),
             LastName = Preferences.Default.Get("sparc_tech_lastname", string.Empty),
+            Company = Preferences.Default.Get("sparc_tech_company", string.Empty),
+            EmployeeId = Preferences.Default.Get("sparc_tech_employee_id", string.Empty),
             Phone = Preferences.Default.Get("sparc_tech_phone", string.Empty),
             Email = Preferences.Default.Get("sparc_tech_email", string.Empty),
             Cluster = Preferences.Default.Get("sparc_tech_cluster", string.Empty),
@@ -79,12 +83,21 @@ public sealed class AndroidLicenseManager
 
     public void SaveProfile(TechnicianProfile profile)
     {
-        Preferences.Default.Set("sparc_tech_firstname", profile.FirstName?.Trim() ?? string.Empty);
-        Preferences.Default.Set("sparc_tech_lastname", profile.LastName?.Trim() ?? string.Empty);
-        Preferences.Default.Set("sparc_tech_phone", profile.Phone?.Trim() ?? string.Empty);
-        Preferences.Default.Set("sparc_tech_email", profile.Email?.Trim() ?? string.Empty);
-        Preferences.Default.Set("sparc_tech_cluster", profile.Cluster?.Trim().ToUpperInvariant() ?? string.Empty);
-        Preferences.Default.Set("sparc_tech_uf", profile.Uf?.Trim().ToUpperInvariant() ?? string.Empty);
+        var existingFirst = Preferences.Default.Get("sparc_tech_firstname", string.Empty);
+        var existingLast = Preferences.Default.Get("sparc_tech_lastname", string.Empty);
+
+        // Nome e sobrenome são imutáveis após o primeiro registro; demais campos são atualizáveis
+        var finalFirst = !string.IsNullOrWhiteSpace(existingFirst) ? existingFirst : profile.FirstName;
+        var finalLast = !string.IsNullOrWhiteSpace(existingLast) ? existingLast : profile.LastName;
+
+        Preferences.Default.Set("sparc_tech_firstname", SparcTextSanitizer.FormatPersonOrCompanyName(finalFirst));
+        Preferences.Default.Set("sparc_tech_lastname", SparcTextSanitizer.FormatPersonOrCompanyName(finalLast));
+        Preferences.Default.Set("sparc_tech_company", SparcTextSanitizer.FormatPersonOrCompanyName(profile.Company));
+        Preferences.Default.Set("sparc_tech_employee_id", SparcTextSanitizer.FormatEmployeeId(profile.EmployeeId));
+        Preferences.Default.Set("sparc_tech_phone", SparcTextSanitizer.FormatPhone(profile.Phone));
+        Preferences.Default.Set("sparc_tech_email", SparcTextSanitizer.FormatEmail(profile.Email));
+        Preferences.Default.Set("sparc_tech_cluster", SparcTextSanitizer.FormatCluster(profile.Cluster));
+        Preferences.Default.Set("sparc_tech_uf", SparcTextSanitizer.FormatUf(profile.Uf));
     }
 
     public string? GetStoredLicenseToken()
@@ -96,9 +109,14 @@ public sealed class AndroidLicenseManager
     public bool IsActivated(out string statusMessage)
     {
         var profile = GetProfile();
-        if (string.IsNullOrWhiteSpace(profile.FirstName) || string.IsNullOrWhiteSpace(profile.Cluster) || string.IsNullOrWhiteSpace(profile.Uf))
+        if (string.IsNullOrWhiteSpace(profile.FirstName) || 
+            string.IsNullOrWhiteSpace(profile.Company) ||
+            string.IsNullOrWhiteSpace(profile.EmployeeId) ||
+            string.IsNullOrWhiteSpace(profile.Phone) ||
+            string.IsNullOrWhiteSpace(profile.Cluster) || 
+            string.IsNullOrWhiteSpace(profile.Uf))
         {
-            statusMessage = "Identificação do técnico pendente.";
+            statusMessage = "Identificação do técnico incompleta.";
             return false;
         }
 
@@ -126,6 +144,46 @@ public sealed class AndroidLicenseManager
         return true;
     }
 
+    /// <summary>
+    /// Verificação prioritária de licença online ao iniciar no Android.
+    /// Se online: bloqueia se revogado pelo gestor, ou atualiza token se prorrogado.
+    /// Se offline: permite acesso caso a chave salva esteja válida.
+    /// </summary>
+    public async Task<(bool Allowed, bool Revoked, string StatusMessage)> VerifyLicenseStartupAsync(CancellationToken ct = default)
+    {
+        var localToken = GetStoredLicenseToken();
+        var (allowed, revoked, newToken, msg) = await _cloudService.VerifyLicenseStartupAsync(
+            GetMachineGuid(),
+            GetFingerprint(),
+            localToken,
+            token =>
+            {
+                if (string.IsNullOrWhiteSpace(token)) return false;
+                if (!SparcLicenseValidator.TryValidate(token, out var info) || info == null) return false;
+                return SparcLicenseValidator.IsAuthorized(info, GetMachineGuid(), GetFingerprint(), DateTime.UtcNow, out _);
+            },
+            ct);
+
+        if (revoked)
+        {
+            Preferences.Default.Remove("sparc_mobile_license_token");
+            return (false, true, "Esta cópia do SPARC foi suspensa ou revogada pelo Administrador corporativo.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(newToken))
+        {
+            Preferences.Default.Set("sparc_mobile_license_token", newToken);
+        }
+
+        if (allowed)
+        {
+            IsActivated(out var fullStatus);
+            return (true, false, fullStatus);
+        }
+
+        return (false, false, msg);
+    }
+
     public string BuildActivationRequestString()
     {
         var p = GetProfile();
@@ -138,7 +196,10 @@ public sealed class AndroidLicenseManager
             p.Email,
             p.Cluster,
             p.Uf,
-            AppInfo.VersionString);
+            AppInfo.VersionString,
+            platform: "Android",
+            company: p.Company,
+            employeeId: p.EmployeeId);
     }
 
     public async Task<(bool Success, string Message)> SubmitOnlineActivationAsync(CancellationToken ct = default)
@@ -146,6 +207,12 @@ public sealed class AndroidLicenseManager
         var p = GetProfile();
         if (string.IsNullOrWhiteSpace(p.FirstName))
             return (false, "Preencha o Nome do técnico.");
+        if (string.IsNullOrWhiteSpace(p.Company))
+            return (false, "Preencha a Empresa de atuação.");
+        if (string.IsNullOrWhiteSpace(p.EmployeeId))
+            return (false, "Preencha a Matrícula do técnico.");
+        if (string.IsNullOrWhiteSpace(p.Phone))
+            return (false, "Preencha o Telefone / WhatsApp do técnico.");
         if (string.IsNullOrWhiteSpace(p.Cluster))
             return (false, "Preencha o Cluster de atuação.");
         if (string.IsNullOrWhiteSpace(p.Uf))
@@ -156,8 +223,11 @@ public sealed class AndroidLicenseManager
         {
             MachineGuid = GetMachineGuid(),
             MachineFingerprint = GetFingerprint(),
+            Platform = "Android",
             FirstName = p.FirstName,
             LastName = p.LastName,
+            Company = p.Company,
+            EmployeeId = p.EmployeeId,
             Phone = p.Phone,
             Email = p.Email,
             Cluster = p.Cluster,
@@ -166,7 +236,7 @@ public sealed class AndroidLicenseManager
             RawRequestCode = reqString,
             RequestedAtUtc = DateTime.UtcNow,
             Status = "Pending",
-            AdminNotes = $"Plataforma: Android • ID: {GetDisplayId()}"
+            AdminNotes = $"Empresa: {p.Company} • Matrícula: {p.EmployeeId} • ID: {GetDisplayId()}"
         };
 
         return await _cloudService.SubmitActivationRequestAsync(req, ct);

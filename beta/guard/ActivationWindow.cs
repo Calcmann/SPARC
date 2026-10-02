@@ -15,6 +15,8 @@ internal sealed class ActivationWindow : Window
 {
     private readonly TextBox _txtFirstName;
     private readonly TextBox _txtLastName;
+    private readonly TextBox _txtCompany;
+    private readonly TextBox _txtEmployeeId;
     private readonly TextBox _txtPhone;
     private readonly TextBox _txtEmail;
     private readonly TextBox _txtCluster;
@@ -35,7 +37,7 @@ internal sealed class ActivationWindow : Window
 
         Title = "SPARC " + BetaConfig.Tag + " - Ativacao e Identificacao do Tecnico";
         Width = 660;
-        Height = 670;
+        Height = 700;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         ResizeMode = ResizeMode.NoResize;
         Background = new SolidColorBrush(Color.FromRgb(0x17, 0x17, 0x1A));
@@ -46,7 +48,7 @@ internal sealed class ActivationWindow : Window
         Content = scroll;
 
         root.Children.Add(new TextBlock { Text = "Versao " + BetaConfig.Tag + " - Controle de Copias em Campo", Foreground = Brushes.White, FontSize = 14, FontWeight = FontWeights.Bold, TextWrapping = TextWrapping.Wrap });
-        root.Children.Add(new TextBlock { Text = "Build valido ate " + betaExpires.ToString("dd/MM/yyyy") + ". Identificacao obrigatoria do tecnico na primeira execucao.", Foreground = Brushes.Gray, Margin = new Thickness(0, 2, 0, 8), TextWrapping = TextWrapping.Wrap });
+        root.Children.Add(new TextBlock { Text = "Identificacao obrigatoria do tecnico e ativacao de licenca gerenciada pelo Administrador.", Foreground = Brushes.Gray, Margin = new Thickness(0, 2, 0, 8), TextWrapping = TextWrapping.Wrap });
         if (!string.IsNullOrWhiteSpace(reason))
             root.Children.Add(new TextBlock { Text = reason, Foreground = new SolidColorBrush(Color.FromRgb(0xF8, 0x71, 0x71)), TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) });
 
@@ -61,7 +63,7 @@ internal sealed class ActivationWindow : Window
             Margin = new Thickness(0, 0, 0, 10)
         };
         var spTec = new StackPanel();
-        spTec.Children.Add(new TextBlock { Text = "1) Identificacao Obrigatoria do Tecnico (Registrado no Admin):", Foreground = new SolidColorBrush(Color.FromRgb(0x38, 0xBD, 0xF8)), FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 8) });
+        spTec.Children.Add(new TextBlock { Text = "1) Identificacao do Tecnico (Registrado no Admin):", Foreground = new SolidColorBrush(Color.FromRgb(0x38, 0xBD, 0xF8)), FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 8) });
 
         var gridCampos = new Grid();
         gridCampos.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -70,8 +72,9 @@ internal sealed class ActivationWindow : Window
         gridCampos.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         gridCampos.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         gridCampos.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        gridCampos.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        // Linha 1: Nome e Sobrenome
+        // Linha 0: Nome e Sobrenome
         var pnlNome = new StackPanel { Margin = new Thickness(0, 0, 0, 6) };
         pnlNome.Children.Add(new TextBlock { Text = "Nome:", Foreground = Brushes.LightGray, FontSize = 11 });
         _txtFirstName = new TextBox { Height = 26, Margin = new Thickness(0, 2, 0, 0), Padding = new Thickness(4, 2, 4, 2) };
@@ -86,34 +89,49 @@ internal sealed class ActivationWindow : Window
         Grid.SetRow(pnlSobrenome, 0); Grid.SetColumn(pnlSobrenome, 2);
         gridCampos.Children.Add(pnlSobrenome);
 
-        // Linha 2: Telefone/WhatsApp e Email
+        // Linha 1: Empresa e Matricula
+        var pnlCompany = new StackPanel { Margin = new Thickness(0, 0, 0, 6) };
+        pnlCompany.Children.Add(new TextBlock { Text = "Empresa (ex: Claro, Telemont, Propria...):", Foreground = Brushes.LightGray, FontSize = 11 });
+        _txtCompany = new TextBox { Height = 26, Margin = new Thickness(0, 2, 0, 0), Padding = new Thickness(4, 2, 4, 2) };
+        pnlCompany.Children.Add(_txtCompany);
+        Grid.SetRow(pnlCompany, 1); Grid.SetColumn(pnlCompany, 0);
+        gridCampos.Children.Add(pnlCompany);
+
+        var pnlEmployeeId = new StackPanel { Margin = new Thickness(0, 0, 0, 6) };
+        pnlEmployeeId.Children.Add(new TextBlock { Text = "Matricula:", Foreground = Brushes.LightGray, FontSize = 11 });
+        _txtEmployeeId = new TextBox { Height = 26, Margin = new Thickness(0, 2, 0, 0), Padding = new Thickness(4, 2, 4, 2), CharacterCasing = CharacterCasing.Upper };
+        pnlEmployeeId.Children.Add(_txtEmployeeId);
+        Grid.SetRow(pnlEmployeeId, 1); Grid.SetColumn(pnlEmployeeId, 2);
+        gridCampos.Children.Add(pnlEmployeeId);
+
+        // Linha 2: Telefone/WhatsApp e Email (Opcional)
         var pnlTel = new StackPanel { Margin = new Thickness(0, 0, 0, 6) };
         pnlTel.Children.Add(new TextBlock { Text = "Telefone / WhatsApp (com DDD):", Foreground = Brushes.LightGray, FontSize = 11 });
         _txtPhone = new TextBox { Height = 26, Margin = new Thickness(0, 2, 0, 0), Padding = new Thickness(4, 2, 4, 2) };
         pnlTel.Children.Add(_txtPhone);
-        Grid.SetRow(pnlTel, 1); Grid.SetColumn(pnlTel, 0);
+        Grid.SetRow(pnlTel, 2); Grid.SetColumn(pnlTel, 0);
         gridCampos.Children.Add(pnlTel);
 
         var pnlEmail = new StackPanel { Margin = new Thickness(0, 0, 0, 6) };
-        pnlEmail.Children.Add(new TextBlock { Text = "E-mail:", Foreground = Brushes.LightGray, FontSize = 11 });
+        pnlEmail.Children.Add(new TextBlock { Text = "E-mail (opcional):", Foreground = Brushes.LightGray, FontSize = 11 });
         _txtEmail = new TextBox { Height = 26, Margin = new Thickness(0, 2, 0, 0), Padding = new Thickness(4, 2, 4, 2) };
         pnlEmail.Children.Add(_txtEmail);
-        Grid.SetRow(pnlEmail, 1); Grid.SetColumn(pnlEmail, 2);
+        Grid.SetRow(pnlEmail, 2); Grid.SetColumn(pnlEmail, 2);
         gridCampos.Children.Add(pnlEmail);
 
         // Linha 3: Cluster de Atuacao e UF
         var pnlCluster = new StackPanel();
-        pnlCluster.Children.Add(new TextBlock { Text = "Cluster de Atuacao (ex: SP Capital, Interior, Sul...):", Foreground = Brushes.LightGray, FontSize = 11 });
+        pnlCluster.Children.Add(new TextBlock { Text = "Cluster de Atuacao (ex: SP Capital, Interior...):", Foreground = Brushes.LightGray, FontSize = 11 });
         _txtCluster = new TextBox { Height = 26, Margin = new Thickness(0, 2, 0, 0), Padding = new Thickness(4, 2, 4, 2) };
         pnlCluster.Children.Add(_txtCluster);
-        Grid.SetRow(pnlCluster, 2); Grid.SetColumn(pnlCluster, 0);
+        Grid.SetRow(pnlCluster, 3); Grid.SetColumn(pnlCluster, 0);
         gridCampos.Children.Add(pnlCluster);
 
         var pnlUf = new StackPanel();
         pnlUf.Children.Add(new TextBlock { Text = "UF (ex: SP):", Foreground = Brushes.LightGray, FontSize = 11 });
         _txtUf = new TextBox { Height = 26, Margin = new Thickness(0, 2, 0, 0), Padding = new Thickness(4, 2, 4, 2), MaxLength = 2, CharacterCasing = CharacterCasing.Upper };
         pnlUf.Children.Add(_txtUf);
-        Grid.SetRow(pnlUf, 2); Grid.SetColumn(pnlUf, 2);
+        Grid.SetRow(pnlUf, 3); Grid.SetColumn(pnlUf, 2);
         gridCampos.Children.Add(pnlUf);
 
         spTec.Children.Add(gridCampos);
@@ -187,6 +205,8 @@ internal sealed class ActivationWindow : Window
         // Handlers de digitacao
         _txtFirstName.TextChanged += (_, _) => AtualizarRequisicao();
         _txtLastName.TextChanged += (_, _) => AtualizarRequisicao();
+        _txtCompany.TextChanged += (_, _) => AtualizarRequisicao();
+        _txtEmployeeId.TextChanged += (_, _) => AtualizarRequisicao();
         _txtPhone.TextChanged += (_, _) => AtualizarRequisicao();
         _txtEmail.TextChanged += (_, _) => AtualizarRequisicao();
         _txtCluster.TextChanged += (_, _) => AtualizarRequisicao();
@@ -207,6 +227,8 @@ internal sealed class ActivationWindow : Window
                 using var doc = JsonDocument.Parse(json);
                 if (doc.RootElement.TryGetProperty("fn", out var fn)) _txtFirstName.Text = fn.GetString() ?? "";
                 if (doc.RootElement.TryGetProperty("ln", out var ln)) _txtLastName.Text = ln.GetString() ?? "";
+                if (doc.RootElement.TryGetProperty("cmp", out var cmp)) _txtCompany.Text = cmp.GetString() ?? "";
+                if (doc.RootElement.TryGetProperty("mat", out var mat)) _txtEmployeeId.Text = mat.GetString() ?? "";
                 if (doc.RootElement.TryGetProperty("ph", out var ph)) _txtPhone.Text = ph.GetString() ?? "";
                 if (doc.RootElement.TryGetProperty("em", out var em)) _txtEmail.Text = em.GetString() ?? "";
                 if (doc.RootElement.TryGetProperty("cl", out var cl)) _txtCluster.Text = cl.GetString() ?? "";
@@ -223,12 +245,14 @@ internal sealed class ActivationWindow : Window
             Directory.CreateDirectory(BetaConfig.DataDir);
             var obj = new
             {
-                fn = _txtFirstName.Text.Trim(),
-                ln = _txtLastName.Text.Trim(),
-                ph = _txtPhone.Text.Trim(),
-                em = _txtEmail.Text.Trim(),
-                cl = _txtCluster.Text.Trim(),
-                uf = _txtUf.Text.Trim().ToUpperInvariant()
+                fn = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatPersonOrCompanyName(_txtFirstName.Text),
+                ln = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatPersonOrCompanyName(_txtLastName.Text),
+                cmp = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatPersonOrCompanyName(_txtCompany.Text),
+                mat = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatEmployeeId(_txtEmployeeId.Text),
+                ph = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatPhone(_txtPhone.Text),
+                em = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatEmail(_txtEmail.Text),
+                cl = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatCluster(_txtCluster.Text),
+                uf = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatUf(_txtUf.Text)
             };
             File.WriteAllText(_userProfilePath, JsonSerializer.Serialize(obj));
         }
@@ -237,30 +261,32 @@ internal sealed class ActivationWindow : Window
 
     private void AtualizarRequisicao()
     {
-        var fn = _txtFirstName.Text.Trim();
-        var ln = _txtLastName.Text.Trim();
-        var ph = _txtPhone.Text.Trim();
-        var em = _txtEmail.Text.Trim();
-        var cl = _txtCluster.Text.Trim();
-        var uf = _txtUf.Text.Trim().ToUpperInvariant();
+        var fn = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatPersonOrCompanyName(_txtFirstName.Text);
+        var ln = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatPersonOrCompanyName(_txtLastName.Text);
+        var cmp = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatPersonOrCompanyName(_txtCompany.Text);
+        var mat = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatEmployeeId(_txtEmployeeId.Text);
+        var ph = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatPhone(_txtPhone.Text);
+        var em = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatEmail(_txtEmail.Text);
+        var cl = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatCluster(_txtCluster.Text);
+        var uf = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatUf(_txtUf.Text);
 
         var faltando = string.IsNullOrWhiteSpace(fn) || string.IsNullOrWhiteSpace(ln) ||
-                        string.IsNullOrWhiteSpace(ph) || string.IsNullOrWhiteSpace(em) ||
-                        string.IsNullOrWhiteSpace(cl) || string.IsNullOrWhiteSpace(uf);
+                        string.IsNullOrWhiteSpace(cmp) || string.IsNullOrWhiteSpace(mat) ||
+                        string.IsNullOrWhiteSpace(ph) || string.IsNullOrWhiteSpace(cl) || string.IsNullOrWhiteSpace(uf);
 
         if (faltando)
         {
-            _txtReq.Text = "(Preencha Nome, Sobrenome, Telefone, E-mail, Cluster e UF acima para gerar o codigo de ativacao)";
+            _txtReq.Text = "(Preencha Nome, Sobrenome, Empresa, Matricula, Telefone, Cluster e UF acima para gerar o codigo de ativacao)";
             _txtReq.Foreground = Brushes.Gray;
             _btnCopy.IsEnabled = false;
             _btnSolicitarOnline.IsEnabled = false;
-            _txtStatus.Text = "Preencha todos os campos cadastrais acima para liberar a solicitacao de ativacao.";
+            _txtStatus.Text = "Preencha todos os campos obrigatorios acima para liberar a solicitacao de ativacao.";
             _txtStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xFB, 0xBF, 0x24));
         }
         else
         {
             SalvarPerfil();
-            var req = MachineId.BuildRequest(_machine, fn, ln, ph, em, cl, uf, BetaConfig.Tag);
+            var req = MachineId.BuildRequest(_machine, fn, ln, ph, em, cl, uf, BetaConfig.Tag, cmp, mat);
             _txtReq.Text = req;
             _txtReq.Foreground = Brushes.White;
             _btnCopy.IsEnabled = true;
@@ -274,18 +300,21 @@ internal sealed class ActivationWindow : Window
     {
         try
         {
-            var fn = _txtFirstName.Text.Trim();
-            var ln = _txtLastName.Text.Trim();
-            var ph = _txtPhone.Text.Trim();
-            var em = _txtEmail.Text.Trim();
-            var cl = _txtCluster.Text.Trim();
-            var uf = _txtUf.Text.Trim().ToUpperInvariant();
+            var fn = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatPersonOrCompanyName(_txtFirstName.Text);
+            var ln = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatPersonOrCompanyName(_txtLastName.Text);
+            var cmp = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatPersonOrCompanyName(_txtCompany.Text);
+            var mat = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatEmployeeId(_txtEmployeeId.Text);
+            var ph = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatPhone(_txtPhone.Text);
+            var em = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatEmail(_txtEmail.Text);
+            var cl = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatCluster(_txtCluster.Text);
+            var uf = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatUf(_txtUf.Text);
             var req = _txtReq.Text.Trim();
 
             var msg = $"*Solicitacao de Ativacao SPARC*\n" +
                       $"• *Tecnico:* {fn} {ln}\n" +
+                      $"• *Empresa:* {cmp} (Matrícula: {mat})\n" +
                       $"• *Telefone:* {ph}\n" +
-                      $"• *E-mail:* {em}\n" +
+                      (string.IsNullOrWhiteSpace(em) ? "" : $"• *E-mail:* {em}\n") +
                       $"• *Cluster:* {cl}\n" +
                       $"• *UF:* {uf}\n" +
                       $"• *Codigo:*\n`{req}`";
@@ -299,19 +328,21 @@ internal sealed class ActivationWindow : Window
 
     private async System.Threading.Tasks.Task SolicitarAtivacaoOnlineAsync()
     {
-        var fn = _txtFirstName.Text.Trim();
-        var ln = _txtLastName.Text.Trim();
-        var ph = _txtPhone.Text.Trim();
-        var em = _txtEmail.Text.Trim();
-        var cl = _txtCluster.Text.Trim();
-        var uf = _txtUf.Text.Trim().ToUpperInvariant();
+        var fn = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatPersonOrCompanyName(_txtFirstName.Text);
+        var ln = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatPersonOrCompanyName(_txtLastName.Text);
+        var cmp = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatPersonOrCompanyName(_txtCompany.Text);
+        var mat = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatEmployeeId(_txtEmployeeId.Text);
+        var ph = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatPhone(_txtPhone.Text);
+        var em = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatEmail(_txtEmail.Text);
+        var cl = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatCluster(_txtCluster.Text);
+        var uf = NetworkDevice.Core.Licensing.SparcTextSanitizer.FormatUf(_txtUf.Text);
         var reqCode = _txtReq.Text.Trim();
 
         if (string.IsNullOrWhiteSpace(fn) || string.IsNullOrWhiteSpace(ln) ||
-            string.IsNullOrWhiteSpace(ph) || string.IsNullOrWhiteSpace(em) ||
-            string.IsNullOrWhiteSpace(cl) || string.IsNullOrWhiteSpace(uf))
+            string.IsNullOrWhiteSpace(cmp) || string.IsNullOrWhiteSpace(mat) ||
+            string.IsNullOrWhiteSpace(ph) || string.IsNullOrWhiteSpace(cl) || string.IsNullOrWhiteSpace(uf))
         {
-            _txtStatus.Text = "Preencha todos os campos cadastrais antes de solicitar a ativacao online.";
+            _txtStatus.Text = "Preencha todos os campos cadastrais obrigatorios antes de solicitar a ativacao online.";
             _txtStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xFB, 0xBF, 0x24));
             return;
         }
@@ -329,11 +360,14 @@ internal sealed class ActivationWindow : Window
                 RawRequestCode = reqCode,
                 FirstName = fn,
                 LastName = ln,
+                Company = cmp,
+                EmployeeId = mat,
                 Phone = ph,
                 Email = em,
                 Cluster = cl,
                 Uf = uf,
-                ClientVersion = BetaConfig.Tag
+                ClientVersion = BetaConfig.Tag,
+                Platform = "Windows"
             };
 
             var svc = new NetworkDevice.Core.Licensing.CloudLicenseService(customToken: BetaConfig.GitHubReadOnlyToken);

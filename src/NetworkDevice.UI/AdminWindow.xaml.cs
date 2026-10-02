@@ -33,10 +33,12 @@ public partial class AdminWindow : Window
     private readonly FirmwareRepositoryService _firmwareRepoService = new();
     private ActivationRequestData? _currentDecodedRequest;
     private GeneratedLicenseResult? _lastGeneratedLicense;
+    private bool _isInitialized = false;
 
     public AdminWindow()
     {
         InitializeComponent();
+        _isInitialized = true;
         Loaded += AdminWindow_Loaded;
     }
 
@@ -48,10 +50,18 @@ public partial class AdminWindow : Window
         CarregarCopiasCampo();
         CarregarModelosFirmware();
 
+        // Sincroniza cópias e licenças da nuvem em segundo plano
+        _ = _cloudLicenseService.SyncDevicesFromRemoteAsync().ContinueWith(_ =>
+        {
+            Dispatcher.Invoke(CarregarCopiasCampo);
+        });
+
         if (!string.IsNullOrWhiteSpace(_firmwareRepoService.GitHubToken))
         {
             TxtGitHubToken.Text = _firmwareRepoService.GitHubToken;
         }
+
+        DetectarUltimoBuild(false);
     }
 
     private void VerificarChaveRsa()
@@ -101,30 +111,53 @@ public partial class AdminWindow : Window
         var pendentes = list.Count(r => string.Equals(r.Status, "Pending", StringComparison.OrdinalIgnoreCase) || string.IsNullOrEmpty(r.Status));
         var aprovadas = list.Count(r => string.Equals(r.Status, "Approved", StringComparison.OrdinalIgnoreCase));
         var rejeitadas = list.Count(r => string.Equals(r.Status, "Rejected", StringComparison.OrdinalIgnoreCase));
+        var windows = list.Count(r => r.PlatformBadge.Contains("Windows"));
+        var android = list.Count(r => r.PlatformBadge.Contains("Android"));
 
         TxtSolicitacoesPendentesCount.Text = $"⏳ Pendentes: {pendentes}";
         TxtSolicitacoesAprovadasCount.Text = $"✅ Aprovadas: {aprovadas}";
         TxtSolicitacoesRejeitadasCount.Text = $"❌ Rejeitadas: {rejeitadas}";
+        TxtSolicitacoesWindowsCount.Text = $"🪟 Win: {windows}";
+        TxtSolicitacoesAndroidCount.Text = $"📱 And: {android}";
     }
 
     private void FiltrarSolicitacoes()
     {
+        if (!_isInitialized || DgSolicitacoesOnline == null) return;
+
         var filtro = TxtFiltroSolicitacoes?.Text?.Trim().ToLowerInvariant() ?? "";
-        if (string.IsNullOrWhiteSpace(filtro))
+        var platIndex = CbFiltroPlataformaSolicitacoes?.SelectedIndex ?? 0;
+
+        IEnumerable<OnlineActivationRequest> query = _cachedSolicitacoes;
+
+        if (platIndex == 1) // Windows
         {
-            DgSolicitacoesOnline.ItemsSource = _cachedSolicitacoes;
+            query = query.Where(r => r.PlatformBadge.Contains("Windows"));
         }
-        else
+        else if (platIndex == 2) // Android
         {
-            DgSolicitacoesOnline.ItemsSource = _cachedSolicitacoes.Where(r =>
+            query = query.Where(r => r.PlatformBadge.Contains("Android"));
+        }
+
+        if (!string.IsNullOrWhiteSpace(filtro))
+        {
+            query = query.Where(r =>
                 r.FullName.ToLowerInvariant().Contains(filtro) ||
                 r.Cluster.ToLowerInvariant().Contains(filtro) ||
                 r.Uf.ToLowerInvariant().Contains(filtro) ||
                 r.Phone.Contains(filtro) ||
                 r.Email.ToLowerInvariant().Contains(filtro) ||
                 r.MachineGuid.ToLowerInvariant().Contains(filtro) ||
-                r.Status.ToLowerInvariant().Contains(filtro)).ToList();
+                r.Status.ToLowerInvariant().Contains(filtro) ||
+                r.PlatformBadge.ToLowerInvariant().Contains(filtro));
         }
+
+        DgSolicitacoesOnline.ItemsSource = query.ToList();
+    }
+
+    private void CbFiltroPlataformaSolicitacoes_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        FiltrarSolicitacoes();
     }
 
     private void TxtFiltroSolicitacoes_TextChanged(object sender, TextChangedEventArgs e)
@@ -292,6 +325,7 @@ public partial class AdminWindow : Window
             TxtInfoTecnico.Text = infoTec;
 
             TxtInfoHardware.Text = $"Machine GUID: {_currentDecodedRequest.MachineGuid} | Fingerprint: {_currentDecodedRequest.MachineFingerprint}";
+            TxtInfoPlataforma.Text = $"Plataforma: {_currentDecodedRequest.PlatformBadge}";
             BtnGerarChave.IsEnabled = _licenseService.HasPrivateKey;
 
             if (!string.IsNullOrWhiteSpace(_currentDecodedRequest.FullName) && string.IsNullOrWhiteSpace(TxtNomeTecnico.Text))
@@ -304,6 +338,7 @@ public partial class AdminWindow : Window
             TxtStatusDecodificacao.Text = "❌ Código de Pedido Inválido";
             TxtStatusDecodificacao.Foreground = UiBrushes.Get("#F87171");
             TxtInfoTecnico.Text = "Não foi possível extrair identificação do técnico.";
+            TxtInfoPlataforma.Text = "";
             TxtInfoHardware.Text = _currentDecodedRequest.ErrorMessage ?? "Formato inválido.";
             BtnGerarChave.IsEnabled = false;
         }
@@ -498,31 +533,54 @@ public partial class AdminWindow : Window
         var ativas = list.Count(d => d.CalculatedStatus == DeviceLicenseStatus.Active);
         var expirando = list.Count(d => d.CalculatedStatus == DeviceLicenseStatus.ExpiringSoon);
         var revogadas = list.Count(d => d.CalculatedStatus == DeviceLicenseStatus.Revoked);
+        var windows = list.Count(d => d.PlatformBadge.Contains("Windows"));
+        var android = list.Count(d => d.PlatformBadge.Contains("Android"));
 
         TxtTotalCopias.Text = $"👥 Total: {total} técnico(s)";
         TxtCopiasAtivas.Text = $"🟢 Ativas: {ativas}";
         TxtCopiasExpirando.Text = $"🟡 A Expirar (<7d): {expirando}";
         TxtCopiasRevogadas.Text = $"🚫 Revogadas: {revogadas}";
+        TxtCopiasWindowsCount.Text = $"🪟 Win: {windows}";
+        TxtCopiasAndroidCount.Text = $"📱 And: {android}";
     }
 
     private void FiltrarCopias()
     {
+        if (!_isInitialized || DgCopiasCampo == null) return;
+
         var filtro = TxtFiltroCopias?.Text?.Trim().ToLowerInvariant() ?? "";
-        if (string.IsNullOrWhiteSpace(filtro))
+        var platIndex = CbFiltroPlataformaCopias?.SelectedIndex ?? 0;
+
+        IEnumerable<OnlineDeviceRecord> query = _cachedDevices;
+
+        if (platIndex == 1) // Windows
         {
-            DgCopiasCampo.ItemsSource = _cachedDevices;
+            query = query.Where(d => d.PlatformBadge.Contains("Windows"));
         }
-        else
+        else if (platIndex == 2) // Android
         {
-            DgCopiasCampo.ItemsSource = _cachedDevices.Where(d =>
+            query = query.Where(d => d.PlatformBadge.Contains("Android"));
+        }
+
+        if (!string.IsNullOrWhiteSpace(filtro))
+        {
+            query = query.Where(d =>
                 d.FullName.ToLowerInvariant().Contains(filtro) ||
                 d.Cluster.ToLowerInvariant().Contains(filtro) ||
                 d.Uf.ToLowerInvariant().Contains(filtro) ||
                 d.Phone.Contains(filtro) ||
                 d.Email.ToLowerInvariant().Contains(filtro) ||
                 d.MachineGuid.ToLowerInvariant().Contains(filtro) ||
-                d.Notes.ToLowerInvariant().Contains(filtro)).ToList();
+                d.Notes.ToLowerInvariant().Contains(filtro) ||
+                d.PlatformBadge.ToLowerInvariant().Contains(filtro));
         }
+
+        DgCopiasCampo.ItemsSource = query.ToList();
+    }
+
+    private void CbFiltroPlataformaCopias_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        FiltrarCopias();
     }
 
     private void TxtFiltroCopias_TextChanged(object sender, TextChangedEventArgs e)
@@ -530,8 +588,13 @@ public partial class AdminWindow : Window
         FiltrarCopias();
     }
 
-    private void BtnRecarregarCopias_Click(object sender, RoutedEventArgs e)
+    private async void BtnRecarregarCopias_Click(object sender, RoutedEventArgs e)
     {
+        try
+        {
+            await _cloudLicenseService.SyncDevicesFromRemoteAsync();
+        }
+        catch { }
         CarregarCopiasCampo();
     }
 
@@ -542,6 +605,7 @@ public partial class AdminWindow : Window
         {
             var reg = !string.IsNullOrWhiteSpace(dev.Cluster) ? $" [{dev.Cluster}/{dev.Uf}]" : "";
             TxtCopiaSelecionadaInfo.Text = $"Técnico: {dev.FullName}{reg} ({dev.Phone}) - Expira: {dev.ExpirationDateIso}";
+            BtnEditarCopia.IsEnabled = true;
             BtnConceder30Dias.IsEnabled = true;
             BtnConceder60Dias.IsEnabled = true;
             BtnConceder90Dias.IsEnabled = true;
@@ -551,6 +615,7 @@ public partial class AdminWindow : Window
         else
         {
             TxtCopiaSelecionadaInfo.Text = "Selecione um técnico na tabela acima para gerenciar a licença";
+            BtnEditarCopia.IsEnabled = false;
             BtnConceder30Dias.IsEnabled = false;
             BtnConceder60Dias.IsEnabled = false;
             BtnConceder90Dias.IsEnabled = false;
@@ -559,7 +624,32 @@ public partial class AdminWindow : Window
         }
     }
 
-    private void ConcederDiasSelecionado(int dias)
+    private async void BtnEditarCopia_Click(object sender, RoutedEventArgs e)
+    {
+        var dev = DgCopiasCampo.SelectedItem as OnlineDeviceRecord;
+        if (dev == null)
+        {
+            MessageBox.Show("Selecione um técnico na tabela para editar.", "Aviso", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var dlg = new EditDeviceDialog(dev) { Owner = this };
+        if (dlg.ShowDialog() == true && dlg.Saved)
+        {
+            var (ok, msg, _) = await _cloudLicenseService.UpdateDeviceAsync(dev);
+            CarregarCopiasCampo();
+            if (ok)
+            {
+                MessageBox.Show($"Dados do técnico {dev.FullName} atualizados com sucesso e sincronizados na nuvem!", "Atualização Concluída", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                MessageBox.Show($"Dados salvos localmente, mas houve aviso na nuvem: {msg}", "Aviso", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+    }
+
+    private async void ConcederDiasSelecionado(int dias)
     {
         var dev = DgCopiasCampo.SelectedItem as OnlineDeviceRecord;
         if (dev == null)
@@ -568,7 +658,7 @@ public partial class AdminWindow : Window
             return;
         }
 
-        var (success, msg, updated) = _cloudLicenseService.ExtendLicense(dev.MachineGuid, dias, _licenseService);
+        var (success, msg, updated) = await _cloudLicenseService.ExtendLicenseAsync(dev.MachineGuid, dias, _licenseService);
         if (success)
         {
             CarregarCopiasCampo();
@@ -601,7 +691,7 @@ public partial class AdminWindow : Window
         }
     }
 
-    private void BtnRevogarAcesso_Click(object sender, RoutedEventArgs e)
+    private async void BtnRevogarAcesso_Click(object sender, RoutedEventArgs e)
     {
         var dev = DgCopiasCampo.SelectedItem as OnlineDeviceRecord;
         if (dev == null) return;
@@ -612,13 +702,13 @@ public partial class AdminWindow : Window
 
         if (resp == MessageBoxResult.Yes)
         {
-            var (success, msg) = _cloudLicenseService.RevokeDevice(dev.MachineGuid, "Revogado pelo administrador");
+            var (success, msg) = await _cloudLicenseService.RevokeDeviceAsync(dev.MachineGuid, "Revogado pelo administrador");
             CarregarCopiasCampo();
             MessageBox.Show(msg, "Revogação", MessageBoxButton.OK, MessageBoxImage.Information);
         }
     }
 
-    private void BtnExcluirCopia_Click(object sender, RoutedEventArgs e)
+    private async void BtnExcluirCopia_Click(object sender, RoutedEventArgs e)
     {
         var dev = DgCopiasCampo.SelectedItem as OnlineDeviceRecord;
         if (dev == null)
@@ -628,15 +718,19 @@ public partial class AdminWindow : Window
         }
 
         var confirm = MessageBox.Show(
-            $"Deseja realmente remover o registro de {dev.FullName} ({dev.MachineGuid}) da lista de dispositivos monitorados?",
-            "Confirmar Remoção de Teste", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            $"Deseja realmente remover o registro de {dev.FullName} ({dev.MachineGuid}) da lista de dispositivos monitorados?\n\nA exclusão será refletida na base online para evitar reaparecimento.",
+            "Confirmar Remoção Definitiva", MessageBoxButton.YesNo, MessageBoxImage.Warning);
         if (confirm != MessageBoxResult.Yes) return;
 
-        var (ok, msg) = _cloudLicenseService.DeleteDevice(dev.MachineGuid);
+        var (ok, msg) = await _cloudLicenseService.DeleteDeviceAsync(dev.MachineGuid);
         if (ok)
         {
             CarregarCopiasCampo();
             MessageBox.Show(msg, "Concluído", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        else
+        {
+            MessageBox.Show($"Erro ao remover: {msg}", "Erro", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -1136,6 +1230,244 @@ public partial class AdminWindow : Window
             }
         }
         catch { }
+    }
+
+    #endregion
+
+    #region Aba 4: Publicação de Versões Homologadas (SPARC Update)
+
+    private readonly SparcAppUpdateService _updateService = new();
+
+    private void RbPlataformaUpdate_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!_isInitialized || TxtNomeArquivoDestino == null || TxtVersaoUpdate == null || RbPlataformaAndroid == null) return;
+
+        var isAndroid = RbPlataformaAndroid.IsChecked == true;
+        if (isAndroid)
+        {
+            TxtNomeArquivoDestino.Text = "SPARC-Mobile-v0.8.41.apk";
+            TxtVersaoUpdate.Text = "0.8.41";
+        }
+        else
+        {
+            TxtNomeArquivoDestino.Text = "SPARC-Beta-Testes-0.8.34.exe";
+            TxtVersaoUpdate.Text = "0.8.34";
+        }
+
+        DetectarUltimoBuild(isAndroid);
+    }
+
+    private void BtnProcurarArquivoUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        var isAndroid = RbPlataformaAndroid.IsChecked == true;
+        var filter = isAndroid ? "Arquivo Android APK (*.apk)|*.apk" : "Executável Windows (*.exe)|*.exe";
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = $"Selecione o binário homologado do SPARC para {(isAndroid ? "Android" : "Windows")}",
+            Filter = filter,
+            InitialDirectory = @"C:\SPARC\dist-beta"
+        };
+
+        if (dlg.ShowDialog() == true)
+        {
+            TxtCaminhoArquivoUpdate.Text = dlg.FileName;
+            ExtrairVersaoDoNomeArquivo(dlg.FileName);
+        }
+    }
+
+    private void BtnDetectarUltimoBuild_Click(object sender, RoutedEventArgs e)
+    {
+        var isAndroid = RbPlataformaAndroid.IsChecked == true;
+        DetectarUltimoBuild(isAndroid);
+    }
+
+    private void DetectarUltimoBuild(bool isAndroid)
+    {
+        try
+        {
+            var distDir = @"C:\SPARC\dist-beta";
+            if (!Directory.Exists(distDir))
+            {
+                TxtLogUpdate.Text = $"[Aviso] Diretório {distDir} ainda não existe.";
+                return;
+            }
+
+            var pattern = isAndroid ? "*.apk" : "*.exe";
+            var files = Directory.GetFiles(distDir, pattern)
+                .Select(f => new FileInfo(f))
+                .OrderByDescending(f => f.LastWriteTimeUtc)
+                .ToList();
+
+            if (files.Count == 0)
+            {
+                TxtLogUpdate.Text = $"[Aviso] Nenhum arquivo {pattern} encontrado em {distDir}.";
+                return;
+            }
+
+            var newest = files[0];
+            TxtCaminhoArquivoUpdate.Text = newest.FullName;
+            ExtrairVersaoDoNomeArquivo(newest.Name);
+
+            var sizeMb = newest.Length / 1024.0 / 1024.0;
+            TxtStatusPublicacaoUpdate.Text = $"Detectado: {newest.Name} ({sizeMb:F1} MB - {newest.LastWriteTime:dd/MM/yyyy HH:mm})";
+            TxtStatusPublicacaoUpdate.Foreground = UiBrushes.Get("#34D399");
+        }
+        catch (Exception ex)
+        {
+            TxtLogUpdate.Text = $"[Erro ao detectar]: {ex.Message}";
+        }
+    }
+
+    private void ExtrairVersaoDoNomeArquivo(string fileName)
+    {
+        var isAndroid = RbPlataformaAndroid.IsChecked == true;
+        // Exemplo: SPARC-Beta-Testes-0.8.34.exe ou SPARC-Mobile-v0.8.41.apk
+        var m = System.Text.RegularExpressions.Regex.Match(fileName, @"(\d+\.\d+(\.\d+)?)");
+        if (m.Success)
+        {
+            TxtVersaoUpdate.Text = m.Value;
+            TxtNomeArquivoDestino.Text = isAndroid ? $"SPARC-Mobile-v{m.Value}.apk" : $"SPARC-Beta-Testes-{m.Value}.exe";
+        }
+        else
+        {
+            TxtNomeArquivoDestino.Text = Path.GetFileName(fileName);
+        }
+    }
+
+    private async void BtnPublicarVersaoHomologada_Click(object sender, RoutedEventArgs e)
+    {
+        var filePath = TxtCaminhoArquivoUpdate.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+        {
+            MessageBox.Show("Selecione um arquivo binário existente para publicação.", "Aviso", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var versao = TxtVersaoUpdate.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(versao))
+        {
+            MessageBox.Show("Informe o número da versão homologada.", "Aviso", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var notas = TxtNotasUpdate.Text?.Trim() ?? "";
+        var isAndroid = RbPlataformaAndroid.IsChecked == true;
+        var platNome = isAndroid ? "Android" : "Windows";
+
+        var confirm = MessageBox.Show(
+            $"Deseja publicar a versão homologada {versao} do SPARC para {platNome} no repositório oficial?\n\nArquivo: {Path.GetFileName(filePath)}\n\nEsta versão ficará disponível imediatamente para atualização dos técnicos em campo.",
+            "Confirmar Publicação de Versão Homologada",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (confirm != MessageBoxResult.Yes) return;
+
+        BtnPublicarVersaoHomologada.IsEnabled = false;
+        PbUploadUpdate.Visibility = Visibility.Visible;
+        PbUploadUpdate.IsIndeterminate = true;
+        TxtStatusPublicacaoUpdate.Text = "Enviando arquivo para o GitHub Releases...";
+        TxtStatusPublicacaoUpdate.Foreground = UiBrushes.Get("#FBBF24");
+
+        var sbLog = new StringBuilder();
+        sbLog.AppendLine($"[{DateTime.Now:HH:mm:ss}] Iniciando upload da versão {versao} ({platNome})...");
+        sbLog.AppendLine($"Arquivo local: {filePath}");
+        TxtLogUpdate.Text = sbLog.ToString();
+
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+            _updateService.GitHubToken = _firmwareRepoService.GitHubToken;
+
+            var (ok, msg, url) = await _updateService.PublishReleaseAsync(
+                platNome,
+                versao,
+                filePath,
+                notas,
+                cts.Token);
+
+            if (ok)
+            {
+                TxtStatusPublicacaoUpdate.Text = $"✅ Versão {versao} ({platNome}) publicada com sucesso!";
+                TxtStatusPublicacaoUpdate.Foreground = UiBrushes.Get("#4ADE80");
+
+                sbLog.AppendLine($"[{DateTime.Now:HH:mm:ss}] SUCESSO: {msg}");
+                if (!string.IsNullOrWhiteSpace(url))
+                {
+                    sbLog.AppendLine($"Download URL: {url}");
+                }
+                TxtLogUpdate.Text = sbLog.ToString();
+
+                MessageBox.Show(
+                    $"Versão {versao} ({platNome}) homologada e publicada com sucesso no repositório oficial!\n\nOs dispositivos em campo receberão a notificação de atualização ao iniciar.",
+                    "Publicação Concluída", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                TxtStatusPublicacaoUpdate.Text = $"❌ Falha: {msg}";
+                TxtStatusPublicacaoUpdate.Foreground = UiBrushes.Get("#F87171");
+                sbLog.AppendLine($"[{DateTime.Now:HH:mm:ss}] ERRO: {msg}");
+                TxtLogUpdate.Text = sbLog.ToString();
+                MessageBox.Show($"Falha na publicação: {msg}", "Erro", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            TxtStatusPublicacaoUpdate.Text = $"❌ Erro: {ex.Message}";
+            TxtStatusPublicacaoUpdate.Foreground = UiBrushes.Get("#F87171");
+            sbLog.AppendLine($"[{DateTime.Now:HH:mm:ss}] EXCEÇÃO: {ex.Message}");
+            TxtLogUpdate.Text = sbLog.ToString();
+            MessageBox.Show($"Erro na publicação: {ex.Message}", "Erro", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            BtnPublicarVersaoHomologada.IsEnabled = true;
+            PbUploadUpdate.Visibility = Visibility.Collapsed;
+            PbUploadUpdate.IsIndeterminate = false;
+        }
+    }
+
+    private async void BtnConsultarManifesto_Click(object sender, RoutedEventArgs e)
+    {
+        TxtStatusPublicacaoUpdate.Text = "Consultando version.json no repositório...";
+        TxtStatusPublicacaoUpdate.Foreground = UiBrushes.Get("#38BDF8");
+
+        try
+        {
+            _updateService.GitHubToken = _firmwareRepoService.GitHubToken;
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            var manifest = await _updateService.FetchVersionManifestAsync(cts.Token);
+
+            if (manifest == null)
+            {
+                TxtStatusPublicacaoUpdate.Text = "Manifesto version.json ainda não criado no repositório.";
+                TxtLogUpdate.Text = "[Info] Nenhum manifesto de versão encontrado na raiz do repo.";
+                return;
+            }
+
+            var winVer = manifest.Windows?.Version ?? "N/A";
+            var andVer = manifest.Android?.Version ?? "N/A";
+            TxtStatusPublicacaoUpdate.Text = $"Manifesto OK: Windows v{winVer} | Android v{andVer}";
+            TxtStatusPublicacaoUpdate.Foreground = UiBrushes.Get("#4ADE80");
+
+            var sb = new StringBuilder();
+            sb.AppendLine("=== MANIFESTO DE VERSÕES HOMOLOGADAS (version.json) ===");
+            sb.AppendLine($"Atualizado em: {manifest.UpdatedAtUtc:dd/MM/yyyy HH:mm:ss} UTC");
+            sb.AppendLine();
+            sb.AppendLine($"[WINDOWS] Versão: {winVer}");
+            sb.AppendLine($"URL: {manifest.Windows?.DownloadUrl ?? "-"}");
+            sb.AppendLine($"Notas: {manifest.Windows?.ReleaseNotes ?? "-"}");
+            sb.AppendLine();
+            sb.AppendLine($"[ANDROID] Versão: {andVer}");
+            sb.AppendLine($"URL: {manifest.Android?.DownloadUrl ?? "-"}");
+            sb.AppendLine($"Notas: {manifest.Android?.ReleaseNotes ?? "-"}");
+            TxtLogUpdate.Text = sb.ToString();
+        }
+        catch (Exception ex)
+        {
+            TxtStatusPublicacaoUpdate.Text = $"Erro: {ex.Message}";
+            TxtStatusPublicacaoUpdate.Foreground = UiBrushes.Get("#F87171");
+            TxtLogUpdate.Text = $"[Erro ao consultar version.json]: {ex.Message}";
+        }
     }
 
     #endregion

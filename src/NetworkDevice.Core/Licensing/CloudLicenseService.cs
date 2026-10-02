@@ -22,6 +22,7 @@ public sealed class CloudLicenseService
     public string RemoteRepoName { get; } = "repo";
     public string DevicesFileName { get; } = "devices.json";
     public string? GitHubToken { get; set; }
+    public bool ForceLocalOnly { get; set; } = false;
 
     private readonly string _localFilePath;
 
@@ -78,8 +79,106 @@ public sealed class CloudLicenseService
         return Path.Combine(appData, "devices.json");
     }
 
+    public string DeletedDevicesPath => Path.Combine(Path.GetDirectoryName(_localFilePath) ?? @"C:\SPARC\beta", "deleted_devices.json");
+    public string DeletedRequestsPath => Path.Combine(LocalRequestsDirectory, "deleted_requests.json");
+
+    public HashSet<string> LoadDeletedDeviceGuids()
+    {
+        try
+        {
+            if (File.Exists(DeletedDevicesPath))
+            {
+                var json = File.ReadAllText(DeletedDevicesPath);
+                var list = JsonSerializer.Deserialize<List<string>>(json);
+                if (list != null) return new HashSet<string>(list, StringComparer.OrdinalIgnoreCase);
+            }
+        }
+        catch { }
+        return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    public void RecordDeletedDeviceGuid(string machineGuid)
+    {
+        if (string.IsNullOrWhiteSpace(machineGuid)) return;
+        try
+        {
+            var set = LoadDeletedDeviceGuids();
+            if (set.Add(machineGuid.Trim()))
+            {
+                var dir = Path.GetDirectoryName(DeletedDevicesPath);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                File.WriteAllText(DeletedDevicesPath, JsonSerializer.Serialize(set.ToList(), new JsonSerializerOptions { WriteIndented = true }));
+            }
+        }
+        catch { }
+    }
+
+    public void UnrecordDeletedDeviceGuid(string machineGuid)
+    {
+        if (string.IsNullOrWhiteSpace(machineGuid)) return;
+        try
+        {
+            var set = LoadDeletedDeviceGuids();
+            if (set.Remove(machineGuid.Trim()))
+            {
+                var dir = Path.GetDirectoryName(DeletedDevicesPath);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                File.WriteAllText(DeletedDevicesPath, JsonSerializer.Serialize(set.ToList(), new JsonSerializerOptions { WriteIndented = true }));
+            }
+        }
+        catch { }
+    }
+
+    public HashSet<string> LoadDeletedRequestGuids()
+    {
+        try
+        {
+            if (File.Exists(DeletedRequestsPath))
+            {
+                var json = File.ReadAllText(DeletedRequestsPath);
+                var list = JsonSerializer.Deserialize<List<string>>(json);
+                if (list != null) return new HashSet<string>(list, StringComparer.OrdinalIgnoreCase);
+            }
+        }
+        catch { }
+        return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    public void RecordDeletedRequestGuid(string machineGuid)
+    {
+        if (string.IsNullOrWhiteSpace(machineGuid)) return;
+        try
+        {
+            var set = LoadDeletedRequestGuids();
+            if (set.Add(machineGuid.Trim()))
+            {
+                var dir = Path.GetDirectoryName(DeletedRequestsPath);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                File.WriteAllText(DeletedRequestsPath, JsonSerializer.Serialize(set.ToList(), new JsonSerializerOptions { WriteIndented = true }));
+            }
+        }
+        catch { }
+    }
+
+    public void UnrecordDeletedRequestGuid(string machineGuid)
+    {
+        if (string.IsNullOrWhiteSpace(machineGuid)) return;
+        try
+        {
+            var set = LoadDeletedRequestGuids();
+            if (set.Remove(machineGuid.Trim()))
+            {
+                var dir = Path.GetDirectoryName(DeletedRequestsPath);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                File.WriteAllText(DeletedRequestsPath, JsonSerializer.Serialize(set.ToList(), new JsonSerializerOptions { WriteIndented = true }));
+            }
+        }
+        catch { }
+    }
+
     /// <summary>
-    /// Carrega os registros de dispositivos salvos localmente no painel do administrador.
+    /// Carrega os registros de dispositivos salvos localmente no painel do administrador,
+    /// filtrando quaisquer dispositivos excluídos para evitar reaparecimento.
     /// </summary>
     public List<OnlineDeviceRecord> LoadLocalDevices()
     {
@@ -89,7 +188,19 @@ public sealed class CloudLicenseService
         {
             var json = File.ReadAllText(_localFilePath);
             var items = JsonSerializer.Deserialize<List<OnlineDeviceRecord>>(json);
-            return items ?? new List<OnlineDeviceRecord>();
+            if (items == null) return new List<OnlineDeviceRecord>();
+
+            var deleted = LoadDeletedDeviceGuids();
+            if (deleted.Count > 0)
+            {
+                var countBefore = items.Count;
+                items.RemoveAll(d => deleted.Contains(d.MachineGuid));
+                if (items.Count != countBefore)
+                {
+                    SaveLocalDevices(items);
+                }
+            }
+            return items;
         }
         catch
         {
@@ -124,6 +235,11 @@ public sealed class CloudLicenseService
         GeneratedLicenseResult lic,
         string? notes = null)
     {
+        if (!string.IsNullOrWhiteSpace(req.MachineGuid))
+        {
+            UnrecordDeletedDeviceGuid(req.MachineGuid);
+        }
+
         var devices = LoadLocalDevices();
         var existing = devices.FirstOrDefault(d => 
             (!string.IsNullOrEmpty(req.MachineGuid) && d.MachineGuid.Equals(req.MachineGuid, StringComparison.OrdinalIgnoreCase)) ||
@@ -135,12 +251,14 @@ public sealed class CloudLicenseService
             {
                 MachineGuid = req.MachineGuid,
                 MachineFingerprint = req.MachineFingerprint,
-                FirstName = req.FirstName ?? string.Empty,
-                LastName = req.LastName ?? string.Empty,
-                Phone = req.Phone ?? string.Empty,
-                Email = req.Email ?? string.Empty,
-                Cluster = req.Cluster ?? string.Empty,
-                Uf = req.Uf ?? string.Empty,
+                FirstName = SparcTextSanitizer.FormatPersonOrCompanyName(req.FirstName),
+                LastName = SparcTextSanitizer.FormatPersonOrCompanyName(req.LastName),
+                Company = SparcTextSanitizer.FormatPersonOrCompanyName(req.Company),
+                EmployeeId = SparcTextSanitizer.FormatEmployeeId(req.EmployeeId),
+                Phone = SparcTextSanitizer.FormatPhone(req.Phone),
+                Email = SparcTextSanitizer.FormatEmail(req.Email),
+                Cluster = SparcTextSanitizer.FormatCluster(req.Cluster),
+                Uf = SparcTextSanitizer.FormatUf(req.Uf),
                 ClientVersion = req.ClientVersion ?? "0.8",
                 FirstRegisteredUtc = DateTime.UtcNow,
                 LastSeenUtc = DateTime.UtcNow,
@@ -148,19 +266,23 @@ public sealed class CloudLicenseService
                 ValidDays = lic.ValidDays,
                 Status = "Active",
                 AuthorizedToken = lic.LicenseToken,
-                Notes = notes ?? string.Empty
+                Notes = notes ?? string.Empty,
+                Platform = req.Platform ?? "Windows"
             };
             devices.Insert(0, existing);
         }
         else
         {
-            if (!string.IsNullOrWhiteSpace(req.FirstName)) existing.FirstName = req.FirstName;
-            if (!string.IsNullOrWhiteSpace(req.LastName)) existing.LastName = req.LastName;
-            if (!string.IsNullOrWhiteSpace(req.Phone)) existing.Phone = req.Phone;
-            if (!string.IsNullOrWhiteSpace(req.Email)) existing.Email = req.Email;
-            if (!string.IsNullOrWhiteSpace(req.Cluster)) existing.Cluster = req.Cluster;
-            if (!string.IsNullOrWhiteSpace(req.Uf)) existing.Uf = req.Uf;
+            if (!string.IsNullOrWhiteSpace(req.FirstName)) existing.FirstName = SparcTextSanitizer.FormatPersonOrCompanyName(req.FirstName);
+            if (!string.IsNullOrWhiteSpace(req.LastName)) existing.LastName = SparcTextSanitizer.FormatPersonOrCompanyName(req.LastName);
+            if (!string.IsNullOrWhiteSpace(req.Company)) existing.Company = SparcTextSanitizer.FormatPersonOrCompanyName(req.Company);
+            if (!string.IsNullOrWhiteSpace(req.EmployeeId)) existing.EmployeeId = SparcTextSanitizer.FormatEmployeeId(req.EmployeeId);
+            if (!string.IsNullOrWhiteSpace(req.Phone)) existing.Phone = SparcTextSanitizer.FormatPhone(req.Phone);
+            if (!string.IsNullOrWhiteSpace(req.Email)) existing.Email = SparcTextSanitizer.FormatEmail(req.Email);
+            if (!string.IsNullOrWhiteSpace(req.Cluster)) existing.Cluster = SparcTextSanitizer.FormatCluster(req.Cluster);
+            if (!string.IsNullOrWhiteSpace(req.Uf)) existing.Uf = SparcTextSanitizer.FormatUf(req.Uf);
             if (!string.IsNullOrWhiteSpace(req.ClientVersion)) existing.ClientVersion = req.ClientVersion;
+            if (!string.IsNullOrWhiteSpace(req.Platform)) existing.Platform = req.Platform;
 
             existing.LastSeenUtc = DateTime.UtcNow;
             existing.ExpirationDateIso = lic.ExpirationDateIso;
@@ -246,14 +368,62 @@ public sealed class CloudLicenseService
 
     /// <summary>
     /// Consulta o repositório online para obter a lista atualizada de autorizações e status de máquinas.
+    /// Tenta primeiro via API do GitHub (sem atraso de cache CDN) e faz fallback para o raw content.
     /// </summary>
     public async Task<List<OnlineDeviceRecord>> FetchRemoteDevicesAsync(CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(GitHubToken))
+        {
+            GitHubToken = ResolveGitHubToken();
+        }
+
+        // 1. Tenta via GitHub API contents (resposta instantânea, sem atraso de cache CDN)
+        if (!string.IsNullOrWhiteSpace(GitHubToken))
+        {
+            try
+            {
+                var apiUrl = $"https://api.github.com/repos/{RemoteRepoOwner}/{RemoteRepoName}/contents/{DevicesFileName}";
+                using var apiReq = new HttpRequestMessage(HttpMethod.Get, apiUrl);
+                apiReq.Headers.UserAgent.Add(new ProductInfoHeaderValue("SPARC-Agent", "1.0"));
+                apiReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", GitHubToken);
+                apiReq.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.v3+json"));
+
+                using var apiResp = await HttpClient.SendAsync(apiReq, ct).ConfigureAwait(false);
+                if (apiResp.IsSuccessStatusCode)
+                {
+                    var respJson = await apiResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                    using var doc = JsonDocument.Parse(respJson);
+                    if (doc.RootElement.TryGetProperty("content", out var contentProp))
+                    {
+                        var b64 = contentProp.GetString()?.Replace("\n", "").Replace("\r", "");
+                        if (!string.IsNullOrEmpty(b64))
+                        {
+                            var bytes = Convert.FromBase64String(b64);
+                            var json = Encoding.UTF8.GetString(bytes);
+                            var list = JsonSerializer.Deserialize<List<OnlineDeviceRecord>>(json);
+                            if (list != null)
+                            {
+                                var deletedGuids = LoadDeletedDeviceGuids();
+                                if (deletedGuids.Count > 0)
+                                {
+                                    list.RemoveAll(d => deletedGuids.Contains(d.MachineGuid));
+                                }
+                                return list;
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+
+        // 2. Fallback via Raw URL com bypass de CDN cache
         try
         {
-            var rawUrl = $"https://raw.githubusercontent.com/{RemoteRepoOwner}/{RemoteRepoName}/main/{DevicesFileName}";
+            var rawUrl = $"https://raw.githubusercontent.com/{RemoteRepoOwner}/{RemoteRepoName}/main/{DevicesFileName}?t={DateTime.UtcNow.Ticks}";
             using var request = new HttpRequestMessage(HttpMethod.Get, rawUrl);
             request.Headers.UserAgent.Add(new ProductInfoHeaderValue("SPARC-Agent", "1.0"));
+            request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true, NoStore = true };
             if (!string.IsNullOrWhiteSpace(GitHubToken))
             {
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", GitHubToken);
@@ -263,12 +433,175 @@ public sealed class CloudLicenseService
             if (!response.IsSuccessStatusCode) return new List<OnlineDeviceRecord>();
 
             var json = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-            return JsonSerializer.Deserialize<List<OnlineDeviceRecord>>(json) ?? new List<OnlineDeviceRecord>();
+            var parsed = JsonSerializer.Deserialize<List<OnlineDeviceRecord>>(json) ?? new List<OnlineDeviceRecord>();
+            var deletedGuids = LoadDeletedDeviceGuids();
+            if (deletedGuids.Count > 0)
+            {
+                parsed.RemoveAll(d => deletedGuids.Contains(d.MachineGuid));
+            }
+            return parsed;
         }
         catch
         {
             return new List<OnlineDeviceRecord>();
         }
+    }
+
+    /// <summary>
+    /// Sincroniza a base de dispositivos local com a nuvem (devices.json no GitHub).
+    /// </summary>
+    public async Task<(bool Success, string Message)> SyncDevicesToRemoteAsync(CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(GitHubToken))
+        {
+            GitHubToken = ResolveGitHubToken();
+        }
+
+        if (string.IsNullOrWhiteSpace(GitHubToken))
+        {
+            return (false, "Token do GitHub não configurado.");
+        }
+
+        try
+        {
+            var url = $"https://api.github.com/repos/{RemoteRepoOwner}/{RemoteRepoName}/contents/{DevicesFileName}";
+
+            // Busca SHA atual para evitar conflitos de concorrência
+            string? currentSha = null;
+            try
+            {
+                using var getReq = new HttpRequestMessage(HttpMethod.Get, url);
+                getReq.Headers.UserAgent.Add(new ProductInfoHeaderValue("SPARC-Agent", "1.0"));
+                getReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", GitHubToken);
+                getReq.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.v3+json"));
+
+                using var getResp = await HttpClient.SendAsync(getReq, ct).ConfigureAwait(false);
+                if (getResp.IsSuccessStatusCode)
+                {
+                    var respJson = await getResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                    using var doc = JsonDocument.Parse(respJson);
+                    if (doc.RootElement.TryGetProperty("sha", out var sp))
+                    {
+                        currentSha = sp.GetString();
+                    }
+                }
+            }
+            catch { }
+
+            var devices = LoadLocalDevices();
+            var json = JsonSerializer.Serialize(devices, new JsonSerializerOptions { WriteIndented = true });
+            var base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
+
+            var payload = new Dictionary<string, object>
+            {
+                ["message"] = $"Atualizacao sincronizada de licencas SPARC ({devices.Count} dispositivos)",
+                ["content"] = base64
+            };
+            if (!string.IsNullOrWhiteSpace(currentSha))
+            {
+                payload["sha"] = currentSha;
+            }
+
+            using var putReq = new HttpRequestMessage(HttpMethod.Put, url);
+            putReq.Headers.UserAgent.Add(new ProductInfoHeaderValue("SPARC-Agent", "1.0"));
+            putReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", GitHubToken);
+            putReq.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.v3+json"));
+            putReq.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+            using var putResp = await HttpClient.SendAsync(putReq, ct).ConfigureAwait(false);
+            if (putResp.IsSuccessStatusCode)
+            {
+                return (true, "Base de licenças sincronizada na nuvem com sucesso!");
+            }
+
+            var errBody = await putResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            return (false, $"Erro na nuvem ({putResp.StatusCode}): {errBody}");
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Erro de conexão ao sincronizar: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Baixa a versão mais recente de devices.json da nuvem e salva localmente.
+    /// </summary>
+    public async Task<List<OnlineDeviceRecord>> SyncDevicesFromRemoteAsync(CancellationToken ct = default)
+    {
+        try
+        {
+            var remoteList = await FetchRemoteDevicesAsync(ct).ConfigureAwait(false);
+            if (remoteList != null && remoteList.Count > 0)
+            {
+                SaveLocalDevices(remoteList);
+                return remoteList;
+            }
+        }
+        catch { }
+
+        return LoadLocalDevices();
+    }
+
+    /// <summary>
+    /// Validação prioritária de licença na inicialização (Windows e Android):
+    /// 1. Se online: consulta status em tempo real. Se revogado, bloqueia; se tem novo token/prorrogação, atualiza localmente.
+    /// 2. Se offline: valida chave local armazenada e permite uso se válida.
+    /// </summary>
+    public async Task<(bool Allowed, bool Revoked, string? NewToken, string Message)> VerifyLicenseStartupAsync(
+        string machineGuid,
+        string machineFingerprint,
+        string? currentLocalToken,
+        Func<string, bool> offlineValidator,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(5));
+
+            var remoteList = await FetchRemoteDevicesAsync(timeoutCts.Token).ConfigureAwait(false);
+            if (remoteList != null && remoteList.Count > 0)
+            {
+                var dev = remoteList.FirstOrDefault(d =>
+                    (!string.IsNullOrEmpty(machineGuid) && d.MachineGuid.Equals(machineGuid, StringComparison.OrdinalIgnoreCase)) ||
+                    (!string.IsNullOrEmpty(machineFingerprint) && d.MachineFingerprint.Equals(machineFingerprint, StringComparison.OrdinalIgnoreCase)));
+
+                if (dev != null)
+                {
+                    if (string.Equals(dev.Status, "Revoked", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return (false, true, null, "Esta cópia do SPARC foi suspensa ou revogada pelo Administrador.");
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(dev.AuthorizedToken))
+                    {
+                        if (!dev.AuthorizedToken.Equals(currentLocalToken, StringComparison.Ordinal))
+                        {
+                            if (offlineValidator(dev.AuthorizedToken))
+                            {
+                                return (true, false, dev.AuthorizedToken, $"Licença sincronizada com a nuvem (Válida até {dev.ExpirationDateIso}).");
+                            }
+                        }
+                        else
+                        {
+                            return (true, false, null, $"Licença online verificada e ativa até {dev.ExpirationDateIso}.");
+                        }
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Timeout ou offline: cai no fallback abaixo
+        }
+
+        // Fallback Offline
+        if (!string.IsNullOrWhiteSpace(currentLocalToken) && offlineValidator(currentLocalToken))
+        {
+            return (true, false, null, "Modo Offline: Chave de ativação local validada com sucesso.");
+        }
+
+        return (false, false, null, "Chave de ativação inválida, ausente ou expirada.");
     }
 
     /// <summary>
@@ -339,6 +672,8 @@ public sealed class CloudLicenseService
             req.RequestedAtUtc = DateTime.UtcNow;
         }
 
+        UnrecordDeletedRequestGuid(req.MachineGuid);
+
         var json = JsonSerializer.Serialize(req, new JsonSerializerOptions { WriteIndented = true });
 
         // 1. Salva localmente como backup imediato
@@ -349,9 +684,16 @@ public sealed class CloudLicenseService
         }
         catch { }
 
-        // 2. Se houver token GitHub configurado, envia para a nuvem via API do GitHub
-        if (!string.IsNullOrWhiteSpace(GitHubToken))
+        // 2. Se houver token GitHub configurado (ou obtido via cofre embutido), envia para a nuvem via API do GitHub
+        if (!ForceLocalOnly)
         {
+            if (string.IsNullOrWhiteSpace(GitHubToken))
+            {
+                GitHubToken = ResolveGitHubToken();
+            }
+
+            if (!string.IsNullOrWhiteSpace(GitHubToken) && GitHubToken != "none")
+            {
             try
             {
                 var fileName = $"requests/{req.MachineGuid}.json";
@@ -413,6 +755,11 @@ public sealed class CloudLicenseService
             catch (Exception ex)
             {
                 return (false, $"Erro ao conectar à nuvem: {ex.Message}");
+            }
+            }
+            else
+            {
+                return (false, "Token da nuvem não configurado. Apenas cópia local foi salva.");
             }
         }
 
@@ -493,8 +840,9 @@ public sealed class CloudLicenseService
     public async Task<List<OnlineActivationRequest>> ListActivationRequestsAsync(CancellationToken ct = default)
     {
         var resultList = new Dictionary<string, OnlineActivationRequest>(StringComparer.OrdinalIgnoreCase);
+        var deletedReqs = LoadDeletedRequestGuids();
 
-        // 1. Carrega registros locais
+        // 1. Carrega registros locais (purgando os que constam como excluídos)
         try
         {
             if (Directory.Exists(LocalRequestsDirectory))
@@ -507,6 +855,11 @@ public sealed class CloudLicenseService
                         var req = JsonSerializer.Deserialize<OnlineActivationRequest>(json);
                         if (req != null && !string.IsNullOrWhiteSpace(req.MachineGuid))
                         {
+                            if (deletedReqs.Contains(req.MachineGuid) || (!string.IsNullOrWhiteSpace(req.RemoteFileName) && deletedReqs.Contains(req.RemoteFileName)))
+                            {
+                                try { File.Delete(file); } catch { }
+                                continue;
+                            }
                             resultList[req.MachineGuid] = req;
                         }
                     }
@@ -517,6 +870,11 @@ public sealed class CloudLicenseService
         catch { }
 
         // 2. Consulta diretório remoto no GitHub se token estiver disponível
+        if (string.IsNullOrWhiteSpace(GitHubToken))
+        {
+            GitHubToken = ResolveGitHubToken();
+        }
+
         if (!string.IsNullOrWhiteSpace(GitHubToken))
         {
             try
@@ -542,6 +900,13 @@ public sealed class CloudLicenseService
 
                             if (!string.IsNullOrEmpty(name) && name.EndsWith(".json", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(downloadUrl))
                             {
+                                if (deletedReqs.Contains(name) || deletedReqs.Contains(name.Replace(".json", "", StringComparison.OrdinalIgnoreCase)))
+                                {
+                                    // Se ainda existir na nuvem, dispara deleção para limpar repositório
+                                    _ = DeleteRemoteFileByNameAsync($"requests/{name}", sha, ct);
+                                    continue;
+                                }
+
                                 try
                                 {
                                     using var dlReq = new HttpRequestMessage(HttpMethod.Get, downloadUrl);
@@ -555,6 +920,13 @@ public sealed class CloudLicenseService
                                         var onlineReq = JsonSerializer.Deserialize<OnlineActivationRequest>(itemJson);
                                         if (onlineReq != null && !string.IsNullOrWhiteSpace(onlineReq.MachineGuid))
                                         {
+                                            if (deletedReqs.Contains(onlineReq.MachineGuid))
+                                            {
+                                                _ = DeleteRemoteFileByNameAsync($"requests/{name}", sha, ct);
+                                                continue;
+                                            }
+
+                                            onlineReq.RemoteFileName = name;
                                             onlineReq.RemoteSha = sha;
                                             resultList[onlineReq.MachineGuid] = onlineReq;
 
@@ -578,6 +950,64 @@ public sealed class CloudLicenseService
         }
 
         return resultList.Values.OrderByDescending(r => r.RequestedAtUtc).ToList();
+    }
+
+    /// <summary>
+    /// Deleta um arquivo específico do repositório remoto via API do GitHub.
+    /// </summary>
+    private async Task<bool> DeleteRemoteFileByNameAsync(string filePath, string? knownSha, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(filePath)) return false;
+        if (string.IsNullOrWhiteSpace(GitHubToken)) GitHubToken = ResolveGitHubToken();
+        if (string.IsNullOrWhiteSpace(GitHubToken)) return false;
+
+        try
+        {
+            var cleanPath = filePath.TrimStart('/');
+            var url = $"https://api.github.com/repos/{RemoteRepoOwner}/{RemoteRepoName}/contents/{cleanPath}";
+
+            var sha = knownSha;
+            if (string.IsNullOrWhiteSpace(sha))
+            {
+                using var getReq = new HttpRequestMessage(HttpMethod.Get, url);
+                getReq.Headers.UserAgent.Add(new ProductInfoHeaderValue("SPARC-Agent", "1.0"));
+                getReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", GitHubToken);
+                getReq.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.v3+json"));
+
+                using var getResp = await HttpClient.SendAsync(getReq, ct).ConfigureAwait(false);
+                if (getResp.StatusCode == System.Net.HttpStatusCode.NotFound) return true;
+                if (getResp.IsSuccessStatusCode)
+                {
+                    var respJson = await getResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                    using var doc = JsonDocument.Parse(respJson);
+                    if (doc.RootElement.TryGetProperty("sha", out var sp))
+                    {
+                        sha = sp.GetString();
+                    }
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(sha))
+            {
+                using var delReq = new HttpRequestMessage(HttpMethod.Delete, url);
+                delReq.Headers.UserAgent.Add(new ProductInfoHeaderValue("SPARC-Agent", "1.0"));
+                delReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", GitHubToken);
+                delReq.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.v3+json"));
+
+                var delPayload = new Dictionary<string, string>
+                {
+                    ["message"] = $"Exclusao de solicitacao: {Path.GetFileName(cleanPath)}",
+                    ["sha"] = sha
+                };
+                delReq.Content = new StringContent(JsonSerializer.Serialize(delPayload), Encoding.UTF8, "application/json");
+
+                using var delResp = await HttpClient.SendAsync(delReq, ct).ConfigureAwait(false);
+                return delResp.IsSuccessStatusCode || delResp.StatusCode == System.Net.HttpStatusCode.NotFound;
+            }
+        }
+        catch { }
+
+        return false;
     }
 
     /// <summary>
@@ -608,7 +1038,10 @@ public sealed class CloudLicenseService
             Email: request.Email,
             Cluster: request.Cluster,
             Uf: request.Uf,
-            ClientVersion: request.ClientVersion);
+            ClientVersion: request.ClientVersion,
+            Platform: request.Platform,
+            Company: request.Company,
+            EmployeeId: request.EmployeeId);
 
         var licResult = signer.GenerateLicense(reqData, validDays, request.FullName, adminNotes ?? "Aprovado via SPARC Admin Online");
         if (!licResult.Success || string.IsNullOrEmpty(licResult.LicenseToken))
@@ -627,6 +1060,9 @@ public sealed class CloudLicenseService
 
         // 2. Insere/atualiza na lista de dispositivos ativos (devices.json)
         RegisterOrUpdateDevice(reqData, licResult, adminNotes);
+
+        // 3. Sincroniza a lista de dispositivos atualizada na nuvem
+        _ = SyncDevicesToRemoteAsync(ct);
 
         return (true, $"Solicitação de {request.FullName} aprovada com sucesso! Válida por {validDays} dias até {licResult.ExpirationDateIso}.", licResult.LicenseToken);
     }
@@ -649,8 +1085,8 @@ public sealed class CloudLicenseService
     }
 
     /// <summary>
-    /// Exclui uma solicitação de ativação online do disco local e do repositório remoto no GitHub.
-    /// Útil para limpeza e organização de testes.
+    /// Exclui uma solicitação de ativação online do disco local e do repositório remoto no GitHub,
+    /// gravando no registro de exclusões para que nunca mais retorne na inicialização.
     /// </summary>
     public async Task<(bool Success, string Message)> DeleteActivationRequestAsync(
         OnlineActivationRequest request,
@@ -659,7 +1095,15 @@ public sealed class CloudLicenseService
         if (request == null || string.IsNullOrWhiteSpace(request.MachineGuid))
             return (false, "Solicitação inválida.");
 
-        // 1. Remove do disco local
+        // 1. Registra no tombstone de exclusões locais
+        RecordDeletedRequestGuid(request.MachineGuid);
+        if (!string.IsNullOrWhiteSpace(request.RemoteFileName))
+        {
+            RecordDeletedRequestGuid(request.RemoteFileName);
+            RecordDeletedRequestGuid(request.RemoteFileName.Replace(".json", "", StringComparison.OrdinalIgnoreCase));
+        }
+
+        // 2. Remove do disco local
         try
         {
             var localFile = Path.Combine(LocalRequestsDirectory, $"{request.MachineGuid}.json");
@@ -670,70 +1114,38 @@ public sealed class CloudLicenseService
         }
         catch { }
 
-        // 2. Se houver token GitHub configurado, remove do repositório remoto via API DELETE
+        // 3. Remove do repositório remoto via API DELETE
+        if (string.IsNullOrWhiteSpace(GitHubToken))
+        {
+            GitHubToken = ResolveGitHubToken();
+        }
+
         if (!string.IsNullOrWhiteSpace(GitHubToken))
         {
             try
             {
-                var fileName = $"requests/{request.MachineGuid}.json";
-                var url = $"https://api.github.com/repos/{RemoteRepoOwner}/{RemoteRepoName}/contents/{fileName}";
-
-                var sha = request.RemoteSha;
-                if (string.IsNullOrWhiteSpace(sha))
+                var cleanName = !string.IsNullOrWhiteSpace(request.RemoteFileName) 
+                    ? request.RemoteFileName 
+                    : $"{request.MachineGuid}.json";
+                var relativePath = cleanName.StartsWith("requests/") ? cleanName : $"requests/{cleanName}";
+                var deletedRemotely = await DeleteRemoteFileByNameAsync(relativePath, request.RemoteSha, ct).ConfigureAwait(false);
+                if (deletedRemotely)
                 {
-                    try
-                    {
-                        using var getReq = new HttpRequestMessage(HttpMethod.Get, url);
-                        getReq.Headers.UserAgent.Add(new ProductInfoHeaderValue("SPARC-Agent", "1.0"));
-                        getReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", GitHubToken);
-                        getReq.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.v3+json"));
-
-                        using var getResp = await HttpClient.SendAsync(getReq, ct).ConfigureAwait(false);
-                        if (getResp.IsSuccessStatusCode)
-                        {
-                            var respJson = await getResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-                            using var doc = JsonDocument.Parse(respJson);
-                            if (doc.RootElement.TryGetProperty("sha", out var sp))
-                            {
-                                sha = sp.GetString();
-                            }
-                        }
-                    }
-                    catch { }
-                }
-
-                if (!string.IsNullOrWhiteSpace(sha))
-                {
-                    using var delReq = new HttpRequestMessage(HttpMethod.Delete, url);
-                    delReq.Headers.UserAgent.Add(new ProductInfoHeaderValue("SPARC-Agent", "1.0"));
-                    delReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", GitHubToken);
-                    delReq.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.v3+json"));
-
-                    var delPayload = new Dictionary<string, string>
-                    {
-                        ["message"] = $"Limpeza de teste: removida solicitacao de {request.FullName}",
-                        ["sha"] = sha
-                    };
-                    delReq.Content = new StringContent(JsonSerializer.Serialize(delPayload), Encoding.UTF8, "application/json");
-
-                    using var delResp = await HttpClient.SendAsync(delReq, ct).ConfigureAwait(false);
-                    if (delResp.IsSuccessStatusCode)
-                    {
-                        return (true, "Solicitação excluída com sucesso da nuvem e do cache local!");
-                    }
+                    return (true, "Solicitação excluída permanentemente da nuvem e do cache local!");
                 }
             }
             catch (Exception ex)
             {
-                return (true, $"Removido localmente, mas erro na nuvem: {ex.Message}");
+                return (true, $"Removido localmente, mas aviso nuvem: {ex.Message}");
             }
         }
 
-        return (true, "Solicitação excluída com sucesso.");
+        return (true, "Solicitação excluída permanentemente com sucesso.");
     }
 
     /// <summary>
-    /// Exclui o registro de uma cópia/dispositivo de campo da base de dispositivos monitorados (devices.json).
+    /// Exclui o registro de uma cópia/dispositivo de campo da base de dispositivos monitorados (devices.json) localmente
+    /// e sincroniza imediatamente com a nuvem, gravando na lista de exclusões.
     /// </summary>
     public (bool Success, string Message) DeleteDevice(string machineGuid)
     {
@@ -743,8 +1155,106 @@ public sealed class CloudLicenseService
         var removed = devices.RemoveAll(d => d.MachineGuid.Equals(machineGuid, StringComparison.OrdinalIgnoreCase));
         if (removed > 0)
         {
+            RecordDeletedDeviceGuid(machineGuid);
             SaveLocalDevices(devices);
+            _ = SyncDevicesToRemoteAsync();
             return (true, "Dispositivo removido da base de cópias com sucesso.");
+        }
+
+        return (false, "Dispositivo não encontrado.");
+    }
+
+    /// <summary>
+    /// Concede tempo adicional de licença para uma máquina diretamente no controle administrativo
+    /// e sincroniza imediatamente com a nuvem (devices.json).
+    /// </summary>
+    public async Task<(bool Success, string Message, OnlineDeviceRecord? Device)> ExtendLicenseAsync(
+        string machineGuid,
+        int additionalDays,
+        LicenseSignerService signer,
+        string? adminNotes = null,
+        CancellationToken ct = default)
+    {
+        var (ok, msg, dev) = ExtendLicense(machineGuid, additionalDays, signer, adminNotes);
+        if (ok)
+        {
+            await SyncDevicesToRemoteAsync(ct).ConfigureAwait(false);
+        }
+        return (ok, msg, dev);
+    }
+
+    /// <summary>
+    /// Revoga imediatamente a licença de um dispositivo/técnico e atualiza a nuvem.
+    /// </summary>
+    public async Task<(bool Success, string Message)> RevokeDeviceAsync(
+        string machineGuid,
+        string reason,
+        CancellationToken ct = default)
+    {
+        var (ok, msg) = RevokeDevice(machineGuid, reason);
+        if (ok)
+        {
+            await SyncDevicesToRemoteAsync(ct).ConfigureAwait(false);
+        }
+        return (ok, msg);
+    }
+
+    /// <summary>
+    /// Atualiza os dados cadastrais de um dispositivo (Nome, Empresa, Matrícula, Contato, etc.)
+    /// com padronização uniforme de texto e salva imediatamente na nuvem.
+    /// </summary>
+    public async Task<(bool Success, string Message, OnlineDeviceRecord? Device)> UpdateDeviceAsync(
+        OnlineDeviceRecord updatedDevice,
+        CancellationToken ct = default)
+    {
+        if (updatedDevice == null || string.IsNullOrWhiteSpace(updatedDevice.MachineGuid))
+            return (false, "Dados do dispositivo inválidos.", null);
+
+        var devices = LoadLocalDevices();
+        var existing = devices.FirstOrDefault(d => d.MachineGuid.Equals(updatedDevice.MachineGuid, StringComparison.OrdinalIgnoreCase));
+        if (existing == null)
+            return (false, "Dispositivo não encontrado no registro local.", null);
+
+        existing.FirstName = SparcTextSanitizer.FormatPersonOrCompanyName(updatedDevice.FirstName);
+        existing.LastName = SparcTextSanitizer.FormatPersonOrCompanyName(updatedDevice.LastName);
+        existing.Company = SparcTextSanitizer.FormatPersonOrCompanyName(updatedDevice.Company);
+        existing.EmployeeId = SparcTextSanitizer.FormatEmployeeId(updatedDevice.EmployeeId);
+        existing.Phone = SparcTextSanitizer.FormatPhone(updatedDevice.Phone);
+        existing.Email = SparcTextSanitizer.FormatEmail(updatedDevice.Email);
+        existing.Cluster = SparcTextSanitizer.FormatCluster(updatedDevice.Cluster);
+        existing.Uf = SparcTextSanitizer.FormatUf(updatedDevice.Uf);
+        if (!string.IsNullOrWhiteSpace(updatedDevice.Notes)) existing.Notes = updatedDevice.Notes.Trim();
+
+        SaveLocalDevices(devices);
+
+        // Sincroniza na nuvem imediatamente
+        await SyncDevicesToRemoteAsync(ct).ConfigureAwait(false);
+
+        return (true, "Cadastro do técnico atualizado com sucesso na nuvem e localmente!", existing);
+    }
+
+    /// <summary>
+    /// Exclui o registro de uma cópia da base de dispositivos monitorados (devices.json)
+    /// localmente e na nuvem, evitando que o cadastro reapareça ao reiniciar.
+    /// </summary>
+    public async Task<(bool Success, string Message)> DeleteDeviceAsync(
+        string machineGuid,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(machineGuid)) return (false, "GUID não informado.");
+
+        var devices = LoadLocalDevices();
+        var removed = devices.RemoveAll(d => d.MachineGuid.Equals(machineGuid, StringComparison.OrdinalIgnoreCase));
+        if (removed > 0)
+        {
+            RecordDeletedDeviceGuid(machineGuid);
+            SaveLocalDevices(devices);
+            var (remoteOk, remoteMsg) = await SyncDevicesToRemoteAsync(ct).ConfigureAwait(false);
+            if (remoteOk)
+            {
+                return (true, "Dispositivo excluído com sucesso da nuvem e da base local!");
+            }
+            return (true, $"Dispositivo removido localmente (Aviso nuvem: {remoteMsg})");
         }
 
         return (false, "Dispositivo não encontrado.");

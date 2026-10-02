@@ -92,7 +92,7 @@ public sealed class Cisco841FirmwareRecoveryEngine : IFirmwareRecoveryEngine
             hostIp,
             routerIp,
             subnetMask,
-            "GigabitEthernet 5",
+            "GigabitEthernet0/5",
             null,
             null,
             instructOperator,

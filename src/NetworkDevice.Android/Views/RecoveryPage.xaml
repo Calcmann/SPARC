@@ -2,63 +2,95 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="NetworkDevice.Android.Views.RecoveryPage"
-             Title="Quebra de Senha">
+             Title="Quebra de Senha"
+             BackgroundColor="#0B0F19">
     <ScrollView>
-        <VerticalStackLayout Padding="16" Spacing="14">
+        <VerticalStackLayout Padding="14" Spacing="12">
 
-            <Frame BackgroundColor="#1E293B" CornerRadius="12" Padding="14" HasShadow="True">
-                <VerticalStackLayout Spacing="4">
-                    <Label Text="SPARC Mobile • Quebra de Senha e Reset" FontSize="16" FontAttributes="Bold" TextColor="#F87171" />
-                    <Label Text="Login direto ou zeramento autônomo (ROMMON / BootWare / Reset físico)" FontSize="11" TextColor="#94A3B8" />
+            <!-- Cabeçalho -->
+            <Grid ColumnDefinitions="*, Auto">
+                <VerticalStackLayout Spacing="2">
+                    <Label Text="🛠️ SPARC Mobile • Quebra de Senha e Reset" FontSize="16" FontAttributes="Bold" TextColor="#F87171" />
+                    <Label Text="Desbloqueio autônomo e restauração de fábrica para bancada" FontSize="11" TextColor="#94A3B8" />
                 </VerticalStackLayout>
-            </Frame>
+                <Button Grid.Column="1" x:Name="CloseModalBtn" Text="✕ Voltar" Clicked="OnCloseClicked" BackgroundColor="#334155" TextColor="White" CornerRadius="8" FontSize="12" HeightRequest="36" Padding="12, 0" />
+            </Grid>
 
-            <!-- Estado do equipamento -->
-            <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#334155">
-                <VerticalStackLayout Spacing="10">
+            <!-- Card de Estado e S/N -->
+            <Frame BackgroundColor="#0F172A" CornerRadius="10" Padding="12" BorderColor="#334155">
+                <VerticalStackLayout Spacing="8">
                     <Grid ColumnDefinitions="*, Auto">
-                        <Label Grid.Column="0" Text="Equipamento Conectado" FontSize="14" FontAttributes="Bold" TextColor="#F8FAFC" VerticalOptions="Center" />
+                        <Label Grid.Column="0" Text="Estado do Equipamento" FontSize="13" FontAttributes="Bold" TextColor="#F8FAFC" VerticalOptions="Center" />
                         <Label Grid.Column="1" x:Name="LockBadge" Text="NÃO VERIFICADO" FontSize="11" FontAttributes="Bold" TextColor="#94A3B8" VerticalOptions="Center" />
                     </Grid>
 
-                    <Label x:Name="DetectedInfoLabel" Text="Conecte o console na aba Provisionamento e toque em Verificar." FontSize="12" TextColor="#94A3B8" />
+                    <Label x:Name="DetectedInfoLabel" Text="Conecte o console na aba Ativação e toque em 'Verificar'." FontSize="11.5" TextColor="#94A3B8" />
 
-                    <Button x:Name="CheckLockBtn" Text="🔍 Verificar Bloqueio" Clicked="OnCheckLockClicked" BackgroundColor="#0284C7" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="38" />
+                    <!-- Serial Number Capturado -->
+                    <Border x:Name="BorderSerialNumber" BackgroundColor="#064E3B" Stroke="#059669" StrokeThickness="1" StrokeShape="RoundRectangle 6" Padding="8,4" IsVisible="False">
+                        <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
+                            <Label Text="✅ S/N:" FontSize="11.5" TextColor="#A7F3D0" FontAttributes="Bold" VerticalOptions="Center" />
+                            <Label x:Name="TxtSerialNumber" Text="-" FontSize="11.5" TextColor="#34D399" FontAttributes="Bold" VerticalOptions="Center" />
+                        </HorizontalStackLayout>
+                    </Border>
+
+                    <Button x:Name="CheckLockBtn" Text="🔍 Verificar Bloqueio e Serial" Clicked="OnCheckLockClicked" BackgroundColor="#0284C7" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="38" FontSize="12" />
                 </VerticalStackLayout>
             </Frame>
 
-            <!-- Opção 1: Login direto -->
-            <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#334155">
-                <VerticalStackLayout Spacing="10">
-                    <Label Text="Opção 1 • Login Direto (tenho as credenciais)" FontSize="14" FontAttributes="Bold" TextColor="#F8FAFC" />
+            <!-- Card Especial: Guia Passo a Passo FortiGate 40F -->
+            <Frame BackgroundColor="#450A0A" CornerRadius="10" Padding="12" BorderColor="#DC2626">
+                <VerticalStackLayout Spacing="6">
+                    <Label Text="⚠️ PROCEDIMENTO GUIADO: FORTIGATE 40F" FontSize="13" FontAttributes="Bold" TextColor="#FCA5A5" />
+                    <Label Text="Qualquer configuração prévia existente no equipamento será apagada." FontSize="10.5" TextColor="#FECACA" />
 
-                    <Grid ColumnDefinitions="Auto, *" RowDefinitions="Auto, Auto" RowSpacing="8" ColumnSpacing="10">
-                        <Label Grid.Row="0" Grid.Column="0" Text="Usuário:" TextColor="#94A3B8" FontAttributes="Bold" FontSize="12" VerticalOptions="Center" />
-                        <Entry Grid.Row="0" Grid.Column="1" x:Name="LoginUserEntry" Placeholder="Ex: admin, EBT, cisco" TextColor="White" BackgroundColor="#1E293B" FontSize="13" />
+                    <Border BackgroundColor="#1C1917" Stroke="#B45309" StrokeThickness="1" StrokeShape="RoundRectangle 6" Padding="10,8">
+                        <VerticalStackLayout Spacing="4">
+                            <Label Text="1. Reinicie o equipamento (desligue e ligue o cabo da fonte)." FontSize="11" TextColor="#FEF08A" />
+                            <Label Text="2. Observe o LED 'STATUS' no painel frontal inicializar." FontSize="11" TextColor="#FEF08A" />
+                            <Label Text="3. Quando o LED STATUS começar a piscar devagar, aperte e segure o furo 'RESET' (traseira)." FontSize="11" TextColor="#FACC15" FontAttributes="Bold" />
+                            <Label Text="4. Segure o botão reset (~3 segundos) até o LED STATUS piscar rápido, e então solte." FontSize="11" TextColor="#FDE047" FontAttributes="Bold" />
+                            <Label Text="5. O roteador detectará o reset físico e reiniciará de fábrica com login default (admin sem senha)!" FontSize="11" TextColor="#86EFAC" FontAttributes="Bold" />
+                        </VerticalStackLayout>
+                    </Border>
+                </VerticalStackLayout>
+            </Frame>
 
-                        <Label Grid.Row="1" Grid.Column="0" Text="Senha:" TextColor="#94A3B8" FontAttributes="Bold" FontSize="12" VerticalOptions="Center" />
-                        <Entry Grid.Row="1" Grid.Column="1" x:Name="LoginPassEntry" Placeholder="Senha de acesso" IsPassword="True" TextColor="White" BackgroundColor="#1E293B" FontSize="13" />
+            <!-- Opção 1: Login direto com credenciais conhecidas -->
+            <Frame BackgroundColor="#0F172A" CornerRadius="10" Padding="12" BorderColor="#334155">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Opção 1 • Testar Login Direto (credenciais existentes)" FontSize="13" FontAttributes="Bold" TextColor="#F8FAFC" />
+
+                    <Grid ColumnDefinitions="Auto, *" RowDefinitions="Auto, Auto" RowSpacing="6" ColumnSpacing="8">
+                        <Label Grid.Row="0" Grid.Column="0" Text="Usuário:" TextColor="#94A3B8" FontAttributes="Bold" FontSize="11.5" VerticalOptions="Center" />
+                        <Entry Grid.Row="0" Grid.Column="1" x:Name="LoginUserEntry" Placeholder="Ex: admin, EBT, cisco" TextColor="White" BackgroundColor="#1E293B" FontSize="12" HeightRequest="36" />
+
+                        <Label Grid.Row="1" Grid.Column="0" Text="Senha:" TextColor="#94A3B8" FontAttributes="Bold" FontSize="11.5" VerticalOptions="Center" />
+                        <Entry Grid.Row="1" Grid.Column="1" x:Name="LoginPassEntry" Placeholder="Senha de acesso" IsPassword="True" TextColor="White" BackgroundColor="#1E293B" FontSize="12" HeightRequest="36" />
                     </Grid>
 
-                    <Button x:Name="TryLoginBtn" Text="🔑 Testar Login e Pular Quebra" Clicked="OnTryLoginClicked" BackgroundColor="#059669" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="40" />
+                    <Button x:Name="TryLoginBtn" Text="🔑 Testar Credenciais e Prosseguir" Clicked="OnTryLoginClicked" BackgroundColor="#059669" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="38" FontSize="12" />
                 </VerticalStackLayout>
             </Frame>
 
-            <!-- Opção 2: Quebra -->
-            <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#7F1D1D">
-                <VerticalStackLayout Spacing="10">
-                    <Label Text="Opção 2 • Quebrar Senha e Zerar (não tenho acesso)" FontSize="14" FontAttributes="Bold" TextColor="#FCA5A5" />
-                    <Label Text="Cisco: exige DESLIGAR/RELIGAR na tomada (o app envia Break/Ctrl+C e guia na tela). HPE: Ctrl+B automático no BootWare. FortiGate: segure o RESET traseiro até o LED piscar rápido. Mantenha a tela ligada!" FontSize="11" TextColor="#94A3B8" />
+            <!-- Opção 2: Quebra autônoma e Zeramento -->
+            <Frame BackgroundColor="#0F172A" CornerRadius="10" Padding="12" BorderColor="#7F1D1D">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Opção 2 • Quebra Autônoma e Reset de Fábrica" FontSize="13" FontAttributes="Bold" TextColor="#FCA5A5" />
+                    <Label Text="• Cisco: DESLIGUE/RELIGUE na fonte (o app envia Break e ajusta confreg 0x2142).&#10;• HPE: DESLIGUE/RELIGUE (o app envia Ctrl+B e pula a config no BootWare).&#10;• Fortinet: Siga o procedimento guiado de reset físico acima.&#10;Mantenha a tela ligada durante o procedimento." FontSize="10.5" TextColor="#94A3B8" LineHeight="1.2" />
 
-                    <Button x:Name="BreakBtn" Text="⚡ QUEBRAR SENHA E ZERAR EQUIPAMENTO" Clicked="OnBreakClicked" BackgroundColor="#B91C1C" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="44" FontSize="13" />
+                    <Button x:Name="BreakBtn" Text="⚡ QUEBRAR SENHA E ZERAR EQUIPAMENTO" Clicked="OnBreakClicked" BackgroundColor="#B91C1C" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="44" FontSize="12.5" />
                 </VerticalStackLayout>
             </Frame>
 
-            <!-- Log -->
-            <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#334155">
-                <VerticalStackLayout Spacing="10">
-                    <Label Text="Progresso da Recuperação" FontSize="14" FontAttributes="Bold" TextColor="#F8FAFC" />
-                    <Editor x:Name="RecoveryLogEditor" HeightRequest="180" IsReadOnly="True" BackgroundColor="#000000" TextColor="#FBBF24" FontSize="11" Text="[SPARC Mobile] Aguardando verificação de bloqueio..." />
+            <!-- Console de Logs da Recuperação -->
+            <Frame BackgroundColor="#0F172A" CornerRadius="10" Padding="12" BorderColor="#334155">
+                <VerticalStackLayout Spacing="8">
+                    <Grid ColumnDefinitions="*, Auto">
+                        <Label Grid.Column="0" Text="Console de Recuperação" FontSize="13" FontAttributes="Bold" TextColor="#F8FAFC" VerticalOptions="Center" />
+                        <Button Grid.Column="1" Text="Copiar Log" Clicked="OnCopyLogClicked" BackgroundColor="#1E293B" TextColor="#94A3B8" CornerRadius="6" FontSize="10.5" HeightRequest="28" Padding="8,0" />
+                    </Grid>
+                    <Editor x:Name="RecoveryLogEditor" HeightRequest="160" IsReadOnly="True" BackgroundColor="#000000" TextColor="#FBBF24" FontFamily="Consolas" FontSize="11" Text="[SPARC Mobile] Aguardando verificação de bloqueio..." />
                 </VerticalStackLayout>
             </Frame>
 

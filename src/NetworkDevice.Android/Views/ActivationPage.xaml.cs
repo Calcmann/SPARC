@@ -20,10 +20,14 @@ public partial class ActivationPage : ContentPage
         var profile = _licenseManager.GetProfile();
         FirstNameEntry.Text = profile.FirstName;
         LastNameEntry.Text = profile.LastName;
+        CompanyEntry.Text = profile.Company;
+        EmployeeIdEntry.Text = profile.EmployeeId;
         PhoneEntry.Text = profile.Phone;
         EmailEntry.Text = profile.Email;
         ClusterEntry.Text = profile.Cluster;
         UfEntry.Text = profile.Uf;
+
+        ApplyNameLock(profile);
 
         DeviceDisplayIdLabel.Text = _licenseManager.GetDisplayId();
         AppVersionLabel.Text = $"Versão: {AppInfo.VersionString} Beta • ID: {_licenseManager.GetDisplayId()}";
@@ -35,6 +39,41 @@ public partial class ActivationPage : ContentPage
         }
     }
 
+    private void ApplyNameLock(TechnicianProfile profile)
+    {
+        var isNameRegistered = !string.IsNullOrWhiteSpace(profile.FirstName);
+        if (isNameRegistered)
+        {
+            FirstNameEntry.IsReadOnly = true;
+            LastNameEntry.IsReadOnly = true;
+            FirstNameEntry.BackgroundColor = Color.FromArgb("#0B132B");
+            LastNameEntry.BackgroundColor = Color.FromArgb("#0B132B");
+            FirstNameEntry.TextColor = Color.FromArgb("#94A3B8");
+            LastNameEntry.TextColor = Color.FromArgb("#94A3B8");
+            FirstNameLabel.Text = "Nome: (🔒 Imutável)";
+            LastNameLabel.Text = "Sobrenome: (🔒 Imutável)";
+            FirstNameLabel.TextColor = Color.FromArgb("#F59E0B");
+            LastNameLabel.TextColor = Color.FromArgb("#F59E0B");
+            NameLockedBadge.IsVisible = true;
+            NameLockedNotice.IsVisible = true;
+        }
+        else
+        {
+            FirstNameEntry.IsReadOnly = false;
+            LastNameEntry.IsReadOnly = false;
+            FirstNameEntry.BackgroundColor = Color.FromArgb("#1E293B");
+            LastNameEntry.BackgroundColor = Color.FromArgb("#1E293B");
+            FirstNameEntry.TextColor = Colors.White;
+            LastNameEntry.TextColor = Colors.White;
+            FirstNameLabel.Text = "Nome: *";
+            LastNameLabel.Text = "Sobrenome: *";
+            FirstNameLabel.TextColor = Color.FromArgb("#94A3B8");
+            LastNameLabel.TextColor = Color.FromArgb("#94A3B8");
+            NameLockedBadge.IsVisible = false;
+            NameLockedNotice.IsVisible = false;
+        }
+    }
+
     private void OnSaveProfileClicked(object? sender, EventArgs e)
     {
         SaveCurrentProfile();
@@ -43,16 +82,28 @@ public partial class ActivationPage : ContentPage
 
     private TechnicianProfile SaveCurrentProfile()
     {
+        var existing = _licenseManager.GetProfile();
+        var firstName = !string.IsNullOrWhiteSpace(existing.FirstName)
+            ? existing.FirstName
+            : (FirstNameEntry.Text?.Trim() ?? string.Empty);
+
+        var lastName = !string.IsNullOrWhiteSpace(existing.LastName)
+            ? existing.LastName
+            : (LastNameEntry.Text?.Trim() ?? string.Empty);
+
         var p = new TechnicianProfile
         {
-            FirstName = FirstNameEntry.Text?.Trim() ?? string.Empty,
-            LastName = LastNameEntry.Text?.Trim() ?? string.Empty,
+            FirstName = firstName,
+            LastName = lastName,
+            Company = CompanyEntry.Text?.Trim() ?? string.Empty,
+            EmployeeId = EmployeeIdEntry.Text?.Trim() ?? string.Empty,
             Phone = PhoneEntry.Text?.Trim() ?? string.Empty,
             Email = EmailEntry.Text?.Trim() ?? string.Empty,
-            Cluster = ClusterEntry.Text?.Trim().ToUpperInvariant() ?? string.Empty,
-            Uf = UfEntry.Text?.Trim().ToUpperInvariant() ?? string.Empty
+            Cluster = ClusterEntry.Text?.Trim() ?? string.Empty,
+            Uf = UfEntry.Text?.Trim() ?? string.Empty
         };
         _licenseManager.SaveProfile(p);
+        ApplyNameLock(p);
         return p;
     }
 
@@ -64,6 +115,21 @@ public partial class ActivationPage : ContentPage
             await DisplayAlert("Campo Obrigatório", "Informe seu Nome para identificação.", "OK");
             return;
         }
+        if (string.IsNullOrWhiteSpace(p.Company))
+        {
+            await DisplayAlert("Campo Obrigatório", "Informe a Empresa (terceirizada ou própria).", "OK");
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(p.EmployeeId))
+        {
+            await DisplayAlert("Campo Obrigatório", "Informe sua Matrícula funcional.", "OK");
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(p.Phone))
+        {
+            await DisplayAlert("Campo Obrigatório", "Informe o WhatsApp / Telefone com DDD.", "OK");
+            return;
+        }
         if (string.IsNullOrWhiteSpace(p.Cluster))
         {
             await DisplayAlert("Campo Obrigatório", "Informe o Cluster de atuação (ex: SP-INTERIOR).", "OK");
@@ -71,7 +137,7 @@ public partial class ActivationPage : ContentPage
         }
         if (string.IsNullOrWhiteSpace(p.Uf))
         {
-            await DisplayAlert("Campo Obrigatório", "Informe a UF do estado de atuação.", "OK");
+            await DisplayAlert("Campo Obrigatório", "Informe a UF do estado de atuação (ex: SP).", "OK");
             return;
         }
 
@@ -188,6 +254,28 @@ public partial class ActivationPage : ContentPage
         if (Application.Current != null)
         {
             Application.Current.MainPage = new AppShell();
+        }
+    }
+
+    private async void OnCheckAppUpdateClicked(object? sender, EventArgs e)
+    {
+        try
+        {
+            var updateService = new NetworkDevice.Core.Firmware.SparcAppUpdateService();
+            var (hasUpdate, release, msg) = await updateService.CheckForUpdateAsync(AppInfo.Current.VersionString, "android");
+
+            if (hasUpdate && release != null)
+            {
+                await Services.AndroidAppUpdater.DownloadAndInstallAsync(this, release);
+            }
+            else
+            {
+                await DisplayAlert("SPARC Mobile", msg, "OK");
+            }
+        }
+        catch (Exception ex)
+        {
+            await DisplayAlert("Erro OTA", $"Não foi possível consultar atualizações: {ex.Message}", "OK");
         }
     }
 }

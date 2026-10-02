@@ -8,20 +8,23 @@
     Title="SPARC Mobile">
 
     <TabBar>
-        <Tab Title="Provisionamento">
+        <Tab Title="Ativação">
             <ShellContent ContentTemplate="{DataTemplate views:ProvisioningPage}" Route="ProvisioningPage" />
         </Tab>
         <Tab Title="Console CLI">
             <ShellContent ContentTemplate="{DataTemplate views:TerminalPage}" Route="TerminalPage" />
         </Tab>
-        <Tab Title="Quebra de Senha">
-            <ShellContent ContentTemplate="{DataTemplate views:RecoveryPage}" Route="RecoveryPage" />
-        </Tab>
-        <Tab Title="Firmware">
+        <Tab Title="Firmware &amp; WAN">
             <ShellContent ContentTemplate="{DataTemplate views:FirmwarePage}" Route="FirmwarePage" />
         </Tab>
-        <Tab Title="Licença">
-            <ShellContent ContentTemplate="{DataTemplate views:ActivationPage}" Route="ActivationPage" />
+        <Tab Title="Quebra Senha">
+            <ShellContent ContentTemplate="{DataTemplate views:RecoveryPage}" Route="RecoveryPage" />
+        </Tab>
+        <Tab x:Name="TabY1564" Title="Y.1564 / SLA" IsVisible="False">
+            <ShellContent ContentTemplate="{DataTemplate views:Y1564Page}" Route="Y1564Page" />
+        </Tab>
+        <Tab Title="Histórico">
+            <ShellContent ContentTemplate="{DataTemplate views:ReportsHistoryPage}" Route="ReportsHistoryPage" />
         </Tab>
     </TabBar>
 

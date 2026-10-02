@@ -75,8 +75,11 @@ public sealed class CiscoSaipConfigurator
         string lanInterface = "GigabitEthernet 5",
         bool incluirNatLab = false)
     {
-        var wanDesc = SanitizeDescription(circuit.DesignacaoIp ?? circuit.NumeroOts ?? "LINK");
-        var lanDesc = SanitizeDescription(circuit.ClienteRazaoSocial);
+        var wanSource = !string.IsNullOrWhiteSpace(circuit.DescriptionRoteador)
+            ? circuit.DescriptionRoteador
+            : (circuit.DesignacaoIp ?? circuit.NumeroOts ?? "LINK");
+        var wanDesc = SanitizeDescription(wanSource, "LINK");
+        var lanDesc = SanitizeDescription(circuit.ClienteRazaoSocial, "CLIENTE");
 
         var cmds = new List<string>
         {
@@ -91,7 +94,7 @@ public sealed class CiscoSaipConfigurator
             // 1. WAN (Porta 4 - Nativa WAN)
             $"interface {wanInterface}",
             "no switchport",
-            $"description WAN_EBT_{wanDesc}",
+            $"description WAN - {wanDesc}",
             $"ip address {circuit.WanIp} {circuit.WanSubnetMask}",
             "no shutdown",
             "exit",
@@ -99,7 +102,7 @@ public sealed class CiscoSaipConfigurator
             // 2. LAN (Porta 5 - Nativa LAN)
             $"interface {lanInterface}",
             "no switchport",
-            $"description LAN_CLIENTE_{lanDesc}",
+            $"description LAN - {lanDesc}",
             $"ip address {circuit.LanIp} {circuit.LanSubnetMask}",
             "no shutdown",
             "exit",
@@ -192,7 +195,17 @@ public sealed class CiscoSaipConfigurator
     {
         await ProgressAsync($"[*] INICIANDO PROVISIONAMENTO DA FICHA SAIP ({circuit.DesignacaoIp ?? circuit.NumeroOts})...");
 
-        // 1. Acorda o terminal e cancela qualquer comando/submodo pendente de forma segura (Ctrl+C + Enter)
+        // 1. Verificação impeditiva: se a sessão estiver em modo ROMMON (sem SO)
+        var prompt = (session.CurrentPrompt ?? string.Empty).Trim();
+        if (session.Mode == ExecMode.Rommon ||
+            prompt.StartsWith("rommon", StringComparison.OrdinalIgnoreCase) ||
+            prompt.StartsWith("switch:", StringComparison.OrdinalIgnoreCase) ||
+            prompt.Contains("cannot determine first executable", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("O equipamento se encontra em modo ROMMON (sem sistema operacional carregado). É OBRIGATÓRIO executar a recuperação de firmware antes de provisionar.");
+        }
+
+        // 2. Acorda o terminal e cancela qualquer comando/submodo pendente de forma segura (Ctrl+C + Enter)
         try
         {
             await session.Transport.WriteAsync(new byte[] { 0x03 }, cancellationToken);
@@ -279,11 +292,23 @@ public sealed class CiscoSaipConfigurator
         // 5. Monta e envia os comandos de provisionamento global (configure terminal)
         await ProgressAsync("[*] Entrando em modo de configuração global (configure terminal)...");
         var confTermRes = await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(10), cancellationToken);
-        if (confTermRes.Contains("% Invalid input", StringComparison.OrdinalIgnoreCase))
+        if (confTermRes.Contains("% Invalid input", StringComparison.OrdinalIgnoreCase) ||
+            confTermRes.Contains("command not found", StringComparison.OrdinalIgnoreCase) ||
+            confTermRes.Contains("syntax error", StringComparison.OrdinalIgnoreCase))
         {
-            // Se falhou, força enable novamente e tenta config t
+            // Se falhou, tenta enable novamente e tenta config t
             await session.SendCommandAsync("enable", TimeSpan.FromSeconds(10), cancellationToken);
-            await session.SendCommandAsync("config t", TimeSpan.FromSeconds(10), cancellationToken);
+            confTermRes = await session.SendCommandAsync("config t", TimeSpan.FromSeconds(10), cancellationToken);
+        }
+
+        var curPrompt = (session.CurrentPrompt ?? string.Empty).Trim();
+        if (session.Mode == ExecMode.Rommon ||
+            curPrompt.StartsWith("rommon", StringComparison.OrdinalIgnoreCase) ||
+            curPrompt.StartsWith("switch:", StringComparison.OrdinalIgnoreCase) ||
+            confTermRes.Contains("command not found", StringComparison.OrdinalIgnoreCase) ||
+            (confTermRes.Contains("% Invalid input", StringComparison.OrdinalIgnoreCase) && !curPrompt.Contains("(config")))
+        {
+            throw new InvalidOperationException($"Não foi possível entrar no modo de configuração global do Cisco (configure terminal). Resposta: '{confTermRes.Trim()}'. Verifique se o equipamento possui sistema operacional válido e privilégios de escrita.");
         }
         await Task.Delay(300, cancellationToken);
 
@@ -305,8 +330,15 @@ public sealed class CiscoSaipConfigurator
                 if (response.Contains("% Invalid input", StringComparison.OrdinalIgnoreCase) ||
                     response.Contains("% Incomplete command", StringComparison.OrdinalIgnoreCase))
                 {
+                    // Fallback para comando description: se a versão do IOS rejeitar caracteres residuais, aplica versão padrão garantida
+                    if (cmd.StartsWith("description ", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var fallbackCmd = cmd.Contains("WAN", StringComparison.OrdinalIgnoreCase) ? "description WAN" : "description LAN";
+                        await ProgressAsync($"    [AVISO] Cisco rejeitou '{cmd}'. Aplicando fallback garantido '{fallbackCmd}'...");
+                        await session.SendCommandAsync(fallbackCmd, TimeSpan.FromSeconds(10), cancellationToken);
+                    }
                     // Ignora erro se 'no switchport' não for suportado na interface nativa
-                    if (!cmd.Contains("no switchport", StringComparison.OrdinalIgnoreCase))
+                    else if (!cmd.Contains("no switchport", StringComparison.OrdinalIgnoreCase))
                     {
                         await ProgressAsync($"    [AVISO] Cisco retornou erro no comando '{cmd}':\n    {response.Trim()}");
                     }
@@ -354,13 +386,70 @@ public sealed class CiscoSaipConfigurator
             if (writeRes.Contains("?"))
             {
                 await session.WriteLineAsync(string.Empty, cancellationToken);
-                await session.WaitForAsync(new StopCondition[] { new StopCondition.Prompt() }, TimeSpan.FromSeconds(15), cancellationToken);
+                var exp = await session.WaitForAsync(new StopCondition[] { new StopCondition.Prompt() }, TimeSpan.FromSeconds(15), cancellationToken);
+                writeRes += "\n" + exp.Output;
+            }
+
+            if (writeRes.Contains("% Invalid", StringComparison.OrdinalIgnoreCase) ||
+                writeRes.Contains("command not found", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException($"Roteador rejeitou gravação na NVRAM (write memory): {writeRes.Trim()}");
             }
         }
-        catch { }
+        catch (Exception ex) when (ex is not InvalidOperationException)
+        {
+            throw new InvalidOperationException($"Não foi possível confirmar a gravação na NVRAM (write memory): {ex.Message}");
+        }
 
         await ProgressAsync("[OK] Configuração Cisco gravada permanentemente na NVRAM com config-register 0x2102!");
+
+        // 8. Ativação do pool DHCP temporário na RAM (running-config) para os testes automáticos do Android
+        try
+        {
+            await ProgressAsync("[*] Habilitando servidor DHCP temporário na LAN para validação automática do Android...");
+            var lanNet = string.IsNullOrWhiteSpace(circuit.LanBlockNetwork)
+                ? IpCalculator.CalculateNetworkAddress(circuit.LanIp, circuit.LanCidr)
+                : circuit.LanBlockNetwork;
+
+            await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync($"ip dhcp excluded-address {circuit.LanIp}", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("ip dhcp pool SPARC_LAN", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync($"network {lanNet} {circuit.LanSubnetMask}", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync($"default-router {circuit.LanIp}", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("dns-server 1.1.1.1 8.8.8.8", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("lease 0 2", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
+            await EnsurePrivilegedExecAsync(session, cancellationToken);
+
+            await ProgressAsync("[✓] Servidor DHCP temporário ativo na RAM (running-config). Será removido ao final dos testes.");
+        }
+        catch (Exception ex)
+        {
+            await ProgressAsync($"[AVISO] Falha ao ativar DHCP temporário: {ex.Message}. Teste seguirá.");
+        }
+
         await ProgressAsync("[*] PROVISIONAMENTO SAIP CONCLUÍDO COM SUCESSO (Acesso Telnet EBT/PRO1AN ativo)!");
+    }
+
+    /// <summary>
+    /// Remove o servidor DHCP temporário da memória do roteador e regrava a NVRAM com a configuração 100% estática.
+    /// </summary>
+    public static async Task RemoverDhcpTemporarioAsync(DeviceSession session, SaipCircuitData circuit, Action<string>? logger = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await EnsurePrivilegedExecAsync(session, cancellationToken);
+            await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(10), cancellationToken);
+            await session.SendCommandAsync("no ip dhcp pool SPARC_LAN", TimeSpan.FromSeconds(10), cancellationToken);
+            await session.SendCommandAsync($"no ip dhcp excluded-address {circuit.LanIp}", TimeSpan.FromSeconds(10), cancellationToken);
+            await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("write memory", TimeSpan.FromSeconds(30), cancellationToken);
+            logger?.Invoke("[✓] Servidor DHCP temporário removido da LAN do roteador e NVRAM regravada 100% estática!");
+        }
+        catch (Exception ex)
+        {
+            logger?.Invoke($"[AVISO] Não foi possível remover o DHCP temporário automaticamente: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -419,20 +508,42 @@ public sealed class CiscoSaipConfigurator
             await _progress(message);
     }
 
-    public static string SanitizeDescription(string? text)
+    public static string SanitizeDescription(string? text, string fallback = "LINK")
     {
         if (string.IsNullOrWhiteSpace(text))
-            return "LINK";
+            return fallback;
 
-        // Remove acentos e caracteres não-ASCII
-        var clean = text.Trim();
-        clean = Regex.Replace(clean, @"[^\u0000-\u007F]+", string.Empty);
-        clean = Regex.Replace(clean, @"[^A-Za-z0-9_\-\./]", "_");
-        clean = Regex.Replace(clean, @"_+", "_").Trim('_');
+        // 1. Remove quebras de linha e tabs substituindo por espaço
+        var clean = text.Replace("\r", " ").Replace("\n", " ").Replace("\t", " ");
 
-        if (clean.Length > 28)
-            clean = clean[..28];
+        // 2. Normalização Unicode FormD para decompor diacríticos (ex: 'Ã' -> 'A' + '~') e manter caracteres legíveis em ASCII puro
+        var normalized = clean.Normalize(System.Text.NormalizationForm.FormD);
+        var sb = new System.Text.StringBuilder();
+        foreach (var c in normalized)
+        {
+            var uc = System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c);
+            if (uc != System.Globalization.UnicodeCategory.NonSpacingMark)
+            {
+                sb.Append(c);
+            }
+        }
+        clean = sb.ToString();
 
-        return string.IsNullOrWhiteSpace(clean) ? "LINK" : clean;
+        // 3. Substitui barras '/' e '\' por hífen para não quebrar a sintaxe do Cisco CLI
+        clean = clean.Replace('/', '-').Replace('\\', '-');
+
+        // 4. Cisco IOS description: aceita apenas caracteres alfanuméricos, espaços, pontos e hífens
+        // Caracteres como '?', '!', '"', ''', '#', '&', ';', etc. causam erro de sintaxe ou disparam help contextual no IOS
+        clean = Regex.Replace(clean, @"[^A-Za-z0-9\.\-\s]", " ");
+
+        // 5. Compacta espaços e hífens múltiplos
+        clean = Regex.Replace(clean, @"\s+", " ").Trim();
+        clean = Regex.Replace(clean, @"\-+", "-").Trim('-');
+
+        // 6. Limita tamanho máximo seguro (30 caracteres)
+        if (clean.Length > 30)
+            clean = clean[..30].Trim().TrimEnd('-');
+
+        return string.IsNullOrWhiteSpace(clean) ? fallback : clean;
     }
 }

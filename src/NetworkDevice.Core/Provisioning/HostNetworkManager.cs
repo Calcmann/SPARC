@@ -251,7 +251,10 @@ public static class HostNetworkManager
             return (true, $"[Aviso] Configuração automática de IP via netsh suportada no Windows. IP: {ipAddress}, Máscara: {subnetMask}, Gateway: {gateway}, DNS: 1.1.1.1 e 8.8.8.8");
         }
 
-        var gatewayArg = string.IsNullOrWhiteSpace(gateway) ? "" : $" {gateway} 1";
+        // Em bancada/provisionamento, o gateway não deve roubar a rota padrão de internet (Wi-Fi/LAN de acesso).
+        // Usamos métrica 500 para que a internet continue ativa na máquina do técnico.
+        var gwMetric = isRestore ? "1" : "500";
+        var gatewayArg = string.IsNullOrWhiteSpace(gateway) ? "" : $" {gateway} {gwMetric}";
         var cmdIp = $"interface ip set address name=\"{adapterName}\" static {ipAddress} {subnetMask}{gatewayArg}";
 
         var (ipSuccess, ipOutput) = await RunNetshAsync(cmdIp, cancellationToken);
@@ -592,6 +595,8 @@ public static class HostNetworkManager
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return;
         var args = "advfirewall firewall add rule name=\"SPARC TFTP 69\" dir=in action=allow protocol=UDP localport=69 profile=any";
         await RunNetshAsync(args, ct);
+        var icmpArgs = "advfirewall firewall add rule name=\"SPARC ICMP Echo\" dir=in action=allow protocol=icmpv4:8,any profile=any";
+        await RunNetshAsync(icmpArgs, ct);
     }
 
     public static string? GetCurrentIpForAdapter(string adapterName)

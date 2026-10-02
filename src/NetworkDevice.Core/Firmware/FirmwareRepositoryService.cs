@@ -5,6 +5,8 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
@@ -27,10 +29,84 @@ public sealed record GitHubReleaseAssetInfo(long Id, string Name, long SizeBytes
 /// </summary>
 public sealed class FirmwareRepositoryService
 {
-    private static readonly HttpClient HttpClient = new()
+    private static readonly HttpClient HttpClient = CreateResilientHttpClient();
+
+    public string? LastQueryError { get; private set; }
+
+    private static HttpClient CreateResilientHttpClient()
     {
-        Timeout = TimeSpan.FromMinutes(10)
-    };
+        var handler = new SocketsHttpHandler
+        {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(15),
+            ConnectTimeout = TimeSpan.FromSeconds(10),
+            ConnectCallback = async (context, ct) =>
+            {
+                // 1. Tenta a rota padrão primária do sistema operacional
+                try
+                {
+                    var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
+                    using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    linkedCts.CancelAfter(TimeSpan.FromSeconds(3));
+                    await socket.ConnectAsync(context.DnsEndPoint.Host, context.DnsEndPoint.Port, linkedCts.Token).ConfigureAwait(false);
+                    return new NetworkStream(socket, ownsSocket: true);
+                }
+                catch when (!ct.IsCancellationRequested)
+                {
+                    // Se falhar ou der timeout na rota primária (ex: bancada sem internet),
+                    // tenta conectar vinculando aos outros adaptadores locais IPv4 (ex: Wi-Fi ativo)
+                    var candidateIps = GetActiveLocalIpv4Addresses();
+                    foreach (var ip in candidateIps)
+                    {
+                        try
+                        {
+                            var altSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                            altSocket.Bind(new IPEndPoint(ip, 0));
+                            using var altCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                            altCts.CancelAfter(TimeSpan.FromSeconds(4));
+                            await altSocket.ConnectAsync(context.DnsEndPoint.Host, context.DnsEndPoint.Port, altCts.Token).ConfigureAwait(false);
+                            return new NetworkStream(altSocket, ownsSocket: true);
+                        }
+                        catch
+                        {
+                            // Tenta próximo IP de interface
+                        }
+                    }
+                    throw;
+                }
+            }
+        };
+
+        return new HttpClient(handler)
+        {
+            Timeout = TimeSpan.FromMinutes(10)
+        };
+    }
+
+    private static List<IPAddress> GetActiveLocalIpv4Addresses()
+    {
+        var list = new List<IPAddress>();
+        try
+        {
+            foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
+            {
+                if (ni.OperationalStatus != OperationalStatus.Up) continue;
+                if (ni.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+
+                var ipProps = ni.GetIPProperties();
+                foreach (var ua in ipProps.UnicastAddresses)
+                {
+                    if (ua.Address.AddressFamily == AddressFamily.InterNetwork &&
+                        !IPAddress.IsLoopback(ua.Address) &&
+                        !ua.Address.ToString().StartsWith("169.254."))
+                    {
+                        list.Add(ua.Address);
+                    }
+                }
+            }
+        }
+        catch { }
+        return list;
+    }
 
     public string RemoteRepoOwner { get; } = "Calcmann";
     public string RemoteRepoName { get; } = "repo";
@@ -340,14 +416,16 @@ public sealed class FirmwareRepositoryService
                     }
                 }
             }
+
+            LastQueryError = null;
         }
-        catch (HttpRequestException)
+        catch (HttpRequestException ex)
         {
-            // Offline ou falha temporária de rede
+            LastQueryError = $"Falha de conexão com a base online do GitHub: {ex.Message}";
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Resiliente
+            LastQueryError = $"Erro ao acessar base online do GitHub: {ex.Message}";
         }
 
         return result;

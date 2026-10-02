@@ -596,7 +596,7 @@ public sealed class CiscoIOSRecovery
                     new StopCondition[]
                     {
                         new StopCondition.Prompt(),
-                        new StopCondition.LineRegex("cisco-prompt", new Regex(@"(?i)^[A-Za-z0-9_.+()/-]+[>#]"))
+                        new StopCondition.LineRegex("cisco-prompt", new Regex(@"(?i)^[A-Za-z0-9_.+()/-]+[>#]\s*$", RegexOptions.Compiled))
                     },
                     TimeSpan.FromSeconds(3),
                     ct);

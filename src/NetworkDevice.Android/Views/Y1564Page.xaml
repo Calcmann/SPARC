@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="NetworkDevice.Android.Views.Y1564Page"
+             Title="Analisador Y.1564"
+             BackgroundColor="#0B0F19">
+    <ScrollView>
+        <VerticalStackLayout Padding="14" Spacing="12">
+            <!-- CABEÇALHO -->
+            <Frame BackgroundColor="#111827" BorderColor="#1F2937" CornerRadius="10" Padding="12" HasShadow="False">
+                <VerticalStackLayout Spacing="6">
+                    <Grid ColumnDefinitions="*, Auto">
+                        <Label Grid.Column="0" Text="📊 ANALISADOR DE DADOS" FontSize="16" FontAttributes="Bold" TextColor="#38BDF8" VerticalOptions="Center" />
+                        <Border Grid.Column="1" BackgroundColor="#0284C7" StrokeShape="RoundRectangle 4" Padding="6, 2" VerticalOptions="Center">
+                            <Label Text="ITU-T Y.1564" FontSize="10.5" FontAttributes="Bold" TextColor="#FFFFFF" />
+                        </Border>
+                    </Grid>
+                    <Label x:Name="CircuitoInfoLabel" Text="Circuito: Nenhum insumo carregado (definido na aba Ativação)" FontSize="11" TextColor="#94A3B8" />
+
+                    <!-- Status Ethernet OTG -->
+                    <Border BackgroundColor="#18181B" Stroke="#3F3F46" StrokeThickness="1" StrokeShape="RoundRectangle 6" Padding="8, 4">
+                        <Grid ColumnDefinitions="Auto, *">
+                            <Label Grid.Column="0" x:Name="EthStatusBadge" Text="🔌 ETH: Checando..." FontSize="11" FontAttributes="Bold" TextColor="#FBBF24" VerticalOptions="Center" Margin="0,0,6,0" />
+                            <Label Grid.Column="1" x:Name="EthDetailsLabel" Text="Vínculo de processo para isolamento de testes" FontSize="10" TextColor="#71717A" VerticalOptions="Center" LineBreakMode="TailTruncation" />
+                        </Grid>
+                    </Border>
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- 1. PARÂMETROS DO TESTE ITU-T Y.1564 -->
+            <Frame BackgroundColor="#111827" BorderColor="#1F2937" CornerRadius="8" Padding="14" HasShadow="False">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="1. Parâmetros de Certificação (Master)" FontSize="13.5" FontAttributes="Bold" TextColor="#38BDF8" />
+
+                    <!-- Destino Remoto (Gateway Claro ou Refletor) -->
+                    <Grid ColumnDefinitions="Auto, *" ColumnSpacing="8">
+                        <Label Grid.Column="0" Text="IP Remoto:" TextColor="#94A3B8" FontSize="11" VerticalOptions="Center" />
+                        <Entry Grid.Column="1" x:Name="RemoteIpEntry" Placeholder="Ex: 201.90.204.21 ou Refletor" TextColor="White" BackgroundColor="#1F2937" FontSize="11" />
+                    </Grid>
+
+                    <!-- Modo de Teste -->
+                    <Label Text="Modo do Teste:" TextColor="#94A3B8" FontSize="11" />
+                    <Picker x:Name="ModePicker" Title="Selecione o Modo" TextColor="White" TitleColor="#94A3B8" BackgroundColor="#1F2937" FontSize="11">
+                        <Picker.Items>
+                            <x:String>Gateway Traffic Load (Validação contra PE/Gateway Claro)</x:String>
+                            <x:String>Loopback Bidirecional (Refletor VIAVI/JDSU)</x:String>
+                        </Picker.Items>
+                    </Picker>
+
+                    <!-- Banda Alvo (CIR) e Tamanho de Quadro -->
+                    <Grid ColumnDefinitions="*, *" ColumnSpacing="8">
+                        <VerticalStackLayout Grid.Column="0" Spacing="2">
+                            <Label Text="Banda Alvo (Mbps):" TextColor="#94A3B8" FontSize="11" />
+                            <Entry x:Name="BandwidthEntry" Text="200" Keyboard="Numeric" TextColor="White" BackgroundColor="#1F2937" FontSize="11" />
+                        </VerticalStackLayout>
+                        <VerticalStackLayout Grid.Column="1" Spacing="2">
+                            <Label Text="Quadro (Bytes):" TextColor="#94A3B8" FontSize="11" />
+                            <Picker x:Name="FrameSizePicker" TextColor="White" TitleColor="#94A3B8" BackgroundColor="#1F2937" FontSize="11">
+                                <Picker.Items>
+                                    <x:String>1500 (Padrão)</x:String>
+                                    <x:String>1024</x:String>
+                                    <x:String>512</x:String>
+                                    <x:String>128</x:String>
+                                    <x:String>64 (Estresse)</x:String>
+                                    <x:String>EMIX Variável</x:String>
+                                </Picker.Items>
+                            </Picker>
+                        </VerticalStackLayout>
+                    </Grid>
+
+                    <!-- Duração e Distância MEF -->
+                    <Grid ColumnDefinitions="*, *" ColumnSpacing="8">
+                        <VerticalStackLayout Grid.Column="0" Spacing="2">
+                            <Label Text="Duração:" TextColor="#94A3B8" FontSize="11" />
+                            <Picker x:Name="DurationPicker" TextColor="White" TitleColor="#94A3B8" BackgroundColor="#1F2937" FontSize="11">
+                                <Picker.Items>
+                                    <x:String>15 Segundos</x:String>
+                                    <x:String>30 Segundos</x:String>
+                                    <x:String>60 Segundos</x:String>
+                                    <x:String>3 Minutos</x:String>
+                                </Picker.Items>
+                            </Picker>
+                        </VerticalStackLayout>
+                        <VerticalStackLayout Grid.Column="1" Spacing="2">
+                            <Label Text="Distância SLA MEF:" TextColor="#94A3B8" FontSize="11" />
+                            <Picker x:Name="TierPicker" TextColor="White" TitleColor="#94A3B8" BackgroundColor="#1F2937" FontSize="11">
+                                <Picker.Items>
+                                    <x:String>≤ 250Km (Metropolitano)</x:String>
+                                    <x:String>≤ 1200 Km (Interestadual)</x:String>
+                                    <x:String>≤ 7000 Km (Nacional Extremo)</x:String>
+                                </Picker.Items>
+                            </Picker>
+                        </VerticalStackLayout>
+                    </Grid>
+
+                    <!-- Botão Iniciar / Cancelar -->
+                    <Grid ColumnDefinitions="*, *" ColumnSpacing="8" Margin="0, 4, 0, 0">
+                        <Button Grid.Column="0" x:Name="StartTestBtn" Text="▶ INICIAR TESTE Y.1564" Clicked="OnStartTestClicked" BackgroundColor="#0284C7" TextColor="White" CornerRadius="6" FontAttributes="Bold" FontSize="11" HeightRequest="40" />
+                        <Button Grid.Column="1" x:Name="CancelTestBtn" Text="✖ Cancelar" Clicked="OnCancelTestClicked" BackgroundColor="#B91C1C" TextColor="White" CornerRadius="6" FontAttributes="Bold" FontSize="11" HeightRequest="40" IsEnabled="False" />
+                    </Grid>
+
+                    <Button x:Name="ToggleReflectorBtn" Text="🔄 ATIVAR REFLETOR LOCAL (RESPONDER VIAVI)" Clicked="OnToggleReflectorClicked" BackgroundColor="#334155" TextColor="#38BDF8" CornerRadius="6" FontAttributes="Bold" FontSize="11" HeightRequest="36" />
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- 2. DASHBOARD DE TELEMETRIA AO VIVO -->
+            <Frame BackgroundColor="#111827" BorderColor="#1F2937" CornerRadius="8" Padding="14" HasShadow="False">
+                <VerticalStackLayout Spacing="10">
+                    <Grid ColumnDefinitions="*, Auto">
+                        <Label Grid.Column="0" Text="2. Telemetria e Indicadores de SLA" FontSize="13.5" FontAttributes="Bold" TextColor="#38BDF8" VerticalOptions="Center" />
+                        <Border Grid.Column="1" x:Name="VerdictBorder" BackgroundColor="#334155" StrokeShape="RoundRectangle 4" Padding="8, 3" VerticalOptions="Center">
+                            <Label x:Name="VerdictLabel" Text="⚪ AGUARDANDO" FontSize="10.5" FontAttributes="Bold" TextColor="#FFFFFF" />
+                        </Border>
+                    </Grid>
+
+                    <!-- Barra de progresso do teste -->
+                    <ProgressBar x:Name="TestProgressBar" Progress="0" ProgressColor="#38BDF8" HeightRequest="8" />
+                    <Label x:Name="ProgressTimerLabel" Text="Tempo: 00:00 / 00:00 (0%)" FontSize="10.5" TextColor="#94A3B8" HorizontalTextAlignment="Center" />
+
+                    <!-- Grid 2x2 com Medidores Digitais -->
+                    <Grid ColumnDefinitions="*, *" RowDefinitions="Auto, Auto" RowSpacing="8" ColumnSpacing="8">
+                        <!-- Vazão Tx/Rx -->
+                        <Border Grid.Row="0" Grid.Column="0" BackgroundColor="#1E293B" StrokeShape="RoundRectangle 6" Padding="10">
+                            <VerticalStackLayout Spacing="2">
+                                <Label Text="Vazão Tx / Rx" TextColor="#94A3B8" FontSize="10" />
+                                <Label x:Name="ThroughputLabel" Text="0.0 / 0.0 Mbps" FontAttributes="Bold" FontSize="13" TextColor="#38BDF8" />
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <!-- Perda de Pacotes (FLR) -->
+                        <Border Grid.Row="0" Grid.Column="1" BackgroundColor="#1E293B" StrokeShape="RoundRectangle 6" Padding="10">
+                            <VerticalStackLayout Spacing="2">
+                                <Label Text="Perda de Pacotes (FLR)" TextColor="#94A3B8" FontSize="10" />
+                                <Label x:Name="LossLabel" Text="0.00 %" FontAttributes="Bold" FontSize="13" TextColor="#4ADE80" />
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <!-- Latência Média (FTD) -->
+                        <Border Grid.Row="1" Grid.Column="0" BackgroundColor="#1E293B" StrokeShape="RoundRectangle 6" Padding="10">
+                            <VerticalStackLayout Spacing="2">
+                                <Label Text="Delay Médio (FTD)" TextColor="#94A3B8" FontSize="10" />
+                                <Label x:Name="DelayLabel" Text="0.0 ms" FontAttributes="Bold" FontSize="13" TextColor="#FBBF24" />
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <!-- Jitter Médio (IFDV) -->
+                        <Border Grid.Row="1" Grid.Column="1" BackgroundColor="#1E293B" StrokeShape="RoundRectangle 6" Padding="10">
+                            <VerticalStackLayout Spacing="2">
+                                <Label Text="Jitter Médio (IFDV)" TextColor="#94A3B8" FontSize="10" />
+                                <Label x:Name="JitterLabel" Text="0.0 ms" FontAttributes="Bold" FontSize="13" TextColor="#F87171" />
+                            </VerticalStackLayout>
+                        </Border>
+                    </Grid>
+
+                    <!-- Botão Compartilhar Certidão de Nascimento -->
+                    <Button x:Name="ShareCertidaoBtn" Text="📜 GERAR E COMPARTILHAR CERTIDÃO DE NASCIMENTO (PDF)" Clicked="OnShareCertidaoClicked" BackgroundColor="#DC2626" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="44" FontSize="11" IsVisible="False" Margin="0, 4, 0, 0" />
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- 3. TERMINAL DE LOGS -->
+            <Frame BackgroundColor="#111827" BorderColor="#1F2937" CornerRadius="8" Padding="14" HasShadow="False">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="3. Registro Detalhado de Eventos" FontSize="13" FontAttributes="Bold" TextColor="#F8FAFC" />
+                    <Editor x:Name="LogEditor" HeightRequest="150" IsReadOnly="True" BackgroundColor="#000000" TextColor="#38BDF8" FontFamily="OpenSansRegular" FontSize="10.5" Text="[Analisador Y.1564] Pronto para execução..." />
+                </VerticalStackLayout>
+            </Frame>
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

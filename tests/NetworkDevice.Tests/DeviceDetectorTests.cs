@@ -143,6 +143,42 @@ HPE MSR931 uptime is 0 week, 0 day, 16 hours, 0 minute
     }
 
     [Fact]
+    public void ClassifyPrompt_DetectFortiGateFG40FPrompt_AsReadyAndOpen()
+    {
+        var prompt = "FG40FTK21000000 # ";
+        var result = _detector.ClassifyPrompt(prompt);
+
+        Assert.Equal(DeviceManufacturer.Fortinet, result.Manufacturer);
+        Assert.Equal(DeviceSeries.FortiGate40F, result.Series);
+        Assert.Equal(DeviceOperatingState.Ready, result.OperatingState);
+        Assert.Equal(AccessState.Open, result.AccessState);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_DetectFortiGateFG40FLogin_AsPasswordProtected()
+    {
+        var prompt = "FG40FTK21000000 login: ";
+        var result = _detector.ClassifyPrompt(prompt);
+
+        Assert.Equal(DeviceManufacturer.Fortinet, result.Manufacturer);
+        Assert.Equal(DeviceSeries.FortiGate40F, result.Series);
+        Assert.Equal(DeviceOperatingState.PasswordProtected, result.OperatingState);
+        Assert.Equal(AccessState.UserAndPasswordRequired, result.AccessState);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_DetectFortiGateVerifyingPassword_AsPasswordProtected()
+    {
+        var prompt = "FortiGate-40F login: admin\r\nPassword:\r\nVerifying password...\r\n";
+        var result = _detector.ClassifyPrompt(prompt);
+
+        Assert.Equal(DeviceManufacturer.Fortinet, result.Manufacturer);
+        Assert.Equal(DeviceSeries.FortiGate40F, result.Series);
+        Assert.Equal(DeviceOperatingState.PasswordProtected, result.OperatingState);
+        Assert.Equal(AccessState.UserAndPasswordRequired, result.AccessState);
+    }
+
+    [Fact]
     public void ClassifyPrompt_CiscoConfigurationProfessionalBanner_DetectsPasswordProtected()
     {
         var prompt = 
@@ -167,5 +203,53 @@ HPE MSR931 uptime is 0 week, 0 day, 16 hours, 0 minute
         Assert.Equal(DeviceManufacturer.Cisco, result.Manufacturer);
         Assert.Equal(DeviceOperatingState.PasswordProtected, result.OperatingState);
         Assert.Equal(AccessState.UserAndPasswordRequired, result.AccessState);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_Cisco841_DetectsIsr841SeriesFromPrompt()
+    {
+        var prompt = "C841>";
+        var result = _detector.ClassifyPrompt(prompt);
+
+        Assert.Equal(DeviceManufacturer.Cisco, result.Manufacturer);
+        Assert.Equal(DeviceSeries.Isr841, result.Series);
+        Assert.Equal(DeviceOperatingState.Ready, result.OperatingState);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_Cisco841_DetectsIsr841FromShowVersionOutput()
+    {
+        var output = @"Router>
+terminal length 0
+show version
+Cisco IOS Software, C800M Software (C800M-UNIVERSALK9-M), Version 15.7(3)M9, RELEASE SOFTWARE (fc2)
+Technical Support: http://www.cisco.com/techsupport
+Copyright (c) 1986-2021 by Cisco Systems, Inc.
+
+Cisco C841M-4X-JSEC/K9 (revision 1.0) with 490496K/33792K bytes of memory.
+Processor board ID FGL223523XX
+Configuration register is 0x2102
+Router>";
+
+        var result = _detector.ClassifyPrompt(output);
+
+        Assert.Equal(DeviceManufacturer.Cisco, result.Manufacturer);
+        Assert.Equal(DeviceSeries.Isr841, result.Series);
+        Assert.Equal(DeviceOperatingState.Ready, result.OperatingState);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_Cisco841_DetectsIsr841FromRommonDirFlash()
+    {
+        var rommonOutput = @"rommon 1 > dir flash:
+Directory of flash:/
+1  -rw-  32185208  c841-universalk9-mz.SPA.157-3.M9.bin
+rommon 2 > ";
+
+        var result = _detector.ClassifyPrompt(rommonOutput);
+
+        Assert.Equal(DeviceManufacturer.Cisco, result.Manufacturer);
+        Assert.Equal(DeviceSeries.Isr841, result.Series);
+        Assert.Equal(DeviceOperatingState.BootFailure, result.OperatingState);
     }
 }

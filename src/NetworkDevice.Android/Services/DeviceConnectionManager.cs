@@ -11,6 +11,8 @@ using NetworkDevice.Protocols.Http;
 using NetworkDevice.Protocols.Hpe;
 using NetworkDevice.Protocols.Telnet;
 using System.Net.NetworkInformation;
+using UsbSerialForAndroid.Net;
+using UsbSerialForAndroid.Net.Drivers;
 using UsbSerialForAndroid.Net.Helper;
 
 namespace NetworkDevice.Android.Services;
@@ -38,6 +40,7 @@ public sealed class DeviceConnectionManager
     public bool IsTelnetConnected => _telnetSession?.IsConnected == true;
 
     public DeviceDetectionResult? LastDetectionResult { get; private set; }
+    public string? LastDetectedSerial { get; set; }
     public SaipCircuitData? LoadedCircuit { get; set; }
 
     /// <summary>
@@ -57,12 +60,131 @@ public sealed class DeviceConnectionManager
 
     private DeviceConnectionManager() { }
 
+    /// <summary>
+    /// Identifica se o dispositivo USB conectado é uma placa de rede Ethernet (ex: TP-Link, Realtek) ou Hub USB,
+    /// para não confundi-lo com o console serial quando conectados simultaneamente via HUB USB-C.
+    /// </summary>
+    public static bool IsNetworkOrHubDevice(UsbDevice d)
+    {
+        if (d == null) return false;
+
+        // 1. USB Hub (Classe 0x09)
+        if ((int)d.DeviceClass == 9) return true;
+
+        // 2. VIDs conhecidos de adaptadores Ethernet / Rede USB
+        // 0x2357: TP-Link (UE300, UE200, UE300C, etc.)
+        // 0x0BDA: Realtek USB Ethernet (RTL8152, RTL8153, RTL8156)
+        // 0x0B95: ASIX USB Ethernet (AX88179, AX88772)
+        // 0x0424: Microchip / SMSC LAN
+        // 0x05AC: Apple USB Ethernet
+        // 0x050D: Belkin USB Ethernet
+        if (d.VendorId == 0x2357 ||
+            (d.VendorId == 0x0BDA && (d.ProductId >= 0x8150 && d.ProductId <= 0x8159)) ||
+            d.VendorId == 0x0B95 ||
+            d.VendorId == 0x0424 ||
+            (d.VendorId == 0x05AC && d.ProductId == 0x1402) ||
+            d.VendorId == 0x050D)
+        {
+            return true;
+        }
+
+        // 3. Descrição ou nomes de produto / fabricante indicando Ethernet / Rede
+        var m = (d.ManufacturerName ?? "").ToLowerInvariant();
+        var p = (d.ProductName ?? "").ToLowerInvariant();
+        if (m.Contains("tp-link") || m.Contains("realtek") || m.Contains("asix") ||
+            p.Contains("ethernet") || p.Contains("gigabit") || p.Contains("lan") ||
+            p.Contains("ue300") || p.Contains("ue200") || p.Contains("rtl815") ||
+            p.Contains("ax8817") || p.Contains("network"))
+        {
+            return true;
+        }
+
+        // 4. Subclasses CDC Ethernet (Subclasse 0x06 = Ethernet, 0x0D = NCM, 0x0F = MBIM) ou Mass Storage
+        for (int i = 0; i < d.InterfaceCount; i++)
+        {
+            var iface = d.GetInterface(i);
+            if (iface != null)
+            {
+                var cls = (int)iface.InterfaceClass;
+                var sub = (int)iface.InterfaceSubclass;
+                if (cls == 2 && (sub == 6 || sub == 13 || sub == 14 || sub == 15))
+                    return true;
+                if (cls == 9) // Hub
+                    return true;
+                if (cls == 8) // Mass Storage
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Identifica se o dispositivo é um conversor Serial / UART / Console suportado.
+    /// </summary>
+    public static bool IsSupportedSerialDevice(UsbDevice d)
+    {
+        if (d == null || IsNetworkOrHubDevice(d)) return false;
+
+        // 1. Testa se o UsbDriverFactory possui driver registrado para o dispositivo
+        try
+        {
+            var testDriver = UsbDriverFactory.CreateUsbDriver(d.DeviceId);
+            if (testDriver != null) return true;
+        }
+        catch { }
+
+        // 2. VIDs conhecidos de conversores Serial / UART / Console
+        // 0x0403: FTDI (FT232R, FT2232, etc.)
+        // 0x10C4: Silicon Labs (CP2102, CP2104, etc.)
+        // 0x1A86, 0x4348: QinHeng / Winchiphead (CH340/CH341/CH9102)
+        // 0x067B: Prolific (PL2303)
+        // 0x0557 (PID 0x2008): ATEN / Cisco USB Console
+        // 0x05A6, 0x145F: Cisco Systems Console
+        // 0x0483: STMicroelectronics Virtual COM
+        // 0x2341, 0x2A03: Arduino CDC
+        if (d.VendorId == 0x0403 ||
+            d.VendorId == 0x10C4 ||
+            d.VendorId == 0x1A86 || d.VendorId == 0x4348 ||
+            d.VendorId == 0x067B ||
+            (d.VendorId == 0x0557 && d.ProductId == 0x2008) ||
+            d.VendorId == 0x05A6 || d.VendorId == 0x145F ||
+            d.VendorId == 0x0483 ||
+            d.VendorId == 0x2341 || d.VendorId == 0x2A03)
+        {
+            return true;
+        }
+
+        // 3. Nomes contendo referências explícitas a Serial / Console / UART
+        var m = (d.ManufacturerName ?? "").ToLowerInvariant();
+        var p = (d.ProductName ?? "").ToLowerInvariant();
+        if (p.Contains("serial") || p.Contains("uart") || p.Contains("rs232") ||
+            p.Contains("console") || p.Contains("cp210") || p.Contains("ch340") ||
+            p.Contains("pl2303") || p.Contains("ft232") || p.Contains("ftdi") ||
+            m.Contains("ftdi") || m.Contains("prolific") || m.Contains("silicon labs"))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
     public IReadOnlyList<UsbDevice> ScanUsbDevices()
     {
         try
         {
-            var devices = UsbManagerHelper.GetAllUsbDevices();
-            return devices?.ToList() ?? (IReadOnlyList<UsbDevice>)Array.Empty<UsbDevice>();
+            var devices = UsbManagerHelper.GetAllUsbDevices()?.ToList() ?? new List<UsbDevice>();
+            
+            // Prioriza exclusivamente adaptadores seriais conhecidos (ignora placas USB/ETH TP-Link, hubs, etc.)
+            var serialDevices = devices.Where(IsSupportedSerialDevice).ToList();
+            if (serialDevices.Count > 0)
+            {
+                return serialDevices;
+            }
+
+            // Fallback: se nenhum serial conhecido foi detectado, filtra ao menos quem NÃO é rede nem hub
+            var nonNetworkDevices = devices.Where(d => !IsNetworkOrHubDevice(d)).ToList();
+            return nonNetworkDevices.Count > 0 ? nonNetworkDevices : devices;
         }
         catch
         {
@@ -70,9 +192,25 @@ public sealed class DeviceConnectionManager
         }
     }
 
+    /// <summary>
+    /// Verifica se há algum adaptador serial USB homologado conectado ao barramento OTG (inclusive via HUB USB-C).
+    /// </summary>
+    public bool HasSupportedSerialConnected()
+    {
+        try
+        {
+            var devices = UsbManagerHelper.GetAllUsbDevices();
+            return devices != null && devices.Any(IsSupportedSerialDevice);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public UsbDevice ResolveLiveDevice(UsbDevice? preferredDevice = null)
     {
-        var devices = UsbManagerHelper.GetAllUsbDevices()?.ToList() ?? new List<UsbDevice>();
+        var devices = ScanUsbDevices();
         if (devices.Count == 0)
         {
             throw new InvalidOperationException("Nenhum adaptador serial USB encontrado na porta OTG. Verifique a conexão do cabo.");
@@ -241,6 +379,7 @@ public sealed class DeviceConnectionManager
                 if (!ct.IsCancellationRequested)
                 {
                     OnTerminalDataReceived?.Invoke($"\n[ERRO LEITURA SERIAL: {ex.Message}]\n");
+                    OnConnectionStateChanged?.Invoke(false);
                 }
                 break;
             }
@@ -283,24 +422,36 @@ public sealed class DeviceConnectionManager
                 result = await _detector.DetectAsync(_transport, ct);
             }
 
-            // Se identificou com sucesso no Padrão 1
-            if (result.Manufacturer != DeviceManufacturer.Unknown)
+            // Se identificou Cisco no Padrão 1 (mesmo com Series == Unknown, como em "Router>"), enriquece o modelo via show version
+            if (result.Manufacturer == DeviceManufacturer.Cisco)
             {
                 result = await EnrichCiscoModelIfPossibleAsync(result, ct);
+            }
+
+            // Se identificou com sucesso no Padrão 1 (Cisco, HPE ou Fortinet a 9600 bps)
+            var pattern1Identified = result.Manufacturer == DeviceManufacturer.Cisco ||
+                                     result.Manufacturer == DeviceManufacturer.Hpe ||
+                                     result.Manufacturer == DeviceManufacturer.Fortinet ||
+                                     (result.Manufacturer != DeviceManufacturer.Unknown &&
+                                      result.Manufacturer != DeviceManufacturer.Generic &&
+                                      result.Series != DeviceSeries.Unknown);
+
+            if (pattern1Identified)
+            {
                 LastDetectionResult = result;
                 OnDeviceIdentified?.Invoke(result);
                 return result;
             }
 
             // --- ETAPA 2: Padrão 2 (115200 bps - Fortinet FortiGate) ---
-            OnProbeProgress?.Invoke("[*] Sem resposta a 9600 bps. Testando automaticamente Padrão 2: 115200 bps (Fortinet FortiGate)...");
+            OnProbeProgress?.Invoke("[*] Sem resposta conclusiva a 9600 bps. Testando automaticamente Padrão 2: 115200 bps (Fortinet FortiGate)...");
             await ChangeBaudRateAsync(115200);
 
             await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes("\r\n\r\n"), ct);
             await Task.Delay(300, ct);
 
             var resultFortinet = await _detector.DetectAsync(_transport, ct);
-            if (resultFortinet.Manufacturer != DeviceManufacturer.Unknown)
+            if (resultFortinet.Manufacturer != DeviceManufacturer.Unknown && resultFortinet.Manufacturer != DeviceManufacturer.Generic)
             {
                 LastDetectionResult = resultFortinet;
                 OnDeviceIdentified?.Invoke(resultFortinet);
@@ -333,8 +484,8 @@ public sealed class DeviceConnectionManager
          raw.Contains("terminate autoinstall", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
-    /// Responde ao setup dialog em nível de transporte: 'no' -&gt; ENTER (terminate
-    /// autoinstall [yes]) -&gt; ENTER (Press RETURN to get started) e drena os ecos.
+    /// Responde ao setup dialog em nível de transporte: 'no' -> ENTER (terminate
+    /// autoinstall [yes]) -> ENTER (Press RETURN to get started) e drena os ecos.
     /// </summary>
     private async Task AnswerCiscoSetupDialogAsync(CancellationToken ct)
     {
@@ -371,21 +522,67 @@ public sealed class DeviceConnectionManager
 
         try
         {
-            // Consulta versão para extrair o modelo exato do Cisco (ex: Cisco 1905, 1921, 921)
-            await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes("terminal length 0\r\nshow version\r\n"), ct);
-            var buffer = new byte[2048];
+            var isRommon = initialResult.OperatingState == DeviceOperatingState.BootFailure ||
+                           initialResult.AccessState == AccessState.RommonOrBootware ||
+                           initialResult.BootState == BootState.Rommon ||
+                           (initialResult.RawPrompt ?? string.Empty).Contains("rommon", StringComparison.OrdinalIgnoreCase) ||
+                           (initialResult.RawPrompt ?? string.Empty).Contains("switch:", StringComparison.OrdinalIgnoreCase);
+
             var sb = new System.Text.StringBuilder();
-            var deadline = DateTime.UtcNow.AddSeconds(2.0);
+
+            if (isRommon)
+            {
+                // Em ROMMON, comandos são 'set' e 'dir flash:'
+                await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes("set\r\n"), ct);
+                await Task.Delay(300, ct);
+                await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes("dir flash:\r\n"), ct);
+            }
+            else
+            {
+                // Se estiver com tela de senha / login pedindo autenticação, não adianta mandar 'show version'
+                if (initialResult.OperatingState == DeviceOperatingState.PasswordProtected)
+                {
+                    return initialResult;
+                }
+
+                // 1. Envia terminal length 0 para evitar pausas (--More--)
+                await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes("terminal length 0\r\n"), ct);
+                await Task.Delay(250, ct);
+
+                // Drena eventuais ecos do terminal length 0
+                var flushBuf = new byte[1024];
+                while (_transport.IsOpen)
+                {
+                    using var flushCts = new CancellationTokenSource(60);
+                    try
+                    {
+                        var fr = await _transport.ReadAsync(flushBuf, flushCts.Token);
+                        if (fr <= 0) break;
+                    }
+                    catch { break; }
+                }
+
+                // 2. Envia show version
+                await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes("show version\r\n"), ct);
+            }
+
+            var buffer = new byte[2048];
+            var deadline = DateTime.UtcNow.AddSeconds(4.5);
             while (DateTime.UtcNow < deadline && !ct.IsCancellationRequested)
             {
                 var r = await _transport.ReadAsync(buffer, ct);
                 if (r > 0)
                 {
-                    sb.Append(System.Text.Encoding.UTF8.GetString(buffer, 0, r));
+                    var chunk = System.Text.Encoding.UTF8.GetString(buffer, 0, r);
+                    sb.Append(chunk);
                     var str = sb.ToString();
-                    if (str.Contains("bytes of memory", StringComparison.OrdinalIgnoreCase) ||
+
+                    // Verifica se já temos informação suficiente para identificar o modelo
+                    if (DeviceDetector.Cisco841ModelRegex.IsMatch(str) ||
+                        DeviceDetector.Cisco900ModelRegex.IsMatch(str) ||
+                        DeviceDetector.Cisco1900ModelRegex.IsMatch(str) ||
                         str.Contains("Configuration register", StringComparison.OrdinalIgnoreCase) ||
-                        str.EndsWith(">") || str.EndsWith("#"))
+                        (str.Length > 200 && (str.EndsWith(">") || str.EndsWith("#"))))
                     {
                         break;
                     }
@@ -397,7 +594,38 @@ public sealed class DeviceConnectionManager
             }
 
             var fullText = initialResult.RawPrompt + "\n" + sb.ToString();
-            return _detector.ClassifyPrompt(fullText);
+            var classified = _detector.ClassifyPrompt(fullText);
+
+            if (isRommon)
+            {
+                // Preserva o estado de ROMMON/BootFailure
+                return new DeviceDetectionResult(
+                    classified.Manufacturer == DeviceManufacturer.Unknown ? DeviceManufacturer.Cisco : classified.Manufacturer,
+                    classified.Series,
+                    DeviceOperatingState.BootFailure,
+                    WorkflowType.Provisioning,
+                    AccessState.RommonOrBootware,
+                    BootState.Rommon,
+                    FirmwareState.CorruptedOrMissing,
+                    fullText,
+                    "Cisco detectado em modo ROMMON (sem SO carregado).");
+            }
+
+            if (classified.Series != DeviceSeries.Unknown)
+            {
+                return new DeviceDetectionResult(
+                    classified.Manufacturer,
+                    classified.Series,
+                    initialResult.OperatingState,
+                    initialResult.RecommendedWorkflow,
+                    initialResult.AccessState,
+                    initialResult.BootState,
+                    initialResult.FirmwareState,
+                    initialResult.RawPrompt ?? string.Empty,
+                    $"Cisco {classified.Series} identificado com sucesso via show version.");
+            }
+
+            return initialResult;
         }
         catch
         {
@@ -422,14 +650,43 @@ public sealed class DeviceConnectionManager
             var detected = LastDetectionResult!;
             await progressCallback($"[*] Fabricante detectado: {detected.Manufacturer} | Série: {detected.Series}");
 
+            // 1. Crítica impeditiva: Modo ROMMON / BootWare / BIOS (sem SO carregado)
+            if (detected.OperatingState == DeviceOperatingState.BootFailure ||
+                detected.AccessState == AccessState.RommonOrBootware ||
+                detected.BootState == BootState.Rommon ||
+                detected.BootState == BootState.Bootware ||
+                (detected.RawPrompt ?? string.Empty).Contains("rommon", StringComparison.OrdinalIgnoreCase) ||
+                (detected.RawPrompt ?? string.Empty).Contains("switch:", StringComparison.OrdinalIgnoreCase) ||
+                (detected.RawPrompt ?? string.Empty).Contains("FortiBootLoader", StringComparison.OrdinalIgnoreCase) ||
+                (detected.RawPrompt ?? string.Empty).Contains("Enter C,R,T,F,I,B,Q,or H:", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "O equipamento se encontra em modo ROMMON / BootWare / BIOS (sem sistema operacional carregado). " +
+                    "É OBRIGATÓRIO executar a recuperação de firmware na aba 'Firmware' antes de realizar o provisionamento da Ficha SAIP.");
+            }
+
+            // 2. Crítica impeditiva: Equipamento protegido por senha
+            if (detected.OperatingState == DeviceOperatingState.PasswordProtected)
+            {
+                throw new InvalidOperationException(
+                    "O equipamento está protegido por senha. É necessário autenticar com usuário e senha ou quebrar a senha antes de provisionar.");
+            }
+
             // Garante que a sessão interativa esteja conectada ao roteador antes do provisionamento
-            // (sessão nova atravessa setup dialogs; reaproveitada é sondada e reconectada se presa)
             _session = await EnsureConsoleSessionAsync(progressCallback, ct);
 
+            // Validação de segurança no prompt da sessão ativa
+            var sessPrompt = (_session.CurrentPrompt ?? string.Empty).Trim();
+            if (_session.Mode == ExecMode.Rommon ||
+                sessPrompt.StartsWith("rommon", StringComparison.OrdinalIgnoreCase) ||
+                sessPrompt.StartsWith("switch:", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "O equipamento se encontra em modo ROMMON (sem sistema operacional carregado). " +
+                    "É OBRIGATÓRIO executar a recuperação de firmware na aba 'Firmware' antes de realizar o provisionamento da Ficha SAIP.");
+            }
+
             // Seleção de interfaces WAN/LAN por modelo — paridade fiel com o Windows
-            // (MainWindow.ExecutarAplicarSaipAsync): o 1905 (Series1900) usa GE0/0 + GE0/1,
-            // o 921 usa 'GigabitEthernet 4/5' e o 841 usa GE0/4 + GE0/5. Sem isso o Android
-            // caía no default GE4/GE5 e o 1905 retornava '% Invalid input' em tudo.
             var (wanIface, lanIface) = ResolveCiscoInterfaces(detected.Series);
 
             if (detected.Manufacturer == DeviceManufacturer.Cisco)
@@ -456,28 +713,6 @@ public sealed class DeviceConnectionManager
                 await progressCallback("[AVISO] Fabricante não identificado com certeza. Aplicando perfil padrão Cisco IOS...");
                 var configurator = new CiscoSaipConfigurator(progressCallback) { IncluirNatLab = IncluirNatLab };
                 await configurator.ApplyConfigAsync(_session, circuit, cancellationToken: ct);
-            }
-
-            // Validação do cabo na porta LAN (paridade com o Windows). No mobile não há
-            // modal: sem requestOperatorAction o Enforce apenas registra o progresso e
-            // aguarda o link (limitado a 60s para caber no timeout da tela).
-            try
-            {
-                using var lanCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                lanCts.CancelAfter(TimeSpan.FromSeconds(60));
-                var lanTarget = detected.Manufacturer == DeviceManufacturer.Fortinet ? "lan"
-                    : detected.Manufacturer == DeviceManufacturer.Hpe ? "GigabitEthernet0/1"
-                    : lanIface ?? "GigabitEthernet0/1";
-                if (detected.Manufacturer == DeviceManufacturer.Fortinet)
-                    await FortiOsSaipConfigurator.EnforceLanPortConnectedAsync(_session, lanTarget, null, progressCallback, lanCts.Token);
-                else if (detected.Manufacturer == DeviceManufacturer.Hpe)
-                    await HpeSaipConfigurator.EnforceLanPortConnectedAsync(_session, lanTarget, null, progressCallback, lanCts.Token);
-                else
-                    await CiscoIOSAdapter.EnforceLanPortConnectedAsync(_session, lanTarget, null, progressCallback, lanCts.Token);
-            }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-            {
-                await progressCallback("[AVISO] Validação da porta LAN atingiu 60s sem link — prosseguindo; confira o cabo na porta LAN.");
             }
 
             // Captura da running-config aplicada (paridade com o relatório TXT do Windows)
@@ -684,7 +919,10 @@ public sealed class DeviceConnectionManager
                 var recovery = new FortiGatePasswordRecovery(progress);
                 ok = await recovery.RecoverAndResetAsync(_transport, instructOperator, ct);
                 if (!string.IsNullOrWhiteSpace(recovery.DetectedSerial))
+                {
+                    LastDetectedSerial = recovery.DetectedSerial;
                     await progress($"[i] Serial capturado: {recovery.DetectedSerial}");
+                }
             }
             else
             {
@@ -826,6 +1064,81 @@ public sealed class DeviceConnectionManager
         _telnetSession = session;
         log?.Invoke($"[✓] Telnet conectado em {routerIp}:{port} (prompt '{session.CurrentPrompt}').");
         return true;
+    }
+
+    /// <summary>
+    /// Desconecta especificamente a porta USB serial sem limpar LastDetectionResult ou LoadedCircuit,
+    /// permitindo a transição segura para o adaptador USB/Ethernet e sessão Telnet.
+    /// </summary>
+    public async Task DisconnectUsbOnlyAsync()
+    {
+        await PauseReadLoopAsync();
+
+        if (_session != null)
+        {
+            try { await _session.DisposeAsync(); } catch { }
+            _session = null;
+        }
+
+        if (_transport != null)
+        {
+            try
+            {
+                await _transport.CloseAsync();
+                await _transport.DisposeAsync();
+            }
+            catch { }
+            _transport = null;
+        }
+
+        OnConnectionStateChanged?.Invoke(false);
+    }
+
+    /// <summary>
+    /// Conecta ao roteador via Telnet e define a sessão Telnet como transporte primário do aplicativo,
+    /// reativando o ReadLoop para que a aba Terminal e os scripts operem sobre a interface de rede Ethernet.
+    /// </summary>
+    public async Task<bool> SwitchToTelnetSessionAsync(string routerIp, int port, string? username, string? password,
+        Action<string>? log = null, CancellationToken ct = default)
+    {
+        var transport = new TcpTelnetTransport(routerIp, port, connectTimeout: TimeSpan.FromSeconds(6));
+        try
+        {
+            await transport.OpenAsync(ct);
+            var session = new DeviceSession(transport, new SessionOptions
+            {
+                PromptMatcher = RegexPromptMatcher.Universal(),
+                Username = username,
+                Password = password,
+                ConnectTimeout = TimeSpan.FromSeconds(10),
+                CommandTimeout = TimeSpan.FromSeconds(20),
+                LeaveOpen = true
+            });
+
+            await session.ConnectAsync(ct);
+
+            // Somente após o Telnet autenticar com sucesso desconectamos o serial e ativamos o Telnet como sessão principal
+            await DisconnectUsbOnlyAsync();
+            await DisconnectTelnetAsync();
+
+            _transport = transport;
+            _session = session;
+            _telnetTransport = transport;
+            _telnetSession = session;
+
+            OnConnectionStateChanged?.Invoke(true);
+            ResumeReadLoop();
+
+            log?.Invoke($"[✓] Sessão Telnet conectada em {routerIp}:{port} (prompt '{session.CurrentPrompt}'). Terminal operacional via Ethernet.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            log?.Invoke($"[!] Telnet {routerIp}:{port} inacessível ({ex.Message}).");
+            try { await transport.CloseAsync(); } catch { }
+            try { await transport.DisposeAsync(); } catch { }
+            return false;
+        }
     }
 
     private void ThrowIfPasswordLocked()

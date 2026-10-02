@@ -197,4 +197,52 @@ topo      consultas      menu
         Assert.Equal("0.0.0.7", CiscoSaipConfigurator.WildcardFromMask("255.255.255.248", 29));
         Assert.Equal("0.0.0.3", CiscoSaipConfigurator.WildcardFromMask("255.255.255.252", 30));
     }
+
+    [Fact]
+    public void SanitizeDescription_NormalizaAcentosECaracteresEspeciais()
+    {
+        // 1. Remove diacríticos mantendo caracteres ASCII legíveis
+        var res1 = CiscoSaipConfigurator.SanitizeDescription("SÃO PAULO DISTRIBUIÇÃO & COMÉRCIO LTDA.");
+        Assert.DoesNotContain("Ã", res1);
+        Assert.DoesNotContain("Ç", res1);
+        Assert.DoesNotContain("&", res1);
+        Assert.StartsWith("SAO PAULO", res1);
+
+        // 2. Converte barras em hífens
+        var res2 = CiscoSaipConfigurator.SanitizeDescription("FNS/IP/04045");
+        Assert.Equal("FNS-IP-04045", res2);
+
+        // 3. Remove quebras de linha e caracteres de controle
+        var res3 = CiscoSaipConfigurator.SanitizeDescription("EMPRESA TESTE\r\nFILIAL 2?!");
+        Assert.DoesNotContain("\r", res3);
+        Assert.DoesNotContain("\n", res3);
+        Assert.DoesNotContain("?", res3);
+        Assert.DoesNotContain("!", res3);
+        Assert.Equal("EMPRESA TESTE FILIAL 2", res3);
+
+        // 4. Fallback padrão
+        var res4 = CiscoSaipConfigurator.SanitizeDescription(null, "LINK");
+        Assert.Equal("LINK", res4);
+    }
+
+    [Fact]
+    public void GenerateCommands_GeraDescriptionWanELanValidos()
+    {
+        var circuit = new SaipCircuitData
+        {
+            ClienteRazaoSocial = "SUPERMERCADO & PADARIA SÃO JOSÉ LTDA.",
+            DesignacaoIp = "SPO/IP/99123",
+            WanIp = "200.250.153.42",
+            WanSubnetMask = "255.255.255.252",
+            WanGateway = "200.250.153.41",
+            LanIp = "192.168.0.1",
+            LanSubnetMask = "255.255.255.0",
+        };
+
+        var cmds = CiscoSaipConfigurator.GenerateCommands(circuit, "GigabitEthernet 0/0", "GigabitEthernet 0/1");
+
+        Assert.Contains("description WAN - SPO-IP-99123", cmds);
+        Assert.Contains(cmds, c => c.StartsWith("description LAN - SUPERMERCADO PADARIA SAO"));
+        Assert.DoesNotContain(cmds, c => c.Contains("?") || c.Contains("&") || c.Contains("Ã"));
+    }
 }

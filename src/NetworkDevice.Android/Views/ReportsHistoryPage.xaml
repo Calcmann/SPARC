@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="NetworkDevice.Android.Views.ReportsHistoryPage"
+             Title="Histórico de Certidões"
+             BackgroundColor="#0B0F19">
+    <Grid RowDefinitions="Auto, *, Auto" Padding="14" RowSpacing="10">
+
+        <!-- Barra Superior -->
+        <Frame Grid.Row="0" BackgroundColor="#111827" BorderColor="#1F2937" CornerRadius="10" Padding="12,10" HasShadow="False">
+            <Grid ColumnDefinitions="*, Auto">
+                <VerticalStackLayout Grid.Column="0" Spacing="2">
+                    <Label Text="📑 Histórico de Certidões &amp; Relatórios" FontSize="15" FontAttributes="Bold" TextColor="#38BDF8" />
+                    <Label Text="Certidões de Nascimento SAIP e relatórios de SLA Y.1564 gravados" FontSize="11" TextColor="#94A3B8" />
+                </VerticalStackLayout>
+                <Button Grid.Column="1" Text="🔄 Recarregar" Clicked="OnRefreshClicked" BackgroundColor="#1E293B" TextColor="#E2E8F0" CornerRadius="6" FontSize="11" HeightRequest="32" Padding="10,0" />
+            </Grid>
+        </Frame>
+
+        <!-- Lista de Relatórios -->
+        <CollectionView Grid.Row="1" x:Name="ReportsCollection" SelectionMode="None">
+            <CollectionView.EmptyView>
+                <VerticalStackLayout Spacing="8" HorizontalOptions="Center" VerticalOptions="Center" Padding="20">
+                    <Label Text="📭" FontSize="40" HorizontalTextAlignment="Center" />
+                    <Label Text="Nenhuma certidão gerada ainda" FontSize="14" FontAttributes="Bold" TextColor="#94A3B8" HorizontalTextAlignment="Center" />
+                    <Label Text="Execute o Modo Automático ou um teste Y.1564 para emitir certidões técnicas." FontSize="11" TextColor="#64748B" HorizontalTextAlignment="Center" />
+                </VerticalStackLayout>
+            </CollectionView.EmptyView>
+            <CollectionView.ItemTemplate>
+                <DataTemplate>
+                    <Border BackgroundColor="#111827" Stroke="#1F2937" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="12" Margin="0,0,0,8">
+                        <Grid ColumnDefinitions="*, Auto" RowDefinitions="Auto, Auto">
+                            <VerticalStackLayout Grid.Row="0" Grid.Column="0" Spacing="2">
+                                <HorizontalStackLayout Spacing="6">
+                                    <Border BackgroundColor="#1E293B" StrokeShape="RoundRectangle 4" Padding="6,2">
+                                        <Label Text="{Binding ReportType}" FontSize="10" FontAttributes="Bold" TextColor="#38BDF8" />
+                                    </Border>
+                                    <Label Text="{Binding CreatedAt, StringFormat='{0:dd/MM/yyyy HH:mm}'}" FontSize="11" TextColor="#94A3B8" VerticalOptions="Center" />
+                                </HorizontalStackLayout>
+                                <Label Text="{Binding Title}" FontSize="12.5" FontAttributes="Bold" TextColor="White" LineBreakMode="MiddleTruncation" Margin="0,2,0,0" />
+                                <Label Text="{Binding SizeBytes, StringFormat='Tamanho: {0:N0} bytes'}" FontSize="10.5" TextColor="#64748B" />
+                            </VerticalStackLayout>
+
+                            <HorizontalStackLayout Grid.Row="0" Grid.Column="1" Grid.RowSpan="2" Spacing="6" VerticalOptions="Center">
+                                <Button Text="📤 Compartilhar" Clicked="OnShareReportClicked" CommandParameter="{Binding FilePath}" BackgroundColor="#0284C7" TextColor="White" CornerRadius="6" FontSize="11" HeightRequest="34" Padding="10,0" FontAttributes="Bold" />
+                                <Button Text="🗑️" Clicked="OnDeleteReportClicked" CommandParameter="{Binding FilePath}" BackgroundColor="#7F1D1D" TextColor="White" CornerRadius="6" FontSize="12" HeightRequest="34" Padding="10,0" />
+                            </HorizontalStackLayout>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+
+        <!-- Informação Rodapé -->
+        <Label Grid.Row="2" x:Name="FooterInfoLabel" Text="Total de relatórios: 0" FontSize="11" TextColor="#64748B" HorizontalTextAlignment="Center" />
+    </Grid>
+</ContentPage>

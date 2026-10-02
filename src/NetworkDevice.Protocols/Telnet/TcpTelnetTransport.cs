@@ -40,6 +40,9 @@ public sealed class TcpTelnetTransport : ITransport
         _readTimeout = readTimeout ?? TimeSpan.FromMilliseconds(200);
     }
 
+    public string Host => _host;
+    public int Port => _port;
+
     public bool IsOpen => _client?.Connected == true;
 
     public async Task OpenAsync(CancellationToken cancellationToken = default)

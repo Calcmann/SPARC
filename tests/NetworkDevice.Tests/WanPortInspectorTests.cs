@@ -22,6 +22,22 @@ public sealed class WanPortInspectorTests
     }
 
     [Theory]
+    [InlineData(NetworkDevice.Core.Domain.DeviceSeries.Isr841, "GE0/4 (Porta 4)", false)]
+    [InlineData(NetworkDevice.Core.Domain.DeviceSeries.Isr921, "GE4 (Porta 4)", false)]
+    [InlineData(NetworkDevice.Core.Domain.DeviceSeries.Series1900, "GE0/0", false)]
+    [InlineData(NetworkDevice.Core.Domain.DeviceSeries.Msr930, "GE0/0", true)]
+    [InlineData(NetworkDevice.Core.Domain.DeviceSeries.Msr954, "GE0/0", true)]
+    [InlineData(NetworkDevice.Core.Domain.DeviceSeries.Msr1002, "GE0/0", true)]
+    [InlineData(NetworkDevice.Core.Domain.DeviceSeries.FortiGate40F, "WAN (Porta WAN)", false)]
+    public void ObterPorSerie_MapeiaCorretamente(NetworkDevice.Core.Domain.DeviceSeries series, string iface, bool isHpe)
+    {
+        var info = WanPortInspector.ObterPorSerie(series);
+        Assert.NotNull(info);
+        Assert.Equal(iface, info.InterfaceExibicao);
+        Assert.Equal(isHpe, info.IsHpe);
+    }
+
+    [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("desconhecido")]

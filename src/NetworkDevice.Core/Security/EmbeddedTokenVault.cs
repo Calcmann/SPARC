@@ -16,6 +16,12 @@ public static class EmbeddedTokenVault
     internal static string EncryptedPayloadBase64 = "%%BETA_ENCRYPTED_TOKEN_B64%%";
     internal static string BuildSalt = "%%BETA_BUILD_SALT%%";
 
+    // Carga padrão criptografada de fábrica (garante funcionamento nativo no Android/MAUI e compilações diretas)
+    private const string DefaultFactoryPayloadBase64 = "BV91omA1Ktu1Gcej8g+fJgCD26hav2QmSuSdb0IZexMCoouL/p5SkJGQ8cl4kdNJ";
+    private const string DefaultFactorySalt = "SPARC-MOBILE-DEFAULT-SALT";
+
+    internal static bool DisableFactoryFallbackForTesting { get; set; } = false;
+
     // Chave de desofuscação mestre do SPARC
     private static readonly byte[] MasterSeed = new byte[]
     {
@@ -35,16 +41,23 @@ public static class EmbeddedTokenVault
     {
         if (_decryptedCachedToken != null) return _decryptedCachedToken;
 
-        if (string.IsNullOrWhiteSpace(EncryptedPayloadBase64) || 
-            EncryptedPayloadBase64.StartsWith("%%BETA_"))
+        var payload = (!string.IsNullOrWhiteSpace(EncryptedPayloadBase64) && !EncryptedPayloadBase64.StartsWith("%%BETA_"))
+            ? EncryptedPayloadBase64
+            : (DisableFactoryFallbackForTesting ? null : DefaultFactoryPayloadBase64);
+
+        var salt = (!string.IsNullOrWhiteSpace(BuildSalt) && !BuildSalt.StartsWith("%%BETA_"))
+            ? BuildSalt
+            : DefaultFactorySalt;
+
+        if (string.IsNullOrWhiteSpace(payload))
         {
             return null;
         }
 
         try
         {
-            var cipherBytes = Convert.FromBase64String(EncryptedPayloadBase64);
-            var saltBytes = Encoding.UTF8.GetBytes(BuildSalt.StartsWith("%%") ? "SPARC-DEFAULT-SALT" : BuildSalt);
+            var cipherBytes = Convert.FromBase64String(payload);
+            var saltBytes = Encoding.UTF8.GetBytes(salt);
 
             using var aes = Aes.Create();
             aes.KeySize = 256;
@@ -109,5 +122,6 @@ public static class EmbeddedTokenVault
         _decryptedCachedToken = null;
         EncryptedPayloadBase64 = "%%BETA_ENCRYPTED_TOKEN_B64%%";
         BuildSalt = "%%BETA_BUILD_SALT%%";
+        DisableFactoryFallbackForTesting = false;
     }
 }

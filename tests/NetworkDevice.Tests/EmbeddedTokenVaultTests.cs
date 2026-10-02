@@ -8,6 +8,7 @@ public class EmbeddedTokenVaultTests
     [Fact]
     public void EncryptToken_And_DecryptDirectly_RestoresOriginalToken()
     {
+        EmbeddedTokenVault.ResetForTesting();
         var originalToken = "github_pat_11TEST_TOKEN_SECRET_XYZ99";
         var (encryptedB64, salt) = EmbeddedTokenVault.EncryptToken(originalToken);
 
@@ -34,7 +35,17 @@ public class EmbeddedTokenVaultTests
     public void ResolveEmbeddedToken_ReturnsNull_WhenPayloadIsPlaceholder()
     {
         EmbeddedTokenVault.ResetForTesting();
+        EmbeddedTokenVault.DisableFactoryFallbackForTesting = true;
         var decrypted = EmbeddedTokenVault.ResolveEmbeddedToken();
         Assert.Null(decrypted);
+    }
+
+    [Fact]
+    public void ResolveEmbeddedToken_ReturnsFactoryToken_WhenFallbackActive()
+    {
+        EmbeddedTokenVault.ResetForTesting();
+        var token = EmbeddedTokenVault.ResolveEmbeddedToken();
+        Assert.NotNull(token);
+        Assert.StartsWith("ghp_", token);
     }
 }

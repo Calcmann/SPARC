@@ -225,28 +225,28 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
                        cleanLan.Contains("4") ? "GigabitEthernet5" :
                        cleanLan.EndsWith("0/1") ? cleanLan.Replace("0/1", "0/0") : "GigabitEthernet0/0";
 
-        var displayLan = cleanLan.Contains("0/5") ? "GigabitEthernet0/5 (GE 0/5 / Porta 5 - LAN)" :
-                         cleanLan.Contains("5") ? "GigabitEthernet 5 (GE 5 / Porta 5 - LAN)" :
-                         cleanLan.Contains("0/4") ? "GigabitEthernet0/4 (GE 0/4 / Porta 4 - LAN)" :
-                         cleanLan.Contains("4") ? "GigabitEthernet 4 (GE 4 / Porta 4 - LAN)" :
-                         cleanLan.Contains("0/1") ? "GigabitEthernet 0/1 (GE 0/1 / LAN)" :
+        var is841 = cleanLan.Contains("0/5") || cleanLan.Contains("0/4");
+        var is921 = !is841 && (cleanLan.Contains("5") || cleanLan.Contains("4"));
+
+        var displayLan = is841 ? "GigabitEthernet0/5 (Porta 5 / GE 0/5 - LAN do Cliente)" :
+                         is921 ? "GigabitEthernet 5 (Porta 5 / GE 5 - LAN do Cliente)" :
+                         cleanLan.Contains("0/1") ? "GigabitEthernet 0/1 (Porta 1 / GE 0/1 - LAN do Cliente)" :
                          $"{lanInterface} (LAN)";
 
-        var shortLan = cleanLan.Contains("0/5") ? "GE 0/5" :
-                       cleanLan.Contains("5") ? "GE 5" :
-                       cleanLan.Contains("0/4") ? "GE 0/4" :
-                       cleanLan.Contains("4") ? "GE 4" :
-                       cleanLan.Contains("0/1") ? "GE 0/1" :
-                       cleanLan;
+        var displayWan = is841 ? "GigabitEthernet0/4 (Porta 4 / GE 0/4 - WAN / Uplink)" :
+                         is921 ? "GigabitEthernet 4 (Porta 4 / GE 4 - WAN / Uplink)" :
+                         cleanWan.Contains("0/0") ? "GigabitEthernet 0/0 (Porta 0 / GE 0/0 - WAN / Uplink)" :
+                         $"{cleanWan} (WAN)";
 
-        var shortWan = cleanWan.Contains("0/4") ? "GE 0/4" :
-                       cleanWan.Contains("4") ? "GE 4" :
-                       cleanWan.Contains("0/5") ? "GE 0/5" :
-                       cleanWan.Contains("5") ? "GE 5" :
-                       cleanWan.Contains("0/0") ? "GE 0/0" :
-                       cleanWan;
+        var shortLan = is841 ? "Porta 5 (GE 0/5)" : is921 ? "Porta 5 (GE 5)" : cleanLan.Contains("0/1") ? "Porta 1 (GE 0/1)" : cleanLan;
+        var shortWan = is841 ? "Porta 4 (GE 0/4)" : is921 ? "Porta 4 (GE 4)" : cleanWan.Contains("0/0") ? "Porta 0 (GE 0/0)" : cleanWan;
 
-        for (var attempt = 1; attempt <= 45; attempt++)
+        var lanPattern = BuildInterfaceRegex(cleanLan);
+        var wanPattern = BuildInterfaceRegex(cleanWan);
+
+        var operatorNotified = false;
+
+        for (var attempt = 1; attempt <= 60; attempt++)
         {
             string output = string.Empty;
             try
@@ -262,26 +262,27 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
                 continue;
             }
             
-            var isLanUp = Regex.IsMatch(output, $@"(?i){cleanLan}\s+\S+\s+\w+\s+\w+\s+up\s+up");
-            var isWanUp = Regex.IsMatch(output, $@"(?i){cleanWan}\s+\S+\s+\w+\s+\w+\s+up\s+up");
+            var isLanUp = Regex.IsMatch(output, $@"(?im)^\s*{lanPattern}\s+[^\r\n]*\bup\s+up\b");
+            var isWanUp = Regex.IsMatch(output, $@"(?im)^\s*{wanPattern}\s+[^\r\n]*\bup\s+up\b");
 
             if (isLanUp)
             {
                 if (progress is not null)
-                    await progress($"[OK] Link físico confirmado na porta LAN ({lanInterface}).");
+                    await progress($"[OK] Link físico confirmado na porta LAN ({displayLan}) — status UP/UP.");
                 return true;
             }
 
             if (isWanUp && !isLanUp)
             {
-                if (progress is not null)
-                    await progress($"[CRÍTICA DE PORTA] Cabo de rede detectado na porta {cleanWan} (WAN) ao invés da porta LAN ({lanInterface})!");
+                if (progress is not null && (attempt % 5 == 1))
+                    await progress($"[CRÍTICA DE PORTA] Cabo de rede detectado na porta WAN ({shortWan}) ao invés da porta LAN ({shortLan})!");
 
-                if (requestOperatorAction is not null && attempt == 1)
+                if (requestOperatorAction is not null && (!operatorNotified || attempt == 20 || attempt == 40))
                 {
+                    operatorNotified = true;
                     await requestOperatorAction(
                         $"❌ CABO DE REDE CONECTADO NA PORTA INCORRETA ({shortWan})!\n\n" +
-                        $"O cabo Ethernet está conectado na porta {cleanWan} (WAN / Uplink).\n\n" +
+                        $"O cabo Ethernet está conectado na porta {displayWan}.\n\n" +
                         $"👉 POR FAVOR, ALTERE O CABO DE REDE PARA A PORTA:\n" +
                         $"🟢 {displayLan}\n\n" +
                         $"Todos os procedimentos no Cisco IOS (Upgrade, Provisionamento, Testes ICMP e Banda) são executados EXCLUSIVAMENTE pela porta LAN ({shortLan}).\n\n" +
@@ -290,34 +291,58 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
 
                     // Operador clicou em OK após trocar o cabo: acorda console do Cisco e absorve syslogs
                     await session.WriteLineAsync(string.Empty, cancellationToken);
-                    await Task.Delay(800, cancellationToken);
+                    await Task.Delay(1500, cancellationToken);
                 }
             }
             else if (!isLanUp)
             {
                 if (progress is not null && (attempt % 5 == 1))
-                    await progress($"[AVISO] Porta LAN ({lanInterface}) sem link físico. Aguardando conexão do cabo de rede ({attempt}/45)...");
+                    await progress($"[AVISO] Porta LAN ({displayLan}) sem link físico (DOWN). Aguardando conexão do cabo de rede ({attempt}/60)...");
 
-                if (requestOperatorAction is not null && attempt == 1)
+                if (requestOperatorAction is not null && (!operatorNotified || attempt == 20 || attempt == 40))
                 {
+                    operatorNotified = true;
                     await requestOperatorAction(
                         $"⚠️ NENHUM CABO DETECTADO NA PORTA LAN ({shortLan})!\n\n" +
-                        $"O link físico da porta {lanInterface} está DOWN.\n\n" +
+                        $"O link físico da porta {displayLan} está DOWN.\n\n" +
                         $"👉 Conecte o cabo de rede Ethernet do seu notebook na porta:\n" +
                         $"🟢 {displayLan}\n\n" +
+                        $"Certifique-se de que o cabo está bem encaixado e o LED da porta física está aceso.\n\n" +
                         $"Clique em OK após conectar o cabo na porta {shortLan}.",
                         cancellationToken);
 
                     // Operador clicou em OK após conectar o cabo: acorda console do Cisco e absorve syslogs de porta UP
                     await session.WriteLineAsync(string.Empty, cancellationToken);
-                    await Task.Delay(800, cancellationToken);
+                    await Task.Delay(1500, cancellationToken);
                 }
             }
 
             await Task.Delay(2000, cancellationToken);
         }
 
+        if (progress is not null)
+            await progress($"[AVISO CRÍTICO] Tempo limite de espera para link na porta LAN ({displayLan}) esgotado.");
+
         return false;
+    }
+
+    private static string BuildInterfaceRegex(string iface)
+    {
+        var clean = iface.Replace(" ", "");
+        if (clean.Contains("0/5"))
+            return @"(?:GigabitEthernet0/5|Gi0/5|GE0/5|FastEthernet0/5|Fa0/5|GigabitEthernet\s*0/5)";
+        if (clean.Contains("0/4"))
+            return @"(?:GigabitEthernet0/4|Gi0/4|GE0/4|FastEthernet0/4|Fa0/4|GigabitEthernet\s*0/4)";
+        if (clean.EndsWith("5") || clean.Contains("5"))
+            return @"(?:GigabitEthernet5|Gi5|GE5|GigabitEthernet\s*5|GigabitEthernet0/5|Gi0/5|GE0/5)";
+        if (clean.EndsWith("4") || clean.Contains("4"))
+            return @"(?:GigabitEthernet4|Gi4|GE4|GigabitEthernet\s*4|GigabitEthernet0/4|Gi0/4|GE0/4)";
+        if (clean.Contains("0/1"))
+            return @"(?:GigabitEthernet0/1|Gi0/1|GE0/1|FastEthernet0/1|Fa0/1|GigabitEthernet\s*0/1)";
+        if (clean.Contains("0/0"))
+            return @"(?:GigabitEthernet0/0|Gi0/0|GE0/0|FastEthernet0/0|Fa0/0|GigabitEthernet\s*0/0)";
+
+        return Regex.Escape(clean);
     }
 
     private static string StripEchoAndPrompt(string output, string command)

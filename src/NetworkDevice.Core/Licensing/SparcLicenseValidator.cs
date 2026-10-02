@@ -36,15 +36,21 @@ QQIDAQAB
         string? email = null,
         string? cluster = null,
         string? uf = null,
-        string? clientVersion = null)
+        string? clientVersion = null,
+        string? platform = null,
+        string? company = null,
+        string? employeeId = null)
     {
-        var fn = EscapeJson(firstName ?? "");
-        var ln = EscapeJson(lastName ?? "");
-        var ph = EscapeJson(phone ?? "");
-        var em = EscapeJson(email ?? "");
-        var cl = EscapeJson(cluster ?? "");
-        var u = EscapeJson(uf ?? "");
+        var fn = EscapeJson(SparcTextSanitizer.FormatPersonOrCompanyName(firstName));
+        var ln = EscapeJson(SparcTextSanitizer.FormatPersonOrCompanyName(lastName));
+        var ph = EscapeJson(SparcTextSanitizer.FormatPhone(phone));
+        var em = EscapeJson(SparcTextSanitizer.FormatEmail(email));
+        var cl = EscapeJson(SparcTextSanitizer.FormatCluster(cluster));
+        var u = EscapeJson(SparcTextSanitizer.FormatUf(uf));
         var ver = EscapeJson(clientVersion ?? "0.8");
+        var plt = EscapeJson(platform ?? "Windows");
+        var cmp = EscapeJson(SparcTextSanitizer.FormatPersonOrCompanyName(company));
+        var mat = EscapeJson(SparcTextSanitizer.FormatEmployeeId(employeeId));
         var ts = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ");
 
         var json = "{\"g\":\"" + machineGuid + "\",\"f\":\"" + fingerprint + "\""
@@ -55,6 +61,9 @@ QQIDAQAB
                  + ",\"c\":\"" + cl + "\""
                  + ",\"u\":\"" + u + "\""
                  + ",\"v\":\"" + ver + "\""
+                 + ",\"plt\":\"" + plt + "\""
+                 + ",\"cmp\":\"" + cmp + "\""
+                 + ",\"mat\":\"" + mat + "\""
                  + ",\"t\":\"" + ts + "\"}";
 
         return RequestPrefix + Base64UrlEncode(Encoding.UTF8.GetBytes(json));

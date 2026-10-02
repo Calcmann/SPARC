@@ -9,33 +9,52 @@
             
             <!-- Cabeçalho -->
             <Frame BackgroundColor="#1E293B" CornerRadius="12" Padding="14" BorderColor="#38BDF8" HasShadow="True">
-                <VerticalStackLayout Spacing="4">
-                    <Label Text="SPARC Mobile • Ativação de Campo" FontSize="16" FontAttributes="Bold" TextColor="#38BDF8" />
-                    <Label Text="Controle de cópias e identificação obrigatória do técnico em campo." FontSize="11" TextColor="#94A3B8" />
-                    <Label x:Name="AppVersionLabel" Text="Versão: 0.8.30 Beta" FontSize="10" TextColor="#64748B" Margin="0,2,0,0" />
-                </VerticalStackLayout>
+                <Grid ColumnDefinitions="*, Auto">
+                    <VerticalStackLayout Grid.Column="0" Spacing="4">
+                        <Label Text="SPARC Mobile • Ativação de Campo" FontSize="16" FontAttributes="Bold" TextColor="#38BDF8" />
+                        <Label Text="Controle de cópias e identificação obrigatória do técnico em campo." FontSize="11" TextColor="#94A3B8" />
+                        <Label x:Name="AppVersionLabel" Text="Versão: 0.8.49 Beta" FontSize="10" TextColor="#64748B" Margin="0,2,0,0" />
+                    </VerticalStackLayout>
+                    <Button Grid.Column="1" Text="🔄 Checar OTA" Clicked="OnCheckAppUpdateClicked" BackgroundColor="#0284C7" TextColor="White" CornerRadius="6" FontSize="11" HeightRequest="34" Padding="8,0" FontAttributes="Bold" VerticalOptions="Center" />
+                </Grid>
             </Frame>
 
             <!-- 1. Identificação do Técnico -->
             <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#334155">
                 <VerticalStackLayout Spacing="10">
-                    <Label Text="1. Dados de Identificação do Técnico" FontSize="14" FontAttributes="Bold" TextColor="#F8FAFC" />
+                    <Grid ColumnDefinitions="*, Auto" VerticalOptions="Center">
+                        <Label Grid.Column="0" Text="1. Dados de Identificação do Técnico" FontSize="14" FontAttributes="Bold" TextColor="#F8FAFC" VerticalOptions="Center" />
+                        <Label x:Name="NameLockedBadge" Grid.Column="1" Text="🔒 Nome Imutável" FontSize="10" TextColor="#F59E0B" FontAttributes="Bold" IsVisible="False" VerticalOptions="Center" />
+                    </Grid>
+
+                    <Label x:Name="NameLockedNotice" Text="ℹ️ Nome e Sobrenome são vinculados à licença e não podem ser alterados após o primeiro registro. Demais dados podem ser atualizados a qualquer momento." FontSize="10" TextColor="#94A3B8" IsVisible="False" />
 
                     <Grid ColumnDefinitions="*, *" ColumnSpacing="8">
                         <VerticalStackLayout Grid.Column="0" Spacing="2">
-                            <Label Text="Nome:" TextColor="#94A3B8" FontSize="11" />
+                            <Label x:Name="FirstNameLabel" Text="Nome: *" TextColor="#94A3B8" FontSize="11" />
                             <Entry x:Name="FirstNameEntry" Placeholder="Ex: João" TextColor="White" BackgroundColor="#1E293B" FontSize="12" />
                         </VerticalStackLayout>
                         <VerticalStackLayout Grid.Column="1" Spacing="2">
-                            <Label Text="Sobrenome:" TextColor="#94A3B8" FontSize="11" />
+                            <Label x:Name="LastNameLabel" Text="Sobrenome: *" TextColor="#94A3B8" FontSize="11" />
                             <Entry x:Name="LastNameEntry" Placeholder="Ex: Silva" TextColor="White" BackgroundColor="#1E293B" FontSize="12" />
                         </VerticalStackLayout>
                     </Grid>
 
                     <Grid ColumnDefinitions="*, *" ColumnSpacing="8">
                         <VerticalStackLayout Grid.Column="0" Spacing="2">
-                            <Label Text="Telefone / Matrícula:" TextColor="#94A3B8" FontSize="11" />
-                            <Entry x:Name="PhoneEntry" Placeholder="DDD + Número ou Matrícula" TextColor="White" BackgroundColor="#1E293B" FontSize="12" Keyboard="Telephone" />
+                            <Label Text="Empresa: *" TextColor="#94A3B8" FontSize="11" />
+                            <Entry x:Name="CompanyEntry" Placeholder="Ex: Claro, Telemont..." TextColor="White" BackgroundColor="#1E293B" FontSize="12" />
+                        </VerticalStackLayout>
+                        <VerticalStackLayout Grid.Column="1" Spacing="2">
+                            <Label Text="Matrícula: *" TextColor="#94A3B8" FontSize="11" />
+                            <Entry x:Name="EmployeeIdEntry" Placeholder="Ex: T123456" TextColor="White" BackgroundColor="#1E293B" FontSize="12" />
+                        </VerticalStackLayout>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="*, *" ColumnSpacing="8">
+                        <VerticalStackLayout Grid.Column="0" Spacing="2">
+                            <Label Text="WhatsApp / Telefone: *" TextColor="#94A3B8" FontSize="11" />
+                            <Entry x:Name="PhoneEntry" Placeholder="DDD + Número" TextColor="White" BackgroundColor="#1E293B" FontSize="12" Keyboard="Telephone" />
                         </VerticalStackLayout>
                         <VerticalStackLayout Grid.Column="1" Spacing="2">
                             <Label Text="E-mail (opcional):" TextColor="#94A3B8" FontSize="11" />
@@ -45,11 +64,11 @@
 
                     <Grid ColumnDefinitions="*, *" ColumnSpacing="8">
                         <VerticalStackLayout Grid.Column="0" Spacing="2">
-                            <Label Text="Cluster de Atuação:" TextColor="#94A3B8" FontSize="11" FontAttributes="Bold" />
+                            <Label Text="Cluster de Atuação: *" TextColor="#94A3B8" FontSize="11" FontAttributes="Bold" />
                             <Entry x:Name="ClusterEntry" Placeholder="Ex: SP-INTERIOR, PR-CURITIBA" TextColor="White" BackgroundColor="#1E293B" FontSize="12" />
                         </VerticalStackLayout>
                         <VerticalStackLayout Grid.Column="1" Spacing="2">
-                            <Label Text="UF:" TextColor="#94A3B8" FontSize="11" FontAttributes="Bold" />
+                            <Label Text="UF: *" TextColor="#94A3B8" FontSize="11" FontAttributes="Bold" />
                             <Entry x:Name="UfEntry" Placeholder="Ex: SP, RJ, PR" TextColor="White" BackgroundColor="#1E293B" FontSize="12" MaxLength="2" />
                         </VerticalStackLayout>
                     </Grid>

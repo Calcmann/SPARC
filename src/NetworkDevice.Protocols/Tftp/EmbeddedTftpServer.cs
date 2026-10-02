@@ -101,6 +101,9 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable, IDisposable
 
     public async Task StopAsync()
     {
+        if (_cts is null && _listenerSocket is null && _serverTask is null)
+            return;
+
         if (_cts is not null)
         {
             await _cts.CancelAsync();

@@ -1,7 +1,7 @@
-# Gera a variante BETA (time-bomb + node-locking + chave 30d + ofuscacao) em EXE UNICO,
+# Gera a variante BETA (node-locking + chave RSA + sincronizacao online + ofuscacao) em EXE UNICO,
 # a partir de uma COPIA isolada em TEMP. Nao altera C:\SPARC\src.
 # Padrao: framework-dependent single-file (~20 MB, exige .NET 8 instalado - igual ao exe padrao).
-param([int]$Dias = 30, [string]$Tag = "", [string]$Versao = "", [switch]$FrameworkDependent, [switch]$SemOfuscacao)
+param([int]$Dias = 365, [string]$Tag = "", [string]$Versao = "", [switch]$FrameworkDependent, [switch]$SemOfuscacao)
 
 $ErrorActionPreference = "Stop"
 
@@ -189,19 +189,19 @@ if ($LASTEXITCODE -ne 0) { throw "publish falhou" }
 Remove-Item (Join-Path $outDir "*.pdb") -ErrorAction SilentlyContinue
 Remove-Item (Join-Path $outDir "*_cor3.dll"), (Join-Path $outDir "vcruntime140_cor3.dll") -ErrorAction SilentlyContinue
 $built = Join-Path $outDir "NetworkDevice.UI.exe"
-$final = Join-Path $outDir "SPARC-Beta-Testes.exe"
-if (Test-Path $final) { Remove-Item -Force $final }
-Move-Item -LiteralPath $built -Destination $final
-
-# Gera tambem a copia com versao especifica (ex.: SPARC-Beta-Testes-0.8.exe)
 $versionedExe = Join-Path $outDir "SPARC-Beta-Testes-$Versao.exe"
-Copy-Item -LiteralPath $final -Destination $versionedExe -Force
+if (Test-Path $versionedExe) { Remove-Item -Force $versionedExe }
+Move-Item -LiteralPath $built -Destination $versionedExe
+
+# Remove binário genérico legado se existir para não manter duplicatas
+$legacyGeneric = Join-Path $outDir "SPARC-Beta-Testes.exe"
+if (Test-Path $legacyGeneric) { Remove-Item -Force $legacyGeneric -ErrorAction SilentlyContinue }
+
 Copy-Item (Join-Path $tmp "Manual_Instrucoes_Operador_SPARC.pdf") (Join-Path $outDir "Manual_Instrucoes_Operador_SPARC.pdf") -Force -ErrorAction SilentlyContinue
-$mb = [math]::Round((Get-Item $final).Length / 1MB, 1)
+$mb = [math]::Round((Get-Item $versionedExe).Length / 1MB, 1)
 
 Write-Host ""
-Write-Host "BETA PRONTA: $final ($mb MB)"
-Write-Host "COPIA COM VERSAO: $versionedExe"
+Write-Host "BETA PRONTA (VERSAO UNICA): $versionedExe ($mb MB)"
 $expiresLocal = ([DateTime]::Parse($expiresIso).ToUniversalTime()).ToLocalTime().ToString("dd/MM/yyyy HH:mm")
 Write-Host "Tag: $Tag | Build valido ate: $expiresLocal (horario local) | Ofuscado: $(-not $SemOfuscacao)"
 Write-Host "Base C:\SPARC\src: INTACTA (verifique com git status)."

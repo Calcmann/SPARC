@@ -80,7 +80,7 @@ public class LicenseSignerServiceTests
         Assert.Equal("Carlos", decoded.FirstName);
         Assert.Equal("Eduardo", decoded.LastName);
         Assert.Equal("Carlos Eduardo", decoded.FullName);
-        Assert.Equal("11999998888", decoded.Phone);
+        Assert.Equal("(11) 99999-8888", decoded.Phone);
         Assert.Equal("carlos@claro.com.br", decoded.Email);
         Assert.Equal("0.8.2", decoded.ClientVersion);
         Assert.NotNull(decoded.RequestTimeUtc);
@@ -101,7 +101,7 @@ public class LicenseSignerServiceTests
         Assert.Equal("Silva", decoded.LastName);
         Assert.Equal("Campinas Interior", decoded.Cluster);
         Assert.Equal("SP", decoded.Uf);
-        Assert.Equal("19988776655", decoded.Phone);
+        Assert.Equal("(19) 98877-6655", decoded.Phone);
         Assert.Equal("roberto@empresa.com", decoded.Email);
     }
 
@@ -134,6 +134,70 @@ public class LicenseSignerServiceTests
 
             loaded = svc.LoadHistory();
             Assert.Empty(loaded);
+        }
+        finally
+        {
+            try { Directory.Delete(tempBeta, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void DecodeRequest_WithAndroidPlatform_ExtractsPlatformAndPlatformBadgeCorrectly()
+    {
+        var tempBeta = Path.Combine(Path.GetTempPath(), "sparc_lic_test_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempBeta);
+        try
+        {
+            var svc = new LicenseSignerService(tempBeta);
+            var reqStr = SparcLicenseValidator.BuildRequest(
+                "and-guid-123",
+                "android-fp-abc",
+                "Carlos",
+                "Ferreira",
+                "Grande Rio",
+                "RJ",
+                "2199998888",
+                "carlos@telecom.com",
+                platform: "Android");
+
+            var decoded = svc.DecodeRequest(reqStr);
+
+            Assert.True(decoded.IsValid);
+            Assert.Equal("Android", decoded.Platform);
+            Assert.Equal("📱 Android", decoded.PlatformBadge);
+            Assert.Equal("Carlos", decoded.FirstName);
+            Assert.Equal("Ferreira", decoded.LastName);
+        }
+        finally
+        {
+            try { Directory.Delete(tempBeta, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void DecodeRequest_WithWindowsPlatform_ExtractsPlatformAndPlatformBadgeCorrectly()
+    {
+        var tempBeta = Path.Combine(Path.GetTempPath(), "sparc_lic_test_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempBeta);
+        try
+        {
+            var svc = new LicenseSignerService(tempBeta);
+            var reqStr = SparcLicenseValidator.BuildRequest(
+                "win-guid-456",
+                "win-fp-xyz",
+                "Mariana",
+                "Santos",
+                "Campinas",
+                "SP",
+                "19988887777",
+                "mariana@telecom.com",
+                platform: "Windows");
+
+            var decoded = svc.DecodeRequest(reqStr);
+
+            Assert.True(decoded.IsValid);
+            Assert.Equal("Windows", decoded.Platform);
+            Assert.Equal("🪟 Windows", decoded.PlatformBadge);
         }
         finally
         {

@@ -87,22 +87,33 @@
                         <DockPanel>
                             <!-- Contadores / Status -->
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <Border Background="#713F12" CornerRadius="6" Padding="10,5" Margin="0,0,8,0">
-                                    <TextBlock x:Name="TxtSolicitacoesPendentesCount" Text="⏳ Pendentes: 0" FontWeight="Bold" FontSize="12" Foreground="#FDE047" />
+                                <Border Background="#713F12" CornerRadius="6" Padding="8,5" Margin="0,0,6,0">
+                                    <TextBlock x:Name="TxtSolicitacoesPendentesCount" Text="⏳ Pendentes: 0" FontWeight="Bold" FontSize="11.5" Foreground="#FDE047" />
                                 </Border>
-                                <Border Background="#14532D" CornerRadius="6" Padding="10,5" Margin="0,0,8,0">
-                                    <TextBlock x:Name="TxtSolicitacoesAprovadasCount" Text="✅ Aprovadas: 0" FontWeight="Bold" FontSize="12" Foreground="#4ADE80" />
+                                <Border Background="#14532D" CornerRadius="6" Padding="8,5" Margin="0,0,6,0">
+                                    <TextBlock x:Name="TxtSolicitacoesAprovadasCount" Text="✅ Aprovadas: 0" FontWeight="Bold" FontSize="11.5" Foreground="#4ADE80" />
                                 </Border>
-                                <Border Background="#7F1D1D" CornerRadius="6" Padding="10,5" Margin="0,0,8,0">
-                                    <TextBlock x:Name="TxtSolicitacoesRejeitadasCount" Text="❌ Rejeitadas: 0" FontWeight="Bold" FontSize="12" Foreground="#F87171" />
+                                <Border Background="#7F1D1D" CornerRadius="6" Padding="8,5" Margin="0,0,6,0">
+                                    <TextBlock x:Name="TxtSolicitacoesRejeitadasCount" Text="❌ Rejeitadas: 0" FontWeight="Bold" FontSize="11.5" Foreground="#F87171" />
+                                </Border>
+                                <Border Background="#1E293B" CornerRadius="6" Padding="8,5" Margin="0,0,6,0">
+                                    <TextBlock x:Name="TxtSolicitacoesWindowsCount" Text="🪟 Win: 0" FontWeight="Bold" FontSize="11.5" Foreground="#38BDF8" />
+                                </Border>
+                                <Border Background="#1E293B" CornerRadius="6" Padding="8,5" Margin="0,0,8,0">
+                                    <TextBlock x:Name="TxtSolicitacoesAndroidCount" Text="📱 And: 0" FontWeight="Bold" FontSize="11.5" Foreground="#4ADE80" />
                                 </Border>
                             </StackPanel>
 
-                            <!-- Busca e Botão Atualizar -->
+                            <!-- Busca, Filtro Plataforma e Botão Atualizar -->
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                                 <TextBlock Text="🔍 Filtrar:" Foreground="#A1A1AA" VerticalAlignment="Center" Margin="0,0,6,0" FontSize="11.5" />
-                                <TextBox x:Name="TxtFiltroSolicitacoes" Width="180" Height="28" Padding="6,4" Background="#27272A" Foreground="White" BorderBrush="#52525B" FontSize="11.5" TextChanged="TxtFiltroSolicitacoes_TextChanged" />
-                                <Button x:Name="BtnAtualizarSolicitacoesOnline" Content="🔄 Buscar da Nuvem / Atualizar" Padding="12,5" Margin="8,0,0,0" Background="#0D9488" Foreground="White" FontWeight="Bold" FontSize="11.5" BorderThickness="0" Cursor="Hand" Click="BtnAtualizarSolicitacoesOnline_Click" />
+                                <TextBox x:Name="TxtFiltroSolicitacoes" Width="140" Height="28" Padding="6,4" Background="#27272A" Foreground="White" BorderBrush="#52525B" FontSize="11.5" TextChanged="TxtFiltroSolicitacoes_TextChanged" />
+                                <ComboBox x:Name="CbFiltroPlataformaSolicitacoes" SelectedIndex="0" Height="28" Width="125" Margin="6,0,0,0" FontSize="11" SelectionChanged="CbFiltroPlataformaSolicitacoes_SelectionChanged">
+                                    <ComboBoxItem Content="🌐 Todas Plat." />
+                                    <ComboBoxItem Content="🪟 Windows" />
+                                    <ComboBoxItem Content="📱 Android" />
+                                </ComboBox>
+                                <Button x:Name="BtnAtualizarSolicitacoesOnline" Content="🔄 Buscar da Nuvem" Padding="10,5" Margin="8,0,0,0" Background="#0D9488" Foreground="White" FontWeight="Bold" FontSize="11.5" BorderThickness="0" Cursor="Hand" Click="BtnAtualizarSolicitacoesOnline_Click" />
                             </StackPanel>
                         </DockPanel>
                     </Border>
@@ -125,10 +136,13 @@
                                       GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#3F3F46" BorderBrush="#3F3F46" BorderThickness="1"
                                       SelectionMode="Single" SelectionChanged="DgSolicitacoesOnline_SelectionChanged">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="Status" Binding="{Binding StatusBadge}" FontWeight="Bold" Width="150" />
+                                    <DataGridTextColumn Header="Status" Binding="{Binding StatusBadge}" FontWeight="Bold" Width="140" />
+                                    <DataGridTextColumn Header="Plataforma" Binding="{Binding PlatformBadge}" FontWeight="Bold" Width="95" />
                                     <DataGridTextColumn Header="Data / Hora (UTC)" Binding="{Binding RequestedAtUtc, StringFormat='dd/MM/yyyy HH:mm'}" Width="125" />
-                                    <DataGridTextColumn Header="Técnico" Binding="{Binding FullName}" FontWeight="Bold" Width="160" />
-                                    <DataGridTextColumn Header="Cluster" Binding="{Binding Cluster}" Width="120" />
+                                    <DataGridTextColumn Header="Técnico" Binding="{Binding FullName}" FontWeight="Bold" Width="150" />
+                                    <DataGridTextColumn Header="Empresa" Binding="{Binding Company}" Width="110" />
+                                    <DataGridTextColumn Header="Matrícula" Binding="{Binding EmployeeId}" Width="85" />
+                                    <DataGridTextColumn Header="Cluster" Binding="{Binding Cluster}" Width="110" />
                                     <DataGridTextColumn Header="UF" Binding="{Binding Uf}" Width="45" />
                                     <DataGridTextColumn Header="WhatsApp / Tel" Binding="{Binding Phone}" Width="125" />
                                     <DataGridTextColumn Header="E-mail" Binding="{Binding Email}" Width="160" />
@@ -185,6 +199,7 @@
                                         <StackPanel Grid.Column="0">
                                             <TextBlock x:Name="TxtStatusDecodificacao" Text="✅ Pedido Válido" FontWeight="Bold" FontSize="12" Foreground="#4ADE80" />
                                             <TextBlock x:Name="TxtInfoTecnico" Text="Técnico: João Silva | WhatsApp: (11) 99999-9999 | Email: joao@claro.com.br" FontSize="11.5" FontWeight="SemiBold" Foreground="#38BDF8" Margin="0,3,0,0" />
+                                            <TextBlock x:Name="TxtInfoPlataforma" Text="Plataforma: 🪟 Windows" FontSize="11.5" FontWeight="SemiBold" Foreground="#4ADE80" Margin="0,2,0,0" />
                                             <TextBlock x:Name="TxtInfoHardware" Text="Machine GUID: ... | Fingerprint: ..." FontSize="11" Foreground="#A1A1AA" Margin="0,2,0,0" FontFamily="Consolas" />
                                         </StackPanel>
                                     </Grid>
@@ -266,8 +281,11 @@
                                           GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#3F3F46" BorderBrush="#3F3F46" BorderThickness="1">
                                     <DataGrid.Columns>
                                         <DataGridTextColumn Header="Data / Hora (UTC)" Binding="{Binding GeneratedAtUtc, StringFormat='dd/MM/yyyy HH:mm'}" Width="130" />
-                                        <DataGridTextColumn Header="Técnico" Binding="{Binding TechnicianName}" Width="150" />
-                                        <DataGridTextColumn Header="Cluster" Binding="{Binding Cluster}" Width="110" />
+                                        <DataGridTextColumn Header="Plataforma" Binding="{Binding PlatformBadge}" FontWeight="Bold" Width="95" />
+                                        <DataGridTextColumn Header="Técnico" Binding="{Binding TechnicianName}" FontWeight="Bold" Width="150" />
+                                        <DataGridTextColumn Header="Empresa" Binding="{Binding Company}" Width="110" />
+                                        <DataGridTextColumn Header="Matrícula" Binding="{Binding EmployeeId}" Width="85" />
+                                        <DataGridTextColumn Header="Cluster" Binding="{Binding Cluster}" Width="100" />
                                         <DataGridTextColumn Header="UF" Binding="{Binding Uf}" Width="45" />
                                         <DataGridTextColumn Header="Dias" Binding="{Binding ValidDays}" Width="50" />
                                         <DataGridTextColumn Header="Expira em" Binding="{Binding ExpirationDate}" Width="90" />
@@ -296,24 +314,35 @@
                         <DockPanel>
                             <!-- Métricas Rápidas -->
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <Border Background="#27272A" BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="0,0,8,0">
+                                <Border Background="#27272A" BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="0,0,6,0">
                                     <TextBlock x:Name="TxtTotalCopias" Text="👥 Total: 0 técnicos" FontWeight="Bold" FontSize="11.5" Foreground="#E4E4E7" />
                                 </Border>
-                                <Border Background="#14532D" CornerRadius="6" Padding="8,4" Margin="0,0,8,0">
+                                <Border Background="#14532D" CornerRadius="6" Padding="8,4" Margin="0,0,6,0">
                                     <TextBlock x:Name="TxtCopiasAtivas" Text="🟢 Ativas: 0" FontWeight="Bold" FontSize="11.5" Foreground="#4ADE80" />
                                 </Border>
-                                <Border Background="#713F12" CornerRadius="6" Padding="8,4" Margin="0,0,8,0">
+                                <Border Background="#713F12" CornerRadius="6" Padding="8,4" Margin="0,0,6,0">
                                     <TextBlock x:Name="TxtCopiasExpirando" Text="🟡 A Expirar (&lt;7d): 0" FontWeight="Bold" FontSize="11.5" Foreground="#FDE047" />
                                 </Border>
-                                <Border Background="#7F1D1D" CornerRadius="6" Padding="8,4" Margin="0,0,8,0">
+                                <Border Background="#7F1D1D" CornerRadius="6" Padding="8,4" Margin="0,0,6,0">
                                     <TextBlock x:Name="TxtCopiasRevogadas" Text="🚫 Revogadas: 0" FontWeight="Bold" FontSize="11.5" Foreground="#F87171" />
+                                </Border>
+                                <Border Background="#1E293B" CornerRadius="6" Padding="8,4" Margin="0,0,6,0">
+                                    <TextBlock x:Name="TxtCopiasWindowsCount" Text="🪟 Win: 0" FontWeight="Bold" FontSize="11.5" Foreground="#38BDF8" />
+                                </Border>
+                                <Border Background="#1E293B" CornerRadius="6" Padding="8,4" Margin="0,0,8,0">
+                                    <TextBlock x:Name="TxtCopiasAndroidCount" Text="📱 And: 0" FontWeight="Bold" FontSize="11.5" Foreground="#4ADE80" />
                                 </Border>
                             </StackPanel>
 
                             <!-- Busca e Sincronização -->
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
                                 <TextBlock Text="🔍 Filtrar:" Foreground="#A1A1AA" VerticalAlignment="Center" Margin="0,0,6,0" FontSize="11.5" />
-                                <TextBox x:Name="TxtFiltroCopias" Width="160" Height="28" Padding="6,4" Background="#27272A" Foreground="White" BorderBrush="#52525B" FontSize="11.5" TextChanged="TxtFiltroCopias_TextChanged" />
+                                <TextBox x:Name="TxtFiltroCopias" Width="140" Height="28" Padding="6,4" Background="#27272A" Foreground="White" BorderBrush="#52525B" FontSize="11.5" TextChanged="TxtFiltroCopias_TextChanged" />
+                                <ComboBox x:Name="CbFiltroPlataformaCopias" SelectedIndex="0" Height="28" Width="125" Margin="6,0,0,0" FontSize="11" SelectionChanged="CbFiltroPlataformaCopias_SelectionChanged">
+                                    <ComboBoxItem Content="🌐 Todas Plat." />
+                                    <ComboBoxItem Content="🪟 Windows" />
+                                    <ComboBoxItem Content="📱 Android" />
+                                </ComboBox>
                                 <Button Content="🔄 Atualizar Lista" Padding="10,5" Margin="8,0,0,0" Background="#0D9488" Foreground="White" FontWeight="Bold" FontSize="11.5" BorderThickness="0" Cursor="Hand" Click="BtnRecarregarCopias_Click" />
                             </StackPanel>
                         </DockPanel>
@@ -339,11 +368,14 @@
                                       SelectionMode="Single" SelectionChanged="DgCopiasCampo_SelectionChanged">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="Status" Binding="{Binding StatusBadge}" FontWeight="Bold" Width="110" />
+                                    <DataGridTextColumn Header="Plataforma" Binding="{Binding PlatformBadge}" FontWeight="Bold" Width="95" />
                                     <DataGridTextColumn Header="Técnico" Binding="{Binding FullName}" FontWeight="Bold" Width="150" />
-                                    <DataGridTextColumn Header="Cluster" Binding="{Binding Cluster}" Width="120" />
+                                    <DataGridTextColumn Header="Empresa" Binding="{Binding Company}" Width="110" />
+                                    <DataGridTextColumn Header="Matrícula" Binding="{Binding EmployeeId}" Width="85" />
+                                    <DataGridTextColumn Header="Cluster" Binding="{Binding Cluster}" Width="110" />
                                     <DataGridTextColumn Header="UF" Binding="{Binding Uf}" Width="50" />
                                     <DataGridTextColumn Header="WhatsApp / Tel" Binding="{Binding Phone}" Width="120" />
-                                    <DataGridTextColumn Header="E-mail" Binding="{Binding Email}" Width="160" />
+                                    <DataGridTextColumn Header="E-mail" Binding="{Binding Email}" Width="150" />
                                     <DataGridTextColumn Header="Expira em" Binding="{Binding ExpirationDateIso}" Width="95" />
                                     <DataGridTextColumn Header="Dias" Binding="{Binding ValidDays}" Width="50" />
                                     <DataGridTextColumn Header="Versão" Binding="{Binding ClientVersion}" Width="65" />
@@ -357,6 +389,7 @@
                                 <DockPanel>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                         <TextBlock Text="Ações para o Técnico Selecionado:" FontWeight="Bold" FontSize="11.5" Foreground="#A1A1AA" VerticalAlignment="Center" Margin="0,0,10,0" />
+                                        <Button x:Name="BtnEditarCopia" Content="✏️ Editar Dados" Padding="10,5" Background="#2563EB" Foreground="White" FontWeight="Bold" FontSize="11.5" BorderThickness="0" Cursor="Hand" Margin="0,0,6,0" Click="BtnEditarCopia_Click" ToolTip="Edita Nome, Empresa, Matrícula, WhatsApp, E-mail, Cluster e UF do técnico com sincronização imediata na nuvem" />
                                         <Button x:Name="BtnConceder30Dias" Content="➕ +30 Dias" Padding="10,5" Background="#16A34A" Foreground="White" FontWeight="Bold" FontSize="11.5" BorderThickness="0" Cursor="Hand" Margin="0,0,6,0" Click="BtnConceder30Dias_Click" ToolTip="Estende a validade da licença em +30 dias" />
                                         <Button x:Name="BtnConceder60Dias" Content="➕ +60 Dias" Padding="10,5" Background="#15803D" Foreground="White" FontWeight="Bold" FontSize="11.5" BorderThickness="0" Cursor="Hand" Margin="0,0,6,0" Click="BtnConceder60Dias_Click" ToolTip="Estende a validade da licença em +60 dias" />
                                         <Button x:Name="BtnConceder90Dias" Content="➕ +90 Dias" Padding="10,5" Background="#047857" Foreground="White" FontWeight="Bold" FontSize="11.5" BorderThickness="0" Cursor="Hand" Margin="0,0,6,0" Click="BtnConceder90Dias_Click" ToolTip="Estende a validade da licença em +90 dias" />
@@ -484,6 +517,98 @@
                             <TextBox x:Name="TxtLogGit" Height="85" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
                                      Background="#09090B" Foreground="#4ADE80" BorderBrush="#3F3F46" BorderThickness="1" Padding="8,6" FontSize="11" FontFamily="Consolas"
                                      Text="[SPARC Admin] Clique em '🚀 Publicar Todos no GitHub (1 Clique)' para fazer o upload automático de todos os modelos sem abrir o navegador." />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <!-- ABA 4: PUBLICAR VERSÃO HOMOLOGADA (SPARC UPDATE) -->
+            <TabItem Header="🚀 Publicar Versão SPARC (Update)">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- CABEÇALHO DA ABA -->
+                    <Border Grid.Row="0" Background="#18181B" BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="8" Padding="14,12" Margin="0,0,0,12">
+                        <DockPanel>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Border Background="#065F46" CornerRadius="8" Width="38" Height="38" Margin="0,0,12,0">
+                                    <TextBlock Text="🚀" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Central de Distribuição e Publicação de Versões Homologadas do SPARC" FontWeight="Bold" FontSize="13.5" Foreground="#34D399" />
+                                    <TextBlock Text="Envie binários Windows (.exe) e Android (.apk) diretamente para o repositório oficial. Os clientes em campo detectarão a nova versão e poderão atualizar online." FontSize="11" Foreground="#A1A1AA" Margin="0,2,0,0" />
+                                </StackPanel>
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+
+                    <!-- FORMULÁRIO DE PUBLICAÇÃO -->
+                    <Border Grid.Row="1" Background="#18181B" BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,12">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <!-- SELETOR DE PLATAFORMA -->
+                                <TextBlock Text="1. Plataforma de Destino:" FontSize="12" FontWeight="Bold" Foreground="#38BDF8" Margin="0,0,0,8" />
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                                    <RadioButton x:Name="RbPlataformaWindows" Content="🪟 Windows (SPARC-Beta-Testes-&lt;versão&gt;.exe)" IsChecked="True" Foreground="White" FontSize="12" FontWeight="SemiBold" Margin="0,0,24,0" Checked="RbPlataformaUpdate_Checked" />
+                                    <RadioButton x:Name="RbPlataformaAndroid" Content="📱 Android (SPARC-Mobile-v&lt;versão&gt;.apk)" Foreground="White" FontSize="12" FontWeight="SemiBold" Checked="RbPlataformaUpdate_Checked" />
+                                </StackPanel>
+
+                                <!-- SELEÇÃO DO ARQUIVO BINÁRIO -->
+                                <TextBlock Text="2. Arquivo Binário Compilado Homologado:" FontSize="12" FontWeight="Bold" Foreground="#38BDF8" Margin="0,0,0,6" />
+                                <Grid Margin="0,0,0,16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="TxtCaminhoArquivoUpdate" Grid.Column="0" Height="32" Padding="8,6" Background="#27272A" Foreground="#38BDF8" BorderBrush="#52525B" FontSize="11.5" FontFamily="Consolas" />
+                                    <Button x:Name="BtnProcurarArquivoUpdate" Grid.Column="1" Content="📁 Procurar..." Padding="12,6" Margin="8,0,0,0" Background="#3F3F46" Foreground="White" FontWeight="SemiBold" FontSize="11.5" Cursor="Hand" Click="BtnProcurarArquivoUpdate_Click" />
+                                    <Button x:Name="BtnDetectarUltimoBuild" Grid.Column="2" Content="🔍 Detectar Último Build (dist-beta)" Padding="12,6" Margin="8,0,0,0" Background="#0D9488" Foreground="White" FontWeight="Bold" FontSize="11.5" Cursor="Hand" Click="BtnDetectarUltimoBuild_Click" />
+                                </Grid>
+
+                                <!-- NÚMERO DA VERSÃO E DATA -->
+                                <Grid Margin="0,0,0,16">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="200" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                        <TextBlock Text="3. Número da Versão (ex: 0.8.34):" FontSize="12" FontWeight="Bold" Foreground="#38BDF8" Margin="0,0,0,6" />
+                                        <TextBox x:Name="TxtVersaoUpdate" Height="32" Padding="8,6" Background="#27272A" Foreground="#4ADE80" BorderBrush="#52525B" FontSize="12" FontWeight="Bold" FontFamily="Consolas" Text="0.8.34" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="Nome do Arquivo no Repositório:" FontSize="12" FontWeight="Bold" Foreground="#A1A1AA" Margin="0,0,0,6" />
+                                        <TextBox x:Name="TxtNomeArquivoDestino" Height="32" Padding="8,6" Background="#27272A" Foreground="#A1A1AA" BorderBrush="#3F3F46" FontSize="12" FontFamily="Consolas" IsReadOnly="True" Text="SPARC-Beta-Testes.exe" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- NOTAS DA VERSÃO (CHANGELOG) -->
+                                <TextBlock Text="4. Notas de Lançamento / O que mudou nesta versão:" FontSize="12" FontWeight="Bold" Foreground="#38BDF8" Margin="0,0,0,6" />
+                                <TextBox x:Name="TxtNotasUpdate" Height="80" TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
+                                         Background="#27272A" Foreground="White" BorderBrush="#52525B" Padding="8,6" FontSize="11.5" Margin="0,0,0,16"
+                                         Text="Versão homologada com atualização automática online, sanitização unificada e controle de licenças centralizado." />
+
+                                <!-- BOTÃO PUBLICAR -->
+                                <Button x:Name="BtnPublicarVersaoHomologada" Content="⬆️ PUBLICAR VERSÃO HOMOLOGADA NO REPOSITÓRIO OFICIAL" Height="44" Background="#16A34A" Foreground="White" FontWeight="Black" FontSize="13" BorderThickness="0" Cursor="Hand" Click="BtnPublicarVersaoHomologada_Click" />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Border>
+
+                    <!-- LOG E STATUS DA PUBLICAÇÃO -->
+                    <Border Grid.Row="2" Background="#18181B" BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="8" Padding="12,10">
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,4">
+                                <TextBlock x:Name="TxtStatusPublicacaoUpdate" Text="Aguardando publicação..." FontSize="11" Foreground="#A1A1AA" FontWeight="SemiBold" />
+                                <Button Content="🌐 Consultar Manifesto version.json" Padding="8,3" Background="#3F3F46" Foreground="White" BorderThickness="0" FontSize="10.5" Cursor="Hand" HorizontalAlignment="Right" Click="BtnConsultarManifesto_Click" />
+                            </DockPanel>
+                            <ProgressBar x:Name="PbUploadUpdate" Height="6" Minimum="0" Maximum="100" Visibility="Collapsed" Foreground="#34D399" Background="#27272A" BorderThickness="0" Margin="0,0,0,6" />
+                            <TextBox x:Name="TxtLogUpdate" Height="65" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
+                                     Background="#09090B" Foreground="#38BDF8" BorderBrush="#3F3F46" BorderThickness="1" Padding="8,4" FontSize="11" FontFamily="Consolas"
+                                     Text="[SPARC Update] Selecione o binário compilado e clique em Publicar para liberar a versão homologada a todos os técnicos." />
                         </StackPanel>
                     </Border>
                 </Grid>

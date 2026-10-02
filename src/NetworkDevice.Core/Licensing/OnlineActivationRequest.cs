@@ -22,6 +22,8 @@ public sealed class OnlineActivationRequest
     public string LastName { get; set; } = string.Empty;
     public string Phone { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
+    public string Company { get; set; } = string.Empty;
+    public string EmployeeId { get; set; } = string.Empty;
     public string Cluster { get; set; } = string.Empty;
     public string Uf { get; set; } = string.Empty;
     public string ClientVersion { get; set; } = "0.8";
@@ -33,6 +35,23 @@ public sealed class OnlineActivationRequest
     public string? RejectionReason { get; set; }
     public string? AdminNotes { get; set; }
     public string? RemoteSha { get; set; }
+    public string? RemoteFileName { get; set; }
+    public string Platform { get; set; } = "Windows";
+
+    public string PlatformBadge
+    {
+        get
+        {
+            if (string.Equals(Platform, "Android", StringComparison.OrdinalIgnoreCase) ||
+                AdminNotes?.Contains("Android", StringComparison.OrdinalIgnoreCase) == true ||
+                RawRequestCode?.Contains("Android", StringComparison.OrdinalIgnoreCase) == true ||
+                ClientVersion?.Contains("Android", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                return "📱 Android";
+            }
+            return "🪟 Windows";
+        }
+    }
 
     public string FullName
     {

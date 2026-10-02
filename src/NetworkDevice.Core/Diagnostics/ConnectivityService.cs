@@ -108,111 +108,115 @@ public class ConnectivityService
             return new ConnectivityTestResult(cleanTarget, count, 0, 100, 0, 0, 0, 0, false, new List<PingPacketInfo>());
         }
 
-        var packets = new List<PingPacketInfo>();
-        var rtts = new List<long>();
-
+        // DEFAULT ICMP: Executa diretamente o utilitário nativo de Ping do sistema operacional
+        // (ping.exe no Windows, /system/bin/ping no Android/Linux).
+        // No Android / Linux, o kernel bloqueia SOCK_RAW para apps normais do .NET (System.Net.NetworkInformation.Ping).
+        // Usar o utilitário nativo como DEFAULT primário garante respostas ICMP em tempo real e sem erros de permissão de socket.
         await LogAsync($"[*] Iniciando teste de conectividade ICMP para {cleanTarget} ({count} pacotes, timeout {timeoutMs}ms)...");
-
-        using var ping = new Ping();
-        var isParsedIp = System.Net.IPAddress.TryParse(cleanTarget, out var ipAddress);
-
-        for (var i = 1; i <= count; i++)
+        var nativeResult = await RunCliPingFallbackAsync(cleanTarget, count, timeoutMs, null, cancellationToken);
+        if (nativeResult != null)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            try
-            {
-                PingReply reply;
-                if (isParsedIp && ipAddress != null)
-                {
-                    reply = await ping.SendPingAsync(ipAddress, timeoutMs, buffer);
-                }
-                else
-                {
-                    reply = await ping.SendPingAsync(cleanTarget, timeoutMs, buffer);
-                }
-
-                var packet = new PingPacketInfo(
-                    i,
-                    reply.Status,
-                    reply.Status == IPStatus.Success ? reply.RoundtripTime : 0,
-                    reply.Status == IPStatus.Success ? reply.Options?.Ttl : null,
-                    reply.Status == IPStatus.Success ? reply.Buffer.Length : null);
-
-                packets.Add(packet);
-                onPacketReceived?.Invoke(packet);
-
-                if (reply.Status == IPStatus.Success)
-                {
-                    rtts.Add(reply.RoundtripTime);
-                    await LogAsync($"  Resposta {i}/{count} de {cleanTarget}: bytes={reply.Buffer.Length} tempo={reply.RoundtripTime}ms TTL={reply.Options?.Ttl}");
-                }
-                else
-                {
-                    await LogAsync($"  Resposta {i}/{count} de {cleanTarget}: Status={reply.Status}");
-                }
-            }
-            catch (Exception ex)
-            {
-                var packet = new PingPacketInfo(i, IPStatus.Unknown, 0, null, null);
-                packets.Add(packet);
-                onPacketReceived?.Invoke(packet);
-                await LogAsync($"  Falha no pacote {i}/{count} para {cleanTarget}: {ex.Message}");
-            }
-
-            if (i < count)
-            {
-                await Task.Delay(200, cancellationToken);
-            }
+            return nativeResult;
         }
 
-        // Se todos falharam no .NET Ping e estamos no Windows, tenta fallback nativo via ping.exe
-        if (rtts.Count == 0 && System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+        // Fallback secundário via .NET Ping (apenas no Windows caso ping.exe não possa ser iniciado)
+        if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
         {
-            var fallback = await RunCliPingFallbackAsync(cleanTarget, count, timeoutMs, sourceIpAddress, cancellationToken);
-            if (fallback != null && fallback.PacketsReceived > 0)
+            await LogAsync($"[AVISO] Utilitário nativo de ping indisponível, recorrendo ao fallback de socket .NET...");
+            var packets = new List<PingPacketInfo>();
+            var rtts = new List<long>();
+            using var ping = new Ping();
+            var isParsedIp = System.Net.IPAddress.TryParse(cleanTarget, out var ipAddress);
+
+            for (var i = 1; i <= count; i++)
             {
-                return fallback;
+                cancellationToken.ThrowIfCancellationRequested();
+
+                try
+                {
+                    PingReply reply;
+                    if (isParsedIp && ipAddress != null)
+                    {
+                        reply = await ping.SendPingAsync(ipAddress, timeoutMs, buffer);
+                    }
+                    else
+                    {
+                        reply = await ping.SendPingAsync(cleanTarget, timeoutMs, buffer);
+                    }
+
+                    var packet = new PingPacketInfo(
+                        i,
+                        reply.Status,
+                        reply.Status == IPStatus.Success ? reply.RoundtripTime : 0,
+                        reply.Status == IPStatus.Success ? reply.Options?.Ttl : null,
+                        reply.Status == IPStatus.Success ? reply.Buffer.Length : null);
+
+                    packets.Add(packet);
+                    onPacketReceived?.Invoke(packet);
+
+                    if (reply.Status == IPStatus.Success)
+                    {
+                        rtts.Add(reply.RoundtripTime);
+                        await LogAsync($"  Resposta {i}/{count} de {cleanTarget}: bytes={reply.Buffer.Length} tempo={reply.RoundtripTime}ms TTL={reply.Options?.Ttl}");
+                    }
+                    else
+                    {
+                        await LogAsync($"  Resposta {i}/{count} de {cleanTarget}: Status={reply.Status}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    var packet = new PingPacketInfo(i, IPStatus.Unknown, 0, null, null);
+                    packets.Add(packet);
+                    onPacketReceived?.Invoke(packet);
+                    await LogAsync($"  Falha no pacote {i}/{count} para {cleanTarget}: {ex.Message}");
+                }
+
+                if (i < count)
+                {
+                    await Task.Delay(200, cancellationToken);
+                }
             }
-        }
 
-        var received = rtts.Count;
-        var lossPct = ((count - received) / (double)count) * 100.0;
-        var minRtt = received > 0 ? rtts.Min() : 0;
-        var maxRtt = received > 0 ? rtts.Max() : 0;
-        var avgRtt = received > 0 ? rtts.Average() : 0.0;
-
-        var jitter = 0.0;
-        if (rtts.Count > 1)
-        {
-            var diffSum = 0.0;
-            for (var j = 0; j < rtts.Count - 1; j++)
+            var received = rtts.Count;
+            var lossPct = ((count - received) / (double)count) * 100.0;
+            var minRtt = received > 0 ? rtts.Min() : 0;
+            var maxRtt = received > 0 ? rtts.Max() : 0;
+            var avgRtt = received > 0 ? rtts.Average() : 0.0;
+            var jitter = 0.0;
+            if (rtts.Count > 1)
             {
-                diffSum += Math.Abs(rtts[j + 1] - rtts[j]);
+                var diffSum = 0.0;
+                for (var j = 0; j < rtts.Count - 1; j++)
+                {
+                    diffSum += Math.Abs(rtts[j + 1] - rtts[j]);
+                }
+                jitter = diffSum / (rtts.Count - 1);
             }
-            jitter = diffSum / (rtts.Count - 1);
+
+            var isSuccess = received > 0 && lossPct < 50.0;
+
+            await LogAsync($"--- Estatísticas de Ping para {cleanTarget} ---");
+            await LogAsync($"  Pacotes: Enviados = {count}, Recebidos = {received}, Perdidos = {count - received} ({lossPct:F0}% de perda)");
+            if (received > 0)
+            {
+                await LogAsync($"  RTT Mínimo = {minRtt}ms, Máximo = {maxRtt}ms, Médio = {avgRtt:F1}ms, Jitter = {jitter:F1}ms");
+            }
+
+            return new ConnectivityTestResult(
+                cleanTarget,
+                count,
+                received,
+                lossPct,
+                minRtt,
+                maxRtt,
+                avgRtt,
+                jitter,
+                isSuccess,
+                packets);
         }
 
-        var isSuccess = received > 0 && lossPct < 50.0;
-
-        await LogAsync($"--- Estatísticas de Ping para {cleanTarget} ---");
-        await LogAsync($"  Pacotes: Enviados = {count}, Recebidos = {received}, Perdidos = {count - received} ({lossPct:F0}% de perda)");
-        if (received > 0)
-        {
-            await LogAsync($"  RTT Mínimo = {minRtt}ms, Máximo = {maxRtt}ms, Médio = {avgRtt:F1}ms, Jitter = {jitter:F1}ms");
-        }
-
-        return new ConnectivityTestResult(
-            cleanTarget,
-            count,
-            received,
-            lossPct,
-            minRtt,
-            maxRtt,
-            avgRtt,
-            jitter,
-            isSuccess,
-            packets);
+        return new ConnectivityTestResult(cleanTarget, count, 0, 100, 0, 0, 0, 0, false, new List<PingPacketInfo>());
     }
 
     private async Task<ConnectivityTestResult?> RunCliPingFallbackAsync(
@@ -224,11 +228,29 @@ public class ConnectivityService
     {
         try
         {
-            var srcArg = !string.IsNullOrWhiteSpace(sourceIpAddress) ? $"-S {sourceIpAddress.Trim()} " : "";
+            var isWindows = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows);
+            string fileName;
+            string arguments;
+
+            if (isWindows)
+            {
+                var srcArg = !string.IsNullOrWhiteSpace(sourceIpAddress) ? $"-S {sourceIpAddress.Trim()} " : "";
+                fileName = "ping.exe";
+                arguments = $"{srcArg}-n {count} -w {timeoutMs} {target}";
+            }
+            else
+            {
+                // Android / Linux: executa o utilitário nativo do sistema com permissão de rede
+                fileName = System.IO.File.Exists("/system/bin/ping") ? "/system/bin/ping" : "ping";
+                var timeoutSec = Math.Max(1, timeoutMs / 1000);
+                var srcArg = !string.IsNullOrWhiteSpace(sourceIpAddress) ? $"-I {sourceIpAddress.Trim()} " : "";
+                arguments = $"{srcArg}-c {count} -W {timeoutSec} {target}";
+            }
+
             var psi = new System.Diagnostics.ProcessStartInfo
             {
-                FileName = "ping.exe",
-                Arguments = $"{srcArg}-n {count} -w {timeoutMs} {target}",
+                FileName = fileName,
+                Arguments = arguments,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
@@ -250,13 +272,18 @@ public class ConnectivityService
             {
                 var match = System.Text.RegularExpressions.Regex.Match(
                     line,
-                    @"(?i)(?:tempo|time)[=<]\s*(\d+)\s*ms");
+                    @"(?i)(?:tempo|time)[=<]\s*([\d\.]+)\s*ms");
 
-                if (match.Success && long.TryParse(match.Groups[1].Value, out var ms))
+                if (match.Success)
                 {
-                    rtts.Add(ms);
-                    packets.Add(new PingPacketInfo(seq++, IPStatus.Success, ms, null, 32));
-                    await LogAsync($"  [Driver Nativo Windows] Resposta {seq - 1}/{count} de {target}: tempo={ms}ms");
+                    var valStr = match.Groups[1].Value.Replace(',', '.');
+                    if (double.TryParse(valStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var msDbl))
+                    {
+                        var ms = (long)Math.Max(1, Math.Round(msDbl));
+                        rtts.Add(ms);
+                        packets.Add(new PingPacketInfo(seq++, IPStatus.Success, ms, null, 32));
+                        await LogAsync($"  [Ping Nativo] Resposta {seq - 1}/{count} de {target}: tempo={ms}ms");
+                    }
                 }
             }
 
@@ -268,7 +295,7 @@ public class ConnectivityService
                 var maxRtt = rtts.Max();
                 var avgRtt = rtts.Average();
 
-                await LogAsync($"[OK] ICMP {target} confirmado via driver nativo Windows: {received}/{count} pacotes, RTT Médio: {avgRtt:F1}ms.");
+                await LogAsync($"[OK] ICMP {target} confirmado via ping nativo: {received}/{count} pacotes, RTT Médio: {avgRtt:F1}ms.");
 
                 return new ConnectivityTestResult(
                     target,
@@ -280,6 +307,21 @@ public class ConnectivityService
                     avgRtt,
                     0,
                     true,
+                    packets);
+            }
+            else
+            {
+                await LogAsync($"[!] ICMP {target} via ping nativo sem resposta (0/{count} pacotes recebidos, 100% de perda).");
+                return new ConnectivityTestResult(
+                    target,
+                    count,
+                    0,
+                    100.0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    false,
                     packets);
             }
         }

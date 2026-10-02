@@ -128,7 +128,7 @@
                                     <ComboBoxItem Content="🖧 Cisco Série 1900 / 1921 / 1941 / 1905 (Break @ 9600 - ROMMON)" Tag="cisco.c1900.break" />
                                     <ComboBoxItem Content="🖧 Cisco Série 900 / C921-4P (Ctrl+C Puro @ 9600)" Tag="cisco.c900.ctrl-c" />
                                     <ComboBoxItem Content="🖧 Cisco Série 800 / C841M (Break @ 9600 - ROMMON)" Tag="cisco.c841.break" />
-                                    <ComboBoxItem Content="🛡️ Fortinet FortiGate 40F (FortiOS @ 9600 - Console)" Tag="fortinet.fgt40f.fortios" />
+                                    <ComboBoxItem Content="🛡️ Fortinet FortiGate 40F (FortiOS @ 9600 / 115200 - Console)" Tag="fortinet.fgt40f.fortios" />
                                 </ComboBox>
                             </DockPanel>
                         </StackPanel>
@@ -499,7 +499,7 @@
                             <ComboBoxItem Content="Cisco Série 1900 / 1921 / 1941 / 1905 (Break @ 9600 - ROMMON)" Tag="cisco.c1900.break" />
                             <ComboBoxItem Content="Cisco Série 900 / C921-4P (Ctrl+C Puro @ 9600)" Tag="cisco.c900.ctrl-c" />
                             <ComboBoxItem Content="Cisco Série 800 / C841M (Break @ 9600 - ROMMON)" Tag="cisco.c841.break" />
-                            <ComboBoxItem Content="Fortinet FortiGate 40F (FortiOS @ 9600 - Console)" Tag="fortinet.fgt40f.fortios" />
+                            <ComboBoxItem Content="Fortinet FortiGate 40F (FortiOS @ 9600 / 115200 - Console)" Tag="fortinet.fgt40f.fortios" />
                         </ComboBox>
                     </StackPanel>
 

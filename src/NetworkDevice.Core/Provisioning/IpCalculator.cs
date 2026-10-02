@@ -126,4 +126,28 @@ public static class IpCalculator
 
         return $"{resBytes[0]}.{resBytes[1]}.{resBytes[2]}.{resBytes[3]}";
     }
+
+    /// <summary>
+    /// Calcula o endereço de rede (Network IP) a partir de um IP e máscara/CIDR.
+    /// </summary>
+    public static string CalculateNetworkAddress(string ipOrNetwork, int cidr)
+    {
+        var normalized = NormalizeIp(ipOrNetwork);
+        if (!IPAddress.TryParse(normalized, out var ip))
+            return normalized;
+
+        var bytes = ip.GetAddressBytes();
+        if (BitConverter.IsLittleEndian)
+            Array.Reverse(bytes);
+
+        uint ipNum = BitConverter.ToUInt32(bytes, 0);
+        uint mask = cidr == 0 ? 0 : uint.MaxValue << (32 - cidr);
+        uint networkNum = ipNum & mask;
+
+        byte[] resBytes = BitConverter.GetBytes(networkNum);
+        if (BitConverter.IsLittleEndian)
+            Array.Reverse(resBytes);
+
+        return $"{resBytes[0]}.{resBytes[1]}.{resBytes[2]}.{resBytes[3]}";
+    }
 }
