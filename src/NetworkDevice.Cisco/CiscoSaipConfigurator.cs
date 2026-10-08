@@ -564,19 +564,43 @@ public sealed class CiscoSaipConfigurator
             {
                 if (cmd.StartsWith("crypto key generate rsa", StringComparison.OrdinalIgnoreCase))
                 {
+                    await ProgressAsync("[*] Configurando chave criptográfica RSA (2048 bits)... Aguardando processamento da CPU Cisco...");
                     var rsaConditions = new StopCondition[]
                     {
                         new StopCondition.Contains("replace", "[yes/no]"),
                         new StopCondition.Contains("replace", "yes/no"),
+                        new StopCondition.Contains("[yes/no]:", "[yes/no]:"),
+                        new StopCondition.Contains("modulus [512]:", "modulus [512]:"),
                         new StopCondition.Prompt()
                     };
-                    var rsaRes = await session.SendExpectAsync(cmd, rsaConditions, TimeSpan.FromSeconds(25), cancellationToken);
-                    if (rsaRes.Output.Contains("yes/no", StringComparison.OrdinalIgnoreCase))
+                    try
                     {
-                        await session.SendRawAsync("no\r\n", cancellationToken);
-                        await session.WaitForAsync(new StopCondition[] { new StopCondition.Prompt() }, TimeSpan.FromSeconds(15), cancellationToken);
+                        var rsaRes = await session.SendExpectAsync(cmd, rsaConditions, TimeSpan.FromSeconds(90), cancellationToken);
+                        if (rsaRes.Output.Contains("yes/no", StringComparison.OrdinalIgnoreCase))
+                        {
+                            await session.SendRawAsync("yes\r\n", cancellationToken);
+                            await session.WaitForAsync(new StopCondition[] { new StopCondition.Prompt() }, TimeSpan.FromSeconds(90), cancellationToken);
+                        }
+                        else if (rsaRes.Output.Contains("modulus [512]:", StringComparison.OrdinalIgnoreCase))
+                        {
+                            await session.SendRawAsync("2048\r\n", cancellationToken);
+                            await session.WaitForAsync(new StopCondition[] { new StopCondition.Prompt() }, TimeSpan.FromSeconds(90), cancellationToken);
+                        }
+                        await ProgressAsync("    [OK] Chave RSA de 2048 bits gerada/confirmada com sucesso.");
                     }
-                    await Task.Delay(200, cancellationToken);
+                    catch (Exception ex)
+                    {
+                        await ProgressAsync($"    [AVISO] Geração da chave RSA ({ex.Message}). Sincronizando prompt da console...");
+                        try
+                        {
+                            await session.SendRawAsync("\r\n", cancellationToken);
+                            await Task.Delay(1000, cancellationToken);
+                            await session.SendRawAsync("\r\n", cancellationToken);
+                            await Task.Delay(1000, cancellationToken);
+                        }
+                        catch { }
+                    }
+                    await Task.Delay(1000, cancellationToken);
                     continue;
                 }
 
