@@ -52,6 +52,7 @@ public partial class MainWindow : Window
     private string? _lastFortiResolvedPass;
     private string? _lastResolvedUser;
     private string? _lastResolvedPass;
+    private string? _lastResolvedEnableSecret;
     private TripleIcmpResult? _lastIcmpResult;
     private readonly NetworkDevice.Core.Firmware.FirmwareRepositoryService _firmwareRepoService = new();
 
@@ -413,6 +414,7 @@ public partial class MainWindow : Window
         }
 
         RevalidarFirmwareCarregadoAoMudarModelo();
+        AtualizarCredencialTelnetPadraoPorModelo();
     }
 
     private static bool IsTagFortiGate(string tag) =>
@@ -432,6 +434,7 @@ public partial class MainWindow : Window
         if (tag.Contains("930", StringComparison.OrdinalIgnoreCase) || tag.Contains("931", StringComparison.OrdinalIgnoreCase) || tag.Contains("935", StringComparison.OrdinalIgnoreCase)) return DeviceSeries.Msr930;
         if (tag.Contains("954", StringComparison.OrdinalIgnoreCase) || tag.Contains("958", StringComparison.OrdinalIgnoreCase)) return DeviceSeries.Msr954;
         if (tag.Contains("1900", StringComparison.OrdinalIgnoreCase) || tag.Contains("1921", StringComparison.OrdinalIgnoreCase) || tag.Contains("1941", StringComparison.OrdinalIgnoreCase) || tag.Contains("1905", StringComparison.OrdinalIgnoreCase)) return DeviceSeries.Series1900;
+        if (tag.Contains("2900", StringComparison.OrdinalIgnoreCase) || tag.Contains("2901", StringComparison.OrdinalIgnoreCase) || tag.Contains("2911", StringComparison.OrdinalIgnoreCase) || tag.Contains("2921", StringComparison.OrdinalIgnoreCase) || tag.Contains("2951", StringComparison.OrdinalIgnoreCase)) return DeviceSeries.Series2900;
         if (tag.Contains("900", StringComparison.OrdinalIgnoreCase) || tag.Contains("921", StringComparison.OrdinalIgnoreCase) || tag.Contains("c900", StringComparison.OrdinalIgnoreCase)) return DeviceSeries.Isr921;
         if (tag.Contains("841", StringComparison.OrdinalIgnoreCase) || tag.Contains("800", StringComparison.OrdinalIgnoreCase) || tag.Contains("c841", StringComparison.OrdinalIgnoreCase) || tag.Contains("c800", StringComparison.OrdinalIgnoreCase)) return DeviceSeries.Isr841;
         if (tag.Contains("forti", StringComparison.OrdinalIgnoreCase) || tag.Contains("fgt", StringComparison.OrdinalIgnoreCase)) return DeviceSeries.FortiGate40F;
@@ -485,6 +488,7 @@ public partial class MainWindow : Window
             RevalidarFirmwareCarregadoAoMudarModelo();
         }
         AtualizarBotaoProsseguir();
+        AtualizarCredencialTelnetPadraoPorModelo();
         if (_syncingCombos || CbInterrupt is null || CbModeloRoteadorInicial is null)
             return;
 
@@ -529,6 +533,29 @@ public partial class MainWindow : Window
         }
         RevalidarFirmwareCarregadoAoMudarModelo();
         AtualizarBotaoProsseguir();
+        AtualizarCredencialTelnetPadraoPorModelo();
+    }
+
+    private void AtualizarCredencialTelnetPadraoPorModelo()
+    {
+        if (TxtTelnetPass == null) return;
+        var tag = (CbModeloRoteadorInicial?.SelectedItem as ComboBoxItem)?.Tag?.ToString()
+               ?? (CbInterrupt?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "";
+
+        if (tag.StartsWith("cisco", StringComparison.OrdinalIgnoreCase) || tag.StartsWith("forti", StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrWhiteSpace(TxtTelnetPass.Text) || TxtTelnetPass.Text == "PRO1ANPRO1AN")
+            {
+                TxtTelnetPass.Text = "CQMR";
+            }
+        }
+        else if (tag.StartsWith("hpe", StringComparison.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrWhiteSpace(TxtTelnetPass.Text) || TxtTelnetPass.Text == "CQMR")
+            {
+                TxtTelnetPass.Text = "PRO1ANPRO1AN";
+            }
+        }
     }
 
     private void ChkAtualizarFirmwareAuto_Changed(object sender, RoutedEventArgs e)
@@ -1424,21 +1451,40 @@ public partial class MainWindow : Window
                 }
                 catch { }
             }
-            // Se estiver em prompt Cisco aberto (Router> / Router# / cisco>), faz consulta rápida de versão/modelo
+            // Se estiver em prompt Cisco aberto (Router> / Router# / Router(config)# / cisco>), faz consulta rápida de versão/modelo
             else if (!isFortiPromptOrSelected && !isHpePromptOrSelected &&
                      (Regex.IsMatch(prompt, @"(?i)(?:^|[\r\n])[A-Za-z0-9_\-\.]+>\s*$") ||
-                      Regex.IsMatch(prompt, @"(?i)(?:^|[\r\n])[A-Za-z0-9_\-\.]+#\s*$")) &&
+                      Regex.IsMatch(prompt, @"(?i)(?:^|[\r\n])[A-Za-z0-9_\-\.]+#\s*$") ||
+                      Regex.IsMatch(prompt, @"(?i)(?:^|[\r\n])[A-Za-z0-9_\-\.]+\([A-Za-z0-9_\-\.\/]*config[A-Za-z0-9_\-\.\/]*\)[>#]\s*$") ||
+                      prompt.Contains("(config", StringComparison.OrdinalIgnoreCase)) &&
                      !prompt.Contains("<") && !prompt.Contains("["))
             {
                 try
                 {
-                    await transport.WriteAsync(Encoding.UTF8.GetBytes("show version | include (?:[Cc]isco|[Cc]92[0-9]|19[0-9][0-9]|ISR|Processor)\r\n"), ct);
-                    await Task.Delay(400, ct);
+                    if (prompt.Contains("(config", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await transport.WriteAsync(Encoding.UTF8.GetBytes("end\r\n"), ct);
+                        await Task.Delay(250, ct);
+                    }
+
+                    await transport.WriteAsync(Encoding.UTF8.GetBytes("show version | include (?:[Cc]isco|841|800M|C800|921|C900|19[0-9]{2}|29[0-9]{2}|ISR|Processor)\r\n"), ct);
+                    await Task.Delay(600, ct);
                     var verBuf = new byte[2048];
                     var verRead = await transport.ReadAsync(verBuf, ct);
                     if (verRead > 0)
                     {
                         var verOut = Encoding.UTF8.GetString(verBuf, 0, verRead).Replace("\uFFFD", "");
+                        if (verOut.Contains("% Invalid input", StringComparison.OrdinalIgnoreCase))
+                        {
+                            await transport.WriteAsync(Encoding.UTF8.GetBytes("do show version | include (?:[Cc]isco|841|800M|C800|921|C900|19[0-9]{2}|29[0-9]{2}|ISR|Processor)\r\n"), ct);
+                            await Task.Delay(500, ct);
+                            var verBuf2 = new byte[2048];
+                            var verRead2 = await transport.ReadAsync(verBuf2, ct);
+                            if (verRead2 > 0)
+                            {
+                                verOut += "\n" + Encoding.UTF8.GetString(verBuf2, 0, verRead2).Replace("\uFFFD", "");
+                            }
+                        }
                         rxAccumulator.Append("\n" + verOut);
                         prompt += "\n" + verOut;
                     }
@@ -1451,6 +1497,7 @@ public partial class MainWindow : Window
                              userTag.Contains("954") ? DeviceSeries.Msr954 :
                              userTag.Contains("930") ? DeviceSeries.Msr930 :
                              userTag.Contains("1900") ? DeviceSeries.Series1900 :
+                             userTag.Contains("2900") ? DeviceSeries.Series2900 :
                              userTag.Contains("900") || userTag.Contains("921") ? DeviceSeries.Isr921 :
                              userTag.Contains("841") || userTag.Contains("800") ? DeviceSeries.Isr841 :
                              userTag.Contains("forti") || userTag.Contains("fgt") ? DeviceSeries.FortiGate40F :
@@ -1464,8 +1511,25 @@ public partial class MainWindow : Window
             var isBootware = detection.BootState == BootState.Bootware;
             _isRommonOrBootwareDetected = detection.OperatingState == DeviceOperatingState.BootFailure;
             var isPasswordLocked = !_isRommonOrBootwareDetected && (detection.OperatingState == DeviceOperatingState.PasswordProtected || (isForti && !fortiAuthenticated));
-            var isHpe = detection.Manufacturer == DeviceManufacturer.Hpe;
-            var isCisco = detection.Manufacturer == DeviceManufacturer.Cisco && !isForti;
+            var isCisco = !isForti && (
+                detection.Manufacturer == DeviceManufacturer.Cisco ||
+                prompt.Contains("User Access Verification", StringComparison.OrdinalIgnoreCase) ||
+                prompt.Contains("cisco", StringComparison.OrdinalIgnoreCase) ||
+                prompt.Contains("IOS", StringComparison.OrdinalIgnoreCase) ||
+                prompt.Contains("Bad passwords", StringComparison.OrdinalIgnoreCase) ||
+                prompt.Contains("Bad secrets", StringComparison.OrdinalIgnoreCase) ||
+                userTag.Contains("cisco", StringComparison.OrdinalIgnoreCase) ||
+                userTag.Contains("841", StringComparison.OrdinalIgnoreCase) ||
+                userTag.Contains("2900", StringComparison.OrdinalIgnoreCase) ||
+                userTag.Contains("1900", StringComparison.OrdinalIgnoreCase) ||
+                userTag.Contains("921", StringComparison.OrdinalIgnoreCase) ||
+                userTag.Contains("900", StringComparison.OrdinalIgnoreCase) ||
+                userTag.Contains("800", StringComparison.OrdinalIgnoreCase));
+            var isHpe = !isForti && !isCisco && (
+                detection.Manufacturer == DeviceManufacturer.Hpe ||
+                isHpePromptOrSelected ||
+                userTag.Contains("hpe", StringComparison.OrdinalIgnoreCase) ||
+                userTag.Contains("msr", StringComparison.OrdinalIgnoreCase));
             _isFortiGateDetected = isForti;
 
             EscreverLinha($"[OK] Conexão serial física {porta} @ {baud} validada com sucesso!");
@@ -1488,20 +1552,20 @@ public partial class MainWindow : Window
                             BtnSelecionarFirmwareAuto.IsEnabled = true;
                     }
 
-                    // Discrimina modelo específico usando regexes de alta precisão
-                    var is1900 = !isForti && (detection.Series == DeviceSeries.Series1900
-                              || DeviceDetector.Cisco1900ModelRegex.IsMatch(prompt)
-                              || userSeries == DeviceSeries.Series1900);
+                    // Discrimina modelo específico usando regexes de alta precisão (841 e 921 com precedência sobre séries genéricas)
+                    var detectedCisco = detection.Series;
+                    if (detectedCisco == DeviceSeries.Unknown)
+                    {
+                        if (DeviceDetector.Cisco841ModelRegex.IsMatch(prompt)) detectedCisco = DeviceSeries.Isr841;
+                        else if (DeviceDetector.Cisco900ModelRegex.IsMatch(prompt)) detectedCisco = DeviceSeries.Isr921;
+                        else if (DeviceDetector.Cisco2900ModelRegex.IsMatch(prompt)) detectedCisco = DeviceSeries.Series2900;
+                        else if (DeviceDetector.Cisco1900ModelRegex.IsMatch(prompt)) detectedCisco = DeviceSeries.Series1900;
+                    }
 
-                    var is921 = !isForti && !is1900 && (
-                                detection.Series == DeviceSeries.Isr921
-                             || DeviceDetector.Cisco900ModelRegex.IsMatch(prompt)
-                             || userSeries == DeviceSeries.Isr921);
-
-                    var is841 = !isForti && !is1900 && !is921 && (
-                                detection.Series == DeviceSeries.Isr841
-                             || DeviceDetector.Cisco841ModelRegex.IsMatch(prompt)
-                             || userSeries == DeviceSeries.Isr841);
+                    var is841 = !isForti && (detectedCisco == DeviceSeries.Isr841 || (detectedCisco == DeviceSeries.Unknown && userSeries == DeviceSeries.Isr841));
+                    var is921 = !isForti && !is841 && (detectedCisco == DeviceSeries.Isr921 || (detectedCisco == DeviceSeries.Unknown && userSeries == DeviceSeries.Isr921));
+                    var is2900 = !isForti && !is841 && !is921 && (detectedCisco == DeviceSeries.Series2900 || (detectedCisco == DeviceSeries.Unknown && userSeries == DeviceSeries.Series2900));
+                    var is1900 = !isForti && !is841 && !is921 && !is2900 && (detectedCisco == DeviceSeries.Series1900 || (detectedCisco == DeviceSeries.Unknown && userSeries == DeviceSeries.Series1900));
 
                     var isHpe1002 = !isForti && (detection.Series == DeviceSeries.Msr1002
                                  || DeviceDetector.Hpe1002ModelRegex.IsMatch(prompt)
@@ -1541,12 +1605,12 @@ public partial class MainWindow : Window
                         else if (isHpe930) SelecionarModeloNoCombo("hpe.msr930.ctrl-b");
                         else if (isHpe954) SelecionarModeloNoCombo("hpe.msr954.ctrl-b");
                     }
-                    else if (is1900)
+                    else if (is841)
                     {
-                        especificoNome = "Cisco Série 1900 (1905/1921/1941)";
-                        fwExemplo = "c1900-universalk9-mz*.bin";
-                        portaTftp = "GigabitEthernet 0/0 (Porta 0 / GE 0/0)";
-                        SelecionarModeloNoCombo("cisco.c1900.break");
+                        especificoNome = "Cisco Série 800 / C841M";
+                        fwExemplo = "c841-universalk9-mz*.bin / c800m-*.bin";
+                        portaTftp = "GigabitEthernet 4 (Porta 4 / GE 4)";
+                        SelecionarModeloNoCombo("cisco.c841.break");
                     }
                     else if (is921)
                     {
@@ -1555,12 +1619,19 @@ public partial class MainWindow : Window
                         portaTftp = "GigabitEthernet 4 (Porta 4 / GE 4)";
                         SelecionarModeloNoCombo("cisco.c900.ctrl-c");
                     }
-                    else if (is841)
+                    else if (is2900)
                     {
-                        especificoNome = "Cisco Série 800 / C841M";
-                        fwExemplo = "c841-universalk9-mz*.bin / c800-*.bin";
-                        portaTftp = "GigabitEthernet 4 (Porta 4 / GE 4)";
-                        SelecionarModeloNoCombo("cisco.c841.break");
+                        especificoNome = "Cisco Série 2900 (2901/2911/2921/2951)";
+                        fwExemplo = "c2900-universalk9-mz*.bin";
+                        portaTftp = "GigabitEthernet 0/0 (Porta 0 / GE 0/0)";
+                        SelecionarModeloNoCombo("cisco.c2900.break");
+                    }
+                    else if (is1900)
+                    {
+                        especificoNome = "Cisco Série 1900 (1905/1921/1941)";
+                        fwExemplo = "c1900-universalk9-mz*.bin";
+                        portaTftp = "GigabitEthernet 0/0 (Porta 0 / GE 0/0)";
+                        SelecionarModeloNoCombo("cisco.c1900.break");
                     }
                     else
                     {
@@ -1777,53 +1848,105 @@ public partial class MainWindow : Window
                         else if (isCisco)
                         {
                             bool autoOk = false;
-                            string resolvedUser = "cisco";
-                            string resolvedPass = "cisco";
+                            string resolvedUser = "EBT";
+                            string resolvedPass = "CQMR";
 
-                            EscreverLinha("[*] [CISCO] Console com autenticação detectado. Testando automaticamente credenciais de fábrica (cisco/cisco, admin/cisco, admin/admin) e padrão SPARC (EBT/CQMR)...");
+                            EscreverLinha("[*] [CISCO] Console com autenticação detectado. Testando automaticamente credenciais padrão Claro/SPARC (EBT/CQMR, EBT/PRO1AN) e de fábrica (cisco/cisco, admin/cisco)...");
                             ConfigurarBotaoTestarTerminal(false, "Autenticando...", "#FEF2F2", "#DC2626");
                             await Task.Delay(250);
 
-                            // 1. Padrão Cisco Configuration Professional (CCP) de fábrica: cisco / cisco
-                            autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "cisco", "cisco");
-                            if (!autoOk)
+                            // 1. Padrão Oficial Claro / Embratel Cisco: EBT / CQMR (Prioridade absoluta)
+                            autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "EBT", "CQMR");
+                            if (autoOk)
                             {
-                                // 2. admin / cisco
-                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "admin", "cisco");
-                                resolvedUser = "admin";
-                                resolvedPass = "cisco";
-                            }
-                            if (!autoOk)
-                            {
-                                // 3. admin / admin
-                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "admin", "admin");
-                                resolvedUser = "admin";
-                                resolvedPass = "admin";
-                            }
-                            if (!autoOk)
-                            {
-                                // 4. EBT / CQMR
-                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "EBT", "CQMR");
                                 resolvedUser = "EBT";
                                 resolvedPass = "CQMR";
+                                _lastResolvedEnableSecret = "PRO1AN";
                             }
                             if (!autoOk)
                             {
-                                // 5. admin / CQMR
+                                // 2. Padrão alternativo Claro / SPARC: EBT / PRO1AN
+                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "EBT", "PRO1AN");
+                                if (autoOk)
+                                {
+                                    resolvedUser = "EBT";
+                                    resolvedPass = "PRO1AN";
+                                    _lastResolvedEnableSecret = "PRO1AN";
+                                }
+                            }
+                            if (!autoOk)
+                            {
+                                // 3. Padrão Cisco Configuration Professional (CCP) de fábrica: cisco / cisco
+                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "cisco", "cisco");
+                                if (autoOk)
+                                {
+                                    resolvedUser = "cisco";
+                                    resolvedPass = "cisco";
+                                    _lastResolvedEnableSecret = "cisco";
+                                }
+                            }
+                            if (!autoOk)
+                            {
+                                // 4. admin / CQMR
                                 autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "admin", "CQMR");
-                                resolvedUser = "admin";
-                                resolvedPass = "CQMR";
+                                if (autoOk)
+                                {
+                                    resolvedUser = "admin";
+                                    resolvedPass = "CQMR";
+                                    _lastResolvedEnableSecret = "PRO1AN";
+                                }
+                            }
+                            if (!autoOk)
+                            {
+                                // 5. admin / cisco
+                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "admin", "cisco");
+                                if (autoOk)
+                                {
+                                    resolvedUser = "admin";
+                                    resolvedPass = "cisco";
+                                    _lastResolvedEnableSecret = "cisco";
+                                }
+                            }
+                            if (!autoOk)
+                            {
+                                // 6. admin / PRO1AN
+                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "admin", "PRO1AN");
+                                if (autoOk)
+                                {
+                                    resolvedUser = "admin";
+                                    resolvedPass = "PRO1AN";
+                                    _lastResolvedEnableSecret = "PRO1AN";
+                                }
+                            }
+                            if (!autoOk)
+                            {
+                                // 7. admin / admin
+                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "admin", "admin");
+                                if (autoOk)
+                                {
+                                    resolvedUser = "admin";
+                                    resolvedPass = "admin";
+                                    _lastResolvedEnableSecret = "admin";
+                                }
                             }
                             if (!autoOk && !requiresUserAndPass)
                             {
-                                // 6. Senha única de console: cisco / CQMR
-                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, null, "cisco");
+                                // 8. Senha única de console: CQMR / PRO1AN / cisco
+                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, null, "CQMR");
                                 resolvedUser = "";
-                                resolvedPass = "cisco";
+                                resolvedPass = "CQMR";
+                                _lastResolvedEnableSecret = "PRO1AN";
                                 if (!autoOk)
                                 {
-                                    autoOk = await TentarLoginSerialDiretoAsync(porta, baud, null, "CQMR");
-                                    resolvedPass = "CQMR";
+                                    autoOk = await TentarLoginSerialDiretoAsync(porta, baud, null, "PRO1AN");
+                                    resolvedPass = "PRO1AN";
+                                    _lastResolvedEnableSecret = "PRO1AN";
+                                }
+                                if (!autoOk)
+                                {
+                                    autoOk = await TentarLoginSerialDiretoAsync(porta, baud, null, "cisco");
+                                    resolvedPass = "cisco";
+                                    _lastResolvedEnableSecret = "cisco";
                                 }
                             }
 
@@ -1831,6 +1954,7 @@ public partial class MainWindow : Window
                             {
                                 _lastResolvedUser = resolvedUser;
                                 _lastResolvedPass = resolvedPass;
+                                if (string.IsNullOrWhiteSpace(_lastResolvedEnableSecret)) _lastResolvedEnableSecret = "PRO1AN";
                                 _skipFactoryReset = true;
                                 _serialOk = true;
                                 TxtSerialTestStatus.Text = "✅ Autenticado";
@@ -1854,7 +1978,7 @@ public partial class MainWindow : Window
                             EscreverLinha("   🔒 [CISCO] SENHA PERSONALIZADA DETECTADA");
                             EscreverLinha("=================================================================");
                             EscreverLinha("  O roteador Cisco conectado está protegido por credenciais personalizadas");
-                            EscreverLinha("  diferentes do padrão de fábrica (cisco/cisco) e padrão SPARC (EBT/CQMR).");
+                            EscreverLinha("  diferentes do padrão SPARC (EBT/CQMR, EBT/PRO1AN) e de fábrica (cisco/cisco).");
                             EscreverLinha("  👉 Escolha uma opção no diálogo:");
                             EscreverLinha("     1. Informar credenciais conhecidas manualmente;");
                             EscreverLinha("     2. Zerar a configuração via ROMMON para remover a senha.");
@@ -1863,35 +1987,76 @@ public partial class MainWindow : Window
                         else if (isHpe)
                         {
                             bool autoOk = false;
-                            string resolvedUser = "admin";
-                            string resolvedPass = "admin";
+                            string resolvedUser = "EBT";
+                            string resolvedPass = "PRO1AN";
 
-                            EscreverLinha("[*] [HPE] Console com autenticação detectado. Testando automaticamente credenciais de fábrica e padrão SPARC...");
+                            EscreverLinha("[*] [HPE] Console com autenticação detectado. Testando automaticamente credenciais padrão Claro/SPARC (EBT/PRO1AN) e de fábrica (admin/admin)...");
                             ConfigurarBotaoTestarTerminal(false, "Autenticando...", "#FEF2F2", "#DC2626");
                             await Task.Delay(250);
 
-                            // 1. admin / admin
-                            autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "admin", "admin");
-                            if (!autoOk)
+                            // 1. Padrão Oficial Claro / Embratel HPE: EBT / PRO1AN (Prioridade absoluta)
+                            autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "EBT", "PRO1AN");
+                            if (autoOk)
                             {
-                                // 2. admin / CQMR
-                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "admin", "CQMR");
-                                resolvedUser = "admin";
-                                resolvedPass = "CQMR";
+                                resolvedUser = "EBT";
+                                resolvedPass = "PRO1AN";
                             }
                             if (!autoOk)
                             {
-                                // 3. EBT / CQMR
+                                // 2. admin / admin (Padrão de fábrica Comware)
+                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "admin", "admin");
+                                if (autoOk)
+                                {
+                                    resolvedUser = "admin";
+                                    resolvedPass = "admin";
+                                }
+                            }
+                            if (!autoOk)
+                            {
+                                // 3. admin / CQMR
+                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "admin", "CQMR");
+                                if (autoOk)
+                                {
+                                    resolvedUser = "admin";
+                                    resolvedPass = "CQMR";
+                                }
+                            }
+                            if (!autoOk)
+                            {
+                                // 4. admin / PRO1AN
+                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "admin", "PRO1AN");
+                                if (autoOk)
+                                {
+                                    resolvedUser = "admin";
+                                    resolvedPass = "PRO1AN";
+                                }
+                            }
+                            if (!autoOk)
+                            {
+                                // 5. EBT / CQMR
                                 autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "EBT", "CQMR");
-                                resolvedUser = "EBT";
-                                resolvedPass = "CQMR";
+                                if (autoOk)
+                                {
+                                    resolvedUser = "EBT";
+                                    resolvedPass = "CQMR";
+                                }
                             }
                             if (!autoOk && !requiresUserAndPass)
                             {
-                                // 4. Senha em branco
-                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, null, "");
+                                // 6. Senha avulsa de console: PRO1AN / admin / em branco
+                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, null, "PRO1AN");
                                 resolvedUser = "";
-                                resolvedPass = "";
+                                resolvedPass = "PRO1AN";
+                                if (!autoOk)
+                                {
+                                    autoOk = await TentarLoginSerialDiretoAsync(porta, baud, null, "admin");
+                                    resolvedPass = "admin";
+                                }
+                                if (!autoOk)
+                                {
+                                    autoOk = await TentarLoginSerialDiretoAsync(porta, baud, null, "");
+                                    resolvedPass = "";
+                                }
                             }
 
                             if (autoOk)
@@ -1910,6 +2075,94 @@ public partial class MainWindow : Window
                                     CardChkSerial.BorderBrush = UiBrushes.Get("#BBF7D0");
                                 }
                                 EscreverLinha($"[OK] [HPE] Autenticação automática concluída com sucesso (usuário '{resolvedUser}')! Acesso liberado sem necessidade de intervenção manual.\n");
+                                ConfigurarBotaoTestarTerminal(true, "🔌 Testar Conexão Porta Serial", "#B91C1C", "#FFFFFF");
+                                AtualizarBotaoProsseguir();
+
+                                await ExecutarAvaliacaoPosLoginAsync(porta, baud);
+                                return;
+                            }
+                        }
+                        else
+                        {
+                            // Roteador com autenticação pendente mas fabricante não discriminado previamente
+                            bool autoOk = false;
+                            string resolvedUser = "EBT";
+                            string resolvedPass = "CQMR";
+
+                            EscreverLinha("[*] Console com autenticação detectado. Testando automaticamente credenciais padrão Claro/SPARC (EBT/CQMR, EBT/PRO1AN, cisco/cisco, admin/admin)...");
+                            ConfigurarBotaoTestarTerminal(false, "Autenticando...", "#FEF2F2", "#DC2626");
+                            await Task.Delay(250);
+
+                            // 1. Cisco Claro padrão: EBT / CQMR
+                            autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "EBT", "CQMR");
+                            if (autoOk)
+                            {
+                                resolvedUser = "EBT";
+                                resolvedPass = "CQMR";
+                                _lastResolvedEnableSecret = "PRO1AN";
+                            }
+                            if (!autoOk)
+                            {
+                                // 2. HPE Claro padrão: EBT / PRO1AN
+                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "EBT", "PRO1AN");
+                                if (autoOk)
+                                {
+                                    resolvedUser = "EBT";
+                                    resolvedPass = "PRO1AN";
+                                    _lastResolvedEnableSecret = "PRO1AN";
+                                }
+                            }
+                            if (!autoOk)
+                            {
+                                // 3. cisco / cisco
+                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "cisco", "cisco");
+                                if (autoOk)
+                                {
+                                    resolvedUser = "cisco";
+                                    resolvedPass = "cisco";
+                                    _lastResolvedEnableSecret = "cisco";
+                                }
+                            }
+                            if (!autoOk)
+                            {
+                                // 4. admin / CQMR
+                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "admin", "CQMR");
+                                if (autoOk)
+                                {
+                                    resolvedUser = "admin";
+                                    resolvedPass = "CQMR";
+                                    _lastResolvedEnableSecret = "PRO1AN";
+                                }
+                            }
+                            if (!autoOk)
+                            {
+                                // 5. admin / admin
+                                autoOk = await TentarLoginSerialDiretoAsync(porta, baud, "admin", "admin");
+                                if (autoOk)
+                                {
+                                    resolvedUser = "admin";
+                                    resolvedPass = "admin";
+                                    _lastResolvedEnableSecret = "admin";
+                                }
+                            }
+
+                            if (autoOk)
+                            {
+                                _lastResolvedUser = resolvedUser;
+                                _lastResolvedPass = resolvedPass;
+                                if (string.IsNullOrWhiteSpace(_lastResolvedEnableSecret)) _lastResolvedEnableSecret = "PRO1AN";
+                                _skipFactoryReset = true;
+                                _serialOk = true;
+                                TxtSerialTestStatus.Text = "✅ Autenticado";
+                                TxtSerialTestStatus.Foreground = UiBrushes.Get("#16A34A");
+                                if (TxtChkSerialIcon != null && TxtChkSerialSub != null)
+                                {
+                                    TxtChkSerialIcon.Text = "🟢 1b. Serial (Autenticado)";
+                                    TxtChkSerialSub.Text = $"{porta} (Acesso Fábrica/Padrão)";
+                                    CardChkSerial.Background = UiBrushes.Get("#F0FDF4");
+                                    CardChkSerial.BorderBrush = UiBrushes.Get("#BBF7D0");
+                                }
+                                EscreverLinha($"[OK] Autenticação automática concluída com sucesso (usuário '{resolvedUser}')! Acesso liberado sem necessidade de intervenção manual.\n");
                                 ConfigurarBotaoTestarTerminal(true, "🔌 Testar Conexão Porta Serial", "#B91C1C", "#FFFFFF");
                                 AtualizarBotaoProsseguir();
 
@@ -2035,6 +2288,7 @@ public partial class MainWindow : Window
                                     "   • HPE MSR 954 / 958 (BootWare Ctrl+B)\n" +
                                     "   • HPE MSR 930 / 931 / 935 (BootWare Ctrl+B)\n" +
                                     "   • Cisco Série 1900 / 1921 / 1941 / 1905 (ROMMON Break)\n" +
+                                    "   • Cisco Série 2900 / 2911 / 2921 / 2951 (ROMMON Break)\n" +
                                     "   • Cisco Série 900 / C921-4P (ROMMON Ctrl+C)\n" +
                                     "   • Cisco Série 800 / C841M (ROMMON Break)\n\n" +
                                     "Após selecionar o modelo correto e carregar a Ficha SAIP, clique em 'INICIAR PROVISIONAMENTO AUTOMÁTICO'.",
@@ -2147,23 +2401,24 @@ public partial class MainWindow : Window
                     }
                     else if (isCisco)
                     {
-                        var is1900 = detection.Series == DeviceSeries.Series1900
-                                  || DeviceDetector.Cisco1900ModelRegex.IsMatch(prompt)
-                                  || userSeries == DeviceSeries.Series1900;
+                        var detectedCisco = detection.Series;
+                        if (detectedCisco == DeviceSeries.Unknown)
+                        {
+                            if (DeviceDetector.Cisco841ModelRegex.IsMatch(prompt)) detectedCisco = DeviceSeries.Isr841;
+                            else if (DeviceDetector.Cisco900ModelRegex.IsMatch(prompt)) detectedCisco = DeviceSeries.Isr921;
+                            else if (DeviceDetector.Cisco2900ModelRegex.IsMatch(prompt)) detectedCisco = DeviceSeries.Series2900;
+                            else if (DeviceDetector.Cisco1900ModelRegex.IsMatch(prompt)) detectedCisco = DeviceSeries.Series1900;
+                        }
 
-                        var is921 = !is1900 && (
-                                    detection.Series == DeviceSeries.Isr921
-                                 || DeviceDetector.Cisco900ModelRegex.IsMatch(prompt)
-                                 || userSeries == DeviceSeries.Isr921);
+                        var is841 = detectedCisco == DeviceSeries.Isr841 || (detectedCisco == DeviceSeries.Unknown && userSeries == DeviceSeries.Isr841);
+                        var is921 = !is841 && (detectedCisco == DeviceSeries.Isr921 || (detectedCisco == DeviceSeries.Unknown && userSeries == DeviceSeries.Isr921));
+                        var is2900 = !is841 && !is921 && (detectedCisco == DeviceSeries.Series2900 || (detectedCisco == DeviceSeries.Unknown && userSeries == DeviceSeries.Series2900));
+                        var is1900 = !is841 && !is921 && !is2900 && (detectedCisco == DeviceSeries.Series1900 || (detectedCisco == DeviceSeries.Unknown && userSeries == DeviceSeries.Series1900));
 
-                        var is841 = !is1900 && !is921 && (
-                                    detection.Series == DeviceSeries.Isr841
-                                 || DeviceDetector.Cisco841ModelRegex.IsMatch(prompt)
-                                 || userSeries == DeviceSeries.Isr841);
-
-                        especificoNome = is1900 ? "Cisco Série 1900 (1905/1921/1941)" :
+                        especificoNome = is841 ? "Cisco Série 800 / C841M" :
                                          is921 ? "Cisco Série 900 / C921-4P" :
-                                         is841 ? "Cisco Série 800 / C841M" :
+                                         is2900 ? "Cisco Série 2900 (2901/2911/2921/2951)" :
+                                         is1900 ? "Cisco Série 1900 (1905/1921/1941)" :
                                          "Cisco IOS";
                     }
                     else if (isForti)
@@ -2234,31 +2489,35 @@ public partial class MainWindow : Window
                 }
                 else if (isCisco)
                 {
-                    var is1900 = detection.Series == DeviceSeries.Series1900
-                              || DeviceDetector.Cisco1900ModelRegex.IsMatch(prompt)
-                              || userSeries == DeviceSeries.Series1900;
-
-                    var is921 = !is1900 && (
-                                detection.Series == DeviceSeries.Isr921
-                             || DeviceDetector.Cisco900ModelRegex.IsMatch(prompt)
-                             || userSeries == DeviceSeries.Isr921);
-
-                    var is841 = !is1900 && !is921 && (
-                                detection.Series == DeviceSeries.Isr841
-                             || DeviceDetector.Cisco841ModelRegex.IsMatch(prompt)
-                             || userSeries == DeviceSeries.Isr841);
-
-                    if (is1900)
+                    var detectedCisco = detection.Series;
+                    if (detectedCisco == DeviceSeries.Unknown)
                     {
-                        SelecionarModeloNoCombo("cisco.c1900.break");
+                        if (DeviceDetector.Cisco841ModelRegex.IsMatch(prompt)) detectedCisco = DeviceSeries.Isr841;
+                        else if (DeviceDetector.Cisco900ModelRegex.IsMatch(prompt)) detectedCisco = DeviceSeries.Isr921;
+                        else if (DeviceDetector.Cisco2900ModelRegex.IsMatch(prompt)) detectedCisco = DeviceSeries.Series2900;
+                        else if (DeviceDetector.Cisco1900ModelRegex.IsMatch(prompt)) detectedCisco = DeviceSeries.Series1900;
+                    }
+
+                    var is841 = detectedCisco == DeviceSeries.Isr841 || (detectedCisco == DeviceSeries.Unknown && userSeries == DeviceSeries.Isr841);
+                    var is921 = !is841 && (detectedCisco == DeviceSeries.Isr921 || (detectedCisco == DeviceSeries.Unknown && userSeries == DeviceSeries.Isr921));
+                    var is2900 = !is841 && !is921 && (detectedCisco == DeviceSeries.Series2900 || (detectedCisco == DeviceSeries.Unknown && userSeries == DeviceSeries.Series2900));
+                    var is1900 = !is841 && !is921 && !is2900 && (detectedCisco == DeviceSeries.Series1900 || (detectedCisco == DeviceSeries.Unknown && userSeries == DeviceSeries.Series1900));
+
+                    if (is841)
+                    {
+                        SelecionarModeloNoCombo("cisco.c841.break");
                     }
                     else if (is921)
                     {
                         SelecionarModeloNoCombo("cisco.c900.ctrl-c");
                     }
-                    else if (is841)
+                    else if (is2900)
                     {
-                        SelecionarModeloNoCombo("cisco.c841.break");
+                        SelecionarModeloNoCombo("cisco.c2900.break");
+                    }
+                    else if (is1900)
+                    {
+                        SelecionarModeloNoCombo("cisco.c1900.break");
                     }
                 }
                 else if (isForti)
@@ -2418,10 +2677,9 @@ public partial class MainWindow : Window
                         usernameSent = true;
                         rxAccumulator.Clear();
                         await Task.Delay(100);
-                        var userToSend = string.IsNullOrWhiteSpace(username) ? "admin" : username.Trim();
+                        var userToSend = string.IsNullOrWhiteSpace(username) ? "EBT" : username.Trim();
                         EscreverLinha($"[LOGIN CONSOLE] Prompt de login detectado. Enviando usuário: '{userToSend}'");
-                        var eol = (isFortiConsole || userToSend == "admin") ? "\r" : "\r\n";
-                        await transport.WriteAsync(Encoding.UTF8.GetBytes(userToSend + eol));
+                        await transport.WriteAsync(Encoding.UTF8.GetBytes(userToSend + "\r"));
                         await Task.Delay(300);
                         continue;
                     }
@@ -2462,9 +2720,8 @@ public partial class MainWindow : Window
                         rxAccumulator.Clear();
                         await Task.Delay(150);
                         EscreverLinha("[LOGIN CONSOLE] Prompt de senha detectado. Enviando senha...");
-                        // Envia a senha (sem enter extra para não enviar senha vazia no prompt subsequente de New Password)
-                        var passEol = (isFortiConsole || username == "admin") ? "\r" : "\r\n";
-                        await transport.WriteAsync(Encoding.UTF8.GetBytes(pass.Trim() + passEol));
+                        // Envia a senha com \r (sem enter extra para não enviar senha vazia no prompt subsequente de New Password)
+                        await transport.WriteAsync(Encoding.UTF8.GetBytes(pass.Trim() + "\r"));
                         await Task.Delay(300);
                         continue;
                     }
@@ -2559,10 +2816,11 @@ public partial class MainWindow : Window
                               || IsTagFortiGate((CbModeloRoteadorInicial?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "");
 
                 var selectedTag = (CbModeloRoteadorInicial?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "";
-                var isCiscoPre = selectedTag.StartsWith("cisco", StringComparison.OrdinalIgnoreCase);
+                var isCiscoPre = selectedTag.StartsWith("cisco", StringComparison.OrdinalIgnoreCase) || selectedTag.Contains("841") || selectedTag.Contains("921") || selectedTag.Contains("1900") || selectedTag.Contains("2900");
+                var isHpePre = selectedTag.StartsWith("hpe", StringComparison.OrdinalIgnoreCase) || selectedTag.StartsWith("msr", StringComparison.OrdinalIgnoreCase);
 
-                var resolvedUser = _lastResolvedUser ?? (isFortiPre ? "admin" : (isCiscoPre ? "cisco" : null));
-                var resolvedPass = _lastResolvedPass ?? (isFortiPre ? "CQMR" : (isCiscoPre ? "cisco" : null));
+                var resolvedUser = _lastResolvedUser ?? (isFortiPre ? "admin" : (isHpePre ? "EBT" : (isCiscoPre ? "EBT" : "EBT")));
+                var resolvedPass = _lastResolvedPass ?? (isFortiPre ? "CQMR" : (isHpePre ? "PRO1AN" : (isCiscoPre ? "CQMR" : "CQMR")));
 
                 transport = new SerialTransport(porta, baud, readTimeout: TimeSpan.FromMilliseconds(400));
                 session = new DeviceSession(transport, new SessionOptions
@@ -2798,40 +3056,32 @@ public partial class MainWindow : Window
         bool hasPrivilege = false;
         bool isEnableLocked = false;
 
+        var ciscoCandidates = new List<string>();
+        // Padrão oficial de modo enable Cisco na Claro/Embratel: PRO1AN
+        ciscoCandidates.Add("PRO1AN");
+        if (!string.IsNullOrWhiteSpace(_lastResolvedEnableSecret) && !ciscoCandidates.Contains(_lastResolvedEnableSecret))
+            ciscoCandidates.Add(_lastResolvedEnableSecret);
+        if (!string.IsNullOrWhiteSpace(_lastResolvedPass) && !ciscoCandidates.Contains(_lastResolvedPass))
+            ciscoCandidates.Add(_lastResolvedPass);
+        if (!ciscoCandidates.Contains("CQMR")) ciscoCandidates.Add("CQMR");
+        if (!ciscoCandidates.Contains("cisco")) ciscoCandidates.Add("cisco");
+        if (!ciscoCandidates.Contains("admin")) ciscoCandidates.Add("admin");
+
+        var enableSecretToUse = !string.IsNullOrWhiteSpace(_lastResolvedEnableSecret) ? _lastResolvedEnableSecret : "PRO1AN";
+        var adapter = new CiscoIOSAdapter(enableSecret: enableSecretToUse, candidatePasswords: ciscoCandidates);
+
         try
         {
-            var p = session.CurrentPrompt ?? "";
-            if (p.Trim().EndsWith("#"))
-            {
-                hasPrivilege = true;
-            }
-            else if (p.Trim().EndsWith(">"))
-            {
-                // Tenta elevar para modo privilegiado (#) via enable com expect
-                var exp = await session.SendExpectAsync("enable", new StopCondition[]
-                {
-                    new StopCondition.Contains("password", "Password:"),
-                    new StopCondition.LineRegex("hash", new Regex(@"#\s*$")),
-                    new StopCondition.LineRegex("greater", new Regex(@">\s*$")),
-                    new StopCondition.Prompt()
-                }, TimeSpan.FromSeconds(4), ct);
-
-                if (exp.Output.Contains("Password:", StringComparison.OrdinalIgnoreCase))
-                {
-                    isEnableLocked = true;
-                    // Cancela o prompt de senha no Cisco com Ctrl+C e Enter para liberar o console limpo em modo usuário
-                    await session.SendCtrlCAsync(ct);
-                    await Task.Delay(150, ct);
-                    await session.SendRawAsync("\r\n", ct);
-                    await Task.Delay(150, ct);
-                }
-                else if (session.CurrentPrompt?.Trim().EndsWith("#") == true)
-                {
-                    hasPrivilege = true;
-                }
-            }
+            await adapter.EnterPrivilegedExecAsync(session, ciscoCandidates, ct);
+            hasPrivilege = true;
+            isEnableLocked = false;
+            _lastResolvedEnableSecret = adapter.ResolvedEnableSecret ?? enableSecretToUse;
         }
-        catch { }
+        catch
+        {
+            hasPrivilege = false;
+            isEnableLocked = true;
+        }
 
         try { await session.SendCommandAsync("terminal length 0", TimeSpan.FromSeconds(5), ct); } catch { }
         try { await session.SendCommandAsync("terminal width 512", TimeSpan.FromSeconds(5), ct); } catch { }
@@ -2847,16 +3097,17 @@ public partial class MainWindow : Window
         if (!modelMatch.Success) modelMatch = Regex.Match(showVer, @"(?im)^\s*cisco\s+([A-Za-z0-9\-\/_]+)");
         var modelo = modelMatch.Success ? modelMatch.Groups[1].Value.Trim() : "Cisco";
 
-        var is1900 = DeviceDetector.Cisco1900ModelRegex.IsMatch(modelo)
-                  || DeviceDetector.Cisco1900ModelRegex.IsMatch(showVer);
+        var is841 = DeviceDetector.Cisco841ModelRegex.IsMatch(modelo)
+                 || DeviceDetector.Cisco841ModelRegex.IsMatch(showVer);
 
-        var is921 = !is1900 && (
-                     DeviceDetector.Cisco900ModelRegex.IsMatch(modelo)
-                  || DeviceDetector.Cisco900ModelRegex.IsMatch(showVer));
+        var is921 = !is841 && (DeviceDetector.Cisco900ModelRegex.IsMatch(modelo)
+                 || DeviceDetector.Cisco900ModelRegex.IsMatch(showVer));
 
-        var is841 = !is1900 && !is921 && (
-                     DeviceDetector.Cisco841ModelRegex.IsMatch(modelo)
-                  || DeviceDetector.Cisco841ModelRegex.IsMatch(showVer));
+        var is2900 = !is841 && !is921 && (DeviceDetector.Cisco2900ModelRegex.IsMatch(modelo)
+                 || DeviceDetector.Cisco2900ModelRegex.IsMatch(showVer));
+
+        var is1900 = !is841 && !is921 && !is2900 && (DeviceDetector.Cisco1900ModelRegex.IsMatch(modelo)
+                 || DeviceDetector.Cisco1900ModelRegex.IsMatch(showVer));
 
         var iosVerMatch = Regex.Match(showVer, @"(?im)Version\s+([0-9\.\(\)A-Za-z]+),");
         var iosVer = iosVerMatch.Success ? iosVerMatch.Groups[1].Value.Trim() : "Desconhecida";
@@ -2995,6 +3246,10 @@ public partial class MainWindow : Window
             else if (is921)
             {
                 SelecionarModeloNoCombo("cisco.c900.ctrl-c");
+            }
+            else if (is2900)
+            {
+                SelecionarModeloNoCombo("cisco.c2900.break");
             }
             else if (is1900)
             {
@@ -4458,7 +4713,7 @@ public partial class MainWindow : Window
 
         if (!isTelnetOk && step3Ok)
         {
-            falhas.Add("Falha no Teste 6 (Acesso Remoto Telnet / Porta 23): Firewall do Windows bloqueando conexões de saída na porta 23 ou linha VTY sem senha/login.");
+            falhas.Add("Falha no Teste 6 (Acesso Remoto Telnet / Porta 23): Conexão TCP recusada/bloqueada (verifique ACL de gerência VTY ou firewall) ou credencial EBT/CQMR rejeitada.");
         }
 
         if (bandResult != null && !isBandOk)
@@ -4924,7 +5179,8 @@ public partial class MainWindow : Window
                 var circuit = SaipParser.ParseText(rawText);
                 _loadedSaipCircuit = circuit;
 
-                TxtSaipResumo.Text = $"Circuito: {circuit.DesignacaoIp ?? circuit.NumeroOts} | WAN: {circuit.WanIp}/{circuit.WanCidr} (GW: {circuit.WanGateway}) | LAN: {circuit.LanIp}/{circuit.LanCidr} | Cliente: {circuit.ClienteRazaoSocial}";
+                var tipoTag = circuit.TipoServico == SaipServiceType.IpVpn ? " [IP VPN/MPLS - LAN Arbitrada]" : " [BLD]";
+                TxtSaipResumo.Text = $"Circuito: {circuit.DesignacaoIp ?? circuit.NumeroOts}{tipoTag} | WAN: {circuit.WanIp}/{circuit.WanCidr} (GW: {circuit.WanGateway}) | LAN: {circuit.LanIp}/{circuit.LanCidr} | Cliente: {circuit.ClienteRazaoSocial}";
                 TxtHostIpCalculado.Text = $"Host LAN: {circuit.HostLanIp}/{circuit.LanCidr}";
                 if (TxtIcmpTargetLan is not null && !string.IsNullOrEmpty(circuit.LanIp))
                     TxtIcmpTargetLan.Text = circuit.LanIp;
@@ -4938,7 +5194,7 @@ public partial class MainWindow : Window
                 }
 
                 BtnLimparSaip.Visibility = Visibility.Visible;
-                TxtCircuitoAtivoTitulo.Text = $"CIRCUITO: {circuit.DesignacaoIp ?? circuit.NumeroOts} - {circuit.ClienteRazaoSocial}";
+                TxtCircuitoAtivoTitulo.Text = $"CIRCUITO: {circuit.DesignacaoIp ?? circuit.NumeroOts} - {circuit.ClienteRazaoSocial}{tipoTag}";
                 TxtCircuitoAtivoResumo.Text = $"WAN: {circuit.WanIp}/{circuit.WanCidr} (GW: {circuit.WanGateway}) | LAN: {circuit.LanIp}/{circuit.LanCidr} | Host: {circuit.HostLanIp} | DNS: 1.1.1.1, 8.8.8.8";
 
                 AtualizarEstadoBotoes();
@@ -4948,6 +5204,11 @@ public partial class MainWindow : Window
                 EscreverLinha("             FICHA SAIP CARREGADA COM SUCESSO                    ");
                 EscreverLinha("=================================================================");
                 EscreverLinha($"  Arquivo     : {Path.GetFileName(dlg.FileName)}");
+                EscreverLinha($"  Produto     : {circuit.Produto ?? (circuit.TipoServico == SaipServiceType.IpVpn ? "IP VPN (MPLS)" : "Business Link Direct (BLD)")}");
+                if (circuit.IsLanArbitrada)
+                {
+                    EscreverLinha("  LAN MPLS    : [LAN Genérica Arbitrada 192.168.1.1/24 para bancada e GER CPE]");
+                }
                 EscreverLinha($"  Cliente     : {circuit.ClienteRazaoSocial}");
                 EscreverLinha($"  Designação  : {circuit.DesignacaoIp}");
                 EscreverLinha($"  Número OTS  : {circuit.NumeroOts}");
@@ -5345,7 +5606,15 @@ public partial class MainWindow : Window
             AtualizarProgresso(85, "Fase A: Auditando equipamento...", "Identificando versão e modelo...");
             try
             {
-                var adapter = new CiscoIOSAdapter(null);
+                var ciscoCandidates = new List<string>();
+                ciscoCandidates.Add("PRO1AN");
+                if (!string.IsNullOrWhiteSpace(_lastResolvedEnableSecret) && !ciscoCandidates.Contains(_lastResolvedEnableSecret))
+                    ciscoCandidates.Add(_lastResolvedEnableSecret);
+                if (!string.IsNullOrWhiteSpace(_lastResolvedPass) && !ciscoCandidates.Contains(_lastResolvedPass))
+                    ciscoCandidates.Add(_lastResolvedPass);
+                if (!ciscoCandidates.Contains("CQMR")) ciscoCandidates.Add("CQMR");
+                var enableSec = _lastResolvedEnableSecret ?? "PRO1AN";
+                var adapter = new CiscoIOSAdapter(enableSecret: enableSec, candidatePasswords: ciscoCandidates);
                 var info = await adapter.IdentifyAsync(session, ct);
                 ExibirDadosEquipamento(info);
             }
@@ -5982,16 +6251,47 @@ public partial class MainWindow : Window
                  || promptStr.Contains("MSR", StringComparison.OrdinalIgnoreCase)
                  || promptStr.Contains("Comware", StringComparison.OrdinalIgnoreCase));
 
-        var is921 = !isForti && (profileTag.Contains("921", StringComparison.OrdinalIgnoreCase)
-                 || profileTag.Contains("c900", StringComparison.OrdinalIgnoreCase)
-                 || promptStr.Contains("921", StringComparison.OrdinalIgnoreCase)
-                 || promptStr.Contains("c900", StringComparison.OrdinalIgnoreCase));
-
-        var is841 = !isForti && (profileTag.Contains("841", StringComparison.OrdinalIgnoreCase)
+        var is841 = !isForti && !isHpe && (profileTag.Contains("841", StringComparison.OrdinalIgnoreCase)
                  || profileTag.Contains("c841", StringComparison.OrdinalIgnoreCase)
                  || profileTag.Contains("c800", StringComparison.OrdinalIgnoreCase)
                  || promptStr.Contains("841", StringComparison.OrdinalIgnoreCase)
                  || promptStr.Contains("c800", StringComparison.OrdinalIgnoreCase));
+
+        var is921 = !isForti && !isHpe && !is841 && (profileTag.Contains("921", StringComparison.OrdinalIgnoreCase)
+                 || profileTag.Contains("c900", StringComparison.OrdinalIgnoreCase)
+                 || promptStr.Contains("921", StringComparison.OrdinalIgnoreCase)
+                 || promptStr.Contains("c900", StringComparison.OrdinalIgnoreCase));
+
+        var is2900 = !isForti && !isHpe && !is841 && !is921 && (
+                 profileTag.Contains("2900", StringComparison.OrdinalIgnoreCase)
+              || profileTag.Contains("c2900", StringComparison.OrdinalIgnoreCase)
+              || promptStr.Contains("2900", StringComparison.OrdinalIgnoreCase)
+              || promptStr.Contains("c2900", StringComparison.OrdinalIgnoreCase));
+
+        // Avaliação de Higienização Pré-Provisionamento:
+        // Avalia se o equipamento já se encontra em padrão de fábrica limpo ("zero lixo") para dispensar reboots desnecessários.
+        try
+        {
+            var sanitization = isForti
+                ? await NetworkDevice.Fortinet.FortiOsSaipConfigurator.DetectSanitizationStatusAsync(session, ct)
+                : isHpe
+                    ? await HpeSaipConfigurator.DetectSanitizationStatusAsync(session, ct)
+                    : await CiscoSaipConfigurator.DetectSanitizationStatusAsync(session, ct);
+
+            EscreverLinha($"[*] [AVALIAÇÃO DE CONFIGURAÇÃO] {sanitization.Summary}");
+            if (sanitization.IsClean)
+            {
+                EscreverLinha("  -> Equipamento em padrão limpo/fábrica (zero lixo). Aplicação direta do script BLD sem reload.");
+            }
+            else
+            {
+                EscreverLinha("  -> Configuração de serviço anterior identificada. Aplicando higienização e sobreposição oficial BLD.");
+            }
+        }
+        catch (Exception ex)
+        {
+            EscreverLinha($"[*] Avaliação de higienização best-effort: {ex.Message}");
+        }
 
         if (isForti)
         {
@@ -6003,7 +6303,7 @@ public partial class MainWindow : Window
 
             // Valida se o técnico conectou o cabo na porta LAN (Porta 1 / Giga 1) antes de prosseguir
             await GarantirPortaLanComRetryAsync(
-                () => NetworkDevice.Fortinet.FortiOsSaipConfigurator.EnforceLanPortConnectedAsync(session, "lan", NotificarConexaoCaboAsync, EscreverLinhaAsync, ct),
+                () => NetworkDevice.Fortinet.FortiOsSaipConfigurator.EnforceLanPortConnectedAsync(session, "lan", NotificarConexaoCaboAsync, EscreverLinhaAsync, ct, pollDelayMs: 2000, onProgress: AtualizarProgresso),
                 "FortiGate 40F",
                 "LAN1 (Porta 1 / lan1)",
                 ct);
@@ -6017,7 +6317,7 @@ public partial class MainWindow : Window
 
             // Valida automaticamente via 'display ip interface brief' se o técnico conectou o cabo na porta LAN (GE1 / GigabitEthernet0/1)
             await GarantirPortaLanComRetryAsync(
-                () => HpeSaipConfigurator.EnforceLanPortConnectedAsync(session, "GigabitEthernet0/1", NotificarConexaoCaboAsync, EscreverLinhaAsync, ct),
+                () => HpeSaipConfigurator.EnforceLanPortConnectedAsync(session, "GigabitEthernet0/1", NotificarConexaoCaboAsync, EscreverLinhaAsync, ct, onProgress: AtualizarProgresso),
                 "HPE Comware",
                 "LAN (Porta GE1 / GigabitEthernet0/1)",
                 ct);
@@ -6032,7 +6332,7 @@ public partial class MainWindow : Window
 
             // Valida se o técnico conectou o cabo na porta LAN (GE 0/5 / GigabitEthernet0/5) antes de prosseguir
             await GarantirPortaLanComRetryAsync(
-                () => CiscoIOSAdapter.EnforceLanPortConnectedAsync(session, "GigabitEthernet0/5", NotificarConexaoCaboAsync, EscreverLinhaAsync, ct),
+                () => CiscoIOSAdapter.EnforceLanPortConnectedAsync(session, "GigabitEthernet0/5", NotificarConexaoCaboAsync, EscreverLinhaAsync, ct, onProgress: AtualizarProgresso),
                 "Cisco Série 800 / C841M",
                 "LAN (Porta 5 / GE 0/5)",
                 ct);
@@ -6047,9 +6347,24 @@ public partial class MainWindow : Window
 
             // Valida se o técnico conectou o cabo na porta LAN (GE5 / GigabitEthernet 5) antes de prosseguir
             await GarantirPortaLanComRetryAsync(
-                () => CiscoIOSAdapter.EnforceLanPortConnectedAsync(session, "GigabitEthernet 5", NotificarConexaoCaboAsync, EscreverLinhaAsync, ct),
+                () => CiscoIOSAdapter.EnforceLanPortConnectedAsync(session, "GigabitEthernet 5", NotificarConexaoCaboAsync, EscreverLinhaAsync, ct, onProgress: AtualizarProgresso),
                 "Cisco Série 900 / C921-4P",
                 "LAN (Porta 5 / GE 5)",
+                ct);
+        }
+        else if (is2900)
+        {
+            EscreverLinha($"[*] Equipamento identificado como Cisco Série 2900 (Prompt detectado: '{promptStr}').");
+            AtualizarProgresso(50, "Fase C: Configurando Cisco Série 2900...", $"WAN GE0/0 ({_loadedSaipCircuit.WanIp}), LAN GE0/1 ({_loadedSaipCircuit.LanIp})...");
+            var ciscoConfig = new CiscoSaipConfigurator(EscreverLinhaAsync);
+            ciscoConfig.IncluirNatLab = ChkNatLab?.IsChecked == true;
+            await ciscoConfig.ApplyConfigAsync(session, _loadedSaipCircuit, "GigabitEthernet 0/0", "GigabitEthernet 0/1", ct);
+
+            // Valida se o técnico conectou o cabo na porta LAN (GE 0/1) antes de prosseguir
+            await GarantirPortaLanComRetryAsync(
+                () => CiscoIOSAdapter.EnforceLanPortConnectedAsync(session, "GigabitEthernet 0/1", NotificarConexaoCaboAsync, EscreverLinhaAsync, ct, onProgress: AtualizarProgresso),
+                "Cisco Série 2900",
+                "LAN (Porta 1 / GE 0/1)",
                 ct);
         }
         else
@@ -6062,7 +6377,7 @@ public partial class MainWindow : Window
 
             // Valida se o técnico conectou o cabo na porta LAN (GE 0/1) antes de prosseguir
             await GarantirPortaLanComRetryAsync(
-                () => CiscoIOSAdapter.EnforceLanPortConnectedAsync(session, "GigabitEthernet 0/1", NotificarConexaoCaboAsync, EscreverLinhaAsync, ct),
+                () => CiscoIOSAdapter.EnforceLanPortConnectedAsync(session, "GigabitEthernet 0/1", NotificarConexaoCaboAsync, EscreverLinhaAsync, ct, onProgress: AtualizarProgresso),
                 "Cisco Série 1900 / G2",
                 "LAN (Porta 1 / GE 0/1)",
                 ct);
@@ -6419,8 +6734,13 @@ public partial class MainWindow : Window
             var ok = await enforceLanAction();
             if (ok)
             {
-                // Delay preventivo de 3 segundos para estabilização de Spanning Tree (STP Forwarding) e ARP
-                await Task.Delay(3000, ct);
+                // Contagem regressiva de 3 segundos para estabilização de Spanning Tree (STP Forwarding) e ARP
+                for (int s = 3; s >= 1; s--)
+                {
+                    AtualizarProgresso(55, "Estabilizando Link LAN...", $"Porta {portaNome} conectada. Estabilizando STP/ARP ({s}s)...");
+                    EscreverLinha($"[*] Porta {portaNome} conectada. Estabilizando enlace físico e protocolo STP ({s}s restantes)...");
+                    await Task.Delay(1000, ct);
+                }
                 return true;
             }
 
@@ -6441,6 +6761,7 @@ public partial class MainWindow : Window
                 return false;
             }
 
+            AtualizarProgresso(50, "Re-verificando Porta LAN...", $"Aguardando link ativo na porta {portaNome}...");
             EscreverLinha($"[*] Re-verificando link físico na porta {portaNome}...");
         }
         return false;
@@ -6952,7 +7273,7 @@ public partial class MainWindow : Window
             }
 
             // Valida criticamente o link físico da porta LAN do FortiGate (Porta 1 / Giga 1 / lan1)
-            await NetworkDevice.Fortinet.FortiOsSaipConfigurator.EnforceLanPortConnectedAsync(session, lanInterface, NotificarConexaoCaboAsync, EscreverLinhaAsync, ct);
+            await NetworkDevice.Fortinet.FortiOsSaipConfigurator.EnforceLanPortConnectedAsync(session, lanInterface, NotificarConexaoCaboAsync, EscreverLinhaAsync, ct, pollDelayMs: 2000, onProgress: AtualizarProgresso);
 
             // Valida conectividade FortiGate -> PC via ping antes de disparar o TFTP
             EscreverLinha($"[*] Validando conectividade de rede FortiGate -> {hostIp}...");
@@ -7122,23 +7443,46 @@ public partial class MainWindow : Window
         }
         else
         {
-            var is921 = profileTag.Contains("921", StringComparison.OrdinalIgnoreCase)
-                     || profileTag.Contains("c900", StringComparison.OrdinalIgnoreCase);
+            var is2900 = profileTag.Contains("2900", StringComparison.OrdinalIgnoreCase)
+                      || profileTag.Contains("c2900", StringComparison.OrdinalIgnoreCase)
+                      || fileName.Contains("c2900", StringComparison.OrdinalIgnoreCase);
 
-            var is841 = profileTag.Contains("841", StringComparison.OrdinalIgnoreCase)
+            var is921 = !is2900 && (profileTag.Contains("921", StringComparison.OrdinalIgnoreCase)
+                     || profileTag.Contains("c900", StringComparison.OrdinalIgnoreCase)
+                     || fileName.Contains("c900", StringComparison.OrdinalIgnoreCase));
+
+            var is841 = !is2900 && !is921 && (profileTag.Contains("841", StringComparison.OrdinalIgnoreCase)
                      || profileTag.Contains("c841", StringComparison.OrdinalIgnoreCase)
-                     || profileTag.Contains("c800", StringComparison.OrdinalIgnoreCase);
+                     || profileTag.Contains("c800", StringComparison.OrdinalIgnoreCase)
+                     || fileName.Contains("c841", StringComparison.OrdinalIgnoreCase)
+                     || fileName.Contains("c800", StringComparison.OrdinalIgnoreCase));
+
+            var is1900 = !is2900 && !is921 && !is841;
 
             var routerIp = _loadedSaipCircuit?.LanIp ?? "200.182.245.17";
             var subnetMask = _loadedSaipCircuit?.LanSubnetMask ?? "255.255.255.240";
             var lanInterface = is841 ? "GigabitEthernet0/5" : is921 ? "GigabitEthernet 5" : "GigabitEthernet 0/1";
             var adapter = CbAdaptadorRede?.Text?.Trim();
 
-            var modeloNome = is841 ? "Cisco Série 800 / C841M" : is921 ? "Cisco Série 900 / C921-4P" : "Cisco Série 1900 / G2";
+            var modeloNome = is841 ? "Cisco Série 800 / C841M" :
+                             is921 ? "Cisco Série 900 / C921-4P" :
+                             is2900 ? "Cisco Série 2900 (2901/2911/2921/2951)" :
+                             "Cisco Série 1900 / G2";
             EscreverLinha($"[*] Equipamento identificado como {modeloNome} para upgrade de firmware ({fileName}) via LAN ({lanInterface}).");
             AtualizarProgresso(22, $"Fase B: Gravando IOS {modeloNome}...", "Iniciando transferência TFTP...");
             var ciscoUpgrader = new CiscoIOSUpgrader(EscreverLinhaAsync, AtualizarProgresso);
-            success = await ciscoUpgrader.UpgradeAsync(session, _selectedIosBinPath, hostIp, routerIp, subnetMask, lanInterface, null, adapter, InstruirOperadorAsync, ct);
+            var ciscoCandidates = new List<string>();
+            ciscoCandidates.Add("PRO1AN");
+            if (!string.IsNullOrWhiteSpace(_lastResolvedEnableSecret) && !ciscoCandidates.Contains(_lastResolvedEnableSecret))
+                ciscoCandidates.Add(_lastResolvedEnableSecret);
+            if (!string.IsNullOrWhiteSpace(_lastResolvedPass) && !ciscoCandidates.Contains(_lastResolvedPass))
+                ciscoCandidates.Add(_lastResolvedPass);
+            if (!ciscoCandidates.Contains("CQMR")) ciscoCandidates.Add("CQMR");
+            var enableSec = _lastResolvedEnableSecret ?? "PRO1AN";
+            success = await ciscoUpgrader.UpgradeAsync(
+                session, _selectedIosBinPath, hostIp, routerIp, subnetMask, lanInterface,
+                expectedMd5: null, localAdapterName: adapter, requestOperatorAction: InstruirOperadorAsync,
+                cancellationToken: ct, enableSecret: enableSec, candidatePasswords: ciscoCandidates);
         }
 
         if (success)
@@ -7491,8 +7835,24 @@ public partial class MainWindow : Window
 
     private async Task<ConnectivityService.TelnetTestResult> ExecutarTesteTelnetAsync(string host, int port, CancellationToken ct)
     {
+        var profileTag = (CbInterrupt?.SelectedItem as ComboBoxItem)?.Tag?.ToString()
+                      ?? (CbModeloRoteadorInicial?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "";
+        var profile = BootInterruptProfiles.FindById(profileTag);
+        var isHpe = profile.Id.Contains("hpe", StringComparison.OrdinalIgnoreCase) || profile.Family.Contains("MSR", StringComparison.OrdinalIgnoreCase);
+        var isForti = profile.Id.Contains("forti", StringComparison.OrdinalIgnoreCase) || profile.Manufacturer.Contains("Fortinet", StringComparison.OrdinalIgnoreCase) || _isFortiGateDetected;
+        var isCisco = !isForti && !isHpe;
+
         var telnetUser = TxtTelnetUser.Text.Trim(); if (string.IsNullOrEmpty(telnetUser)) telnetUser = "EBT";
-        var telnetPass = TxtTelnetPass.Text.Trim(); if (string.IsNullOrEmpty(telnetPass)) telnetPass = "PRO1ANPRO1AN";
+        var telnetPass = TxtTelnetPass.Text.Trim();
+        if (string.IsNullOrEmpty(telnetPass) || ((isCisco || isForti) && telnetPass == "PRO1ANPRO1AN"))
+        {
+            telnetPass = "CQMR";
+        }
+        else if (isHpe && (string.IsNullOrEmpty(telnetPass) || telnetPass == "CQMR"))
+        {
+            telnetPass = "PRO1ANPRO1AN";
+        }
+
         AtualizarProgresso(50, "Fase F: Testando Telnet...", $"Login {telnetUser} em {host}:{port}...");
         EscreverLinha($"\n[*] [FASE F] TESTE DE ACESSO REMOTO TELNET {host}:{port} (user={telnetUser})");
         var sourceIp = ObterIpOrigemParaIcmp();
@@ -7964,7 +8324,23 @@ public partial class MainWindow : Window
         return Task.CompletedTask;
     }
 
-    private Task NotificarConexaoCaboAsync(string instrucao, CancellationToken ct)
+    private async Task DespertarSessaoAtivaAposDialogoAsync()
+    {
+        try
+        {
+            if (_activeSession != null && _activeSession.IsConnected)
+            {
+                // Envia sequência de retorno de linha para acordar o prompt e absorver mensagens de log assíncronas
+                await _activeSession.WriteLineAsync(string.Empty, CancellationToken.None);
+                await Task.Delay(350);
+                await _activeSession.WriteLineAsync(string.Empty, CancellationToken.None);
+                await Task.Delay(350);
+            }
+        }
+        catch { }
+    }
+
+    private async Task NotificarConexaoCaboAsync(string instrucao, CancellationToken ct)
     {
         EscreverLinha($"\n=================================================================");
         EscreverLinha("               🔌 CONEXÃO DO CABO DE REDE                       ");
@@ -7980,7 +8356,11 @@ public partial class MainWindow : Window
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
         });
-        return Task.CompletedTask;
+
+        AtualizarProgresso(50, "Sincronizando Cabo de Rede...", "Aguardando detecção de link físico na porta...");
+        EscreverLinha("[*] Operador confirmou conexão. Acordando console serial e aguardando link físico...");
+
+        await DespertarSessaoAtivaAposDialogoAsync();
     }
 
     private Task InstruirReinicioEquipamentoAsync(string instrucao, CancellationToken ct)
@@ -8013,9 +8393,9 @@ public partial class MainWindow : Window
         return Task.CompletedTask;
     }
 
-    private Task InstruirOperadorAsync(string instrucao, CancellationToken ct)
+    private async Task InstruirOperadorAsync(string instrucao, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(instrucao)) return Task.CompletedTask;
+        if (string.IsNullOrWhiteSpace(instrucao)) return;
 
         var isReinicio = instrucao.Contains("Desligue", StringComparison.OrdinalIgnoreCase)
                       || instrucao.Contains("Religue", StringComparison.OrdinalIgnoreCase)
@@ -8025,7 +8405,8 @@ public partial class MainWindow : Window
 
         if (isReinicio)
         {
-            return InstruirReinicioEquipamentoAsync(instrucao, ct);
+            await InstruirReinicioEquipamentoAsync(instrucao, ct);
+            return;
         }
 
         // Para instruções de operação em tempo de execução (ex.: troca de porta Ethernet, cabo LAN, etc.)
@@ -8044,7 +8425,15 @@ public partial class MainWindow : Window
                 MessageBoxImage.Information);
         });
 
-        return Task.CompletedTask;
+        if (instrucao.Contains("cabo", StringComparison.OrdinalIgnoreCase) ||
+            instrucao.Contains("porta", StringComparison.OrdinalIgnoreCase) ||
+            instrucao.Contains("LAN", StringComparison.OrdinalIgnoreCase))
+        {
+            AtualizarProgresso(50, "Sincronizando Porta de Rede...", "Aguardando detecção de link físico na porta...");
+            EscreverLinha("[*] Operador confirmou instrução de cabo. Acordando console e aguardando sinal Ethernet...");
+        }
+
+        await DespertarSessaoAtivaAposDialogoAsync();
     }
 
     private void BtnCancelar_Click(object sender, RoutedEventArgs e)

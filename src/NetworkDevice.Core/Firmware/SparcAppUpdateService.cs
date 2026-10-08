@@ -220,10 +220,20 @@ public sealed class SparcAppUpdateService
     /// Faz o download do arquivo de atualização exibindo progresso.
     /// Suporta repositórios privados do GitHub resolvendo URLs de releases para a API oficial de assets.
     /// </summary>
-    public async Task<string> DownloadUpdateFileAsync(
+    public Task<string> DownloadUpdateFileAsync(
         string downloadUrl,
         string destinationFilePath,
         IProgress<double>? progress = null,
+        CancellationToken ct = default)
+    {
+        return DownloadUpdateFileAsync(downloadUrl, destinationFilePath, progress, null, ct);
+    }
+
+    public async Task<string> DownloadUpdateFileAsync(
+        string downloadUrl,
+        string destinationFilePath,
+        IProgress<double>? progress,
+        IProgress<(long BytesRead, long TotalBytes)>? progressBytes,
         CancellationToken ct = default)
     {
         var dir = Path.GetDirectoryName(destinationFilePath);
@@ -280,9 +290,12 @@ public sealed class SparcAppUpdateService
                 var pct = (double)totalRead / totalBytes * 100.0;
                 progress.Report(pct);
             }
+
+            progressBytes?.Report((totalRead, totalBytes));
         }
 
         progress?.Report(100.0);
+        progressBytes?.Report((totalRead, totalBytes > 0 ? totalBytes : totalRead));
         return destinationFilePath;
     }
 

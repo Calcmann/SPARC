@@ -41,7 +41,9 @@ public sealed class CiscoIOSUpgrader
         string? expectedMd5 = null,
         string? localAdapterName = null,
         Func<string, CancellationToken, Task>? requestOperatorAction = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? enableSecret = null,
+        IEnumerable<string>? candidatePasswords = null)
     {
         if (!File.Exists(imageFilePath))
             throw new FileNotFoundException($"Arquivo de imagem IOS não encontrado: {imageFilePath}");
@@ -81,25 +83,18 @@ public sealed class CiscoIOSUpgrader
                 lanInterface,
                 localAdapterName,
                 requestOperatorAction,
-                cancellationToken);
+                cancellationToken,
+                enableSecret: enableSecret,
+                candidatePasswords: candidatePasswords);
         }
 
         await ProgressAsync($"[*] INICIANDO UPGRADE DE IOS ({binFileName} — {sizeMb} MB)...");
 
-        // 1. Garante modo privilegiado (#) e desativa paginação
-        try
-        {
-            var adapter = new CiscoIOSAdapter();
-            await adapter.EnterPrivilegedExecAsync(session, cancellationToken);
-        }
-        catch { }
+        // 1. Garante modo privilegiado (#) tratando ambos os cenários (sem senha ou com senha 'PRO1AN' / credenciais)
+        var adapter = new CiscoIOSAdapter(enableSecret, candidatePasswords);
+        await adapter.EnterPrivilegedExecAsync(session, candidatePasswords, cancellationToken);
 
-        try
-        {
-            await session.SendCommandAsync("enable", TimeSpan.FromSeconds(5), cancellationToken);
-        }
-        catch { }
-
+        // Desativa paginação apenas APÓS privilégio garantido
         try { await session.SendCommandAsync("terminal length 0", TimeSpan.FromSeconds(5), cancellationToken); } catch { }
         try { await session.SendCommandAsync("terminal width 512", TimeSpan.FromSeconds(5), cancellationToken); } catch { }
 
@@ -480,39 +475,82 @@ public sealed class CiscoIOSUpgrader
             await session.SendCommandAsync("write memory", TimeSpan.FromSeconds(30), cancellationToken);
             await ProgressAsync($"[*] Boot system configurado e salvo com sucesso.");
 
+            // 8b. Zeramento conjunto de configuração no mesmo reload (aproveita o reboot obrigatório de upgrade do SO)
+            await ProgressAsync("[*] Zerando configurações antigas e senhas residuais da NVRAM (write erase) para boot limpo...");
+            try
+            {
+                await session.WriteLineAsync("write erase", cancellationToken);
+                await Task.Delay(400, cancellationToken);
+                await session.WriteLineAsync(string.Empty, cancellationToken);
+                await Task.Delay(800, cancellationToken);
+            }
+            catch { }
+
             // 9. Reload automático
-            await ProgressAsync($"\n[*] [RELOAD AUTOMÁTICO] Reiniciando roteador Cisco para inicializar com {binFileName}...");
-            await ExecutarReloadCiscoAsync(session, cancellationToken);
+            await ProgressAsync($"\n[*] [RELOAD AUTOMÁTICO CONJUNTO] Reiniciando roteador Cisco (novo firmware {binFileName} + base limpa)...");
+            await ExecutarReloadCiscoAsync(session, cancellationToken, enableSecret, candidatePasswords);
             await ProgressAsync($"[OK] Comando de reinicialização enviado ao Cisco IOS!");
 
             return true;
     }
 
-    private async Task ExecutarReloadCiscoAsync(DeviceSession session, CancellationToken ct)
+    private async Task ExecutarReloadCiscoAsync(
+        DeviceSession session,
+        CancellationToken ct,
+        string? enableSecret = null,
+        IEnumerable<string>? candidatePasswords = null)
     {
         try
         {
-            await session.SendExpectAsync(
-                "reload",
+            await session.WriteLineAsync("reload", ct);
+            var reloadRes = await session.WaitForAsync(
                 new StopCondition[]
                 {
                     new StopCondition.Contains("Proceed with reload? [confirm]", "Proceed with reload? [confirm]"),
                     new StopCondition.Contains("[confirm]", "[confirm]"),
+                    new StopCondition.Contains("System configuration has been modified", "System configuration has been modified"),
                     new StopCondition.Prompt()
                 },
-                TimeSpan.FromSeconds(10),
+                TimeSpan.FromSeconds(15),
                 ct);
+
+            if (reloadRes.Output.Contains("System configuration has been modified", StringComparison.OrdinalIgnoreCase))
+            {
+                await session.WriteLineAsync("yes", ct);
+                await Task.Delay(500, ct);
+                try
+                {
+                    await session.WaitForAsync(
+                        new StopCondition[]
+                        {
+                            new StopCondition.Contains("Proceed with reload? [confirm]", "Proceed with reload? [confirm]"),
+                            new StopCondition.Contains("[confirm]", "[confirm]")
+                        },
+                        TimeSpan.FromSeconds(15),
+                        ct);
+                }
+                catch { }
+            }
 
             await session.WriteLineAsync(string.Empty, ct);
         }
         catch { }
 
         // Monitora o boot completo, transmite CLI em tempo real e responde diálogos iniciais
-        await AguardarBootCiscoIOSAsync(session, TimeSpan.FromMinutes(6), ct);
+        await AguardarBootCiscoIOSAsync(session, TimeSpan.FromMinutes(6), ct, enableSecret, candidatePasswords);
+
+        // Estabiliza e recupera acesso CLI em modo privilegiado
+        await EstabilizarCliPosBootAsync(session, enableSecret, candidatePasswords, ct);
     }
 
-    private async Task AguardarBootCiscoIOSAsync(DeviceSession session, TimeSpan baseTimeout, CancellationToken ct)
+    public async Task AguardarBootCiscoIOSAsync(
+        DeviceSession session,
+        TimeSpan baseTimeout,
+        CancellationToken ct,
+        string? enableSecret = null,
+        IEnumerable<string>? candidatePasswords = null)
     {
+        var bootStartTime = DateTime.UtcNow;
         var bootTimeout = DateTime.UtcNow.Add(baseTimeout);
         var maxAbsoluteTimeout = DateTime.UtcNow.AddMinutes(20);
         var lastStatusLog = DateTime.MinValue;
@@ -522,8 +560,28 @@ public sealed class CiscoIOSUpgrader
         int upgradeTo512Count = 0;
         int noMemoryLicenseCount = 0;
         bool decompressionReported = false;
+        bool decompressionCompleted = false;
 
         var loggedBootMilestones = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var passList = new List<string>();
+        if (!string.IsNullOrWhiteSpace(enableSecret)) passList.Add(enableSecret);
+        if (candidatePasswords != null)
+        {
+            foreach (var cp in candidatePasswords)
+            {
+                if (!string.IsNullOrWhiteSpace(cp) && !passList.Contains(cp, StringComparer.OrdinalIgnoreCase))
+                    passList.Add(cp);
+            }
+        }
+        if (!passList.Contains("PRO1AN", StringComparer.OrdinalIgnoreCase))
+            passList.Add("PRO1AN");
+        if (!string.IsNullOrWhiteSpace(session.Options.Password) && !passList.Contains(session.Options.Password, StringComparer.OrdinalIgnoreCase))
+            passList.Add(session.Options.Password);
+        passList.Add(""); // tentativa em branco
+
+        int passwordAttempt = 0;
+        int usernameAttempt = 0;
 
         // Assina RawOutput da sessão para escutar cada chunk em tempo real
         var lineAccumulator = new StringBuilder();
@@ -607,13 +665,20 @@ public sealed class CiscoIOSUpgrader
                         }
                     }
 
-                    // Detecta conclusão de descompressão [OK]
-                    if (trimmed.EndsWith("[OK]") || trimmed.Contains("[OK]"))
+                    // Detecta conclusão de descompressão [OK] ou início da execução do IOS
+                    if (trimmed.EndsWith("[OK]") || trimmed.Contains("[OK]") ||
+                        trimmed.Contains("Cisco IOS Software", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.StartsWith("%SYS-5-CONFIG_I", StringComparison.OrdinalIgnoreCase) ||
+                        trimmed.StartsWith("%SYS-5-RESTART", StringComparison.OrdinalIgnoreCase))
                     {
-                        if (loggedBootMilestones.Add("DECOMPRESSION_OK_" + (DateTime.UtcNow.Ticks / TimeSpan.TicksPerSecond / 10)))
+                        if (!decompressionCompleted)
                         {
-                            await ProgressAsync("  │ [BOOT] Descompressão da imagem IOS concluída com sucesso! [OK]");
-                            decompressionReported = false;
+                            decompressionCompleted = true;
+                            if (loggedBootMilestones.Add("DECOMPRESSION_OK_" + (DateTime.UtcNow.Ticks / TimeSpan.TicksPerSecond / 10)))
+                            {
+                                await ProgressAsync("  │ [BOOT] Descompressão da imagem IOS concluída com sucesso! [OK]");
+                                decompressionReported = false;
+                            }
                         }
                     }
 
@@ -655,7 +720,6 @@ public sealed class CiscoIOSUpgrader
                 }
 
                 // 2. Extensão Dinâmica de Timeout (Keep-Alive de Atividade)
-                // Se o roteador transmitiu dados nos últimos 45 segundos, mantém pelo menos +120s de prazo
                 if ((DateTime.UtcNow - lastActivityTime).TotalSeconds < 45)
                 {
                     var extended = DateTime.UtcNow.AddSeconds(120);
@@ -673,7 +737,21 @@ public sealed class CiscoIOSUpgrader
                     await ProgressAsync($"[*] Aguardando boot do Cisco IOS ({phaseMsg}, ~{remainingSec}s restantes)...");
                 }
 
-                // 3. Testa condições de parada e prompts
+                // 3. Keep-Alive / Despertador Ativo da Console Serial:
+                // Quando a descompressão termina (ou após 45s de boot), o Cisco IOS inicializa interfaces
+                // e pode emitir rajadas de syslog (%LINK-3-UPDOWN, %LINEPROTO-5-UPDOWN), empurrando o prompt
+                // para fora da linha final do terminal.
+                // Enviar Enter a cada 4 segundos garante o redesenho do prompt e acorda o console sem depender
+                // de silêncio de linha que nunca ocorreria durante a rajada de syslogs.
+                var elapsedTotal = (DateTime.UtcNow - bootStartTime).TotalSeconds;
+                if ((decompressionCompleted || elapsedTotal >= 45) &&
+                    (DateTime.UtcNow - lastKeepAliveEnter).TotalSeconds >= 4)
+                {
+                    lastKeepAliveEnter = DateTime.UtcNow;
+                    await session.SendRawAsync("\r\n", ct);
+                }
+
+                // 4. Testa condições de parada e prompts
                 try
                 {
                     var result = await session.WaitForAsync(
@@ -681,9 +759,13 @@ public sealed class CiscoIOSUpgrader
                         {
                             new StopCondition.LineRegex("mem-upgrade", new Regex(@"(?i)(?:UPGRADING\s+TO\s+\d+MB|RELOADING\.\.\.\.|No\s+memory\s+license.*reboot|memory\s+license.*reboot)")),
                             new StopCondition.LineRegex("invalid-image", new Regex(@"(?i)Invalid\s+image\s+for\s+platform|failed\s+to\s+boot.*unsupported")),
-                            new StopCondition.LineRegex("dialog", new Regex(@"(?i)initial\s+configuration\s+dialog|\?\s*\[yes/no\]|\[yes\]")),
-                            new StopCondition.LineRegex("autoinstall", new Regex(@"(?i)terminate\s+autoinstall")),
-                            new StopCondition.LineRegex("press-return", new Regex(@"(?i)press\s+return\s+to\s+get\s+started|press\s+enter")),
+                            // Autoinstall DEVE ser checado ANTES do diálogo inicial e de [yes/no]!
+                            new StopCondition.LineRegex("terminate-autoinstall", new Regex(@"(?i)terminate\s+autoinstall|cancel\s+autoinstall")),
+                            new StopCondition.LineRegex("initial-dialog", new Regex(@"(?i)(?:initial\s+configuration\s+dialog|basic\s+management\s+setup)")),
+                            new StopCondition.LineRegex("yes-no-choice", new Regex(@"\?\s*\[yes/no\]")),
+                            new StopCondition.LineRegex("press-return", new Regex(@"(?i)(?:press\s+(?:RETURN|ENTER)\s+to\s+get\s+started|con0\s+is\s+(?:now\s+)?available|Line\s+con0\s+is\s+available)")),
+                            new StopCondition.LineRegex("login-user", new Regex(@"(?i)(?:username|login|user\s*name)\s*:\s*$")),
+                            new StopCondition.LineRegex("login-pass", new Regex(@"(?i)password\s*:\s*$")),
                             new StopCondition.LineRegex("cisco-prompt", StrictPromptRegex),
                             new StopCondition.Prompt()
                         },
@@ -700,23 +782,49 @@ public sealed class CiscoIOSUpgrader
                         {
                             await ProgressAsync("[ALERTA CRÍTICO] A imagem de firmware é incompatível com o hardware do roteador (Invalid image for platform).");
                         }
-                        else if (lr.Name == "dialog")
+                        else if (lr.Name == "terminate-autoinstall")
+                        {
+                            await ProgressAsync("[*] Diálogo autoinstall detectado — enviando 'yes' para cancelar autoinstall...");
+                            await session.WriteLineAsync("yes", ct);
+                            await Task.Delay(500, ct);
+                        }
+                        else if (lr.Name == "initial-dialog")
                         {
                             await ProgressAsync("[*] Diálogo de configuração inicial detectado — enviando 'no'...");
                             await session.WriteLineAsync("no", ct);
-                            await Task.Delay(2000, ct);
+                            await Task.Delay(500, ct);
                         }
-                        else if (lr.Name == "autoinstall")
+                        else if (lr.Name == "yes-no-choice")
                         {
-                            await ProgressAsync("[*] Diálogo autoinstall detectado — enviando 'yes'...");
-                            await session.WriteLineAsync("yes", ct);
-                            await Task.Delay(1000, ct);
+                            var answer = result.Output.Contains("autoinstall", StringComparison.OrdinalIgnoreCase) ? "yes" : "no";
+                            await ProgressAsync($"[*] Diálogo [yes/no] detectado — enviando '{answer}'...");
+                            await session.WriteLineAsync(answer, ct);
+                            await Task.Delay(1500, ct);
                         }
                         else if (lr.Name == "press-return")
                         {
                             await ProgressAsync("[*] 'Press RETURN to get started' detectado — enviando ENTER...");
                             await session.WriteLineAsync(string.Empty, ct);
                             await Task.Delay(1000, ct);
+                        }
+                        else if (lr.Name == "login-user")
+                        {
+                            usernameAttempt++;
+                            string u = !string.IsNullOrWhiteSpace(session.Options.Username) && usernameAttempt == 1
+                                ? session.Options.Username
+                                : (usernameAttempt == 2 ? "cisco" : (usernameAttempt == 3 ? "admin" : "EBT"));
+                            await ProgressAsync($"[*] Prompt de autenticação de console detectado — enviando usuário '{u}'...");
+                            await session.WriteLineAsync(u, ct);
+                            await Task.Delay(500, ct);
+                        }
+                        else if (lr.Name == "login-pass")
+                        {
+                            var passIndex = passwordAttempt % passList.Count;
+                            var p = passList[passIndex];
+                            passwordAttempt++;
+                            await ProgressAsync($"[*] Prompt de senha de console detectado — autenticando (tentativa {passwordAttempt})...");
+                            await session.WriteLineAsync(p, ct);
+                            await Task.Delay(800, ct);
                         }
                         else if (lr.Name == "cisco-prompt" || result.Matched is StopCondition.Prompt)
                         {
@@ -734,13 +842,7 @@ public sealed class CiscoIOSUpgrader
                 }
                 catch (SessionTimeoutException)
                 {
-                    // Envia Enter suave somente após 20s de silêncio para acordar o prompt sem poluir o boot
-                    if ((DateTime.UtcNow - lastKeepAliveEnter).TotalSeconds >= 20 &&
-                        (DateTime.UtcNow - lastActivityTime).TotalSeconds >= 10)
-                    {
-                        lastKeepAliveEnter = DateTime.UtcNow;
-                        await session.WriteLineAsync(string.Empty, ct);
-                    }
+                    // Se a descompressão já concluiu e estamos aguardando prompt, o envio de Enter periódico na seção 3 redesenha o prompt.
                 }
             }
         }
@@ -756,6 +858,43 @@ public sealed class CiscoIOSUpgrader
         }
 
         throw new TimeoutException("O Cisco IOS reiniciou mas o prompt operacional não respondeu dentro do tempo limite. Verifique a console serial.");
+    }
+
+    public async Task EstabilizarCliPosBootAsync(
+        DeviceSession session,
+        string? enableSecret,
+        IEnumerable<string>? candidatePasswords,
+        CancellationToken ct)
+    {
+        await ProgressAsync("[*] Estabilizando acesso CLI via console pós-boot...");
+
+        // 1. Drena quaisquer logs de inicialização residuais enviando quebras de linha suaves
+        for (int i = 0; i < 3; i++)
+        {
+            await session.SendRawAsync("\r\n", ct);
+            await Task.Delay(300, ct);
+        }
+
+        // 2. Se estiver em modo User EXEC ('>'), eleva para Privileged EXEC ('#') via CiscoIOSAdapter
+        var adapter = new CiscoIOSAdapter(enableSecret, candidatePasswords);
+        try
+        {
+            await adapter.EnterPrivilegedExecAsync(session, candidatePasswords, ct);
+        }
+        catch (Exception ex)
+        {
+            await ProgressAsync($"[AVISO] Elevação de privilégio pós-boot: {ex.Message}");
+        }
+
+        // 3. Desativa paginação e define largura para comandos subsequentes
+        try
+        {
+            await session.SendCommandAsync("terminal length 0", TimeSpan.FromSeconds(5), ct);
+            await session.SendCommandAsync("terminal width 512", TimeSpan.FromSeconds(5), ct);
+        }
+        catch { }
+
+        await ProgressAsync($"[OK] Console CLI estabilizado e pronto para operação (Prompt: '{session.CurrentPrompt}').");
     }
 
     private async Task ProgressAsync(string message)
@@ -801,7 +940,9 @@ public sealed class CiscoIOSUpgrader
         string? lanInterface = null,
         string? localAdapterName = null,
         Func<string, CancellationToken, Task>? requestOperatorAction = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? enableSecret = null,
+        IEnumerable<string>? candidatePasswords = null)
     {
         var binFileName = Path.GetFileName(imageFilePath);
         var imageDir = Path.GetDirectoryName(imageFilePath) ?? AppContext.BaseDirectory;
@@ -1114,7 +1255,7 @@ public sealed class CiscoIOSUpgrader
         await ProgressAsync("[*] Aguardando descompressão e inicialização completa do Cisco IOS (isso pode levar ~2-4 minutos)...");
         _onProgress?.Invoke(90, "Fase B: Carregando Cisco IOS...", "Aguardando descompressão e prompt do Cisco IOS...");
 
-        await AguardarBootCiscoIOSAsync(session, TimeSpan.FromMinutes(6), cancellationToken);
+        await AguardarBootCiscoIOSAsync(session, TimeSpan.FromMinutes(6), cancellationToken, enableSecret, candidatePasswords);
         var booted = true;
 
         // 8. Se entrou no prompt Cisco IOS, limpa NVRAM antiga e garante boot normal persistente (0x2102)
@@ -1122,12 +1263,9 @@ public sealed class CiscoIOSUpgrader
         {
             try
             {
-                await session.WriteLineAsync(string.Empty, cancellationToken);
-                await Task.Delay(500, cancellationToken);
-                await session.WriteLineAsync("enable", cancellationToken);
-                await Task.Delay(500, cancellationToken);
-                await session.WriteLineAsync("terminal length 0", cancellationToken);
-                await Task.Delay(300, cancellationToken);
+                var postAdapter = new CiscoIOSAdapter(enableSecret, candidatePasswords);
+                try { await postAdapter.EnterPrivilegedExecAsync(session, candidatePasswords, cancellationToken); } catch { }
+                try { await session.SendCommandAsync("terminal length 0", TimeSpan.FromSeconds(5), cancellationToken); } catch { }
 
                 // Apaga permanentemente configurações e senhas antigas da NVRAM
                 await ProgressAsync("[*] Apagando configurações antigas e senhas residuais da NVRAM (write erase)...");
@@ -1179,6 +1317,9 @@ public sealed class CiscoIOSUpgrader
                                is921Post ? "Porta 5 (GE 5)" :
                                "Porta 1 (GE 0/1)";
 
+            _onProgress?.Invoke(92, "Fase B: Troca de Cabo de Rede...", $"Aguardando alteração do cabo para a porta {lanPostShort}...");
+            await ProgressAsync($"\n[AVISO] Solicitando alteração do cabo de rede da porta WAN para a porta LAN ({lanPostShort})...");
+
             await requestOperatorAction(
                 "✅ FIRMWARE RECUPERADO COM SUCESSO!\n\n" +
                 "O Cisco IOS já está ativo e inicializado na nova versão.\n\n" +
@@ -1188,19 +1329,24 @@ public sealed class CiscoIOSUpgrader
                 $"Clique em OK assim que o cabo estiver conectado na porta {lanPostShort}.",
                 cancellationToken);
 
+            _onProgress?.Invoke(94, "Fase B: Sincronizando Porta LAN...", $"Aguardando link ativo na porta {lanPostShort}...");
+            await ProgressAsync($"[*] Operador confirmou a troca do cabo para a porta LAN ({lanPostShort}). Acordando terminal e sincronizando...");
+
             // Acorda imediatamente a console serial do Cisco IOS e absorve eventuais syslogs de cabo
             try
             {
-                await session.WriteLineAsync(string.Empty, cancellationToken);
-                await Task.Delay(500, cancellationToken);
-                await session.WriteLineAsync("enable", cancellationToken);
-                await Task.Delay(300, cancellationToken);
-                await session.WriteLineAsync("terminal length 0", cancellationToken);
+                var postAdapter2 = new CiscoIOSAdapter(enableSecret, candidatePasswords);
+                try { await postAdapter2.EnterPrivilegedExecAsync(session, candidatePasswords, cancellationToken); } catch { }
+                try { await session.SendCommandAsync("terminal length 0", TimeSpan.FromSeconds(5), cancellationToken); } catch { }
             }
             catch { }
+
+            // Executa verificação ativa da porta LAN com contagem contínua e status visual para garantir que o link subiu
+            var targetLan = is841Post ? "GigabitEthernet0/5" : is921Post ? "GigabitEthernet 5" : "GigabitEthernet 0/1";
+            await CiscoIOSAdapter.EnforceLanPortConnectedAsync(session, targetLan, requestOperatorAction, ProgressAsync, cancellationToken, _onProgress);
         }
 
-        _onProgress?.Invoke(100, "Fase B Concluída!", $"Roteador recuperado e bootado com {binFileName}.");
+        _onProgress?.Invoke(100, "Fase B Concluída!", $"Roteador recuperado e porta LAN sincronizada com sucesso ({binFileName}).");
         return true;
     }
 }

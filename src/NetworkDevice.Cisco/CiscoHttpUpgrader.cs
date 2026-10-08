@@ -49,7 +49,9 @@ public sealed class CiscoHttpUpgrader
         string? routerTempMask = null,
         string? lanInterface = null,
         string? expectedMd5 = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? enableSecret = null,
+        IEnumerable<string>? candidatePasswords = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         if (string.IsNullOrWhiteSpace(fileName)) throw new ArgumentException("Nome do firmware inválido.", nameof(fileName));
@@ -70,7 +72,10 @@ public sealed class CiscoHttpUpgrader
         await ProgressAsync($"[*] Servidor do celular: http://{phoneIp}:{phonePort}/{fileName}");
 
         // 1. Modo privilegiado + sem paginação (reusa a normalização fiel do provisionamento)
-        await CiscoSaipConfigurator.EnsurePrivilegedExecAsync(session, cancellationToken);
+        var candidates = new List<string>();
+        if (!string.IsNullOrWhiteSpace(enableSecret)) candidates.Add(enableSecret);
+        if (candidatePasswords != null) candidates.AddRange(candidatePasswords);
+        await CiscoSaipConfigurator.EnsurePrivilegedExecAsync(session, candidates, cancellationToken);
         try { await session.SendCommandAsync("terminal length 0", TimeSpan.FromSeconds(5), cancellationToken); } catch { }
 
         // 2. Estado atual: versão, flash, boot
@@ -191,26 +196,15 @@ public sealed class CiscoHttpUpgrader
         }
 
         await ProgressAsync("[*] Aguardando boot do novo IOS (até 8 min)...");
-        var deadline = DateTime.UtcNow.AddMinutes(8);
-        var back = false;
-        while (DateTime.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
+        try
         {
-            try
-            {
-                await session.WriteLineAsync(string.Empty, cancellationToken);
-                await session.WaitForAsync(
-                    new StopCondition[] { new StopCondition.Prompt() },
-                    TimeSpan.FromSeconds(15), cancellationToken);
-                back = true;
-                break;
-            }
-            catch (SessionTimeoutException) { await ProgressAsync("[*] Aguardando retorno do console pós-reload..."); }
+            var upgraderHelper = new CiscoIOSUpgrader(_progress, null);
+            await upgraderHelper.AguardarBootCiscoIOSAsync(session, TimeSpan.FromMinutes(8), cancellationToken, enableSecret, candidatePasswords);
+            await upgraderHelper.EstabilizarCliPosBootAsync(session, enableSecret, candidatePasswords, cancellationToken);
         }
-
-        if (!back)
+        catch (Exception ex)
         {
-            await ProgressAsync("[AVISO] Console não retornou em 8 min — verifique fisicamente e valide 'show version'.");
-            return false;
+            await ProgressAsync($"[AVISO] Boot monitoring Cisco IOS: {ex.Message}");
         }
 
         await Task.Delay(2000, cancellationToken);

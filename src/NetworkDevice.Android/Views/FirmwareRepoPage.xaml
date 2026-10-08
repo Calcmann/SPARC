@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="NetworkDevice.Android.Views.FirmwareRepoPage"
+             Title="Repositório de Firmwares"
+             BackgroundColor="#0B0F19">
+    <Grid RowDefinitions="Auto, *">
+
+        <!-- Cabeçalho -->
+        <Frame Grid.Row="0" BackgroundColor="#0F172A" BorderColor="#1E293B" CornerRadius="0" Padding="14,10" HasShadow="False">
+            <VerticalStackLayout Spacing="8">
+                <Grid ColumnDefinitions="*, Auto">
+                    <VerticalStackLayout Spacing="2">
+                        <Label Text="📦 SPARC Mobile • Repositório de Firmwares" FontSize="15" FontAttributes="Bold" TextColor="#38BDF8" />
+                        <Label Text="Gestão offline das imagens homologadas pela engenharia Claro" FontSize="11" TextColor="#94A3B8" />
+                    </VerticalStackLayout>
+                    <Button Grid.Column="1" Text="✕ Fechar" Clicked="OnVoltarClicked" BackgroundColor="#334155" TextColor="White" CornerRadius="8" FontSize="11" HeightRequest="34" Padding="12,0" />
+                </Grid>
+
+                <!-- Resumo e Ações Rápidas -->
+                <Frame BackgroundColor="#1E293B" CornerRadius="8" Padding="10" BorderColor="#334155">
+                    <VerticalStackLayout Spacing="8">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <Label Grid.Column="0" x:Name="TxtStatusGeral" Text="Verificando imagens armazenadas..." FontSize="11.5" FontAttributes="Bold" TextColor="#F8FAFC" VerticalOptions="Center" />
+                            <Border Grid.Column="1" BackgroundColor="#064E3B" StrokeShape="RoundRectangle 4" Padding="6,2" VerticalOptions="Center">
+                                <Label x:Name="BadgeTotalOffline" Text="0/0 Offline" FontSize="10" FontAttributes="Bold" TextColor="#34D399" />
+                            </Border>
+                        </Grid>
+                        <Label x:Name="TxtLocalPath" Text="Diretório: ..." FontSize="10" TextColor="#64748B" LineBreakMode="MiddleTruncation" />
+
+                        <!-- Barra de Ações em Lote -->
+                        <Grid ColumnDefinitions="*, *" ColumnSpacing="8" Margin="0, 4, 0, 0">
+                            <Button Grid.Column="0" Text="🔄 Atualizar Catálogo" Clicked="OnAtualizarCatalogoClicked" BackgroundColor="#0284C7" TextColor="White" CornerRadius="6" FontSize="11" HeightRequest="36" FontAttributes="Bold" />
+                            <Button Grid.Column="1" x:Name="BtnBaixarTodos" Text="⬇️ Baixar Todos Pendentes" Clicked="OnBaixarTodosClicked" BackgroundColor="#059669" TextColor="White" CornerRadius="6" FontSize="11" HeightRequest="36" FontAttributes="Bold" />
+                        </Grid>
+                    </VerticalStackLayout>
+                </Frame>
+            </VerticalStackLayout>
+        </Frame>
+
+        <!-- Lista de Firmwares Homologados -->
+        <ScrollView Grid.Row="1">
+            <VerticalStackLayout Padding="14" Spacing="10" x:Name="FirmwaresContainer">
+                <ActivityIndicator x:Name="LoadingSpinner" IsRunning="True" Color="#38BDF8" HeightRequest="40" Margin="0,20,0,0" />
+                <Label x:Name="LoadingLabel" Text="Carregando repositório de firmwares..." FontSize="12" TextColor="#94A3B8" HorizontalTextAlignment="Center" />
+            </VerticalStackLayout>
+        </ScrollView>
+
+    </Grid>
+</ContentPage>

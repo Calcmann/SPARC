@@ -24,7 +24,7 @@ public sealed class CiscoIOSRecovery
         RegexOptions.Compiled);
 
     private static readonly Regex BootDialogPrompt = new(
-        @"(?i)(?:system\s+configuration\s+dialog|would\s+you\s+like\s+to\s+enter\s+the\s+initial\s+configuration\s+dialog|\[yes/no\])",
+        @"(?i)(?:system\s+configuration\s+dialog|initial\s+configuration\s+dialog|basic\s+management\s+setup)",
         RegexOptions.Compiled);
 
     private static readonly Regex PressReturnPrompt = new(
@@ -426,9 +426,20 @@ public sealed class CiscoIOSRecovery
             // Se estiver em modo de usuário (ex: Router>)
             if (Regex.IsMatch(outText, @"[^\r\n]+>\s*$"))
             {
-                await session.WriteLineAsync("enable", ct);
-                await Task.Delay(400, ct);
-                continue;
+                var adapter = new CiscoIOSAdapter(candidatePasswords: new[] { "PRO1AN" });
+                try
+                {
+                    await adapter.EnterPrivilegedExecAsync(session, cancellationToken: ct);
+                    if (progress != null)
+                        await progress("[*] Retornado com sucesso ao menu privilegiado do Cisco (Privileged EXEC #).");
+                    return true;
+                }
+                catch
+                {
+                    await session.WriteLineAsync("enable", ct);
+                    await Task.Delay(400, ct);
+                    continue;
+                }
             }
         }
         return false;
@@ -490,9 +501,17 @@ public sealed class CiscoIOSRecovery
         await ProgressAsync("Entrando em modo privilegiado (enable)...", ct);
         await session.WriteLineAsync(string.Empty, ct);
         await Task.Delay(200, ct);
-        await session.WriteLineAsync("enable", ct);
-        await Task.Delay(300, ct);
-        await WaitForPromptAsync(session, ct);
+        var recoveryAdapter = new CiscoIOSAdapter(candidatePasswords: new[] { "PRO1AN" });
+        try
+        {
+            await recoveryAdapter.EnterPrivilegedExecAsync(session, cancellationToken: ct);
+        }
+        catch
+        {
+            await session.WriteLineAsync("enable", ct);
+            await Task.Delay(300, ct);
+            await WaitForPromptAsync(session, ct);
+        }
 
         await ProgressAsync("Apagando configuração e removendo senha antiga (write erase)...", ct);
         await SendConfirmAsync(session, "write erase", EraseConfirm, waitForPrompt: true, ct);
@@ -534,26 +553,35 @@ public sealed class CiscoIOSRecovery
                 var result = await session.WaitForAsync(
                     new StopCondition[]
                     {
+                        new StopCondition.LineRegex("autoinstall", new Regex(@"(?i)terminate\s+autoinstall|cancel\s+autoinstall")),
                         new StopCondition.LineRegex("dialog", BootDialogPrompt),
-                        new StopCondition.LineRegex("autoinstall", new Regex(@"(?i)terminate\s+autoinstall|autoinstall")),
+                        new StopCondition.LineRegex("dialog-fallback", new Regex(@"\?\s*\[yes/no\]")),
                         new StopCondition.LineRegex("press-return", PressReturnPrompt),
-                        new StopCondition.LineRegex("cisco-prompt", new Regex(@"^[A-Za-z0-9_.-]+[>#]\s*$", RegexOptions.Compiled))
+                        new StopCondition.LineRegex("cisco-prompt", new Regex(@"^[A-Za-z0-9_.-]+[>#]\s*$", RegexOptions.Compiled)),
+                        new StopCondition.Prompt()
                     },
                     TimeSpan.FromSeconds(3),
                     ct);
 
                 if (result.Matched is StopCondition.LineRegex lr)
                 {
-                    if (lr.Name == "dialog")
+                    if (lr.Name == "autoinstall")
+                    {
+                        await ProgressAsync("[*] Diálogo autoinstall detectado — enviando 'yes' para cancelar...", ct);
+                        await session.WriteLineAsync("yes", ct);
+                        await Task.Delay(800, ct);
+                    }
+                    else if (lr.Name == "dialog")
                     {
                         await ProgressAsync("[*] Diálogo inicial detectado — enviando 'no'...", ct);
                         await session.WriteLineAsync("no", ct);
                         await Task.Delay(800, ct);
                     }
-                    else if (lr.Name == "autoinstall")
+                    else if (lr.Name == "dialog-fallback")
                     {
-                        await ProgressAsync("[*] Diálogo autoinstall detectado — enviando 'yes'...", ct);
-                        await session.WriteLineAsync("yes", ct);
+                        var answer = result.Output.Contains("autoinstall", StringComparison.OrdinalIgnoreCase) ? "yes" : "no";
+                        await ProgressAsync($"[*] Diálogo [yes/no] detectado — enviando '{answer}'...", ct);
+                        await session.WriteLineAsync(answer, ct);
                         await Task.Delay(800, ct);
                     }
                     else if (lr.Name == "press-return")
@@ -562,11 +590,16 @@ public sealed class CiscoIOSRecovery
                         await session.WriteLineAsync(string.Empty, ct);
                         await Task.Delay(500, ct);
                     }
-                    else if (lr.Name == "cisco-prompt")
+                    else if (lr.Name == "cisco-prompt" || result.Matched is StopCondition.Prompt)
                     {
                         await ProgressAsync("[OK] Prompt do Cisco IOS detectado. Console pronto.", ct);
                         return;
                     }
+                }
+                else if (result.Matched is StopCondition.Prompt)
+                {
+                    await ProgressAsync("[OK] Prompt do Cisco IOS detectado. Console pronto.", ct);
+                    return;
                 }
             }
             catch (SessionTimeoutException)

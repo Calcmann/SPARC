@@ -776,6 +776,12 @@ public sealed class CloudLicenseService
     {
         if (string.IsNullOrWhiteSpace(machineGuid)) return (false, null, "GUID não informado.");
 
+        var deletedReqs = LoadDeletedRequestGuids();
+        if (deletedReqs.Contains(machineGuid))
+        {
+            return (false, null, "Solicitação foi excluída.");
+        }
+
         // 1. Tenta buscar da nuvem se token estiver configurado
         if (!string.IsNullOrWhiteSpace(GitHubToken))
         {

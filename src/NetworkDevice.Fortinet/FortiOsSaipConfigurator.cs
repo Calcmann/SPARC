@@ -16,6 +16,27 @@ public sealed class FortiOsSaipConfigurator
         @"(?im)^\s*edit\s+""?(?<iface>[A-Za-z0-9_\-\.]+)""?",
         RegexOptions.Compiled);
 
+    public const string BannerMotd =
+        "||========================================||\r\n" +
+        "||========== CLARO Brasil S.A. ===========||\r\n" +
+        "||========================================||\r\n" +
+        "\r\n" +
+        "SOMENTE USUARIOS AUTORIZADOS\r\n" +
+        "AUTHORIZED USERS ONLY\r\n" +
+        "\r\n" +
+        "OS ACESSOS SERAO MONITORADOS\r\n" +
+        "ACCESSES WILL BE MONITORED\r\n" +
+        "\r\n" +
+        "||========================================||";
+
+    public static string SanitizeHostname(string? raw, string fallback = "ROUTER-CPE")
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return fallback;
+        var clean = Regex.Replace(raw.Trim(), @"[^a-zA-Z0-9_\-\.]", "-");
+        clean = Regex.Replace(clean, @"-+", "-").Trim('-');
+        return string.IsNullOrWhiteSpace(clean) ? fallback : clean;
+    }
+
     private readonly Func<string, Task>? _progress;
 
     /// <summary>
@@ -115,14 +136,36 @@ public sealed class FortiOsSaipConfigurator
         string adminUser = "EBT",
         string adminPassword = "CQMR",
         bool incluirPolicyNat = true,
-        bool incluirAdmin = false)
+        bool incluirAdmin = false,
+        bool incluirBldClaro = true)
     {
         ArgumentNullException.ThrowIfNull(circuit);
 
+        var hostname = SanitizeHostname(circuit.DesignacaoIp ?? circuit.NumeroOts, "ROUTER-CPE");
         var wanAlias = SanitizeAlias($"WAN_EBT_{circuit.DesignacaoIp ?? circuit.NumeroOts ?? "LINK"}");
         var lanAlias = SanitizeAlias($"LAN_CLIENTE_{circuit.ClienteRazaoSocial ?? "CIRCUITO"}");
+        var bandaKbps = circuit.BandaKbps ?? (long)((circuit.BandaMbpsNominal ?? 50) * 1000);
 
-        var cmds = new List<string>
+        var cmds = new List<string>();
+
+        if (incluirBldClaro)
+        {
+            // Hostname e serviços globais
+            cmds.AddRange(new[]
+            {
+                "config system global",
+                $"set hostname \"{hostname}\"",
+                "set timezone 22",
+                "set admintimeout 480",
+                "set pre-login-banner enable",
+                "end",
+                "config system replacemsg admin pre_login",
+                "set message \"||========================================||\r\n||========== CLARO Brasil S.A. ===========||\r\n||========================================||\r\n\r\nSOMENTE USUARIOS AUTORIZADOS\r\nAUTHORIZED USERS ONLY\r\n\r\nOS ACESSOS SERAO MONITORADOS\r\nACCESSES WILL BE MONITORED\r\n\r\n||========================================||\"",
+                "end",
+            });
+        }
+
+        cmds.AddRange(new[]
         {
             "config system interface",
             $"edit \"{wanInterface}\"",
@@ -149,19 +192,134 @@ public sealed class FortiOsSaipConfigurator
             "set status enable",
             "next",
             "end",
-        };
+        });
+
+        if (incluirBldClaro)
+        {
+            // NTP Oficial Claro
+            cmds.AddRange(new[]
+            {
+                "config system ntp",
+                "set server-mode disable",
+                "set status enable",
+                "config ntpserver",
+                "edit 1",
+                "set server \"200.20.186.75\"",
+                "next",
+                "edit 2",
+                "set server \"200.20.186.94\"",
+                "next",
+                "end",
+                "end",
+            });
+
+            // SNMP Oficial Claro
+            cmds.AddRange(new[]
+            {
+                "config system snmp community",
+                "edit 1",
+                "set name \"claro21sup\"",
+                "config hosts",
+                "edit 1",
+                "set ip 200.255.156.192 255.255.255.192",
+                "next",
+                "end",
+                "next",
+                "edit 2",
+                "set name \"LIDER\"",
+                "config hosts",
+                "edit 1",
+                "set ip 200.255.156.192 255.255.255.192",
+                "next",
+                "end",
+                "next",
+                "end",
+            });
+
+            // TACACS+ Oficial Claro
+            cmds.AddRange(new[]
+            {
+                "config user tacacs+",
+                "edit \"TACACS-SERVER-CLARO\"",
+                "set server \"200.255.166.129\"",
+                "set key \"080F636D2A152505052B\"",
+                "set timeout 2",
+                "next",
+                "end",
+            });
+
+            // QoS (Traffic Shaping na WAN)
+            cmds.AddRange(new[]
+            {
+                "config firewall traffic-shaper",
+                "edit \"SHAPE_OUT\"",
+                $"set maximum-bandwidth {bandaKbps}",
+                $"set guaranteed-bandwidth {bandaKbps}",
+                "next",
+                "end",
+            });
+
+            // IPv6 Dual-Stack (se preenchido)
+            if (!string.IsNullOrWhiteSpace(circuit.WanIpv6))
+            {
+                cmds.AddRange(new[]
+                {
+                    "config system interface",
+                    $"edit \"{wanInterface}\"",
+                    "config ipv6",
+                    $"set ip6-address {circuit.WanIpv6}/{circuit.WanIpv6Prefix ?? 64}",
+                    "set ip6-allowaccess ping",
+                    "end",
+                    "next",
+                });
+                if (!string.IsNullOrWhiteSpace(circuit.LanIpv6))
+                {
+                    cmds.AddRange(new[]
+                    {
+                        $"edit \"{lanInterface}\"",
+                        "config ipv6",
+                        $"set ip6-address {circuit.LanIpv6}/{circuit.LanIpv6Prefix ?? 64}",
+                        "set ip6-allowaccess ping",
+                        "end",
+                        "next",
+                    });
+                }
+                cmds.Add("end");
+
+                if (!string.IsNullOrWhiteSpace(circuit.WanIpv6Gateway))
+                {
+                    cmds.AddRange(new[]
+                    {
+                        "config router static6",
+                        "edit 1",
+                        "set dst ::/0",
+                        $"set gateway {circuit.WanIpv6Gateway}",
+                        $"set device \"{wanInterface}\"",
+                        "next",
+                        "end",
+                    });
+                }
+            }
+        }
 
         if (incluirAdmin)
         {
-            cmds.AddRange(new[]
+            var adminList = new List<string>
             {
                 "config system admin",
                 $"edit \"{adminUser}\"",
                 $"set password {adminPassword}",
                 "set accprofile super_admin",
-                "next",
-                "end",
-            });
+            };
+            if (incluirBldClaro)
+            {
+                adminList.Add("set trusthost1 200.255.156.192 255.255.255.192");
+                if (!string.IsNullOrWhiteSpace(circuit.WanGateway))
+                    adminList.Add($"set trusthost2 {circuit.WanGateway} 255.255.255.255");
+            }
+            adminList.Add("next");
+            adminList.Add("end");
+            cmds.AddRange(adminList);
         }
 
         if (incluirPolicyNat)
@@ -538,7 +696,8 @@ public sealed class FortiOsSaipConfigurator
         Func<string, CancellationToken, Task>? requestOperatorAction = null,
         Func<string, Task>? progress = null,
         CancellationToken cancellationToken = default,
-        int pollDelayMs = 2000)
+        int pollDelayMs = 2000,
+        Action<int, string, string>? onProgress = null)
     {
         ArgumentNullException.ThrowIfNull(session);
 
@@ -546,9 +705,27 @@ public sealed class FortiOsSaipConfigurator
         if (pollDelayMs > 50)
             await Task.Delay(pollDelayMs, cancellationToken);
 
-        for (var attempt = 1; attempt <= 15; attempt++)
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        for (var attempt = 1; attempt <= 20; attempt++)
         {
-            var output = await session.SendCommandAsync("get system interface physical", TimeSpan.FromSeconds(8), cancellationToken);
+            var elapsedSec = (int)sw.Elapsed.TotalSeconds;
+            string output = string.Empty;
+            try
+            {
+                output = await session.SendCommandAsync("get system interface physical", TimeSpan.FromSeconds(12), cancellationToken);
+            }
+            catch (SessionTimeoutException)
+            {
+                // Se a console adormeceu ou um syslog mascarou o prompt, envia Enter de despertar e continua
+                try { await session.WriteLineAsync(string.Empty, cancellationToken); } catch { }
+                await Task.Delay(1000, cancellationToken);
+                continue;
+            }
+            catch (Exception)
+            {
+                try { await session.WriteLineAsync(string.Empty, cancellationToken); } catch { }
+            }
 
             // Verifica se alguma das portas LAN físicas (lan1, lan2, lan3) ou o switch lan está UP
             var isLan1Up = IsPhysicalInterfaceUp(output, "lan1") || IsPhysicalInterfaceUp(output, "port1") || IsPhysicalInterfaceUp(output, "internal1");
@@ -561,7 +738,16 @@ public sealed class FortiOsSaipConfigurator
             // Se 'get system interface physical' não detalhou portas (ex: outro modelo), faz fallback com diagnose
             if (!isAnyLanUp && !isWanUp)
             {
-                var diagNet = await session.SendCommandAsync("diagnose netlink interface list", TimeSpan.FromSeconds(8), cancellationToken);
+                string diagNet = string.Empty;
+                try
+                {
+                    diagNet = await session.SendCommandAsync("diagnose netlink interface list", TimeSpan.FromSeconds(12), cancellationToken);
+                }
+                catch
+                {
+                    try { await session.WriteLineAsync(string.Empty, cancellationToken); } catch { }
+                }
+
                 isLan1Up = IsNetlinkInterfaceUp(diagNet, "lan1") || IsNetlinkInterfaceUp(diagNet, "port1");
                 isLan2Up = IsNetlinkInterfaceUp(diagNet, "lan2") || IsNetlinkInterfaceUp(diagNet, "port2");
                 isLan3Up = IsNetlinkInterfaceUp(diagNet, "lan3") || IsNetlinkInterfaceUp(diagNet, "port3");
@@ -575,14 +761,16 @@ public sealed class FortiOsSaipConfigurator
                                  isLan2Up ? "Porta 2 (Giga 2 / lan2)" :
                                  isLan3Up ? "Porta 3 (Giga 3 / lan3)" : "LAN";
                 if (progress is not null)
-                    await progress($"[OK] Link físico confirmado na porta LAN do FortiGate: {portaAtiva} (1000 Mbps Full-Duplex).");
+                    await progress($"[OK] Link físico confirmado na porta LAN do FortiGate: {portaAtiva} ({elapsedSec}s).");
+                onProgress?.Invoke(55, "Porta LAN Conectada!", $"Link ativo confirmado no FortiGate: {portaAtiva} ({elapsedSec}s).");
                 return true;
             }
 
             if (isWanUp && !isAnyLanUp)
             {
-                if (progress is not null)
-                    await progress("[CRÍTICA DE PORTA] Cabo de rede detectado na porta WAN (Uplink) ao invés da porta LAN (Giga 1)!");
+                if (progress is not null && (attempt == 1 || attempt % 3 == 0))
+                    await progress($"[AGUARDANDO TROCA DE CABO] Cabo detectado na porta WAN ao invés da porta LAN (Giga 1)... {elapsedSec}s decorridos (Tentativa {attempt}/20)");
+                onProgress?.Invoke(50, "Aguardando Troca de Cabo...", $"Cabo na porta WAN. Conecte na Porta 1 (LAN) ({elapsedSec}s)...");
 
                 if (requestOperatorAction is not null && (attempt == 1 || attempt % 5 == 0))
                 {
@@ -594,17 +782,26 @@ public sealed class FortiOsSaipConfigurator
                         "Todos os procedimentos de provisionamento, teste ICMP e banda são executados EXCLUSIVAMENTE pela porta LAN.\n\n" +
                         "Clique em OK após conectar o cabo na Porta 1 (LAN).",
                         cancellationToken);
+                    if (progress is not null)
+                        await progress($"[*] Operador confirmou conexão. Sincronizando link da Porta 1 (lan1)...");
+                    onProgress?.Invoke(50, "Sincronizando Porta LAN...", $"Aguardando link ativo na Porta 1... ({elapsedSec}s)");
+
+                    // Acorda a console serial do FortiOS e absorve eventuais syslogs de porta
+                    try
+                    {
+                        await session.WriteLineAsync(string.Empty, cancellationToken);
+                        await Task.Delay(500, cancellationToken);
+                        await session.WriteLineAsync(string.Empty, cancellationToken);
+                        await Task.Delay(1000, cancellationToken);
+                    }
+                    catch { }
                 }
             }
             else if (!isAnyLanUp)
             {
-                if (progress is not null)
-                {
-                    if (attempt == 1)
-                        await progress("[AVISO] Porta LAN (Giga 1 / Porta 1) sem link físico (DOWN). Aguardando conexão do cabo de rede...");
-                    else
-                        await progress($"    ⏳ [LINK LAN] Tentativa {attempt}/15: aguardando estabelecimento de link físico na Porta 1 (lan1)...");
-                }
+                if (progress is not null && (attempt == 1 || attempt % 3 == 0))
+                    await progress($"[AGUARDANDO CABO LAN] Detectando link físico na Porta 1 (lan1)... {elapsedSec}s decorridos (Tentativa {attempt}/20)");
+                onProgress?.Invoke(50, "Aguardando Conexão LAN...", $"Aguardando sincronização da Porta 1 (LAN)... ({elapsedSec}s)");
 
                 if (requestOperatorAction is not null && (attempt == 1 || attempt % 5 == 0))
                 {
@@ -616,15 +813,38 @@ public sealed class FortiOsSaipConfigurator
                         "Certifique-se de que a outra ponta está conectada na placa de rede do computador e que o LED da porta física está aceso.\n\n" +
                         "Clique em OK assim que o cabo estiver conectado.",
                         cancellationToken);
+                    if (progress is not null)
+                        await progress($"[*] Operador confirmou conexão. Sincronizando link da Porta 1 (lan1)...");
+                    onProgress?.Invoke(50, "Sincronizando Porta LAN...", $"Aguardando link ativo na Porta 1... ({elapsedSec}s)");
+
+                    // Acorda a console serial do FortiOS e absorve eventuais syslogs de porta
+                    try
+                    {
+                        await session.WriteLineAsync(string.Empty, cancellationToken);
+                        await Task.Delay(500, cancellationToken);
+                        await session.WriteLineAsync(string.Empty, cancellationToken);
+                        await Task.Delay(1000, cancellationToken);
+                    }
+                    catch { }
                 }
             }
 
             if (pollDelayMs > 0)
-                await Task.Delay(pollDelayMs, cancellationToken);
+            {
+                for (var d = 0; d < Math.Max(1, pollDelayMs / 1000); d++)
+                {
+                    await Task.Delay(1000, cancellationToken);
+                    if (onProgress is not null)
+                    {
+                        var sec = (int)sw.Elapsed.TotalSeconds;
+                        onProgress(50, isWanUp ? "Aguardando Troca de Cabo..." : "Aguardando Link LAN...", $"Aguardando sinal na Porta 1 (LAN)... ({sec}s)");
+                    }
+                }
+            }
         }
 
         if (progress is not null)
-            await progress("[AVISO] Tempo limite de espera para link na porta LAN excedido. Prosseguindo...");
+            await progress($"[AVISO] Tempo limite de espera para link na porta LAN excedido ({(int)sw.Elapsed.TotalSeconds}s). Prosseguindo...");
         return false;
     }
 
@@ -658,5 +878,67 @@ public sealed class FortiOsSaipConfigurator
             return hasCarrier && hasRun;
         }
         return false;
+    }
+
+    /// <summary>
+    /// Avalia se o equipamento FortiGate já se encontra em padrão de fábrica limpo ("zero lixo")
+    /// ou se possui configurações residuais de serviços/clientes anteriores que requerem higienização.
+    /// </summary>
+    public static async Task<DeviceSanitizationStatus> DetectSanitizationStatusAsync(
+        DeviceSession session,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        var findings = new List<string>();
+        string? detectedHostname = null;
+        var hasCustomHostname = false;
+        var hasStaleRoutes = false;
+        var hasConfiguredInterfaces = false;
+
+        try
+        {
+            await EnsureRootShellAsync(session, ct);
+            var statusOut = await session.SendCommandAsync("get system status", TimeSpan.FromSeconds(10), ct);
+
+            var matchHost = Regex.Match(statusOut, @"(?im)^\s*Hostname\s*:\s*(\S+)");
+            if (matchHost.Success)
+            {
+                detectedHostname = matchHost.Groups[1].Value.Trim();
+                if (!detectedHostname.StartsWith("FortiGate", StringComparison.OrdinalIgnoreCase) &&
+                    !detectedHostname.StartsWith("FGT", StringComparison.OrdinalIgnoreCase))
+                {
+                    hasCustomHostname = true;
+                    findings.Add($"Hostname customizado: '{detectedHostname}'");
+                }
+            }
+
+            var routesOut = await session.SendCommandAsync("show router static", TimeSpan.FromSeconds(10), ct);
+            var routeIds = ExtractTableEntryIds(routesOut);
+            if (routeIds.Count > 1)
+            {
+                hasStaleRoutes = true;
+                findings.Add($"{routeIds.Count} rota(s) estática(s) residual(is)");
+            }
+        }
+        catch (Exception ex)
+        {
+            return DeviceSanitizationStatus.Clean($"Não foi possível inspecionar completamente ({ex.Message}) — assumindo baseline.");
+        }
+
+        var isClean = !hasCustomHostname && !hasStaleRoutes && !hasConfiguredInterfaces;
+        var summary = isClean
+            ? "Equipamento FortiGate em padrão de fábrica (zero lixo detectado — reload desnecessário)."
+            : $"Configuração anterior detectada ({string.Join(", ", findings)}).";
+
+        return new DeviceSanitizationStatus
+        {
+            IsClean = isClean,
+            Summary = summary,
+            DetectedHostname = detectedHostname,
+            HasCustomHostname = hasCustomHostname,
+            HasStaleRoutes = hasStaleRoutes,
+            HasConfiguredInterfaces = hasConfiguredInterfaces
+        };
     }
 }

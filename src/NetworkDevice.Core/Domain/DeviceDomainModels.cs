@@ -16,6 +16,7 @@ public enum DeviceSeries
     Msr930,
     Msr1002,
     Series1900,
+    Series2900,
     Isr921,
     Isr841,
     Generic,

@@ -45,6 +45,20 @@
                 </Frame>
 
                 <!-- ======================================================== -->
+                <!-- REPOSITÓRIO OFFLINE DE FIRMWARES HOMOLOGADOS             -->
+                <!-- ======================================================== -->
+                <Frame BackgroundColor="#1E293B" BorderColor="#0284C7" CornerRadius="8" Padding="12,10" HasShadow="False">
+                    <Grid ColumnDefinitions="Auto, *, Auto" ColumnSpacing="10">
+                        <Label Grid.Column="0" Text="📦" FontSize="20" VerticalOptions="Center" />
+                        <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                            <Label Text="Repositório Offline de Firmwares" FontSize="12.5" FontAttributes="Bold" TextColor="#38BDF8" />
+                            <Label x:Name="TxtRepoFirmwareSummary" Text="Consultando imagens salvas no celular..." FontSize="10.5" TextColor="#94A3B8" />
+                        </VerticalStackLayout>
+                        <Button Grid.Column="2" Text="Gerenciar" Clicked="OnOpenFirmwareRepoClicked" BackgroundColor="#0284C7" TextColor="White" CornerRadius="6" FontSize="11" FontAttributes="Bold" HeightRequest="32" Padding="10,0" VerticalOptions="Center" />
+                    </Grid>
+                </Frame>
+
+                <!-- ======================================================== -->
                 <!-- PASSO 1: EQUIPAMENTO & PORTA SERIAL                      -->
                 <!-- ======================================================== -->
                 <Frame BackgroundColor="#27272A" BorderColor="#52525B" CornerRadius="8" Padding="14" HasShadow="False">
@@ -81,6 +95,7 @@
                                 <x:String>🖧 HPE MSR 930 / 931 / 935 (Ctrl+B @ 9600 - BootWare)</x:String>
                                 <x:String>🖧 HPE MSR 1002 / 1003 (Ctrl+B @ 9600 - BootWare)</x:String>
                                 <x:String>🖧 Cisco Série 1900 / 1921 / 1941 / 1905 (Break @ 9600 - ROMMON)</x:String>
+                                <x:String>🖧 Cisco Série 2900 / 2911 / 2921 / 2951 (Break @ 9600 - ROMMON)</x:String>
                                 <x:String>🖧 Cisco Série 900 / C921-4P (Ctrl+C Puro @ 9600)</x:String>
                                 <x:String>🖧 Cisco Série 800 / C841M (Break @ 9600 - ROMMON)</x:String>
                                 <x:String>🛡️ Fortinet FortiGate 40F (FortiOS @ 9600 - Console)</x:String>
@@ -363,5 +378,69 @@
                 </Frame>
             </VerticalStackLayout>
         </ScrollView>
+
+        <!-- ========================================================================= -->
+        <!-- OVERLAY DE PRIMEIRO PLANO: PROGRESSO DE ATUALIZAÇÃO DE FIRMWARE           -->
+        <!-- ========================================================================= -->
+        <Grid x:Name="OverlayFirmwareProgress" IsVisible="False" BackgroundColor="#E6050B14" ZIndex="9999" Padding="16">
+            <Frame BackgroundColor="#1E293B" BorderColor="#0284C7" CornerRadius="16" Padding="18" HasShadow="True"
+                   VerticalOptions="Center" HorizontalOptions="Center" MaximumWidthRequest="460">
+                <VerticalStackLayout Spacing="12">
+
+                    <!-- Cabeçalho com Ícone e Título -->
+                    <HorizontalStackLayout Spacing="10" HorizontalOptions="Center">
+                        <ActivityIndicator x:Name="FwProgressSpinner" IsRunning="True" Color="#38BDF8" WidthRequest="24" HeightRequest="24" VerticalOptions="Center" />
+                        <Label x:Name="FwProgressTitleLabel" Text="GRAVAÇÃO DE FIRMWARE EM ANDAMENTO" FontSize="14" FontAttributes="Bold" TextColor="#38BDF8" VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+
+                    <!-- Alerta de Segurança Crítico -->
+                    <Border BackgroundColor="#7F1D1D" Stroke="#EF4444" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="10, 6">
+                        <VerticalStackLayout Spacing="2">
+                            <Label Text="⚠️ OPERAÇÃO CRÍTICA — NÃO DESCONECTE OS CABOS" FontSize="10.5" FontAttributes="Bold" TextColor="#FCA5A5" HorizontalTextAlignment="Center" />
+                            <Label Text="Mantenha o cabo OTG/USB conectado e NÃO desligue o roteador da energia elétrica." FontSize="9.5" TextColor="#FFFFFF" HorizontalTextAlignment="Center" />
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <!-- Detalhes da Transferência -->
+                    <Border BackgroundColor="#0F172A" Stroke="#334155" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="10">
+                        <VerticalStackLayout Spacing="4">
+                            <Grid ColumnDefinitions="Auto, *">
+                                <Label Grid.Column="0" Text="Arquivo:" FontSize="11" FontAttributes="Bold" TextColor="#94A3B8" />
+                                <Label Grid.Column="1" x:Name="FwProgressFileNameLabel" Text="firmware.bin" FontSize="11" FontAttributes="Bold" TextColor="#F8FAFC" HorizontalTextAlignment="End" LineBreakMode="TailTruncation" />
+                            </Grid>
+                            <Grid ColumnDefinitions="Auto, *">
+                                <Label Grid.Column="0" Text="Destino:" FontSize="11" TextColor="#94A3B8" />
+                                <Label Grid.Column="1" x:Name="FwProgressTargetLabel" Text="Flash do Equipamento" FontSize="11" TextColor="#38BDF8" HorizontalTextAlignment="End" />
+                            </Grid>
+                            <Grid ColumnDefinitions="Auto, *">
+                                <Label Grid.Column="0" Text="Método:" FontSize="11" TextColor="#94A3B8" />
+                                <Label Grid.Column="1" x:Name="FwProgressMethodLabel" Text="OTG + Ethernet (HTTP :8080)" FontSize="11" TextColor="#A7F3D0" HorizontalTextAlignment="End" />
+                            </Grid>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <!-- Progresso e Percentual em Destaque -->
+                    <VerticalStackLayout Spacing="6">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <Label Grid.Column="0" x:Name="FwProgressStageLabel" Text="Transferindo imagem..." FontSize="12" FontAttributes="Bold" TextColor="#F8FAFC" VerticalOptions="End" />
+                            <Label Grid.Column="1" x:Name="FwProgressPercentLabel" Text="0%" FontSize="24" FontAttributes="Bold" TextColor="#38BDF8" VerticalOptions="End" />
+                        </Grid>
+                        <ProgressBar x:Name="FwProgressBar" Progress="0.0" ProgressColor="#0284C7" HeightRequest="10" />
+                        <Grid ColumnDefinitions="*, Auto">
+                            <Label Grid.Column="0" x:Name="FwProgressDetailLabel" Text="Iniciando transferência..." FontSize="10" TextColor="#94A3B8" LineBreakMode="TailTruncation" />
+                            <Label Grid.Column="1" x:Name="FwProgressBytesLabel" Text="0 / 0 MB" FontSize="10" TextColor="#94A3B8" />
+                        </Grid>
+                    </VerticalStackLayout>
+
+                    <!-- Mini Console de Mensagens em Tempo Real -->
+                    <Border BackgroundColor="#0A0E14" Stroke="#334155" StrokeThickness="1" StrokeShape="RoundRectangle 6" Padding="6">
+                        <Editor x:Name="FwProgressLogEditor" HeightRequest="80" IsReadOnly="True" BackgroundColor="#0A0E14" TextColor="#4ADE80" FontFamily="OpenSansRegular" FontSize="9.5" />
+                    </Border>
+
+                    <!-- Botão de Conclusão / Fechamento (visível ao término) -->
+                    <Button x:Name="FwProgressDismissBtn" Text="CONCLUIR" Clicked="OnDismissFirmwareProgressClicked" BackgroundColor="#16A34A" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="40" FontSize="11.5" IsVisible="False" />
+                </VerticalStackLayout>
+            </Frame>
+        </Grid>
     </Grid>
 </ContentPage>

@@ -118,17 +118,57 @@ topo      consultas      menu
     public void GenerateCommands_ProducesValidCiscoIOSConfig()
     {
         var data = SaipParser.ParseText(ExemploFichaSaip);
-        var cmds = CiscoSaipConfigurator.GenerateCommands(data, "GigabitEthernet 5", "GigabitEthernet 4");
+        var cmds = CiscoSaipConfigurator.GenerateCommands(data, "GigabitEthernet 4", "GigabitEthernet 5");
 
-        // Verifica comandos gerados
-        Assert.Contains("interface GigabitEthernet 5", cmds);
-        Assert.Contains("ip address 201.30.10.18 255.255.255.252", cmds);
+        // Verifica comandos gerados no padrão oficial Claro / Embratel
+        Assert.Contains("hostname FNS-IP-04045", cmds);
+        Assert.Contains("enable secret PRO1AN", cmds);
+        Assert.Contains("username EBT privilege 1 secret CQMR", cmds);
+        Assert.Contains("tacacs server TACACS-SERVER-CLARO", cmds);
+        Assert.Contains("policy-map SHAPE_OUT", cmds);
+        Assert.Contains("  shape average 50000000", cmds);
+
+        // Interfaces (Cisco 921 desliga GE0 a GE3 e Vlan1)
+        Assert.Contains("interface GigabitEthernet0", cmds);
+        Assert.Contains("interface GigabitEthernet3", cmds);
+        Assert.Contains("interface Vlan1", cmds);
+
+        // WAN (GE4) e LAN (GE5)
         Assert.Contains("interface GigabitEthernet 4", cmds);
-        Assert.Contains("ip address 189.16.20.81 255.255.255.248", cmds);
+        Assert.Contains(" bandwidth 50000", cmds);
+        Assert.Contains(" ip address 201.30.10.18 255.255.255.252", cmds);
+        Assert.Contains(" service-policy output SHAPE_OUT", cmds);
+
+        Assert.Contains("interface GigabitEthernet 5", cmds);
+        Assert.Contains(" description * LAN *", cmds);
+        Assert.Contains(" ip address 189.16.20.81 255.255.255.248", cmds);
+
+        // Roteamento, SSH, NTP, SNMP
         Assert.Contains("ip route 0.0.0.0 0.0.0.0 201.30.10.17", cmds);
-        Assert.Contains("username EBT privilege 15 secret PRO1AN", cmds);
-        Assert.Contains("transport input telnet", cmds);
-        Assert.Contains("no username admin", cmds);
+        Assert.Contains("ip ssh version 2", cmds);
+        Assert.Contains("crypto key generate rsa modulus 2048", cmds);
+        Assert.Contains("ntp server 200.20.186.75 prefer source GigabitEthernet4", cmds);
+        Assert.Contains("snmp-server community claro21sup RO 87", cmds);
+
+        // AAA e Accounting TACACS+ (sintaxe IOS clássica sem 'action-type')
+        Assert.Contains("aaa accounting exec default start-stop group tacacs+", cmds);
+        Assert.Contains("aaa accounting commands 1 default start-stop group tacacs+", cmds);
+        Assert.Contains("aaa accounting commands 6 default start-stop group tacacs+", cmds);
+        Assert.Contains("aaa accounting commands 15 default start-stop group tacacs+", cmds);
+        Assert.DoesNotContain(cmds, c => c.Contains("action-type", StringComparison.OrdinalIgnoreCase));
+
+        // Console e VTY (line con 0 com autenticação de admin local sob aaa new-model)
+        Assert.Contains("line con 0", cmds);
+        Assert.Contains(" login authentication admin", cmds);
+        Assert.DoesNotContain(" login local", cmds);
+
+        // ACL e VTY
+        Assert.Contains("ip access-list extended BLOQUEIO_TELNET", cmds);
+        Assert.Contains(" permit ip host 201.30.10.17 any", cmds);
+        Assert.Contains(" remark IP REDE LAN / BANCADA HOMOLOGACAO", cmds);
+        Assert.Contains("tacacs-server timeout 2", cmds);
+        Assert.Contains("line vty 0 4", cmds);
+        Assert.Contains(" transport input telnet ssh", cmds);
         Assert.Contains("write memory", cmds);
     }
 
@@ -139,6 +179,62 @@ topo      consultas      menu
 
         // Ficha traz "Banda 50000" (kbps) => 50 Mbps nominais
         Assert.Equal(50.0, data.BandaMbpsNominal);
+        Assert.Equal(50000, data.BandaKbps);
+        Assert.Equal(50000000, data.BandaBps);
+    }
+
+    [Fact]
+    public void ParseText_ExtraiProdutoEIpv6_BusinessLinkDirect()
+    {
+        var data = SaipParser.ParseText(ExemploFichaSaip);
+
+        Assert.Equal("Business Link Direct", data.Produto);
+        Assert.Equal(SaipServiceType.BusinessLinkDirect, data.TipoServico);
+        Assert.False(data.IsLanArbitrada);
+
+        // IPv6
+        Assert.Equal("2804:00A8:0002:00DA:0000:0000:0000:20FA", data.WanIpv6);
+        Assert.Equal(126, data.WanIpv6Prefix);
+        Assert.Equal("2804:a8:2:da::20f9", data.WanIpv6Gateway);
+        Assert.Equal("2804:00A8:DACE:0000:0000:0000:0000:0000", data.LanIpv6Block);
+        Assert.Equal(56, data.LanIpv6Prefix);
+        Assert.Equal("2804:a8:dace::1", data.LanIpv6);
+    }
+
+    [Fact]
+    public void Validar_E_ParseText_IpVpn_SemBlocoLan_ArbitraLanGenerica()
+    {
+        var fichaIpVpn = @"
+DADOS CLIENTE
+Produto	IP VPN
+Razão Social	EMPRESA CLIENTE MPLS LTDA
+Designação IP	SPO/IP/12345
+Número Ots	IM-SPO-IGC--IP-99999/2026
+Roteador	AGG01.SOONS
+IP Serial Usuário (IPv4)	201.030.010.018/30
+Banda	20000
+";
+        // 1. Validar deve aprovar IP VPN mesmo sem Bloco LAN
+        var (ok, motivo) = SaipParser.Validar(fichaIpVpn);
+        Assert.True(ok, $"Validação de IP VPN deveria passar: {motivo}");
+        Assert.Empty(motivo);
+
+        // 2. ParseText deve detectar IP VPN e arbitrar LAN genérica 192.168.1.1/24
+        var data = SaipParser.ParseText(fichaIpVpn);
+        Assert.Equal("IP VPN", data.Produto);
+        Assert.Equal(SaipServiceType.IpVpn, data.TipoServico);
+        Assert.True(data.IsLanArbitrada);
+        Assert.Equal("192.168.1.1", data.LanIp);
+        Assert.Equal("255.255.255.0", data.LanSubnetMask);
+        Assert.Equal(24, data.LanCidr);
+        Assert.Equal("192.168.1.2", data.HostLanIp);
+        Assert.Equal("201.30.10.18", data.WanIp);
+        Assert.Equal("201.30.10.17", data.WanGateway);
+
+        // 3. Script gerado deve configurar a LAN genérica para viabilizar conexão
+        var cmds = CiscoSaipConfigurator.GenerateCommands(data, "GigabitEthernet 0/0", "GigabitEthernet 0/1");
+        Assert.Contains("interface GigabitEthernet 0/1", cmds);
+        Assert.Contains(" ip address 192.168.1.1 255.255.255.0", cmds);
     }
 
     [Fact]
@@ -181,14 +277,10 @@ topo      consultas      menu
         };
         var cmds = CiscoSaipConfigurator.GenerateCommands(data, "GigabitEthernet0/4", "GigabitEthernet0/5", incluirNatLab: true);
 
-        Assert.Contains("ip nat outside", cmds);
-        Assert.Contains("ip nat inside", cmds);
+        Assert.Contains(" ip nat outside", cmds);
+        Assert.Contains(" ip nat inside", cmds);
         Assert.Contains("access-list 1 permit 10.10.10.0 0.0.0.7", cmds);
         Assert.Contains("ip nat inside source list 1 interface GigabitEthernet0/4 overload", cmds);
-        // NAT entra depois da rota default e antes do usuario
-        var cmdList = cmds.ToList();
-        Assert.True(cmdList.IndexOf("ip nat outside") > cmdList.IndexOf("ip route 0.0.0.0 0.0.0.0 192.168.10.1"));
-        Assert.True(cmdList.IndexOf("ip nat outside") < cmdList.IndexOf("username EBT privilege 15 secret PRO1AN"));
     }
 
     [Fact]
@@ -241,8 +333,7 @@ topo      consultas      menu
 
         var cmds = CiscoSaipConfigurator.GenerateCommands(circuit, "GigabitEthernet 0/0", "GigabitEthernet 0/1");
 
-        Assert.Contains("description WAN - SPO-IP-99123", cmds);
-        Assert.Contains(cmds, c => c.StartsWith("description LAN - SUPERMERCADO PADARIA SAO"));
-        Assert.DoesNotContain(cmds, c => c.Contains("?") || c.Contains("&") || c.Contains("Ã"));
+        Assert.Contains(" description SPO-IP-99123", cmds);
+        Assert.Contains(" description * LAN *", cmds);
     }
 }

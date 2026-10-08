@@ -56,9 +56,9 @@ public partial class RecoveryPage : ContentPage
             ShowDetection(result);
 
             if (result.OperatingState == DeviceOperatingState.PasswordProtected)
-                AppendLog("[!] Equipamento BLOQUEADO por senha. Use a Opção 1 (login) ou Opção 2 (quebra).");
+                AppendLog("[!] Equipamento BLOQUEADO por senha. Use a Opção 1 (login) ou Opção 2 (zerar configuração).");
             else if (result.OperatingState == DeviceOperatingState.Ready)
-                AppendLog("[✓] Equipamento SEM bloqueio — pode provisionar direto na aba Provisionamento.");
+                AppendLog("[✓] Equipamento SEM bloqueio — pode provisionar direto na aba Ativação.");
             else
                 AppendLog($"[!] Estado: {result.OperatingState} — {result.Details}");
         }
@@ -136,12 +136,12 @@ public partial class RecoveryPage : ContentPage
 
             if (!ok)
             {
-                AppendLog("[X] Login recusado. Confira usuário/senha ou use a Opção 2 (quebra).");
-                await DisplayAlert("Login recusado", "As credenciais não foram aceitas. Confira ou use a quebra de senha.", "OK");
+                AppendLog("[X] Login recusado. Confira usuário/senha ou use a Opção 2 (zerar configuração).");
+                await DisplayAlert("Login recusado", "As credenciais não foram aceitas. Confira ou use o zeramento de configuração de acordo com o modelo.", "OK");
                 return;
             }
 
-            AppendLog("[✓] LOGIN ACEITO — quebra de senha dispensada!");
+            AppendLog("[✓] LOGIN ACEITO — zeramento de configuração dispensado!");
             OnRecoveryCompleted?.Invoke(true);
             if (_isModalFlow)
             {
@@ -170,7 +170,7 @@ public partial class RecoveryPage : ContentPage
             return;
         }
 
-        var confirm = await DisplayAlert("Confirmar Quebra de Senha",
+        var confirm = await DisplayAlert("Confirmar Zeramento de Configuração",
             "Isso vai ZERAR o equipamento (apagar configuração/senha) via ROMMON, BootWare ou reset físico.\n\n" +
             "• Cisco: será preciso DESLIGAR e RELIGAR na tomada quando o app pedir.\n" +
             "• Mantenha a TELA LIGADA — o processo leva vários minutos.\n\nDeseja continuar?",
@@ -180,7 +180,7 @@ public partial class RecoveryPage : ContentPage
         BreakBtn.IsEnabled = false;
         DeviceDisplay.Current.KeepScreenOn = true;
         AppendLog("[*] =================================================================");
-        AppendLog("[*]           QUEBRA DE SENHA E RESET DE FÁBRICA                    ");
+        AppendLog("[*]       ZERAMENTO DE CONFIGURAÇÃO E RESET DE FÁBRICA               ");
         AppendLog("[*] =================================================================");
 
         try

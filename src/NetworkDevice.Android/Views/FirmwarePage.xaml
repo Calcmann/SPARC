@@ -4,112 +4,181 @@
              x:Class="NetworkDevice.Android.Views.FirmwarePage"
              Title="Firmware"
              BackgroundColor="#0B132B">
-    <ScrollView>
-        <VerticalStackLayout Padding="16" Spacing="14">
+    <Grid>
+        <ScrollView>
+            <VerticalStackLayout Padding="16" Spacing="14">
 
-            <!-- Cabeçalho -->
-            <Frame BackgroundColor="#1E293B" CornerRadius="12" Padding="14" BorderColor="#38BDF8" HasShadow="True">
-                <VerticalStackLayout Spacing="4">
-                    <Label Text="SPARC Mobile • Gestão de Firmware &amp; WAN" FontSize="16" FontAttributes="Bold" TextColor="#38BDF8" />
-                    <Label Text="Auditoria de conformidade, teste de enlace WAN e atualização direta pelo roteador." FontSize="11" TextColor="#94A3B8" />
-                </VerticalStackLayout>
-            </Frame>
-
-            <!-- 1. Estado da Serial e Roteador -->
-            <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#334155">
-                <VerticalStackLayout Spacing="10">
-                    <Grid ColumnDefinitions="*, Auto">
-                        <Label Grid.Column="0" Text="1. Equipamento na Console Serial" FontSize="14" FontAttributes="Bold" TextColor="#F8FAFC" VerticalOptions="Center" />
-                        <Label Grid.Column="1" x:Name="ComplianceBadge" Text="NÃO AUDITADO" FontSize="11" FontAttributes="Bold" TextColor="#94A3B8" VerticalOptions="Center" />
+                <!-- Cabeçalho -->
+                <Frame BackgroundColor="#1E293B" CornerRadius="12" Padding="14" BorderColor="#38BDF8" HasShadow="True">
+                    <Grid ColumnDefinitions="*, Auto" ColumnSpacing="10">
+                        <VerticalStackLayout Grid.Column="0" Spacing="4">
+                            <Label Text="SPARC Mobile • Gestão de Firmware &amp; WAN" FontSize="16" FontAttributes="Bold" TextColor="#38BDF8" />
+                            <Label Text="Auditoria de conformidade, teste de enlace WAN e atualização direta pelo roteador." FontSize="11" TextColor="#94A3B8" />
+                        </VerticalStackLayout>
+                        <Button Grid.Column="1" Text="📦 Catálogo Offline" Clicked="OnOpenRepoModalClicked" BackgroundColor="#0284C7" TextColor="White" CornerRadius="6" FontSize="11" FontAttributes="Bold" HeightRequest="36" Padding="10,0" VerticalOptions="Center" />
                     </Grid>
+                </Frame>
 
-                    <Grid ColumnDefinitions="Auto, *" RowDefinitions="Auto, Auto, Auto" RowSpacing="6" ColumnSpacing="10">
-                        <Label Grid.Row="0" Grid.Column="0" Text="Modelo / Série:" TextColor="#94A3B8" FontSize="12" FontAttributes="Bold" />
-                        <Label Grid.Row="0" Grid.Column="1" x:Name="AuditModelLabel" Text="-" TextColor="White" FontSize="12" FontAttributes="Bold" />
-
-                        <Label Grid.Row="1" Grid.Column="0" Text="Versão no Roteador:" TextColor="#94A3B8" FontSize="12" FontAttributes="Bold" />
-                        <Label Grid.Row="1" Grid.Column="1" x:Name="AuditCurrentVersionLabel" Text="-" TextColor="#FBBF24" FontSize="12" />
-
-                        <Label Grid.Row="2" Grid.Column="0" Text="Versão Homologada:" TextColor="#94A3B8" FontSize="12" FontAttributes="Bold" />
-                        <Label Grid.Row="2" Grid.Column="1" x:Name="AuditOfficialLabel" Text="-" TextColor="#4ADE80" FontSize="12" FontAttributes="Bold" />
-                    </Grid>
-
-                    <!-- Diagnóstico de Enlace WAN e Internet -->
-                    <Frame BackgroundColor="#1E293B" CornerRadius="8" Padding="10" BorderColor="#475569">
-                        <Grid ColumnDefinitions="*, *" RowDefinitions="Auto, Auto" RowSpacing="4">
-                            <Label Grid.Row="0" Grid.Column="0" Text="Porta WAN Física:" TextColor="#94A3B8" FontSize="11" />
-                            <Label Grid.Row="0" Grid.Column="1" x:Name="WanPhysicalStatusLabel" Text="Não testado" TextColor="#FBBF24" FontSize="11" FontAttributes="Bold" HorizontalTextAlignment="End" />
-
-                            <Label Grid.Row="1" Grid.Column="0" Text="Conectividade Internet:" TextColor="#94A3B8" FontSize="11" />
-                            <Label Grid.Row="1" Grid.Column="1" x:Name="WanInternetStatusLabel" Text="Não testado" TextColor="#FBBF24" FontSize="11" FontAttributes="Bold" HorizontalTextAlignment="End" />
+                <!-- 1. Estado da Serial e Roteador -->
+                <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#334155">
+                    <VerticalStackLayout Spacing="10">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <Label Grid.Column="0" Text="1. Equipamento na Console Serial" FontSize="14" FontAttributes="Bold" TextColor="#F8FAFC" VerticalOptions="Center" />
+                            <Label Grid.Column="1" x:Name="ComplianceBadge" Text="NÃO AUDITADO" FontSize="11" FontAttributes="Bold" TextColor="#94A3B8" VerticalOptions="Center" />
                         </Grid>
-                    </Frame>
 
-                    <!-- Ação Principal Inteligente -->
-                    <Button x:Name="AuditarFwBtn" Text="🚀 AUDITAR E ATUALIZAR VIA WAN" Clicked="OnAuditarFwClicked" BackgroundColor="#0284C7" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="44" FontSize="12" />
+                        <Grid ColumnDefinitions="Auto, *" RowDefinitions="Auto, Auto, Auto" RowSpacing="6" ColumnSpacing="10">
+                            <Label Grid.Row="0" Grid.Column="0" Text="Modelo / Série:" TextColor="#94A3B8" FontSize="12" FontAttributes="Bold" />
+                            <Label Grid.Row="0" Grid.Column="1" x:Name="AuditModelLabel" Text="-" TextColor="White" FontSize="12" FontAttributes="Bold" />
 
-                    <Button x:Name="RetestarWanBtn" Text="🔄 RETESTAR LINK WAN &amp; INTERNET" Clicked="OnRetestarWanClicked" BackgroundColor="#334155" TextColor="#38BDF8" CornerRadius="8" FontAttributes="Bold" HeightRequest="38" FontSize="11" />
+                            <Label Grid.Row="1" Grid.Column="0" Text="Versão no Roteador:" TextColor="#94A3B8" FontSize="12" FontAttributes="Bold" />
+                            <Label Grid.Row="1" Grid.Column="1" x:Name="AuditCurrentVersionLabel" Text="-" TextColor="#FBBF24" FontSize="12" />
 
-                    <Label x:Name="AuditStatusMsgLabel" Text="Conecte o roteador na console serial e toque em Auditar." FontSize="11" TextColor="#64748B" />
-                </VerticalStackLayout>
-            </Frame>
+                            <Label Grid.Row="2" Grid.Column="0" Text="Versão Homologada:" TextColor="#94A3B8" FontSize="12" FontAttributes="Bold" />
+                            <Label Grid.Row="2" Grid.Column="1" x:Name="AuditOfficialLabel" Text="-" TextColor="#4ADE80" FontSize="12" FontAttributes="Bold" />
+                        </Grid>
 
-            <!-- 2. Transferência Local em Bancada (OTG + Cabo Ethernet sem WAN) -->
-            <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#0284C7">
-                <VerticalStackLayout Spacing="10">
-                    <Grid ColumnDefinitions="*, Auto">
-                        <Label Grid.Column="0" Text="2. Transferência em Bancada (OTG + ETH)" FontSize="13.5" FontAttributes="Bold" TextColor="#38BDF8" VerticalOptions="Center" />
-                        <Border Grid.Column="1" BackgroundColor="#1E293B" StrokeShape="RoundRectangle 4" Padding="6, 2" VerticalOptions="Center">
-                            <Label x:Name="EthStatusBadge" Text="🔌 Checando ETH..." FontSize="10" FontAttributes="Bold" TextColor="#FBBF24" />
-                        </Border>
-                    </Grid>
-                    <Label Text="Transfere a imagem diretamente do celular para o roteador via cabo de rede sem depender de internet externa (HTTP :8080 para Cisco • FTP :2121 para HPE e Fortinet)." FontSize="11" TextColor="#94A3B8" />
+                        <!-- Diagnóstico de Enlace WAN e Internet -->
+                        <Frame BackgroundColor="#1E293B" CornerRadius="8" Padding="10" BorderColor="#475569">
+                            <Grid ColumnDefinitions="*, *" RowDefinitions="Auto, Auto" RowSpacing="4">
+                                <Label Grid.Row="0" Grid.Column="0" Text="Porta WAN Física:" TextColor="#94A3B8" FontSize="11" />
+                                <Label Grid.Row="0" Grid.Column="1" x:Name="WanPhysicalStatusLabel" Text="Não testado" TextColor="#FBBF24" FontSize="11" FontAttributes="Bold" HorizontalTextAlignment="End" />
 
-                    <!-- Seleção do arquivo local -->
-                    <Grid ColumnDefinitions="*, Auto" ColumnSpacing="8">
-                        <Button Grid.Column="0" Text="📂 Selecionar Imagem (.bin, .ipe, .out)" Clicked="OnSelectLocalFirmwareClicked" BackgroundColor="#2563EB" TextColor="White" CornerRadius="6" FontSize="11" HeightRequest="38" />
-                        <Button Grid.Column="1" Text="🔄 Checar ETH" Clicked="OnRefreshEthernetClicked" BackgroundColor="#334155" TextColor="White" CornerRadius="6" FontSize="11" HeightRequest="38" />
-                    </Grid>
+                                <Label Grid.Row="1" Grid.Column="0" Text="Conectividade Internet:" TextColor="#94A3B8" FontSize="11" />
+                                <Label Grid.Row="1" Grid.Column="1" x:Name="WanInternetStatusLabel" Text="Não testado" TextColor="#FBBF24" FontSize="11" FontAttributes="Bold" HorizontalTextAlignment="End" />
+                            </Grid>
+                        </Frame>
 
-                    <Label x:Name="SelectedLocalFwLabel" Text="Nenhum arquivo local selecionado." FontSize="11" TextColor="#FBBF24" LineBreakMode="TailTruncation" />
+                        <!-- Ação Principal Inteligente -->
+                        <Button x:Name="AuditarFwBtn" Text="🚀 AUDITAR E ATUALIZAR VIA WAN" Clicked="OnAuditarFwClicked" BackgroundColor="#0284C7" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="44" FontSize="12" />
 
-                    <!-- IP da interface Ethernet do celular -->
-                    <Grid ColumnDefinitions="Auto, *" ColumnSpacing="8">
-                        <Label Grid.Column="0" Text="IP Celular (ETH):" TextColor="#94A3B8" FontSize="11" VerticalOptions="Center" />
-                        <Entry Grid.Column="1" x:Name="PhoneEthIpEntry" Placeholder="Ex: 192.168.1.2 ou 200.182.245.18" TextColor="White" BackgroundColor="#1E293B" FontSize="11" />
-                    </Grid>
+                        <Button x:Name="RetestarWanBtn" Text="🔄 RETESTAR LINK WAN &amp; INTERNET" Clicked="OnRetestarWanClicked" BackgroundColor="#334155" TextColor="#38BDF8" CornerRadius="8" FontAttributes="Bold" HeightRequest="38" FontSize="11" />
 
-                    <Button x:Name="SendLocalFwBtn" Text="⚡ ENVIAR FIRMWARE VIA OTG + ETHERNET" Clicked="OnSendLocalFirmwareClicked" BackgroundColor="#0284C7" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="44" FontSize="12" />
-                </VerticalStackLayout>
-            </Frame>
+                        <Label x:Name="AuditStatusMsgLabel" Text="Conecte o roteador na console serial e toque em Auditar." FontSize="11" TextColor="#64748B" />
+                    </VerticalStackLayout>
+                </Frame>
 
-            <!-- 3. Transferência Direta Personalizada via WAN (Repositório) -->
-            <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#7C3AED">
-                <VerticalStackLayout Spacing="10">
-                    <Label Text="3. Parâmetros Avançados de Transferência (WAN)" FontSize="13" FontAttributes="Bold" TextColor="#C084FC" />
+                <!-- 2. Transferência Local em Bancada (OTG + Cabo Ethernet sem WAN) -->
+                <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#0284C7">
+                    <VerticalStackLayout Spacing="10">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <Label Grid.Column="0" Text="2. Transferência em Bancada (OTG + ETH)" FontSize="13.5" FontAttributes="Bold" TextColor="#38BDF8" VerticalOptions="Center" />
+                            <Border Grid.Column="1" BackgroundColor="#1E293B" StrokeShape="RoundRectangle 4" Padding="6, 2" VerticalOptions="Center">
+                                <Label x:Name="EthStatusBadge" Text="🔌 Checando ETH..." FontSize="10" FontAttributes="Bold" TextColor="#FBBF24" />
+                            </Border>
+                        </Grid>
+                        <Label Text="Transfere a imagem diretamente do celular para o roteador via cabo de rede sem depender de internet externa (HTTP :8080 para Cisco • FTP :2121 para HPE e Fortinet)." FontSize="11" TextColor="#94A3B8" />
 
-                    <VerticalStackLayout Spacing="2">
-                        <Label Text="URL do Pacote Homologado (Proxy/Repositório):" TextColor="#94A3B8" FontSize="11" />
-                        <Entry x:Name="FirmwareUrlEntry" Placeholder="http://..." TextColor="White" BackgroundColor="#1E293B" FontSize="11" />
+                        <!-- Seleção do arquivo local -->
+                        <Grid ColumnDefinitions="*, Auto" ColumnSpacing="8">
+                            <Button Grid.Column="0" Text="📂 Selecionar Imagem (.bin, .ipe, .out)" Clicked="OnSelectLocalFirmwareClicked" BackgroundColor="#2563EB" TextColor="White" CornerRadius="6" FontSize="11" HeightRequest="38" />
+                            <Button Grid.Column="1" Text="🔄 Checar ETH" Clicked="OnRefreshEthernetClicked" BackgroundColor="#334155" TextColor="White" CornerRadius="6" FontSize="11" HeightRequest="38" />
+                        </Grid>
+
+                        <Label x:Name="SelectedLocalFwLabel" Text="Nenhum arquivo local selecionado." FontSize="11" TextColor="#FBBF24" LineBreakMode="TailTruncation" />
+
+                        <!-- IP da interface Ethernet do celular -->
+                        <Grid ColumnDefinitions="Auto, *" ColumnSpacing="8">
+                            <Label Grid.Column="0" Text="IP Celular (ETH):" TextColor="#94A3B8" FontSize="11" VerticalOptions="Center" />
+                            <Entry Grid.Column="1" x:Name="PhoneEthIpEntry" Placeholder="Ex: 192.168.1.2 ou 200.182.245.18" TextColor="White" BackgroundColor="#1E293B" FontSize="11" />
+                        </Grid>
+
+                        <Button x:Name="SendLocalFwBtn" Text="⚡ ENVIAR FIRMWARE VIA OTG + ETHERNET" Clicked="OnSendLocalFirmwareClicked" BackgroundColor="#0284C7" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="44" FontSize="12" />
+                    </VerticalStackLayout>
+                </Frame>
+
+                <!-- 3. Transferência Direta Personalizada via WAN (Repositório) -->
+                <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#7C3AED">
+                    <VerticalStackLayout Spacing="10">
+                        <Label Text="3. Parâmetros Avançados de Transferência (WAN)" FontSize="13" FontAttributes="Bold" TextColor="#C084FC" />
+
+                        <VerticalStackLayout Spacing="2">
+                            <Label Text="URL do Pacote Homologado (Proxy/Repositório):" TextColor="#94A3B8" FontSize="11" />
+                            <Entry x:Name="FirmwareUrlEntry" Placeholder="http://..." TextColor="White" BackgroundColor="#1E293B" FontSize="11" />
+                        </VerticalStackLayout>
+
+                        <VerticalStackLayout Spacing="2">
+                            <Label Text="Nome do Arquivo de Destino na Flash:" TextColor="#94A3B8" FontSize="11" />
+                            <Entry x:Name="FirmwareFileNameEntry" Placeholder="Ex: c800m-universalk9-mz.SPA.159-3.M12.bin" TextColor="White" BackgroundColor="#1E293B" FontSize="11" />
+                        </VerticalStackLayout>
+
+                        <Button x:Name="TriggerRouterDownloadBtn" Text="⚡ FORÇAR DOWNLOAD NO ROTEADOR" Clicked="OnTriggerRouterDownloadClicked" BackgroundColor="#7C3AED" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="40" FontSize="11" />
+                    </VerticalStackLayout>
+                </Frame>
+
+                <!-- 4. Console de Acompanhamento -->
+                <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#334155">
+                    <VerticalStackLayout Spacing="10">
+                        <Label Text="4. Registro da Operação" FontSize="14" FontAttributes="Bold" TextColor="#F8FAFC" />
+                        <Editor x:Name="FwLogEditor" HeightRequest="170" IsReadOnly="True" BackgroundColor="#000000" TextColor="#4ADE80" FontFamily="OpenSansRegular" FontSize="11" Text="[SPARC Mobile] Pronto para auditar firmware ou testar link WAN..." />
+                    </VerticalStackLayout>
+                </Frame>
+
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <!-- ========================================================================= -->
+        <!-- OVERLAY DE PRIMEIRO PLANO: PROGRESSO DE ATUALIZAÇÃO DE FIRMWARE           -->
+        <!-- ========================================================================= -->
+        <Grid x:Name="OverlayFirmwareProgress" IsVisible="False" BackgroundColor="#E6050B14" ZIndex="9999" Padding="16">
+            <Frame BackgroundColor="#1E293B" BorderColor="#0284C7" CornerRadius="16" Padding="18" HasShadow="True"
+                   VerticalOptions="Center" HorizontalOptions="Center" MaximumWidthRequest="460">
+                <VerticalStackLayout Spacing="12">
+
+                    <!-- Cabeçalho com Ícone e Título -->
+                    <HorizontalStackLayout Spacing="10" HorizontalOptions="Center">
+                        <ActivityIndicator x:Name="FwProgressSpinner" IsRunning="True" Color="#38BDF8" WidthRequest="24" HeightRequest="24" VerticalOptions="Center" />
+                        <Label x:Name="FwProgressTitleLabel" Text="ATUALIZAÇÃO DE FIRMWARE EM ANDAMENTO" FontSize="14" FontAttributes="Bold" TextColor="#38BDF8" VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+
+                    <!-- Alerta de Segurança Crítico -->
+                    <Border BackgroundColor="#7F1D1D" Stroke="#EF4444" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="10, 6">
+                        <VerticalStackLayout Spacing="2">
+                            <Label Text="⚠️ OPERAÇÃO CRÍTICA — NÃO DESCONECTE OS CABOS" FontSize="10.5" FontAttributes="Bold" TextColor="#FCA5A5" HorizontalTextAlignment="Center" />
+                            <Label Text="Mantenha o cabo OTG/USB conectado e NÃO desligue o roteador da energia elétrica." FontSize="9.5" TextColor="#FFFFFF" HorizontalTextAlignment="Center" />
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <!-- Detalhes da Transferência -->
+                    <Border BackgroundColor="#0F172A" Stroke="#334155" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="10">
+                        <VerticalStackLayout Spacing="4">
+                            <Grid ColumnDefinitions="Auto, *">
+                                <Label Grid.Column="0" Text="Arquivo:" FontSize="11" FontAttributes="Bold" TextColor="#94A3B8" />
+                                <Label Grid.Column="1" x:Name="FwProgressFileNameLabel" Text="firmware.bin" FontSize="11" FontAttributes="Bold" TextColor="#F8FAFC" HorizontalTextAlignment="End" LineBreakMode="TailTruncation" />
+                            </Grid>
+                            <Grid ColumnDefinitions="Auto, *">
+                                <Label Grid.Column="0" Text="Destino:" FontSize="11" TextColor="#94A3B8" />
+                                <Label Grid.Column="1" x:Name="FwProgressTargetLabel" Text="Flash do Equipamento" FontSize="11" TextColor="#38BDF8" HorizontalTextAlignment="End" />
+                            </Grid>
+                            <Grid ColumnDefinitions="Auto, *">
+                                <Label Grid.Column="0" Text="Método:" FontSize="11" TextColor="#94A3B8" />
+                                <Label Grid.Column="1" x:Name="FwProgressMethodLabel" Text="OTG + Ethernet (HTTP :8080)" FontSize="11" TextColor="#A7F3D0" HorizontalTextAlignment="End" />
+                            </Grid>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <!-- Progresso e Percentual em Destaque -->
+                    <VerticalStackLayout Spacing="6">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <Label Grid.Column="0" x:Name="FwProgressStageLabel" Text="Transferindo imagem..." FontSize="12" FontAttributes="Bold" TextColor="#F8FAFC" VerticalOptions="End" />
+                            <Label Grid.Column="1" x:Name="FwProgressPercentLabel" Text="0%" FontSize="24" FontAttributes="Bold" TextColor="#38BDF8" VerticalOptions="End" />
+                        </Grid>
+                        <ProgressBar x:Name="FwProgressBar" Progress="0.0" ProgressColor="#0284C7" HeightRequest="10" />
+                        <Grid ColumnDefinitions="*, Auto">
+                            <Label Grid.Column="0" x:Name="FwProgressDetailLabel" Text="Iniciando transferência..." FontSize="10" TextColor="#94A3B8" LineBreakMode="TailTruncation" />
+                            <Label Grid.Column="1" x:Name="FwProgressBytesLabel" Text="0 / 0 MB" FontSize="10" TextColor="#94A3B8" />
+                        </Grid>
                     </VerticalStackLayout>
 
-                    <VerticalStackLayout Spacing="2">
-                        <Label Text="Nome do Arquivo de Destino na Flash:" TextColor="#94A3B8" FontSize="11" />
-                        <Entry x:Name="FirmwareFileNameEntry" Placeholder="Ex: c800m-universalk9-mz.SPA.159-3.M12.bin" TextColor="White" BackgroundColor="#1E293B" FontSize="11" />
-                    </VerticalStackLayout>
+                    <!-- Mini Console de Mensagens em Tempo Real -->
+                    <Border BackgroundColor="#0A0E14" Stroke="#334155" StrokeThickness="1" StrokeShape="RoundRectangle 6" Padding="6">
+                        <Editor x:Name="FwProgressLogEditor" HeightRequest="80" IsReadOnly="True" BackgroundColor="#0A0E14" TextColor="#4ADE80" FontFamily="OpenSansRegular" FontSize="9.5" />
+                    </Border>
 
-                    <Button x:Name="TriggerRouterDownloadBtn" Text="⚡ FORÇAR DOWNLOAD NO ROTEADOR" Clicked="OnTriggerRouterDownloadClicked" BackgroundColor="#7C3AED" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="40" FontSize="11" />
+                    <!-- Botão de Conclusão / Fechamento (visível ao término) -->
+                    <Button x:Name="FwProgressDismissBtn" Text="CONCLUIR" Clicked="OnDismissFirmwareProgressClicked" BackgroundColor="#16A34A" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="40" FontSize="11.5" IsVisible="False" />
                 </VerticalStackLayout>
             </Frame>
-
-            <!-- 3. Console de Acompanhamento -->
-            <Frame BackgroundColor="#0F172A" CornerRadius="12" Padding="14" BorderColor="#334155">
-                <VerticalStackLayout Spacing="10">
-                    <Label Text="3. Registro da Operação" FontSize="14" FontAttributes="Bold" TextColor="#F8FAFC" />
-                    <Editor x:Name="FwLogEditor" HeightRequest="170" IsReadOnly="True" BackgroundColor="#000000" TextColor="#4ADE80" FontFamily="OpenSansRegular" FontSize="11" Text="[SPARC Mobile] Pronto para auditar firmware ou testar link WAN..." />
-                </VerticalStackLayout>
-            </Frame>
-
-        </VerticalStackLayout>
-    </ScrollView>
+        </Grid>
+    </Grid>
 </ContentPage>

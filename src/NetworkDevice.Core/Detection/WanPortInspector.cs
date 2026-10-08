@@ -19,6 +19,7 @@ public static class WanPortInspector
             DeviceSeries.Isr841 => PorTagModelo("c841"),
             DeviceSeries.Isr921 => PorTagModelo("921"),
             DeviceSeries.Series1900 => PorTagModelo("1900"),
+            DeviceSeries.Series2900 => PorTagModelo("2900"),
             DeviceSeries.Msr930 => PorTagModelo("930"),
             DeviceSeries.Msr954 => PorTagModelo("954"),
             DeviceSeries.Msr1002 => PorTagModelo("1002"),
@@ -38,6 +39,9 @@ public static class WanPortInspector
                 new[] { "gigabitethernet4", "gigabitethernet 4" }, false);
         if (t.Contains("1900"))
             return new WanPortaInfo("Cisco Série 1900", "GE0/0",
+                new[] { "gigabitethernet0/0", "gigabitethernet 0/0" }, false);
+        if (t.Contains("2900") || t.Contains("2901") || t.Contains("2911") || t.Contains("2921") || t.Contains("2951"))
+            return new WanPortaInfo("Cisco Série 2900", "GE0/0",
                 new[] { "gigabitethernet0/0", "gigabitethernet 0/0" }, false);
         if (t.Contains("1002") || t.Contains("1003") || t.Contains("1000"))
             return new WanPortaInfo("HPE MSR 1002 / 1003", "GE0/0",

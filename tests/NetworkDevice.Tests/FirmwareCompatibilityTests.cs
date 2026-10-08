@@ -48,10 +48,31 @@ public class FirmwareCompatibilityTests
     [InlineData(DeviceSeries.Series1900, "c1905-universalk9-mz.SPA.152-4.M5.bin", true)]
     [InlineData(DeviceSeries.Series1900, "c1921-universalk9-mz.bin", true)]
     [InlineData(DeviceSeries.Series1900, "c1941-universalk9-mz.bin", true)]
+    [InlineData(DeviceSeries.Series1900, "c2900-universalk9-mz.bin", false)]
     [InlineData(DeviceSeries.Series1900, "c900-universalk9-mz.SPA.158-3.M4.bin", false)]
     [InlineData(DeviceSeries.Series1900, "msr954-cmw710-r6749p43.ipe", false)]
     [InlineData(DeviceSeries.Series1900, "c1900-firmware.zip", false)]
     public void Validate_Cisco1900_ValidatesOnlyCompatibleBinImages(DeviceSeries series, string fileName, bool expectedCompatible)
+    {
+        var result = FirmwareCompatibilityValidator.Validate(series, fileName);
+        Assert.Equal(expectedCompatible, result.IsCompatible);
+        if (!expectedCompatible)
+        {
+            Assert.False(string.IsNullOrWhiteSpace(result.ErrorMessage));
+        }
+    }
+
+    [Theory]
+    [InlineData(DeviceSeries.Series2900, "c2900-universalk9-mz.SPA.157-3.M9.bin", true)]
+    [InlineData(DeviceSeries.Series2900, "c2901-universalk9-mz.bin", true)]
+    [InlineData(DeviceSeries.Series2900, "c2911-universalk9-mz.bin", true)]
+    [InlineData(DeviceSeries.Series2900, "c2921-universalk9-mz.bin", true)]
+    [InlineData(DeviceSeries.Series2900, "c2951-universalk9-mz.bin", true)]
+    [InlineData(DeviceSeries.Series2900, "c1900-universalk9-mz.SPA.158-3.M7.bin", false)]
+    [InlineData(DeviceSeries.Series2900, "c900-universalk9-mz.SPA.158-3.M4.bin", false)]
+    [InlineData(DeviceSeries.Series2900, "msr954-cmw710-r6749p43.ipe", false)]
+    [InlineData(DeviceSeries.Series2900, "c2900-firmware.zip", false)]
+    public void Validate_Cisco2900_ValidatesOnlyCompatibleBinImages(DeviceSeries series, string fileName, bool expectedCompatible)
     {
         var result = FirmwareCompatibilityValidator.Validate(series, fileName);
         Assert.Equal(expectedCompatible, result.IsCompatible);

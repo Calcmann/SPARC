@@ -111,6 +111,7 @@ public class FirmwareRepositoryServiceTests : IDisposable
     [InlineData("c900-universalk9-mz.SPA.159-3.M12.bin", DeviceSeries.Isr921)]
     [InlineData("c800m-universalk9-mz.SPA.159-3.M12.bin", DeviceSeries.Isr841)]
     [InlineData("c1900-universalk9-mz.SPA.157-3.M9.bin", DeviceSeries.Series1900)]
+    [InlineData("c2900-universalk9-mz.SPA.157-3.M9.bin", DeviceSeries.Series2900)]
     [InlineData("FGT_40F-v7.2.11.M-build1740-FORTINET.out", DeviceSeries.FortiGate40F)]
     [InlineData("MSR93X-CMW520-R2512P04.BIN", DeviceSeries.Msr930)]
     [InlineData("MSR954-CMW710-R6749P43.ipe", DeviceSeries.Msr954)]

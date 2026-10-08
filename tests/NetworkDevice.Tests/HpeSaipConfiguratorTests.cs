@@ -209,4 +209,65 @@ GE0/1                10.0.0.1             UP       UP
         Assert.Equal(HpeValidationStatus.Pass, report.OverallStatus);
         Assert.All(report.Items, item => Assert.Equal(HpeValidationStatus.Pass, item.Status));
     }
+
+    [Fact]
+    public void GenerateCommands_ProducesFullBldClaroComponents_WhenEnabled()
+    {
+        var circuit = new SaipCircuitData
+        {
+            NumeroOts = "OTS-998877",
+            DesignacaoIp = "CIRCUITO-TESTE-BLD",
+            ClienteRazaoSocial = "EMPRESA TESTE S.A.",
+            WanIp = "200.200.200.2",
+            WanSubnetMask = "255.255.255.252",
+            WanGateway = "200.200.200.1",
+            LanIp = "10.10.10.1",
+            LanSubnetMask = "255.255.255.0",
+            BandaMbpsNominal = 100,
+            PeLoopbackIp = "200.255.0.1",
+            WanIpv6 = "2001:db8:1::2",
+            WanIpv6Prefix = 64,
+            WanIpv6Gateway = "2001:db8:1::1",
+            LanIpv6 = "2001:db8:2::1",
+            LanIpv6Prefix = 64
+        };
+
+        var cmds = HpeSaipConfigurator.GenerateCommands(circuit, "GigabitEthernet0/0", "GigabitEthernet0/1", isComware5: false, incluirBldClaro: true);
+        var joined = string.Join("\n", cmds);
+
+        // Hostname
+        Assert.Contains("sysname CIRCUITO-TESTE-BLD", joined);
+
+        // Banner Claro
+        Assert.Contains("CLARO Brasil S.A.", joined);
+        Assert.Contains("SOMENTE USUARIOS AUTORIZADOS", joined);
+
+        // NTP Oficial Claro
+        Assert.Contains("ntp-service unicast-server 200.20.186.75", joined);
+        Assert.Contains("ntp-service unicast-server 200.20.186.94", joined);
+
+        // SNMP Oficial Claro
+        Assert.Contains("snmp-agent community read claro21sup", joined);
+        Assert.Contains("snmp-agent community read LIDER", joined);
+        Assert.Contains("snmp-agent target-host trap address udp-domain 200.255.156.194", joined);
+
+        // TACACS+ Oficial Claro
+        Assert.Contains("hwtacacs scheme CLARO", joined);
+        Assert.Contains("primary authentication 200.255.166.129", joined);
+
+        // QoS Traffic Shaping
+        Assert.Contains("qos lr outbound cir 100000", joined);
+
+        // ACL e VTY
+        Assert.Contains("acl advanced 3087", joined);
+        Assert.Contains("rule 5 permit ip source 200.255.156.192 0.0.0.63 destination any", joined);
+        Assert.Contains("rule 10 permit ip source host 200.200.200.1 destination any", joined);
+        Assert.Contains("rule 15 permit ip source host 200.255.0.1 destination any", joined);
+        Assert.Contains("acl 3087 inbound", joined);
+
+        // IPv6 Dual-Stack
+        Assert.Contains("ipv6 address 2001:db8:1::2/64", joined);
+        Assert.Contains("ipv6 address 2001:db8:2::1/64", joined);
+        Assert.Contains("ipv6 route-static :: 0 2001:db8:1::1", joined);
+    }
 }

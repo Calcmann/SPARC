@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SPARC — Caso de Negócio: Inovação Interna vs. Projeto Corporativo Terceirizado</title>
+<style>
+  :root{
+    --red:#DA291C; --red2:#EF4444; --navy:#0B132B; --navy2:#1A2642; --cyan:#0EA5E9;
+    --green:#16A34A; --amber:#D97706; --ink:#0F172A; --muted:#64748B; --line:#E2E8F0; --bg:#F8FAFC;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-print-color-adjust:exact; print-color-adjust:exact}
+  body{margin:0; font-family:"Segoe UI",Roboto,Arial,sans-serif; color:var(--ink); background:#E5E7EB; line-height:1.45}
+  .page{width:210mm; min-height:297mm; margin:12px auto; background:#fff; padding:16mm 15mm 14mm; position:relative; box-shadow:0 4px 24px rgba(0,0,0,.12); page-break-after:always; break-after:page; overflow:hidden}
+  .page:last-child{page-break-after:auto; break-after:auto}
+  .page::before{content:""; position:absolute; top:0; left:0; right:0; height:5px; background:var(--red)}
+  .foot{position:absolute; bottom:7mm; left:15mm; right:15mm; display:flex; justify-content:space-between; font-size:8.5pt; color:var(--muted); border-top:1px solid var(--line); padding-top:4px}
+  .kicker{font-size:8.5pt; letter-spacing:.12em; font-weight:700; color:var(--red); text-transform:uppercase}
+  h1{font-size:22pt; margin:2px 0 6px; line-height:1.15}
+  h2{font-size:17pt; margin:2px 0 10px; line-height:1.2}
+  h3{font-size:11.5pt; margin:0 0 4px}
+  p{margin:0 0 8px; font-size:10pt}
+  .lead{font-size:11pt; color:#334155}
+  small,.small{font-size:8.5pt; color:var(--muted)}
+  .grid{display:grid; gap:10px}
+  .g2{grid-template-columns:1fr 1fr} .g3{grid-template-columns:repeat(3,1fr)} .g4{grid-template-columns:repeat(4,1fr)}
+  .card{border:1px solid var(--line); border-radius:10px; padding:10px 12px; background:#fff}
+  .card.soft{background:var(--bg)}
+  .card.red{border-left:5px solid var(--red)} .card.green{border-left:5px solid var(--green)}
+  .card.cyan{border-left:5px solid var(--cyan)} .card.amber{border-left:5px solid var(--amber)}
+  .kpi{text-align:center; padding:12px 8px}
+  .kpi .v{font-size:24pt; font-weight:800; color:var(--red); line-height:1}
+  .kpi .l{font-size:9pt; font-weight:700; margin-top:4px}
+  .kpi .d{font-size:8pt; color:var(--muted)}
+  table{width:100%; border-collapse:collapse; font-size:9pt}
+  th,td{padding:6px 7px; border-bottom:1px solid var(--line); vertical-align:top; text-align:left}
+  th{background:var(--navy); color:#fff; font-weight:600}
+  tr:nth-child(even) td{background:#F8FAFC}
+  .win{color:var(--green); font-weight:700} .lose{color:var(--red2); font-weight:700} .mid{color:var(--amber); font-weight:700}
+  .pill{display:inline-block; padding:1px 8px; border-radius:99px; font-size:8pt; font-weight:700}
+  .pill.g{background:#DCFCE7; color:#166534} .pill.r{background:#FEE2E2; color:#991B1B} .pill.a{background:#FEF3C7; color:#92400E} .pill.b{background:#E0F2FE; color:#075985}
+  ul{margin:4px 0 6px 18px; padding:0; font-size:9.5pt} li{margin:2px 0}
+  .callout{background:linear-gradient(135deg,var(--navy),var(--navy2)); color:#fff; border-radius:12px; padding:14px 16px}
+  .callout h3{color:#7DD3FC}
+  .callout p,.callout li{color:#E2E8F0}
+  .bar{height:16px; border-radius:4px; display:flex; align-items:center; padding-left:6px; color:#fff; font-size:8pt; font-weight:700; white-space:nowrap}
+  .tl-row{display:grid; grid-template-columns:110px 1fr; align-items:center; gap:8px; margin:5px 0}
+  .tl-track{position:relative; height:22px; background:#F1F5F9; border-radius:5px}
+  .tl-seg{position:absolute; top:0; height:22px; border-radius:4px; font-size:7.5pt; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:600; overflow:hidden; white-space:nowrap}
+  .months{display:grid; grid-template-columns:110px 1fr; gap:8px; font-size:7.5pt; color:var(--muted)}
+  .months div:last-child{display:flex; justify-content:space-between}
+  input[type=number]{width:100%; padding:3px 5px; border:1px solid #CBD5E1; border-radius:5px; font-size:9pt}
+  label{font-size:8.5pt; color:#334155; display:block}
+  .calc td{padding:3px 6px}
+  .score{display:flex; gap:3px} .score i{width:12px; height:12px; border-radius:3px; background:#E2E8F0; display:inline-block}
+  .score i.on{background:var(--green)}
+  .opt{border:2px solid var(--line); border-radius:12px; padding:10px 12px}
+  .opt.best{border-color:var(--green); background:#F0FDF4}
+  .opt .tag{float:right}
+  .cover{background:radial-gradient(circle at 80% 10%,#1E3A8A 0,var(--navy) 55%); color:#fff; display:flex; flex-direction:column; justify-content:space-between}
+  .cover::before{width:8mm; height:auto; bottom:0; right:auto}
+  .cover h1{font-size:34pt; color:#fff}
+  .cover .sub{font-size:15pt; color:#7DD3FC; font-weight:600}
+  .vs{display:grid; grid-template-columns:1fr 50px 1fr; align-items:stretch; gap:0}
+  .vs .mid{display:flex; align-items:center; justify-content:center; font-size:18pt; font-weight:900; color:var(--muted)}
+  .flow{display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:8.5pt}
+  .flow span.n{background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:4px 7px}
+  .flow span.a{color:var(--muted)}
+  .noprint{}
+  @media print{
+    body{background:#fff}
+    .page{margin:0; box-shadow:none; width:auto; min-height:auto; height:297mm}
+    .noprint{display:none}
+    input[type=number]{border:none; padding:0; font-weight:700}
+  }
+  @page{size:A4; margin:0}
+</style>
+</head>
+<body>
+
+<!-- ============================ CAPA ============================ -->
+<section class="page cover">
+  <div>
+    <img src="../../src/NetworkDevice.UI/Assets/sparc_logo_full.png" alt="SPARC" style="height:70px; margin-top:10mm" onerror="this.style.display='none'">
+    <div class="kicker" style="margin-top:28mm; color:#FCA5A5">Claro S.A. • Instalação Empresarial B2B • Regional SC</div>
+    <h1>SPARC</h1>
+    <div class="sub">Caso de Negócio: Inovação Interna vs. Projeto Corporativo Terceirizado</div>
+    <p class="lead" style="color:#CBD5E1; margin-top:14px; max-width:150mm">
+      Comparativo de custo, prazo, aderência ao campo e risco entre o SPARC — desenvolvido em casa, a custo marginal
+      próximo de zero — e uma iniciativa corporativa de grande porte, baseada em contratação de terceiros e licenciamento.
+      Inclui avaliação honesta de riscos e a recomendação de caminho estratégico.
+    </p>
+  </div>
+  <div class="grid g4" style="margin-bottom:14mm">
+    <div class="card" style="background:rgba(255,255,255,.06); border-color:rgba(255,255,255,.15); color:#fff"><div style="font-size:20pt;font-weight:800">6 sem.</div><small style="color:#94A3B8">da 1ª linha ao beta em campo</small></div>
+    <div class="card" style="background:rgba(255,255,255,.06); border-color:rgba(255,255,255,.15); color:#fff"><div style="font-size:20pt;font-weight:800">63</div><small style="color:#94A3B8">versões entregues a testadores</small></div>
+    <div class="card" style="background:rgba(255,255,255,.06); border-color:rgba(255,255,255,.15); color:#fff"><div style="font-size:20pt;font-weight:800">2</div><small style="color:#94A3B8">plataformas: Windows + Android</small></div>
+    <div class="card" style="background:rgba(255,255,255,.06); border-color:rgba(255,255,255,.15); color:#fff"><div style="font-size:20pt;font-weight:800">R$ 0</div><small style="color:#94A3B8">em licenças de software</small></div>
+  </div>
+  <div class="foot" style="color:#94A3B8; border-color:rgba(255,255,255,.15)"><span>Responsável técnico: George Calcmann • george.calcmann@claro.com.br</span><span>Out/2026 • v0.8.63</span></div>
+</section>
+
+<!-- ============================ 1. RESUMO EXECUTIVO ============================ -->
+<section class="page">
+  <div class="kicker">01 • Resumo executivo</div>
+  <h2>A pergunta certa não é “SPARC <em>ou</em> projeto corporativo”, e sim “quanto valor entregamos, quando e a que custo”</h2>
+
+  <div class="callout" style="margin:8px 0 12px">
+    <h3>Mensagem principal (para usar em uma frase)</h3>
+    <p style="font-size:11.5pt; margin:0">O SPARC <b>já está em campo</b>, resolve a dor do técnico <b>hoje</b>, custa praticamente <b>zero</b> e
+    evolui em <b>dias</b>. Propomos mantê-lo como a <b>ferramenta de campo oficial da regional</b>, com plano de governança,
+    e que ele sirva de <b>referência funcional e baseline de custo</b> para qualquer projeto corporativo.</p>
+  </div>
+
+  <div class="grid g2">
+    <div class="card green">
+      <h3>✅ Onde o SPARC vence com folga</h3>
+      <ul>
+        <li><b>Custo:</b> sem licenças, sem servidores, sem fábrica de software contratada.</li>
+        <li><b>Prazo:</b> funcionalidade nova em horas/dias; projetos terceirizados levam meses só na contratação.</li>
+        <li><b>Aderência:</b> desenvolvido por quem conhece o campo, ao lado de quem usa.</li>
+        <li><b>Operação offline / WAN down:</b> servidores TFTP/HTTP/FTP embarcados; nada depende de datacenter.</li>
+        <li><b>Escala:</b> roda no notebook ou celular que o técnico já tem — 10 ou 1.000 técnicos sem fila.</li>
+      </ul>
+    </div>
+    <div class="card amber">
+      <h3>⚠️ Onde precisamos nos fortalecer (antes que usem contra nós)</h3>
+      <ul>
+        <li><b>Dependência de uma pessoa</b> (bus factor = 1).</li>
+        <li><b>Governança de TI:</b> repositório, nuvem (Cloudflare/GitHub) e distribuição fora do ambiente corporativo.</li>
+        <li><b>Homologação de segurança</b> e compliance (LGPD, SI) ainda não formalizadas.</li>
+        <li><b>Suporte e continuidade</b> sem SLA definido.</li>
+        <li><b>Métricas de ganho</b> ainda estimadas — precisam ser medidas em piloto.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 style="margin-top:14px">Recomendação</h3>
+  <div class="grid g3">
+    <div class="card soft"><span class="pill g">1</span> <b>Formalizar</b> o SPARC como iniciativa interna (patrocinador, repositório e distribuição corporativos).</div>
+    <div class="card soft"><span class="pill g">2</span> <b>Provar com números</b>: piloto controlado de 30–60 dias com KPIs comparáveis (tempo, retorno de visita, custo).</div>
+    <div class="card soft"><span class="pill g">3</span> <b>Posicionar como complementar</b>: SPARC na ponta (edge) + integração com o que vier do corporativo, em vez de confronto.</div>
+  </div>
+  <p class="small" style="margin-top:10px">Detalhamento das opções e plano 30-60-90 dias nas seções 07 e 08.</p>
+
+  <div class="foot"><span>SPARC • Caso de Negócio</span><span>2</span></div>
+</section>
+
+<!-- ============================ 2. O QUE JÁ FOI ENTREGUE ============================ -->
+<section class="page">
+  <div class="kicker">02 • Evidência — números reais extraídos do repositório</div>
+  <h2>Não é promessa: é software funcionando, medido no próprio código</h2>
+
+  <div class="grid g4" style="margin:8px 0">
+    <div class="card kpi"><div class="v">~61 mil</div><div class="l">linhas de código</div><div class="d">C# / XAML em 7 módulos</div></div>
+    <div class="card kpi"><div class="v">406</div><div class="l">testes automatizados</div><div class="d">validados a cada build</div></div>
+    <div class="card kpi"><div class="v">63</div><div class="l">versões beta</div><div class="d">0.8 → 0.8.63 em ~6 semanas</div></div>
+    <div class="card kpi"><div class="v">3</div><div class="l">fabricantes</div><div class="d">Cisco • HPE/H3C • Fortinet</div></div>
+  </div>
+
+  <h3>Distribuição do código por módulo</h3>
+  <div style="margin:6px 0 12px">
+    <div class="tl-row"><small>Interface Windows</small><div class="bar" style="width:100%; background:var(--navy)">30.170 linhas</div></div>
+    <div class="tl-row"><small>Núcleo (Core)</small><div class="bar" style="width:47%; background:var(--red)">14.148</div></div>
+    <div class="tl-row"><small>App Android</small><div class="bar" style="width:24%; background:var(--cyan)">7.194</div></div>
+    <div class="tl-row"><small>Protocolos</small><div class="bar" style="width:11.4%; background:#475569">3.447</div></div>
+    <div class="tl-row"><small>Cisco</small><div class="bar" style="width:11.1%; background:#475569">3.363</div></div>
+    <div class="tl-row"><small>Fortinet</small><div class="bar" style="width:6.6%; background:#475569">2.000</div></div>
+    <div class="tl-row"><small>Testes</small><div class="bar" style="width:19%; background:var(--green)">5.775</div></div>
+  </div>
+
+  <div class="grid g2">
+    <div class="card cyan">
+      <h3>Capacidades em operação</h3>
+      <ul>
+        <li>Leitura automática do SAIP (PDF/TXT) e preenchimento de WAN/LAN.</li>
+        <li>Recuperação de acesso (ROMMON, BootWare, BIOS FortiGate) sem comandos manuais.</li>
+        <li>TFTP, HTTP e FTP embarcados — carga de firmware sem WAN.</li>
+        <li>Testes ICMP, Telnet/SSH, vazão e loopback L2/L3; relatório PDF da ativação.</li>
+        <li>App Android com hub USB-C (serial + Ethernet simultâneos).</li>
+        <li>Ativação com licença criptográfica RSA vinculada à máquina.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Linha do tempo real</h3>
+      <div class="flow" style="margin-top:6px">
+        <span class="n"><b>25/08</b><br>1º commit</span><span class="a">→</span>
+        <span class="n"><b>Set</b><br>Beta 0.7 Fortinet</span><span class="a">→</span>
+        <span class="n"><b>28/09</b><br>App Android</span><span class="a">→</span>
+        <span class="n"><b>30/09</b><br>Firmware em nuvem</span><span class="a">→</span>
+        <span class="n"><b>02/10</b><br>v0.8.63 hub USB-C</span>
+      </div>
+      <p class="small" style="margin-top:10px">Em um projeto terceirizado típico, esse intervalo (≈6 semanas) normalmente não cobre nem a fase de
+      levantamento de requisitos e aprovação do contrato.</p>
+    </div>
+  </div>
+
+  <div class="foot"><span>SPARC • Caso de Negócio</span><span>3</span></div>
+</section>
+
+<!-- ============================ 3. COMPARATIVO ============================ -->
+<section class="page">
+  <div class="kicker">03 • Comparativo lado a lado</div>
+  <h2>SPARC (interno) × Projeto corporativo (terceiros + licenças)</h2>
+  <p class="small">Coluna “corporativo” descreve o padrão típico desse modelo de contratação. Ajuste com os dados reais do projeto concorrente quando disponíveis.</p>
+
+  <table>
+    <thead><tr><th style="width:22%">Critério</th><th style="width:36%">SPARC — desenvolvimento interno</th><th style="width:36%">Projeto corporativo terceirizado</th><th style="width:6%">✓</th></tr></thead>
+    <tbody>
+      <tr><td><b>Investimento inicial</b></td><td>≈ zero (tempo interno + ferramentas gratuitas)</td><td>Contrato de implantação + licenças + infraestrutura</td><td class="win">S</td></tr>
+      <tr><td><b>Custo recorrente</b></td><td>Manutenção interna; sem licença por usuário</td><td>Licença por técnico/ano + sustentação (~15–25%/ano do contrato)</td><td class="win">S</td></tr>
+      <tr><td><b>Tempo até o 1º valor</b></td><td>Já em uso (beta em campo)</td><td>RFP + contratação + desenvolvimento: tipicamente 6–18 meses</td><td class="win">S</td></tr>
+      <tr><td><b>Ciclo de mudança</b></td><td>Horas a dias; 63 versões em 6 semanas</td><td>Change request, orçamento, fila do fornecedor: semanas a meses</td><td class="win">S</td></tr>
+      <tr><td><b>Proximidade usuário × dev</b></td><td>Direta — o desenvolvedor conhece e vive o campo</td><td>Intermediada por PO, consultoria, gestão de contrato</td><td class="win">S</td></tr>
+      <tr><td><b>Aderência ao processo local</b></td><td>Feito sob medida (SAIP, CPEs e firmwares Claro)</td><td>Produto genérico + customização paga</td><td class="win">S</td></tr>
+      <tr><td><b>Operação sem WAN / offline</b></td><td>Nativa (servidores embarcados no app)</td><td>Normalmente depende de servidor central</td><td class="win">S</td></tr>
+      <tr><td><b>Propriedade do código/IP</b></td><td>100% da empresa</td><td>Frequentemente do fornecedor (lock-in)</td><td class="win">S</td></tr>
+      <tr><td><b>Burocracia</b></td><td>Baixa</td><td>Alta (jurídico, compras, aditivos)</td><td class="win">S</td></tr>
+      <tr><td><b>Governança / compliance</b></td><td>Ainda informal — <i>plano na seção 06</i></td><td>Processos formais, auditoria, contrato</td><td class="lose">C</td></tr>
+      <tr><td><b>Suporte e SLA</b></td><td>Melhor esforço; dependência de 1 pessoa</td><td>SLA contratual, equipe dedicada</td><td class="lose">C</td></tr>
+      <tr><td><b>Integração com sistemas nacionais</b></td><td>Planejada (roadmap)</td><td>Geralmente parte do escopo</td><td class="mid">≈</td></tr>
+      <tr><td><b>Escala nacional</b></td><td>Técnica: sim (edge). Organizacional: requer formalização</td><td>Desenhado para escala, com custo proporcional</td><td class="mid">≈</td></tr>
+    </tbody>
+  </table>
+  <p class="small" style="margin-top:6px"><span class="win">S</span> = vantagem SPARC • <span class="lose">C</span> = vantagem corporativo • <span class="mid">≈</span> = equilibrado.
+  Placar: <b>SPARC 9 × 2 Corporativo</b> (2 empates). Os 2 pontos fracos são <b>resolvíveis com baixo custo</b>.</p>
+
+  <div class="foot"><span>SPARC • Caso de Negócio</span><span>4</span></div>
+</section>
+
+<!-- ============================ 4. RADAR + TEMPO ============================ -->
+<section class="page">
+  <div class="kicker">04 • Perfil de valor e tempo até o resultado</div>
+  <h2>Onde cada modelo é forte — e quanto tempo até o técnico sentir o benefício</h2>
+
+  <div class="grid" style="grid-template-columns:1.1fr .9fr; align-items:center">
+    <svg id="radar" viewBox="-60 0 540 380" style="width:100%"></svg>
+    <div>
+      <div class="card soft">
+        <h3>Leitura do gráfico (nota 0–10)</h3>
+        <p class="small">Avaliação qualitativa da equipe. O SPARC domina custo, velocidade, aderência e operação offline. O corporativo leva vantagem em governança e suporte — exatamente os itens endereçados pelo plano de formalização.</p>
+        <p style="margin:6px 0 0"><span class="pill r">■ SPARC</span> &nbsp; <span class="pill b">■ Corporativo</span></p>
+      </div>
+      <div class="card green" style="margin-top:8px">
+        <h3>Insight</h3>
+        <p class="small" style="margin:0">Fechar o gap de governança custa uma fração do contrato corporativo. Já igualar custo/velocidade do SPARC é estruturalmente impossível para um modelo terceirizado.</p>
+      </div>
+    </div>
+  </div>
+
+  <h3 style="margin-top:8px">Tempo até o primeiro valor em campo (meses, estimativa típica)</h3>
+  <div class="months"><div></div><div><span>0</span><span>3</span><span>6</span><span>9</span><span>12</span><span>15</span><span>18</span></div></div>
+  <div class="tl-row"><small><b>Corporativo</b></small>
+    <div class="tl-track">
+      <div class="tl-seg" style="left:0; width:16.6%; background:#94A3B8">RFP / aprovação</div>
+      <div class="tl-seg" style="left:16.6%; width:11.1%; background:#64748B">Contrato</div>
+      <div class="tl-seg" style="left:27.7%; width:11.1%; background:#475569">Requisitos</div>
+      <div class="tl-seg" style="left:38.8%; width:33.3%; background:var(--navy)">Desenvolvimento / customização</div>
+      <div class="tl-seg" style="left:72.1%; width:16.6%; background:var(--cyan)">Piloto/rollout</div>
+    </div></div>
+  <div class="tl-row"><small><b>SPARC</b></small>
+    <div class="tl-track">
+      <div class="tl-seg" style="left:0; width:8.3%; background:var(--red)">Beta</div>
+      <div class="tl-seg" style="left:8.3%; width:91.7%; background:var(--green)">Em uso e evoluindo continuamente — valor acumulado desde o mês 1</div>
+    </div></div>
+  <p class="small">Cada mês de espera = ativações mais lentas, visitas repetidas e horas de suporte. O custo de oportunidade do atraso costuma superar o próprio custo do software.</p>
+
+  <h3 style="margin-top:10px">Ciclo de feedback</h3>
+  <div class="grid g2">
+    <div class="card red"><b>Corporativo</b>
+      <div class="flow" style="margin-top:4px"><span class="n">Técnico</span><span class="a">→</span><span class="n">Gestor</span><span class="a">→</span><span class="n">PO</span><span class="a">→</span><span class="n">Fornecedor</span><span class="a">→</span><span class="n">Orçamento</span><span class="a">→</span><span class="n">Release</span></div>
+      <small>Semanas a meses</small></div>
+    <div class="card green"><b>SPARC</b>
+      <div class="flow" style="margin-top:4px"><span class="n">Técnico</span><span class="a">⇄</span><span class="n">Desenvolvedor</span><span class="a">→</span><span class="n">Nova versão</span></div>
+      <small>Horas a dias</small></div>
+  </div>
+
+  <div class="foot"><span>SPARC • Caso de Negócio</span><span>5</span></div>
+</section>
+
+<!-- ============================ 5. TCO ============================ -->
+<section class="page">
+  <div class="kicker">05 • Custo total de propriedade (TCO) — 3 anos</div>
+  <h2>Simulador de custo: edite as premissas com os valores reais</h2>
+  <p class="small noprint">⚙️ Os campos são editáveis no navegador. Valores padrão são <b>ilustrativos</b> — substitua pelos números do projeto corporativo antes de apresentar. Depois use Ctrl+P → “Salvar como PDF”.</p>
+
+  <div class="grid g2">
+    <div class="card red">
+      <h3>Projeto corporativo</h3>
+      <table class="calc">
+        <tr><td><label>Nº de técnicos</label></td><td><input type="number" id="nTec" value="150"></td></tr>
+        <tr><td><label>Licença por técnico/ano (R$)</label></td><td><input type="number" id="lic" value="1800"></td></tr>
+        <tr><td><label>Implantação / fábrica terceirizada (R$)</label></td><td><input type="number" id="impl" value="800000"></td></tr>
+        <tr><td><label>Sustentação (% da implantação/ano)</label></td><td><input type="number" id="sust" value="20"></td></tr>
+        <tr><td><label>Infra / servidores / nuvem por ano (R$)</label></td><td><input type="number" id="infra" value="60000"></td></tr>
+        <tr><td><label>Change requests por ano (R$)</label></td><td><input type="number" id="cr" value="120000"></td></tr>
+        <tr><td><label>Gestão interna do contrato/ano (R$)</label></td><td><input type="number" id="gest" value="90000"></td></tr>
+      </table>
+    </div>
+    <div class="card green">
+      <h3>SPARC (com formalização)</h3>
+      <table class="calc">
+        <tr><td><label>Custo anual do dev principal alocado (R$)</label></td><td><input type="number" id="dev1" value="0"></td></tr>
+        <tr><td><label>2º desenvolvedor / backup — custo/ano (R$)</label></td><td><input type="number" id="dev2" value="60000"></td></tr>
+        <tr><td><label>Kit hub USB-C por técnico (R$, único)</label></td><td><input type="number" id="kit" value="150"></td></tr>
+        <tr><td><label>Certificado de assinatura de código/ano (R$)</label></td><td><input type="number" id="cert" value="2500"></td></tr>
+        <tr><td><label>Nuvem / hospedagem corporativa/ano (R$)</label></td><td><input type="number" id="cloud" value="6000"></td></tr>
+        <tr><td><label>Auditoria de segurança (R$, único)</label></td><td><input type="number" id="audit" value="30000"></td></tr>
+      </table>
+      <p class="small" style="margin:4px 0 0">Dev principal = 0 por padrão: custo já existente (colaborador interno). Ajuste se a gestão quiser contabilizar a alocação.</p>
+    </div>
+  </div>
+
+  <div class="grid" style="grid-template-columns:1.2fr .8fr; margin-top:10px; align-items:center">
+    <div class="card">
+      <h3>TCO acumulado em 3 anos</h3>
+      <div id="tcoBars" style="margin-top:6px"></div>
+      <div id="tcoYears" style="margin-top:8px"></div>
+    </div>
+    <div class="callout" style="text-align:center">
+      <div class="small" style="color:#93C5FD">ECONOMIA ESTIMADA EM 3 ANOS</div>
+      <div id="saving" style="font-size:28pt; font-weight:800; color:#fff">—</div>
+      <div id="ratio" style="color:#FCA5A5; font-weight:700"></div>
+    </div>
+  </div>
+  <p class="small" style="margin-top:8px">Não inclui ganhos operacionais (redução de tempo de ativação e de visitas repetidas), que favorecem ainda mais o SPARC por estar disponível meses antes.</p>
+
+  <div class="foot"><span>SPARC • Caso de Negócio</span><span>6</span></div>
+</section>
+
+<!-- ============================ 6. RISCOS ============================ -->
+<section class="page">
+  <div class="kicker">06 • Pontos de ataque e mitigação</div>
+  <h2>O que vão usar contra o SPARC — e como neutralizar antes da reunião</h2>
+  <p class="lead">Uma defesa crível reconhece fragilidades. Cada uma abaixo tem mitigação barata e rápida; resolvê-las <b>antes</b> do embate transforma o SPARC de “projeto paralelo” em “solução corporativa interna”.</p>
+
+  <table>
+    <thead><tr><th style="width:24%">Objeção provável</th><th style="width:10%">Risco</th><th>Mitigação proposta</th><th style="width:12%">Prazo</th></tr></thead>
+    <tbody>
+      <tr><td><b>“Depende de uma pessoa só”</b></td><td><span class="pill r">Alto</span></td><td>Indicar 2º desenvolvedor/mantenedor; documentação de arquitetura (já iniciada em <i>docs/</i>); 406 testes automatizados reduzem risco de regressão; código-fonte sob posse da empresa.</td><td>30 dias</td></tr>
+      <tr><td><b>“Shadow IT / fora da governança”</b></td><td><span class="pill r">Alto</span></td><td>Migrar repositório e releases do GitHub pessoal para repositório corporativo; Cloudflare/armazenamento de firmware para conta institucional; registrar o sistema no inventário de TI.</td><td>30 dias</td></tr>
+      <tr><td><b>“Segurança não homologada”</b></td><td><span class="pill a">Médio</span></td><td>Submeter à Segurança da Informação: análise estática (SAST), revisão de dependências, assinatura de código. Já possui licença RSA vinculada à máquina e expiração de 30 dias.</td><td>45–60 dias</td></tr>
+      <tr><td><b>“Ferramenta de quebra de senha é perigosa”</b></td><td><span class="pill a">Médio</span></td><td>Renomear para <i>recuperação de acesso</i>; restringir por perfil; registrar log/auditoria de cada uso; usar apenas em CPEs de propriedade Claro.</td><td>15 dias</td></tr>
+      <tr><td><b>“Sem suporte / SLA”</b></td><td><span class="pill a">Médio</span></td><td>Definir canal de suporte (Teams/e-mail), janela de atendimento e processo de release (beta → estável). Acordo de nível interno simples.</td><td>15 dias</td></tr>
+      <tr><td><b>“Ganhos não comprovados”</b></td><td><span class="pill a">Médio</span></td><td>Piloto com grupo controle: medir tempo por ativação, % de visita única, chamados ao suporte e devoluções indevidas de CPE.</td><td>30–60 dias</td></tr>
+      <tr><td><b>“Não integra com sistemas nacionais”</b></td><td><span class="pill b">Baixo</span></td><td>Arquitetura modular (Core separado da UI) permite expor API/exportação. Propor integração como fase seguinte — ou como entrega do próprio projeto corporativo.</td><td>Roadmap</td></tr>
+      <tr><td><b>“LGPD / dados de cliente”</b></td><td><span class="pill b">Baixo</span></td><td>Processamento local no dispositivo; mapear dados do SAIP tratados, retenção de relatórios PDF e definir descarte.</td><td>30 dias</td></tr>
+    </tbody>
+  </table>
+
+  <div class="card amber" style="margin-top:10px">
+    <h3>⚠️ Atenção prioritária</h3>
+    <p style="margin:0">Hoje o código e a distribuição de firmwares passam por contas <b>pessoais</b> (GitHub/Cloudflare). Esse é o argumento mais forte que o lado corporativo pode usar. <b>Resolver isso primeiro</b> — é rápido e muda completamente a percepção do projeto.</p>
+  </div>
+
+  <div class="foot"><span>SPARC • Caso de Negócio</span><span>7</span></div>
+</section>
+
+<!-- ============================ 7. CAMINHOS ============================ -->
+<section class="page">
+  <div class="kicker">07 • Avaliação dos caminhos possíveis</div>
+  <h2>Quatro estratégias — qual maximiza a chance de o SPARC sobreviver e crescer?</h2>
+
+  <div class="grid g2">
+    <div class="opt">
+      <span class="tag pill r">Não recomendado</span>
+      <h3>A. Confronto direto</h3>
+      <p class="small">Defender o SPARC como <i>substituto</i> do projeto corporativo.</p>
+      <p style="font-size:9pt; margin:0">➕ Mensagem clara de economia<br>➖ Coloca a regional contra a diretoria/TI; o lado corporativo tem mais poder político e explora as fragilidades de governança.</p>
+    </div>
+    <div class="opt">
+      <span class="tag pill a">Arriscado</span>
+      <h3>B. Seguir em paralelo, sem formalizar</h3>
+      <p class="small">Continuar como iniciativa informal da regional.</p>
+      <p style="font-size:9pt; margin:0">➕ Mantém agilidade total<br>➖ Alto risco de ser descontinuado por decisão de TI/compliance quando o corporativo entrar; esforço pode ser perdido.</p>
+    </div>
+    <div class="opt best">
+      <span class="tag pill g">★ Recomendado</span>
+      <h3>C. Complementar + piloto comprovado</h3>
+      <p class="small">Formalizar o SPARC como ferramenta de campo (edge) e provar valor com métricas.</p>
+      <p style="font-size:9pt; margin:0">➕ Resolve as fragilidades, gera dados irrefutáveis e evita disputa política. O SPARC passa a ser a camada de campo que o corporativo pode <b>integrar</b> em vez de recriar.<br>➖ Exige 30–60 dias de esforço em governança.</p>
+    </div>
+    <div class="opt">
+      <span class="tag pill b">Alternativa forte</span>
+      <h3>D. SPARC como baseline / requisito do corporativo</h3>
+      <p class="small">Usar o SPARC como especificação funcional e referência de custo na contratação.</p>
+      <p style="font-size:9pt; margin:0">➕ Reduz escopo (e custo) do contrato; reconhece a inovação interna.<br>➖ Pode levar à substituição do SPARC no médio prazo. Bom “plano B” combinado com C.</p>
+    </div>
+  </div>
+
+  <h3 style="margin-top:12px">Matriz de decisão (1 = ruim, 5 = ótimo)</h3>
+  <table>
+    <thead><tr><th>Critério (peso)</th><th>A. Confronto</th><th>B. Informal</th><th>C. Complementar</th><th>D. Baseline</th></tr></thead>
+    <tbody>
+      <tr><td>Chance de aprovação (30%)</td><td>1</td><td>2</td><td><b>4</b></td><td>4</td></tr>
+      <tr><td>Economia para a empresa (25%)</td><td>5</td><td>4</td><td><b>4</b></td><td>3</td></tr>
+      <tr><td>Continuidade do SPARC (25%)</td><td>2</td><td>1</td><td><b>5</b></td><td>2</td></tr>
+      <tr><td>Desgaste político (20%)</td><td>1</td><td>3</td><td><b>4</b></td><td>5</td></tr>
+      <tr style="font-weight:700"><td>Nota ponderada</td><td class="lose">2,25</td><td class="mid">2,45</td><td class="win">4,25</td><td>3,45</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout" style="margin-top:10px">
+    <h3>Posicionamento sugerido</h3>
+    <p style="margin:0">“O SPARC não compete com a estratégia corporativa — ele <b>entrega hoje</b> o que o projeto corporativo levaria meses para entregar,
+    a uma fração do custo. Propomos oficializá-lo como ferramenta de campo, medir resultados em piloto e que o projeto corporativo foque
+    no que só ele pode fazer: integração sistêmica nacional.”</p>
+  </div>
+
+  <div class="foot"><span>SPARC • Caso de Negócio</span><span>8</span></div>
+</section>
+
+<!-- ============================ 8. PLANO + ARGUMENTÁRIO ============================ -->
+<section class="page">
+  <div class="kicker">08 • Plano de ação e argumentário</div>
+  <h2>Plano 30 • 60 • 90 dias</h2>
+
+  <div class="grid g3">
+    <div class="card red">
+      <h3>0–30 dias • Blindar</h3>
+      <ul>
+        <li>Obter patrocinador (gerência/diretoria regional).</li>
+        <li>Migrar repositório e firmwares para contas corporativas.</li>
+        <li>Nomear 2º mantenedor.</li>
+        <li>Definir KPIs e linha de base atual (tempo médio, revisitas).</li>
+        <li>Canal de suporte e processo de release.</li>
+      </ul>
+    </div>
+    <div class="card cyan">
+      <h3>30–60 dias • Provar</h3>
+      <ul>
+        <li>Piloto com 10–20 técnicos + grupo controle.</li>
+        <li>Submeter à Segurança da Informação (SAST, assinatura de código).</li>
+        <li>Log de auditoria para recuperação de acesso.</li>
+        <li>Coletar depoimentos de técnicos e coordenadores.</li>
+      </ul>
+    </div>
+    <div class="card green">
+      <h3>60–90 dias • Escalar</h3>
+      <ul>
+        <li>Apresentar resultados medidos à diretoria.</li>
+        <li>Propor API/integração com o projeto corporativo.</li>
+        <li>Expandir para outras regionais B2B.</li>
+        <li>Versão 1.0 estável.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 style="margin-top:14px">Respostas rápidas para objeções</h2>
+  <div class="grid g2">
+    <div class="card soft"><b>“Software interno não tem suporte.”</b><p class="small" style="margin:2px 0 0">Tem suporte mais rápido que qualquer SLA: o desenvolvedor está na mesma operação. Formalizamos canal e janela de atendimento.</p></div>
+    <div class="card soft"><b>“Não escala.”</b><p class="small" style="margin:2px 0 0">Roda no dispositivo do técnico — não há servidor para saturar. Escalar é distribuir o executável/app.</p></div>
+    <div class="card soft"><b>“E se o desenvolvedor sair?”</b><p class="small" style="margin:2px 0 0">O código é da empresa, tem 406 testes e documentação. Com um 2º mantenedor, o risco fica menor que o de lock-in com fornecedor.</p></div>
+    <div class="card soft"><b>“O corporativo é padrão nacional.”</b><p class="small" style="margin:2px 0 0">Ótimo — o SPARC pode alimentá-lo. Padronizar não exige esperar 12 meses sem ferramenta no campo.</p></div>
+    <div class="card soft"><b>“Licença sai barato no volume.”</b><p class="small" style="margin:2px 0 0">Nenhum volume chega a zero. Veja o simulador de TCO com os números reais.</p></div>
+    <div class="card soft"><b>“Não passou pela TI.”</b><p class="small" style="margin:2px 0 0">Correto, e é exatamente o que estamos propondo agora: trazer para dentro da governança, com custo mínimo.</p></div>
+  </div>
+
+  <h3 style="margin-top:12px">Dados que ainda precisamos coletar para fortalecer o documento</h3>
+  <div class="grid g2">
+    <ul style="margin-top:0">
+      <li>Valor (ou faixa) do contrato e licenças do projeto corporativo.</li>
+      <li>Escopo funcional e prazo previsto de entrega dele.</li>
+      <li>Nº de técnicos e ativações/mês na regional e no Brasil.</li>
+    </ul>
+    <ul style="margin-top:0">
+      <li>Tempo médio atual de ativação e taxa de revisita (linha de base).</li>
+      <li>Custo médio de uma visita técnica improdutiva.</li>
+      <li>Depoimentos dos técnicos beta.</li>
+    </ul>
+  </div>
+
+  <div class="foot"><span>SPARC • Caso de Negócio • george.calcmann@claro.com.br</span><span>9</span></div>
+</section>
+
+<script>
+/* ---------- Radar ---------- */
+(function(){
+  const dims=["Custo","Velocidade","Aderência","Flexibilidade","Operação offline","Escala / integração","Suporte / SLA","Governança"];
+  const sparc=[10,10,9,10,10,5,4,4], corp=[3,3,5,3,4,8,8,9];
+  const svg=document.getElementById('radar'), cx=210, cy=190, R=130, n=dims.length, NS="http://www.w3.org/2000/svg";
+  const pt=(i,v)=>{const a=-Math.PI/2+i*2*Math.PI/n; return [cx+Math.cos(a)*R*v/10, cy+Math.sin(a)*R*v/10];};
+  const el=(t,a)=>{const e=document.createElementNS(NS,t); for(const k in a) e.setAttribute(k,a[k]); svg.appendChild(e); return e;};
+  for(let l=2;l<=10;l+=2) el('polygon',{points:dims.map((_,i)=>pt(i,l).join(',')).join(' '),fill:'none',stroke:'#E2E8F0'});
+  dims.forEach((d,i)=>{const [x,y]=pt(i,10); el('line',{x1:cx,y1:cy,x2:x,y2:y,stroke:'#E2E8F0'});
+    const [tx,ty]=pt(i,12.2); const t=el('text',{x:tx,y:ty,'font-size':11,'text-anchor':Math.abs(tx-cx)<5?'middle':(tx>cx?'start':'end'),'dominant-baseline':'middle',fill:'#334155','font-weight':600}); t.textContent=d;});
+  const poly=(vals,c)=>el('polygon',{points:vals.map((v,i)=>pt(i,v).join(',')).join(' '),fill:c,'fill-opacity':.18,stroke:c,'stroke-width':2.5});
+  poly(corp,'#0EA5E9'); poly(sparc,'#DA291C');
+})();
+
+/* ---------- TCO ---------- */
+const fmt=v=>'R$ '+Math.round(v).toLocaleString('pt-BR');
+const g=id=>parseFloat(document.getElementById(id).value)||0;
+function calc(){
+  const corpY=[], spY=[];
+  for(let y=1;y<=3;y++){
+    let c=g('nTec')*g('lic')+g('infra')+g('cr')+g('gest');
+    c+= y===1 ? g('impl') : g('impl')*g('sust')/100;
+    corpY.push(c);
+    let s=g('dev1')+g('dev2')+g('cert')+g('cloud');
+    if(y===1) s+=g('nTec')*g('kit')+g('audit');
+    spY.push(s);
+  }
+  const C=corpY.reduce((a,b)=>a+b,0), S=spY.reduce((a,b)=>a+b,0), mx=Math.max(C,S,1);
+  document.getElementById('tcoBars').innerHTML=
+    `<div class="tl-row"><small><b>Corporativo</b></small><div class="bar" style="width:${C/mx*100}%;background:var(--navy)">${fmt(C)}</div></div>
+     <div class="tl-row"><small><b>SPARC</b></small><div class="bar" style="width:${Math.max(S/mx*100,24)}%;background:var(--red)">${fmt(S)}</div></div>`;
+  document.getElementById('tcoYears').innerHTML='<table><tr><th></th><th>Ano 1</th><th>Ano 2</th><th>Ano 3</th></tr>'+
+    `<tr><td>Corporativo</td>${corpY.map(v=>`<td>${fmt(v)}</td>`).join('')}</tr><tr><td>SPARC</td>${spY.map(v=>`<td>${fmt(v)}</td>`).join('')}</tr></table>`;
+  document.getElementById('saving').textContent=fmt(C-S);
+  document.getElementById('ratio').textContent = S>0 ? `SPARC custa ${(S/C*100).toFixed(1)}% do modelo corporativo` : '';
+}
+document.querySelectorAll('input[type=number]').forEach(i=>i.addEventListener('input',calc));
+calc();
+</script>
+</body>
+</html>

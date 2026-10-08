@@ -21,6 +21,7 @@ public class RouterRemoteLoopbackServiceTests
 
     [Theory]
     [InlineData(DeviceManufacturer.Cisco, DeviceSeries.Series1900, "cisco_ios")]
+    [InlineData(DeviceManufacturer.Cisco, DeviceSeries.Series2900, "cisco_ios")]
     [InlineData(DeviceManufacturer.Cisco, DeviceSeries.Isr921, "cisco_ios")]
     [InlineData(DeviceManufacturer.Hpe, DeviceSeries.Msr954, "hpe_comware")]
     [InlineData(DeviceManufacturer.Fortinet, DeviceSeries.FortiGate40F, "fortinet_fortigate")]

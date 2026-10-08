@@ -192,14 +192,17 @@ public sealed class FirmwareRepositoryService
         return req;
     }
 
+    public static string? DefaultLocalRootOverride { get; set; }
+
     private static string ResolveLocalRoot(string? customLocalRoot)
     {
-        if (!string.IsNullOrWhiteSpace(customLocalRoot))
+        var targetRoot = customLocalRoot ?? DefaultLocalRootOverride;
+        if (!string.IsNullOrWhiteSpace(targetRoot))
         {
             try
             {
-                Directory.CreateDirectory(customLocalRoot);
-                return customLocalRoot;
+                Directory.CreateDirectory(targetRoot);
+                return targetRoot;
             }
             catch
             {
@@ -207,7 +210,16 @@ public sealed class FirmwareRepositoryService
             }
         }
 
-        // 1. Tenta C:\SPARC\firmwares
+        // 1. Tenta a subpasta 'firmwares' na pasta base do executável (ex: C:\SPARC\firmwares ou D:\SPARC\firmwares)
+        try
+        {
+            var baseFirmwares = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "firmwares");
+            Directory.CreateDirectory(baseFirmwares);
+            return baseFirmwares;
+        }
+        catch { }
+
+        // 2. Tenta C:\SPARC\firmwares
         try
         {
             var sparcFirmwares = @"C:\SPARC\firmwares";
@@ -216,7 +228,7 @@ public sealed class FirmwareRepositoryService
         }
         catch
         {
-            // 2. Fallback para %LocalAppData%\SPARC\firmwares
+            // 3. Fallback para %LocalAppData%\SPARC\firmwares
             var localAppData = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "SPARC",

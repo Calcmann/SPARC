@@ -27,40 +27,148 @@ public partial class App : Application
         base.OnStartup(e);
 
         var args = Environment.GetCommandLineArgs();
+
+        // Verifica se o aplicativo está sendo executado fora da pasta de trabalho e oferece assistente de instalação
+        if (WorkspaceSetupManager.CheckAndOfferSetup(args))
+        {
+            Shutdown();
+            return;
+        }
+
         bool isAdminMode = args.Any(a => a.Equals("--admin", StringComparison.OrdinalIgnoreCase) || 
                                          a.Equals("-admin", StringComparison.OrdinalIgnoreCase));
 
-        if (isAdminMode)
+        var mutexId = isAdminMode ? @"Local\SPARC_Admin_SingleInstance" : @"Local\SPARC_Claro_SingleInstance";
+        var appTitle = isAdminMode ? "SPARC Admin" : "SPARC";
+
+        _singleInstance = new Mutex(true, mutexId, out bool isFirstInstance);
+        if (!isFirstInstance)
         {
-            _singleInstance = new Mutex(true, @"Local\SPARC_Admin_SingleInstance", out bool firstAdminInstance);
-            if (!firstAdminInstance)
+            // Mutex ocupado: verifica se o processo anterior possui UI visível ou se é um processo morto/órfão
+            if (!HandleExistingInstance(appTitle))
             {
-                MessageBox.Show("O SPARC Admin já está em execução.\nFeche a janela existente e tente novamente.", "SPARC Admin — Instância única", MessageBoxButton.OK, MessageBoxImage.Information);
                 Shutdown();
                 return;
             }
 
+            // O processo morto foi finalizado; readquire o mutex para a nova instância
+            try { _singleInstance?.Dispose(); } catch { }
+            _singleInstance = new Mutex(true, mutexId, out _);
+        }
+
+        EncerraProcessosAntigos();
+
+        if (isAdminMode)
+        {
             var adminWin = new AdminWindow();
             MainWindow = adminWin;
             adminWin.Show();
         }
         else
         {
-            // Instância única: evita duas janelas do SPARC competindo pela mesma COM serial
-            // (causa comum de "seleção 1 solta" e binários antigos sendo usados em paralelo).
-            _singleInstance = new Mutex(true, @"Local\SPARC_Claro_SingleInstance", out bool firstInstance);
-            if (!firstInstance)
-            {
-                MessageBox.Show("O SPARC já está em execução.\nFeche a janela existente e tente novamente.", "SPARC — Instância única", MessageBoxButton.OK, MessageBoxImage.Information);
-                Shutdown();
-                return;
-            }
-
-            EncerraProcessosAntigos();
-
             var mainWin = new MainWindow();
             MainWindow = mainWin;
             mainWin.Show();
+        }
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    private const int SW_RESTORE = 9;
+
+    /// <summary>
+    /// Avalia se existem outros processos SPARC em execução.
+    /// Se houver processo com interface gráfica visível, traz a janela para a frente e avisa o operador.
+    /// Se o processo for morto / zumbi / sem UI visível, encerra-o silenciosamente e permite abrir nova instância.
+    /// </summary>
+    private static bool HandleExistingInstance(string appTitle)
+    {
+        try
+        {
+            var currentPid = Environment.ProcessId;
+            var currentProc = Process.GetCurrentProcess();
+            var currentName = currentProc.ProcessName;
+
+            var otherProcesses = Process.GetProcessesByName(currentName)
+                .Where(p => p.Id != currentPid)
+                .ToList();
+
+            if (!otherProcesses.Any() && !currentName.Equals("NetworkDevice.UI", StringComparison.OrdinalIgnoreCase))
+            {
+                otherProcesses = Process.GetProcessesByName("NetworkDevice.UI")
+                    .Where(p => p.Id != currentPid)
+                    .ToList();
+            }
+
+            // Também procura por nomes de binários de teste gerados
+            if (!otherProcesses.Any())
+            {
+                otherProcesses = Process.GetProcesses()
+                    .Where(p => p.Id != currentPid &&
+                               (p.ProcessName.StartsWith("SPARC-Beta", StringComparison.OrdinalIgnoreCase) ||
+                                p.ProcessName.StartsWith("SPARC", StringComparison.OrdinalIgnoreCase)))
+                    .ToList();
+            }
+
+            Process? visibleProcess = null;
+            foreach (var proc in otherProcesses)
+            {
+                try
+                {
+                    proc.Refresh();
+                    if (proc.MainWindowHandle != IntPtr.Zero && IsWindowVisible(proc.MainWindowHandle))
+                    {
+                        visibleProcess = proc;
+                        break;
+                    }
+                }
+                catch { }
+            }
+
+            if (visibleProcess != null)
+            {
+                try
+                {
+                    var hwnd = visibleProcess.MainWindowHandle;
+                    ShowWindow(hwnd, SW_RESTORE);
+                    SetForegroundWindow(hwnd);
+                }
+                catch { }
+
+                MessageBox.Show(
+                    $"O {appTitle} já está em execução.\nUma janela ativa foi encontrada na sua área de trabalho.",
+                    $"{appTitle} — Instância Única",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return false;
+            }
+
+            // Nenhum processo possui UI visível na tela: finaliza os processos mortos/zumbis
+            foreach (var proc in otherProcesses)
+            {
+                try
+                {
+                    proc.Kill(entireProcessTree: true);
+                    proc.WaitForExit(3000);
+                }
+                catch { }
+            }
+
+            EncerraProcessosAntigos();
+            return true;
+        }
+        catch
+        {
+            return true;
         }
     }
 

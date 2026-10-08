@@ -58,6 +58,24 @@ public static class BootInterruptProfiles
         OsBootPolicy = OsBootPolicy.TerminalFail
     };
 
+    public static readonly BootInterruptProfile Cisco2900 = new()
+    {
+        Id = "cisco.c2900.break",
+        Name = "Cisco Série 2900 / ISR G2 (Break @ 9600 - 2901/2911/2921/2951)",
+        Manufacturer = "Cisco",
+        Family = "ISR 2900 / G2",
+        ModelPatterns = new[] { "2900", "2901", "2911", "2921", "2951", "C2900", "C2901", "C2911", "C2921", "C2951", "2900 Series", "cisco.c2900.break" },
+        Method = BootInterruptMethod.Break,
+        RequiresManualIntervention = false,
+        InitialDelay = TimeSpan.FromMilliseconds(200),
+        BurstCount = 1,
+        BurstInterval = TimeSpan.Zero,
+        RetryInterval = TimeSpan.FromMilliseconds(1200),
+        MaxWindow = TimeSpan.FromMinutes(2.5),
+        MaxTotalTransmissions = 150,
+        OsBootPolicy = OsBootPolicy.TerminalFail
+    };
+
     public static readonly BootInterruptProfile CiscoStandardBreak = new()
     {
         Id = "cisco.standard.break",
@@ -240,6 +258,7 @@ public static class BootInterruptProfiles
         HpeMsr954,
         HpeMsrGeneric,
         Cisco1900,
+        Cisco2900,
         Cisco900,
         Cisco841,
         CiscoStandardBreak,
@@ -299,14 +318,6 @@ public static class BootInterruptProfiles
             return HpeMsrGeneric;
         }
 
-        if (trimmed.Contains("1900", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.Contains("1921", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.Contains("1941", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.Contains("1905", StringComparison.OrdinalIgnoreCase))
-        {
-            return Cisco1900;
-        }
-
         if (trimmed.Contains("841", StringComparison.OrdinalIgnoreCase) ||
             trimmed.Contains("800", StringComparison.OrdinalIgnoreCase))
         {
@@ -318,6 +329,23 @@ public static class BootInterruptProfiles
             trimmed.Contains("ctrl", StringComparison.OrdinalIgnoreCase))
         {
             return Cisco900;
+        }
+
+        if (trimmed.Contains("1900", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("1921", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("1941", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("1905", StringComparison.OrdinalIgnoreCase))
+        {
+            return Cisco1900;
+        }
+
+        if (trimmed.Contains("2900", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("2901", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("2911", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("2921", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("2951", StringComparison.OrdinalIgnoreCase))
+        {
+            return Cisco2900;
         }
 
         if (trimmed.Contains("break", StringComparison.OrdinalIgnoreCase))

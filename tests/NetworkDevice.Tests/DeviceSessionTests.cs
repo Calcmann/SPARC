@@ -107,6 +107,50 @@ public class DeviceSessionTests
     }
 
     [Fact]
+    public async Task ConnectAsync_WithoutProvidedCredentials_AttemptsEBTAndCQMR_First()
+    {
+        var transport = new ScriptedTransport(
+            cmd => cmd switch
+            {
+                "EBT" => "Password: ",
+                "CQMR" => "Router>\r\n",
+                _ => ""
+            },
+            initialOutput: "User Access Verification\r\n\r\nUsername: ");
+
+        await using var session = new DeviceSession(transport, new SessionOptions());
+        await session.ConnectAsync();
+
+        Assert.True(session.IsConnected);
+        Assert.Equal("Router>", session.CurrentPrompt);
+        Assert.Contains("EBT", transport.Commands);
+        Assert.Contains("CQMR", transport.Commands);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_WithoutProvidedCredentials_AttemptsEBTAndPRO1AN_WhenCQMRFails()
+    {
+        var transport = new ScriptedTransport(
+            cmd =>
+            {
+                if (cmd == "EBT") return "Password: ";
+                if (cmd == "CQMR") return "Login invalid\r\n\r\nUsername: ";
+                if (cmd == "PRO1AN") return "<HPE>\r\n";
+                return "";
+            },
+            initialOutput: "Username: ");
+
+        await using var session = new DeviceSession(transport, new SessionOptions());
+        await session.ConnectAsync();
+
+        Assert.True(session.IsConnected);
+        Assert.Equal("<HPE>", session.CurrentPrompt);
+        Assert.Contains("EBT", transport.Commands);
+        Assert.Contains("CQMR", transport.Commands);
+        Assert.Contains("PRO1AN", transport.Commands);
+    }
+
+    [Fact]
     public async Task SendCommandAsync_BeforeConnect_Throws()
     {
         var transport = new ScriptedTransport(_ => "");

@@ -44,6 +44,13 @@ public sealed class DeviceConnectionManager
     public SaipCircuitData? LoadedCircuit { get; set; }
 
     /// <summary>
+    /// Credenciais resolvidas com sucesso durante autenticação automática ou manual (paridade Windows).
+    /// </summary>
+    public string? LastResolvedUser { get; set; }
+    public string? LastResolvedPassword { get; set; }
+    public string? LastResolvedEnableSecret { get; set; }
+
+    /// <summary>
     /// Paridade com o checkbox secreto "NAT LAB" do Windows (default desligado).
     /// </summary>
     public bool IncluirNatLab { get; set; }
@@ -60,8 +67,38 @@ public sealed class DeviceConnectionManager
 
     private DeviceConnectionManager() { }
 
+    public record FirmwareProgressState(
+        double Percentage,
+        string Stage,
+        string Details,
+        long BytesTransferred = 0,
+        long TotalBytes = 0,
+        bool IsCompleted = false,
+        bool HasError = false,
+        string? ErrorMessage = null);
+
+    public event Action<FirmwareProgressState>? OnFirmwareProgress;
+
+    public void ReportFirmwareProgress(
+        double percentage,
+        string stage,
+        string details,
+        long bytes = 0,
+        long total = 0,
+        bool completed = false,
+        bool hasError = false,
+        string? err = null)
+    {
+        try
+        {
+            OnFirmwareProgress?.Invoke(new FirmwareProgressState(
+                percentage, stage, details, bytes, total, completed, hasError, err));
+        }
+        catch { }
+    }
+
     /// <summary>
-    /// Identifica se o dispositivo USB conectado é uma placa de rede Ethernet (ex: TP-Link, Realtek) ou Hub USB,
+    /// Identifica se o dispositivo USB conectado é uma placa de rede Ethernet (ex: Realtek, ASIX, TP-Link) ou Hub USB,
     /// para não confundi-lo com o console serial quando conectados simultaneamente via HUB USB-C.
     /// </summary>
     public static bool IsNetworkOrHubDevice(UsbDevice d)
@@ -72,34 +109,59 @@ public sealed class DeviceConnectionManager
         if ((int)d.DeviceClass == 9) return true;
 
         // 2. VIDs conhecidos de adaptadores Ethernet / Rede USB
-        // 0x2357: TP-Link (UE300, UE200, UE300C, etc.)
-        // 0x0BDA: Realtek USB Ethernet (RTL8152, RTL8153, RTL8156)
-        // 0x0B95: ASIX USB Ethernet (AX88179, AX88772)
-        // 0x0424: Microchip / SMSC LAN
-        // 0x05AC: Apple USB Ethernet
+        // 0x0BDA: Realtek USB Ethernet (RTL8150..8156, Hubs RTL) - Realtek NÃO fabrica chips seriais
+        // 0x0B95: ASIX USB Ethernet (AX88172, AX88178, AX88179, AX88179A, AX88772)
+        // 0x2357: TP-Link USB Ethernet/Wi-Fi (UE300, UE200, UE300C, etc.)
+        // 0x0424: Microchip / SMSC LAN (LAN7500, LAN9500, LAN7800)
+        // 0x0FE6, 0x0A46: Davicom DM9601 / DM9620
+        // 0x0A47: Corechip SR9700 / SR9900
+        // 0x05AC: Apple USB Ethernet (0x1402, 0x1405)
         // 0x050D: Belkin USB Ethernet
-        if (d.VendorId == 0x2357 ||
-            (d.VendorId == 0x0BDA && (d.ProductId >= 0x8150 && d.ProductId <= 0x8159)) ||
+        // 0x2001, 0x07D1: D-Link Ethernet
+        // 0x0DF6: Sitecom
+        // 0x1737, 0x13B1, 0x077B: Linksys Ethernet
+        // 0x0846: Netgear Ethernet
+        // 0x045E: Microsoft Surface Ethernet (0x07C6, 0x07AB, 0x0927)
+        // 0x18DA: Fresco Logic Ethernet
+        // 0x05E3, 0x2109, 0x1A40, 0x0409, 0x0451: USB Hub controllers (Genesys, VIA Labs, Terminus, NEC, TI)
+        if (d.VendorId == 0x0BDA ||
             d.VendorId == 0x0B95 ||
+            d.VendorId == 0x2357 ||
             d.VendorId == 0x0424 ||
-            (d.VendorId == 0x05AC && d.ProductId == 0x1402) ||
-            d.VendorId == 0x050D)
+            d.VendorId == 0x0FE6 || d.VendorId == 0x0A46 ||
+            d.VendorId == 0x0A47 ||
+            (d.VendorId == 0x05AC && (d.ProductId == 0x1402 || d.ProductId == 0x1405)) ||
+            d.VendorId == 0x050D ||
+            d.VendorId == 0x2001 || d.VendorId == 0x07D1 ||
+            d.VendorId == 0x0DF6 ||
+            d.VendorId == 0x1737 || d.VendorId == 0x13B1 || d.VendorId == 0x077B ||
+            d.VendorId == 0x0846 ||
+            (d.VendorId == 0x045E && (d.ProductId == 0x07C6 || d.ProductId == 0x07AB || d.ProductId == 0x0927)) ||
+            d.VendorId == 0x18DA ||
+            d.VendorId == 0x05E3 || d.VendorId == 0x2109 || d.VendorId == 0x1A40 ||
+            d.VendorId == 0x0409 || d.VendorId == 0x0451)
         {
             return true;
         }
 
-        // 3. Descrição ou nomes de produto / fabricante indicando Ethernet / Rede
+        // 3. Descrição ou nomes de produto / fabricante indicando Ethernet / Rede / Hub
         var m = (d.ManufacturerName ?? "").ToLowerInvariant();
         var p = (d.ProductName ?? "").ToLowerInvariant();
         if (m.Contains("tp-link") || m.Contains("realtek") || m.Contains("asix") ||
+            m.Contains("davicom") || m.Contains("corechip") || m.Contains("terminus") ||
+            m.Contains("genesys") || m.Contains("via labs") ||
             p.Contains("ethernet") || p.Contains("gigabit") || p.Contains("lan") ||
             p.Contains("ue300") || p.Contains("ue200") || p.Contains("rtl815") ||
-            p.Contains("ax8817") || p.Contains("network"))
+            p.Contains("ax8817") || p.Contains("ax8877") || p.Contains("network") ||
+            p.Contains("nic") || p.Contains("fast ethernet") || p.Contains("rj45") ||
+            p.Contains("10/100") || p.Contains("rndis") || p.Contains("dm96") ||
+            p.Contains("sr9700") || p.Contains("sr9900") || p.Contains("usb hub") ||
+            p.Contains("hub") || p.Contains("dock") || p.Contains("multiport"))
         {
             return true;
         }
 
-        // 4. Subclasses CDC Ethernet (Subclasse 0x06 = Ethernet, 0x0D = NCM, 0x0F = MBIM) ou Mass Storage
+        // 4. Subclasses CDC Ethernet (Subclasse 0x06 = Ethernet, 0x0D = NCM, 0x0F = MBIM), RNDIS (224/1) ou Hub (9) ou Mass Storage (8)
         for (int i = 0; i < d.InterfaceCount; i++)
         {
             var iface = d.GetInterface(i);
@@ -109,9 +171,11 @@ public sealed class DeviceConnectionManager
                 var sub = (int)iface.InterfaceSubclass;
                 if (cls == 2 && (sub == 6 || sub == 13 || sub == 14 || sub == 15))
                     return true;
+                if (cls == 224 && sub == 1) // RNDIS / Ethernet sem fio
+                    return true;
                 if (cls == 9) // Hub
                     return true;
-                if (cls == 8) // Mass Storage
+                if (cls == 8) // Mass Storage (Pen drive / leitor de cartão)
                     return true;
             }
         }
@@ -135,14 +199,21 @@ public sealed class DeviceConnectionManager
         catch { }
 
         // 2. VIDs conhecidos de conversores Serial / UART / Console
-        // 0x0403: FTDI (FT232R, FT2232, etc.)
-        // 0x10C4: Silicon Labs (CP2102, CP2104, etc.)
+        // 0x0403: FTDI (FT232R, FT2232, FT4232, FT230X, etc.)
+        // 0x10C4: Silicon Labs (CP2101, CP2102, CP2104, CP2105, etc.)
         // 0x1A86, 0x4348: QinHeng / Winchiphead (CH340/CH341/CH9102)
         // 0x067B: Prolific (PL2303)
         // 0x0557 (PID 0x2008): ATEN / Cisco USB Console
         // 0x05A6, 0x145F: Cisco Systems Console
         // 0x0483: STMicroelectronics Virtual COM
         // 0x2341, 0x2A03: Arduino CDC
+        // 0x2E8A: Raspberry Pi Pico (RP2040 UART/CDC)
+        // 0x1366: SEGGER J-Link CDC Serial
+        // 0x03EB: Atmel CDC
+        // 0x16C0: Teensy CDC Serial
+        // 0x2047: TI MSP430 CDC
+        // 0x1FC9: NXP CDC
+        // 0x0D28: ARM mbed CDC
         if (d.VendorId == 0x0403 ||
             d.VendorId == 0x10C4 ||
             d.VendorId == 0x1A86 || d.VendorId == 0x4348 ||
@@ -150,18 +221,36 @@ public sealed class DeviceConnectionManager
             (d.VendorId == 0x0557 && d.ProductId == 0x2008) ||
             d.VendorId == 0x05A6 || d.VendorId == 0x145F ||
             d.VendorId == 0x0483 ||
-            d.VendorId == 0x2341 || d.VendorId == 0x2A03)
+            d.VendorId == 0x2341 || d.VendorId == 0x2A03 ||
+            d.VendorId == 0x2E8A ||
+            d.VendorId == 0x1366 ||
+            d.VendorId == 0x03EB ||
+            d.VendorId == 0x16C0 ||
+            d.VendorId == 0x2047 ||
+            d.VendorId == 0x1FC9 ||
+            d.VendorId == 0x0D28)
         {
             return true;
         }
 
-        // 3. Nomes contendo referências explícitas a Serial / Console / UART
+        // 3. Subclasses CDC ACM (Abstract Control Model = Modem/Serial COM)
+        for (int i = 0; i < d.InterfaceCount; i++)
+        {
+            var iface = d.GetInterface(i);
+            if (iface != null && (int)iface.InterfaceClass == 2 && (int)iface.InterfaceSubclass == 2)
+            {
+                return true;
+            }
+        }
+
+        // 4. Nomes contendo referências explícitas a Serial / Console / UART / RS232
         var m = (d.ManufacturerName ?? "").ToLowerInvariant();
         var p = (d.ProductName ?? "").ToLowerInvariant();
-        if (p.Contains("serial") || p.Contains("uart") || p.Contains("rs232") ||
-            p.Contains("console") || p.Contains("cp210") || p.Contains("ch340") ||
-            p.Contains("pl2303") || p.Contains("ft232") || p.Contains("ftdi") ||
-            m.Contains("ftdi") || m.Contains("prolific") || m.Contains("silicon labs"))
+        if (p.Contains("serial") || p.Contains("uart") || p.Contains("rs232") || p.Contains("rs-232") ||
+            p.Contains("console") || p.Contains("cp210") || p.Contains("ch340") || p.Contains("ch341") ||
+            p.Contains("ch9102") || p.Contains("pl2303") || p.Contains("ft232") || p.Contains("ftdi") ||
+            p.Contains("cdc acm") || p.Contains("usb-serial") || p.Contains("usb to serial") ||
+            m.Contains("ftdi") || m.Contains("prolific") || m.Contains("silicon labs") || m.Contains("qinheng"))
         {
             return true;
         }
@@ -169,22 +258,38 @@ public sealed class DeviceConnectionManager
         return false;
     }
 
+    /// <summary>
+    /// Escaneia dispositivos USB na porta OTG / HUB USB-C.
+    /// GARANTIA ESTRITA: O primeiro item da lista é SEMPRE preferencialmente o adaptador serial,
+    /// evitando que placas de rede Ethernet assumam o índice 0 e impeçam o acesso CLI inicial.
+    /// </summary>
     public IReadOnlyList<UsbDevice> ScanUsbDevices()
     {
         try
         {
             var devices = UsbManagerHelper.GetAllUsbDevices()?.ToList() ?? new List<UsbDevice>();
-            
-            // Prioriza exclusivamente adaptadores seriais conhecidos (ignora placas USB/ETH TP-Link, hubs, etc.)
+            if (devices.Count == 0) return Array.Empty<UsbDevice>();
+
+            // 1. Separa estritamente quem é serial confirmado de quem é outro dispositivo e rede
             var serialDevices = devices.Where(IsSupportedSerialDevice).ToList();
-            if (serialDevices.Count > 0)
+            var nonNetworkDevices = devices.Where(d => !IsNetworkOrHubDevice(d) && !IsSupportedSerialDevice(d)).ToList();
+            var networkOrHubDevices = devices.Where(IsNetworkOrHubDevice).ToList();
+
+            var result = new List<UsbDevice>();
+
+            // Seriais SEMPRE no topo absoluto da lista
+            result.AddRange(serialDevices);
+
+            // Dispositivos desconhecidos que não são rede em segundo lugar
+            result.AddRange(nonNetworkDevices);
+
+            // Placas de rede e hubs vão apenas ao final caso não haja nenhum outro dispositivo
+            if (result.Count == 0)
             {
-                return serialDevices;
+                result.AddRange(networkOrHubDevices);
             }
 
-            // Fallback: se nenhum serial conhecido foi detectado, filtra ao menos quem NÃO é rede nem hub
-            var nonNetworkDevices = devices.Where(d => !IsNetworkOrHubDevice(d)).ToList();
-            return nonNetworkDevices.Count > 0 ? nonNetworkDevices : devices;
+            return result;
         }
         catch
         {
@@ -208,6 +313,27 @@ public sealed class DeviceConnectionManager
         }
     }
 
+    /// <summary>
+    /// Verifica se há algum adaptador Ethernet USB ou HUB USB conectado ao smartphone.
+    /// </summary>
+    public bool HasEthernetOrHubDeviceConnected()
+    {
+        try
+        {
+            var devices = UsbManagerHelper.GetAllUsbDevices()?.ToList() ?? new List<UsbDevice>();
+            if (devices.Count == 0) return false;
+            return devices.Any(IsNetworkOrHubDevice) || devices.Count > 1;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Resolve o dispositivo USB para conexão serial.
+    /// GARANTE que adaptadores Ethernet NUNCA sejam selecionados se houver adaptador serial disponível.
+    /// </summary>
     public UsbDevice ResolveLiveDevice(UsbDevice? preferredDevice = null)
     {
         var devices = ScanUsbDevices();
@@ -216,21 +342,32 @@ public sealed class DeviceConnectionManager
             throw new InvalidOperationException("Nenhum adaptador serial USB encontrado na porta OTG. Verifique a conexão do cabo.");
         }
 
-        if (preferredDevice != null)
+        // Se o usuário selecionou um dispositivo que NÃO seja rede, tenta casá-lo
+        if (preferredDevice != null && !IsNetworkOrHubDevice(preferredDevice))
         {
             var exactMatch = devices.FirstOrDefault(d => d.DeviceId == preferredDevice.DeviceId);
-            if (exactMatch != null)
+            if (exactMatch != null && !IsNetworkOrHubDevice(exactMatch))
                 return exactMatch;
 
             var vidPidMatch = devices.FirstOrDefault(d =>
                 d.VendorId == preferredDevice.VendorId && d.ProductId == preferredDevice.ProductId);
-            if (vidPidMatch != null)
+            if (vidPidMatch != null && !IsNetworkOrHubDevice(vidPidMatch))
                 return vidPidMatch;
 
             var nameMatch = devices.FirstOrDefault(d => d.DeviceName == preferredDevice.DeviceName);
-            if (nameMatch != null)
+            if (nameMatch != null && !IsNetworkOrHubDevice(nameMatch))
                 return nameMatch;
         }
+
+        // Prioridade absoluta: primeiro adaptador serial suportado
+        var bestSerial = devices.FirstOrDefault(IsSupportedSerialDevice);
+        if (bestSerial != null)
+            return bestSerial;
+
+        // Segundo: primeiro dispositivo que não seja rede nem hub
+        var bestNonNetwork = devices.FirstOrDefault(d => !IsNetworkOrHubDevice(d));
+        if (bestNonNetwork != null)
+            return bestNonNetwork;
 
         return devices[0];
     }
@@ -422,8 +559,33 @@ public sealed class DeviceConnectionManager
                 result = await _detector.DetectAsync(_transport, ct);
             }
 
+            // Se o equipamento responder com proteção de senha no Padrão 1, tenta autenticar com credenciais padrão Claro/SPARC
+            if (result.OperatingState == DeviceOperatingState.PasswordProtected)
+            {
+                var autoOk = await TryAutoAuthenticateAsync(result, msg => OnProbeProgress?.Invoke(msg), ct);
+                if (autoOk)
+                {
+                    await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes("\r\n"), ct);
+                    await Task.Delay(250, ct);
+                    result = await _detector.DetectAsync(_transport, ct);
+                    if (result.OperatingState == DeviceOperatingState.PasswordProtected || result.OperatingState == DeviceOperatingState.Unknown)
+                    {
+                        result = new DeviceDetectionResult(
+                            result.Manufacturer,
+                            result.Series,
+                            DeviceOperatingState.Ready,
+                            WorkflowType.Provisioning,
+                            AccessState.Open,
+                            result.BootState,
+                            result.FirmwareState,
+                            result.RawPrompt,
+                            "Autenticado automaticamente com credenciais padrão Claro/SPARC.");
+                    }
+                }
+            }
+
             // Se identificou Cisco no Padrão 1 (mesmo com Series == Unknown, como em "Router>"), enriquece o modelo via show version
-            if (result.Manufacturer == DeviceManufacturer.Cisco)
+            if (result.Manufacturer == DeviceManufacturer.Cisco && result.OperatingState != DeviceOperatingState.PasswordProtected)
             {
                 result = await EnrichCiscoModelIfPossibleAsync(result, ct);
             }
@@ -451,6 +613,31 @@ public sealed class DeviceConnectionManager
             await Task.Delay(300, ct);
 
             var resultFortinet = await _detector.DetectAsync(_transport, ct);
+
+            if (resultFortinet.OperatingState == DeviceOperatingState.PasswordProtected)
+            {
+                var autoFortiOk = await TryAutoAuthenticateAsync(resultFortinet, msg => OnProbeProgress?.Invoke(msg), ct);
+                if (autoFortiOk)
+                {
+                    await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes("\r\n"), ct);
+                    await Task.Delay(250, ct);
+                    resultFortinet = await _detector.DetectAsync(_transport, ct);
+                    if (resultFortinet.OperatingState == DeviceOperatingState.PasswordProtected || resultFortinet.OperatingState == DeviceOperatingState.Unknown)
+                    {
+                        resultFortinet = new DeviceDetectionResult(
+                            resultFortinet.Manufacturer,
+                            resultFortinet.Series,
+                            DeviceOperatingState.Ready,
+                            WorkflowType.Provisioning,
+                            AccessState.Open,
+                            resultFortinet.BootState,
+                            resultFortinet.FirmwareState,
+                            resultFortinet.RawPrompt,
+                            "Autenticado com credenciais padrão Claro/SPARC.");
+                    }
+                }
+            }
+
             if (resultFortinet.Manufacturer != DeviceManufacturer.Unknown && resultFortinet.Manufacturer != DeviceManufacturer.Generic)
             {
                 LastDetectionResult = resultFortinet;
@@ -528,6 +715,10 @@ public sealed class DeviceConnectionManager
                            (initialResult.RawPrompt ?? string.Empty).Contains("rommon", StringComparison.OrdinalIgnoreCase) ||
                            (initialResult.RawPrompt ?? string.Empty).Contains("switch:", StringComparison.OrdinalIgnoreCase);
 
+            string promptAtual = initialResult.RawPrompt ?? string.Empty;
+            var isConfigMode = promptAtual.Contains("(config", StringComparison.OrdinalIgnoreCase) ||
+                               System.Text.RegularExpressions.Regex.IsMatch(promptAtual, @"\([A-Za-z0-9_\-\.\/]*config[A-Za-z0-9_\-\.\/]*\)\s*[>#]");
+
             var sb = new System.Text.StringBuilder();
 
             if (isRommon)
@@ -543,6 +734,53 @@ public sealed class DeviceConnectionManager
                 if (initialResult.OperatingState == DeviceOperatingState.PasswordProtected)
                 {
                     return initialResult;
+                }
+
+                // Se o terminal estiver preso em modo de configuração (ex: Router(config)#), sai com 'end' para o modo EXEC (#)
+                if (isConfigMode)
+                {
+                    OnProbeProgress?.Invoke("[*] Console Cisco em modo de configuração detectado — retornando ao modo EXEC privilegiado...");
+                    await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes("end\r\n"), ct);
+                    await Task.Delay(250, ct);
+
+                    // Drena logs do console como "%SYS-5-CONFIG_I: Configured from console by console"
+                    var flushBufDrain = new byte[1024];
+                    while (_transport.IsOpen)
+                    {
+                        using var flushCts = new CancellationTokenSource(80);
+                        try
+                        {
+                            var fr = await _transport.ReadAsync(flushBufDrain, flushCts.Token);
+                            if (fr <= 0) break;
+                        }
+                        catch { break; }
+                    }
+
+                    // Sonda o novo prompt limpo em modo EXEC (#)
+                    await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes("\r\n"), ct);
+                    await Task.Delay(200, ct);
+                    var pBuf = new byte[1024];
+                    using var pCts = new CancellationTokenSource(300);
+                    try
+                    {
+                        var pr = await _transport.ReadAsync(pBuf, pCts.Token);
+                        if (pr > 0)
+                        {
+                            var newP = System.Text.Encoding.UTF8.GetString(pBuf, 0, pr).Trim();
+                            var lastLine = newP.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
+                            if (!string.IsNullOrWhiteSpace(lastLine) && (lastLine.EndsWith("#") || lastLine.EndsWith(">")))
+                            {
+                                promptAtual = lastLine;
+                            }
+                        }
+                    }
+                    catch { }
+
+                    // Limpa marcador de config do prompt se ainda contiver
+                    if (promptAtual.Contains("(config", StringComparison.OrdinalIgnoreCase))
+                    {
+                        promptAtual = System.Text.RegularExpressions.Regex.Replace(promptAtual, @"\([A-Za-z0-9_\-\.\/]*config[A-Za-z0-9_\-\.\/]*\)", "");
+                    }
                 }
 
                 // 1. Envia terminal length 0 para evitar pausas (--More--)
@@ -577,9 +815,17 @@ public sealed class DeviceConnectionManager
                     sb.Append(chunk);
                     var str = sb.ToString();
 
+                    // Se acusar comando inválido (caso ainda estivesse em config), envia fallback 'do show version'
+                    if (str.Contains("% Invalid input", StringComparison.OrdinalIgnoreCase) && !str.Contains("do show version", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes("do show version\r\n"), ct);
+                        await Task.Delay(200, ct);
+                    }
+
                     // Verifica se já temos informação suficiente para identificar o modelo
                     if (DeviceDetector.Cisco841ModelRegex.IsMatch(str) ||
                         DeviceDetector.Cisco900ModelRegex.IsMatch(str) ||
+                        DeviceDetector.Cisco2900ModelRegex.IsMatch(str) ||
                         DeviceDetector.Cisco1900ModelRegex.IsMatch(str) ||
                         str.Contains("Configuration register", StringComparison.OrdinalIgnoreCase) ||
                         (str.Length > 200 && (str.EndsWith(">") || str.EndsWith("#"))))
@@ -593,7 +839,7 @@ public sealed class DeviceConnectionManager
                 }
             }
 
-            var fullText = initialResult.RawPrompt + "\n" + sb.ToString();
+            var fullText = promptAtual + "\n" + sb.ToString();
             var classified = _detector.ClassifyPrompt(fullText);
 
             if (isRommon)
@@ -616,13 +862,27 @@ public sealed class DeviceConnectionManager
                 return new DeviceDetectionResult(
                     classified.Manufacturer,
                     classified.Series,
+                    DeviceOperatingState.Ready,
+                    initialResult.RecommendedWorkflow,
+                    AccessState.Open,
+                    initialResult.BootState,
+                    initialResult.FirmwareState,
+                    promptAtual,
+                    $"Cisco {classified.Series} identificado com sucesso via show version.");
+            }
+
+            if (promptAtual != initialResult.RawPrompt)
+            {
+                return new DeviceDetectionResult(
+                    initialResult.Manufacturer,
+                    initialResult.Series,
                     initialResult.OperatingState,
                     initialResult.RecommendedWorkflow,
                     initialResult.AccessState,
                     initialResult.BootState,
                     initialResult.FirmwareState,
-                    initialResult.RawPrompt ?? string.Empty,
-                    $"Cisco {classified.Series} identificado com sucesso via show version.");
+                    promptAtual,
+                    initialResult.Details);
             }
 
             return initialResult;
@@ -688,6 +948,30 @@ public sealed class DeviceConnectionManager
 
             // Seleção de interfaces WAN/LAN por modelo — paridade fiel com o Windows
             var (wanIface, lanIface) = ResolveCiscoInterfaces(detected.Series);
+
+            // Avaliação de Higienização Pré-Provisionamento (paridade com o Windows)
+            try
+            {
+                var sanitization = detected.Manufacturer == DeviceManufacturer.Fortinet
+                    ? await FortiOsSaipConfigurator.DetectSanitizationStatusAsync(_session, ct)
+                    : detected.Manufacturer == DeviceManufacturer.Hpe
+                        ? await HpeSaipConfigurator.DetectSanitizationStatusAsync(_session, ct)
+                        : await CiscoSaipConfigurator.DetectSanitizationStatusAsync(_session, ct);
+
+                await progressCallback($"[*] [AVALIAÇÃO DE CONFIGURAÇÃO] {sanitization.Summary}");
+                if (sanitization.IsClean)
+                {
+                    await progressCallback("  -> Equipamento em padrão limpo/fábrica (zero lixo). Aplicação direta do script BLD sem reload.");
+                }
+                else
+                {
+                    await progressCallback("  -> Configuração de serviço anterior identificada. Aplicando higienização e sobreposição oficial BLD.");
+                }
+            }
+            catch (Exception ex)
+            {
+                await progressCallback($"[*] Avaliação de higienização: {ex.Message}");
+            }
 
             if (detected.Manufacturer == DeviceManufacturer.Cisco)
             {
@@ -791,10 +1075,303 @@ public sealed class DeviceConnectionManager
     internal static (string? wan, string? lan) ResolveCiscoInterfaces(DeviceSeries series) => series switch
     {
         DeviceSeries.Series1900 => ("GigabitEthernet 0/0", "GigabitEthernet 0/1"),
+        DeviceSeries.Series2900 => ("GigabitEthernet 0/0", "GigabitEthernet 0/1"),
         DeviceSeries.Isr921 => ("GigabitEthernet 4", "GigabitEthernet 5"),
         DeviceSeries.Isr841 => ("GigabitEthernet0/4", "GigabitEthernet0/5"),
         _ => (null, null),
     };
+
+    /// <summary>
+    /// Testa autenticação direta na porta serial enviando usuário e senha e verificando retorno de prompt shell.
+    /// Compatível com Cisco IOS, HPE Comware e Fortinet FortiOS (inclusive primeiro login admin com troca obrigatória de senha).
+    /// </summary>
+    public async Task<bool> TryAuthenticateSerialDirectAsync(string? username, string? pass, CancellationToken ct = default)
+    {
+        if (_transport == null || !_transport.IsOpen)
+            return false;
+
+        var rxAccumulator = new System.Text.StringBuilder();
+        var buf = new byte[1024];
+
+        // 1. Sondagem rápida para não cancelar com Ctrl+C um prompt já aberto de New Password
+        var initBuf = new byte[512];
+        int initRead = 0;
+        using (var initCts = new CancellationTokenSource(150))
+        {
+            try { initRead = await _transport.ReadAsync(initBuf, initCts.Token); } catch { }
+        }
+        if (initRead > 0)
+        {
+            rxAccumulator.Append(System.Text.Encoding.UTF8.GetString(initBuf, 0, initRead));
+        }
+
+        if (!System.Text.RegularExpressions.Regex.IsMatch(rxAccumulator.ToString(), @"(?i)(?:new|confirm)\s+password"))
+        {
+            await _transport.WriteAsync(new byte[] { 0x03 }, ct); // Ctrl+C
+            await Task.Delay(80, ct);
+            await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes("\r\n"), ct);
+            await Task.Delay(100, ct);
+        }
+
+        var passwordSent = false;
+        var usernameSent = false;
+        var newPasswordSent = false;
+        var confirmPasswordSent = false;
+        var standardPassToSet = !string.IsNullOrWhiteSpace(pass) ? pass.Trim() : "CQMR";
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        while (sw.ElapsedMilliseconds < 4500 && !ct.IsCancellationRequested)
+        {
+            int r = 0;
+            using (var readCts = new CancellationTokenSource(150))
+            {
+                try { r = await _transport.ReadAsync(buf, readCts.Token); } catch { }
+            }
+
+            if (r > 0)
+            {
+                var text = System.Text.Encoding.UTF8.GetString(buf, 0, r);
+                rxAccumulator.Append(text);
+                var current = rxAccumulator.ToString();
+
+                // Sucesso: prompt de shell liberado (<HPE>, [HPE], Router#, Router>, Switch#, FortiGate #, etc.)
+                if (current.Contains("<HPE", StringComparison.OrdinalIgnoreCase) ||
+                    current.Contains("[HPE", StringComparison.OrdinalIgnoreCase) ||
+                    System.Text.RegularExpressions.Regex.IsMatch(current, @"[\<\[][^\r\n>\]]+[\>\]]\s*$") ||
+                    System.Text.RegularExpressions.Regex.IsMatch(current, @"[A-Za-z0-9_\-\.\(\)]+[>#]\s*$") ||
+                    System.Text.RegularExpressions.Regex.IsMatch(current, @"(?i)(?:FortiGate|FGT|FG)[A-Za-z0-9_\-]*\s*(?:\([^()\r\n]*\))?\s*[#$]\s*$"))
+                {
+                    // Se for Cisco em User Exec mode (>), tenta elevar para Privileged Exec (#) com 'enable'
+                    if (current.Trim().EndsWith(">") && !current.Contains("<HPE"))
+                    {
+                        await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes("enable\r"), ct);
+                        await Task.Delay(200, ct);
+                        var enableBuf = new byte[512];
+                        using var enCts = new CancellationTokenSource(500);
+                        try
+                        {
+                            var er = await _transport.ReadAsync(enableBuf, enCts.Token);
+                            if (er > 0)
+                            {
+                                var enText = System.Text.Encoding.UTF8.GetString(enableBuf, 0, er);
+                                if (enText.Contains("Password:", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    var secret = !string.IsNullOrWhiteSpace(LastResolvedEnableSecret) ? LastResolvedEnableSecret : "PRO1AN";
+                                    await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes(secret + "\r"), ct);
+                                    await Task.Delay(200, ct);
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                    return true;
+                }
+
+                // Se estiver preso em tela More de comando anterior, cancela com Ctrl+C
+                if (System.Text.RegularExpressions.Regex.IsMatch(current, @"(?i)--+\s*More\s*--+"))
+                {
+                    rxAccumulator.Clear();
+                    await _transport.WriteAsync(new byte[] { 0x03 }, ct);
+                    await Task.Delay(80, ct);
+                    await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes("\r\n"), ct);
+                    await Task.Delay(150, ct);
+                    continue;
+                }
+
+                // Se pedir ENTER
+                if (current.Contains("Press ENTER", StringComparison.OrdinalIgnoreCase) && !passwordSent && !usernameSent)
+                {
+                    rxAccumulator.Clear();
+                    await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes("\r\n"), ct);
+                    await Task.Delay(150, ct);
+                    continue;
+                }
+
+                // Se pedir Username / login
+                if ((current.Contains("Username:", StringComparison.OrdinalIgnoreCase) ||
+                     current.Contains("login:", StringComparison.OrdinalIgnoreCase) ||
+                     System.Text.RegularExpressions.Regex.IsMatch(current, @"(?i)(?:^|[\s\b@:])(?:Username|login)\s*[:?]")) && !usernameSent)
+                {
+                    usernameSent = true;
+                    rxAccumulator.Clear();
+                    await Task.Delay(80, ct);
+                    var userToSend = string.IsNullOrWhiteSpace(username) ? "EBT" : username.Trim();
+                    await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes(userToSend + "\r"), ct);
+                    await Task.Delay(200, ct);
+                    continue;
+                }
+
+                // Se FortiOS exigir troca obrigatória de senha
+                if (System.Text.RegularExpressions.Regex.IsMatch(current, @"(?i)(?:new\s+password\s*[:?]|please\s+input\s+a\s+new\s+password|change\s+your\s+password)") && !newPasswordSent)
+                {
+                    newPasswordSent = true;
+                    rxAccumulator.Clear();
+                    await Task.Delay(100, ct);
+                    await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes(standardPassToSet + "\r"), ct);
+                    await Task.Delay(200, ct);
+                    continue;
+                }
+
+                if (System.Text.RegularExpressions.Regex.IsMatch(current, @"(?i)(?:confirm|verify|re-?enter)\s+(?:new\s+)?password\s*[:?]") && !confirmPasswordSent)
+                {
+                    confirmPasswordSent = true;
+                    rxAccumulator.Clear();
+                    await Task.Delay(100, ct);
+                    await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes(standardPassToSet + "\r"), ct);
+                    await Task.Delay(200, ct);
+                    await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes("\r"), ct);
+                    await Task.Delay(200, ct);
+                    continue;
+                }
+
+                // Se pedir Password (inicial)
+                if (System.Text.RegularExpressions.Regex.IsMatch(current, @"(?i)(?:^|[\s\b])(?:Password|Login\s+password)\s*[:?]") &&
+                    !System.Text.RegularExpressions.Regex.IsMatch(current, @"(?i)(?:new|confirm)\s+password") &&
+                    !passwordSent)
+                {
+                    passwordSent = true;
+                    rxAccumulator.Clear();
+                    await Task.Delay(100, ct);
+                    var p = (pass ?? "").Trim();
+                    await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes(p + "\r"), ct);
+                    await Task.Delay(200, ct);
+                    continue;
+                }
+
+                // Falha explícita após envio da senha
+                var isNewPassPrompt = System.Text.RegularExpressions.Regex.IsMatch(current, @"(?i)(?:new|confirm|verify|re-?enter)\s+(?:new\s+)?password|please\s+input\s+a\s+new\s+password|change\s+your\s+password");
+                if (passwordSent && !isNewPassPrompt && (current.Contains("Login failed", StringComparison.OrdinalIgnoreCase) ||
+                                     current.Contains("Wrong password", StringComparison.OrdinalIgnoreCase) ||
+                                     current.Contains("Authentication failed", StringComparison.OrdinalIgnoreCase) ||
+                                     current.Contains("Authentication failure", StringComparison.OrdinalIgnoreCase) ||
+                                     current.Contains("Bad passwords", StringComparison.OrdinalIgnoreCase) ||
+                                     current.Contains("Bad password", StringComparison.OrdinalIgnoreCase) ||
+                                     current.Contains("Login invalid", StringComparison.OrdinalIgnoreCase) ||
+                                     current.Contains("Login incorrect", StringComparison.OrdinalIgnoreCase) ||
+                                     current.Contains("Access denied", StringComparison.OrdinalIgnoreCase)))
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                await Task.Delay(30, ct);
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Rotação automática de credenciais padrão Claro/SPARC (paridade integral com a versão Windows).
+    /// </summary>
+    public async Task<bool> TryAutoAuthenticateAsync(DeviceDetectionResult? initialDetection = null, Action<string>? log = null, CancellationToken ct = default)
+    {
+        if (_transport == null || !_transport.IsOpen) return false;
+
+        var detected = initialDetection ?? LastDetectionResult;
+        var mfr = detected?.Manufacturer ?? DeviceManufacturer.Unknown;
+
+        var candidates = new List<(string? user, string pass)>();
+
+        if (mfr == DeviceManufacturer.Cisco)
+        {
+            // 1. Cisco Claro padrão: EBT / CQMR
+            candidates.Add(("EBT", "CQMR"));
+            // 2. Cisco Claro padrão secundário: EBT / PRO1AN
+            candidates.Add(("EBT", "PRO1AN"));
+            // 3. cisco / cisco
+            candidates.Add(("cisco", "cisco"));
+            // 4. admin / CQMR
+            candidates.Add(("admin", "CQMR"));
+            // 5. admin / admin
+            candidates.Add(("admin", "admin"));
+            // Senhas avulsas de console
+            candidates.Add((null, "CQMR"));
+            candidates.Add((null, "PRO1AN"));
+            candidates.Add((null, "cisco"));
+            candidates.Add((null, "admin"));
+        }
+        else if (mfr == DeviceManufacturer.Hpe)
+        {
+            // 1. HPE Claro padrão: EBT / PRO1AN
+            candidates.Add(("EBT", "PRO1AN"));
+            // 2. admin / admin (Padrão de fábrica Comware)
+            candidates.Add(("admin", "admin"));
+            // 3. admin / CQMR
+            candidates.Add(("admin", "CQMR"));
+            // 4. admin / PRO1AN
+            candidates.Add(("admin", "PRO1AN"));
+            // 5. EBT / CQMR
+            candidates.Add(("EBT", "CQMR"));
+            // Senha avulsa de console
+            candidates.Add((null, "PRO1AN"));
+            candidates.Add((null, "admin"));
+            candidates.Add((null, ""));
+        }
+        else if (mfr == DeviceManufacturer.Fortinet)
+        {
+            // 1. admin / (vazio) - Padrão de fábrica Fortinet
+            candidates.Add(("admin", ""));
+            // 2. admin / admin
+            candidates.Add(("admin", "admin"));
+            // 3. admin / CQMR
+            candidates.Add(("admin", "CQMR"));
+            // 4. admin / PRO1AN
+            candidates.Add(("admin", "PRO1AN"));
+        }
+        else
+        {
+            // Fabricante genérico / não identificado ainda: testa combinações mais comuns
+            candidates.Add(("EBT", "CQMR"));
+            candidates.Add(("EBT", "PRO1AN"));
+            candidates.Add(("admin", ""));
+            candidates.Add(("admin", "admin"));
+            candidates.Add(("cisco", "cisco"));
+            candidates.Add(("admin", "CQMR"));
+            candidates.Add((null, "CQMR"));
+            candidates.Add((null, "PRO1AN"));
+        }
+
+        log?.Invoke($"[*] Console com autenticação detectado ({mfr}). Testando automaticamente credenciais padrão Claro/SPARC...");
+
+        foreach (var (user, pass) in candidates)
+        {
+            if (ct.IsCancellationRequested) break;
+
+            var displayUser = user ?? "(nenhum)";
+            var displayPass = pass.Length > 0 ? new string('*', pass.Length) : "(vazia)";
+            log?.Invoke($"[*] Testando credencial padrão: user='{displayUser}', pass='{displayPass}'...");
+
+            bool ok = false;
+            try
+            {
+                ok = await TryAuthenticateSerialDirectAsync(user, pass, ct);
+            }
+            catch
+            {
+                ok = false;
+            }
+
+            if (ok)
+            {
+                LastResolvedUser = user;
+                LastResolvedPassword = pass;
+                if (mfr == DeviceManufacturer.Cisco && string.IsNullOrWhiteSpace(LastResolvedEnableSecret))
+                {
+                    LastResolvedEnableSecret = "PRO1AN";
+                }
+
+                log?.Invoke($"[✓] Autenticação automática concluída com sucesso (usuário '{user ?? "admin"}')! Acesso liberado sem intervenção manual.");
+                return true;
+            }
+
+            await Task.Delay(150, ct);
+        }
+
+        log?.Invoke("[!] Credenciais padrão Claro/SPARC testadas e recusadas pelo equipamento.");
+        return false;
+    }
 
     /// <summary>
     /// OPÇÃO 1 (paridade com o PasswordAuthDialog do Windows): tenta login direto com
@@ -815,39 +1392,20 @@ public sealed class DeviceConnectionManager
                 _session = null;
             }
 
-            var options = new SessionOptions
+            var ok = await TryAuthenticateSerialDirectAsync(username, password ?? "", ct);
+            if (ok)
             {
-                PromptMatcher = RegexPromptMatcher.Universal(),
-                Username = username,
-                Password = password,
-                ConnectTimeout = TimeSpan.FromSeconds(30),
-                CommandTimeout = TimeSpan.FromSeconds(20),
-                LeaveOpen = true
-            };
-            var session = new DeviceSession(_transport, options);
-            try
-            {
-                await session.ConnectAsync(ct);
-            }
-            catch (LoginException ex)
-            {
-                log?.Invoke($"[!] Login recusado: {ex.Message}");
-                await session.DisposeAsync();
-                return false;
+                LastResolvedUser = username;
+                LastResolvedPassword = password;
+                if (string.IsNullOrWhiteSpace(LastResolvedEnableSecret))
+                    LastResolvedEnableSecret = "PRO1AN";
+                LastDetectionResult = null; // força re-identificação c/ prompt aberto no provisionamento
+                log?.Invoke($"[✓] Login direto aceito com as credenciais informadas.");
+                return true;
             }
 
-            var prompt = (session.CurrentPrompt ?? string.Empty).Trim();
-            if (string.IsNullOrWhiteSpace(prompt) || prompt.EndsWith(":"))
-            {
-                log?.Invoke("[!] Equipamento ainda pede credenciais após login.");
-                await session.DisposeAsync();
-                return false;
-            }
-
-            _session = session;
-            LastDetectionResult = null; // força re-identificação c/ prompt aberto no provisionamento
-            log?.Invoke($"[✓] Login direto aceito (prompt '{prompt}').");
-            return true;
+            log?.Invoke("[!] Credenciais recusadas pelo equipamento.");
+            return false;
         }
         finally
         {
@@ -931,6 +1489,7 @@ public sealed class DeviceConnectionManager
                 var profile = detected.Series switch
                 {
                     DeviceSeries.Series1900 => BootInterruptProfiles.Cisco1900,
+                    DeviceSeries.Series2900 => BootInterruptProfiles.Cisco2900,
                     DeviceSeries.Isr921 => BootInterruptProfiles.Cisco900,
                     DeviceSeries.Isr841 => BootInterruptProfiles.Cisco841,
                     _ => BootInterruptProfiles.CiscoUniversal,
@@ -960,18 +1519,19 @@ public sealed class DeviceConnectionManager
     }
 
     /// <summary>
-    /// Garante sessão de console conectada: cria nova (com prelude Ctrl+C/Enter, que
-    /// atravessa setup dialogs via ConnectAsync) ou reaproveita a existente sondando
-    /// diálogo preso. Retorna a sessão conectada.
+    /// Garante que a sessão interativa esteja aberta e pronta para comandos CLI.
+    /// Retorna a sessão conectada.
     /// </summary>
-    private async Task<DeviceSession> EnsureConsoleSessionAsync(Func<string, Task> progress, CancellationToken ct)
+    public async Task<DeviceSession> EnsureConsoleSessionAsync(Func<string, Task>? progress = null, CancellationToken ct = default)
     {
         if (_transport == null || !_transport.IsOpen)
             throw new InvalidOperationException("Console serial USB não está conectado.");
 
+        Func<string, Task> prog = progress ?? (_ => Task.CompletedTask);
+
         if (_session == null || !_session.IsConnected)
         {
-            await progress("[*] Estabelecendo sessão interativa no console do roteador...");
+            await prog("[*] Estabelecendo sessão interativa no console do roteador...");
             try
             {
                 // Envia Ctrl+C e Enter para limpar qualquer comando ou submodo pendente no roteador
@@ -984,21 +1544,164 @@ public sealed class DeviceConnectionManager
 
             _session = new DeviceSession(_transport, new SessionOptions
             {
+                Username = LastResolvedUser,
+                Password = LastResolvedPassword,
                 ConnectTimeout = TimeSpan.FromSeconds(60),
                 CommandTimeout = TimeSpan.FromSeconds(60),
                 LeaveOpen = true
             });
             await _session.ConnectAsync(ct);
-            await progress("[✓] Sessão interativa conectada com sucesso!");
+
+            try
+            {
+                await _session.SendCommandAsync("terminal length 0", TimeSpan.FromSeconds(4), ct).ConfigureAwait(false);
+            }
+            catch { }
+
+            await prog("[✓] Sessão interativa conectada com sucesso!");
         }
         else
         {
             // Sessão reaproveitada: sonda setup dialog preso e reconecta se necessário
             // (paridade: o Windows sempre abre sessão nova na Fase C).
-            await EnsureNoSetupDialogAsync(progress, ct);
+            await EnsureNoSetupDialogAsync(prog, ct);
+            try
+            {
+                await _session.SendCommandAsync("terminal length 0", TimeSpan.FromSeconds(4), ct).ConfigureAwait(false);
+            }
+            catch { }
         }
 
         return _session!;
+    }
+
+    /// <summary>
+    /// Aplica temporariamente IP e DHCP na LAN do roteador e habilita Telnet para permitir o swap
+    /// do adaptador Serial USB pelo adaptador Ethernet no celular durante o upgrade de firmware em bancada.
+    /// </summary>
+    public async Task ApplyTemporaryLanStagingAsync(DeviceManufacturer mfr, DeviceSeries series, string? lanIface, Func<string, Task> progress, CancellationToken ct = default)
+    {
+        _session = await EnsureConsoleSessionAsync(progress, ct);
+        await EnsureNoSetupDialogAsync(progress, ct);
+
+        await progress("[*] Aplicando configuração de staging temporário no roteador (IP 192.168.1.1 + DHCP + Telnet)...");
+
+        if (mfr == DeviceManufacturer.Fortinet)
+        {
+            var iface = !string.IsNullOrWhiteSpace(lanIface) ? lanIface : "internal";
+            await _session.SendCommandAsync("config system interface", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync($"edit {iface}", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("set ip 192.168.1.1 255.255.255.0", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("set allowaccess ping telnet http https", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("next", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("end", TimeSpan.FromSeconds(5), ct);
+
+            await _session.SendCommandAsync("config system dhcp server", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("edit 99", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync($"set interface {iface}", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("set default-gateway 192.168.1.1", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("set netmask 255.255.255.0", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("config ip-range", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("edit 1", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("set start-ip 192.168.1.10", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("set end-ip 192.168.1.30", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("next", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("end", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("next", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("end", TimeSpan.FromSeconds(5), ct);
+        }
+        else if (mfr == DeviceManufacturer.Hpe)
+        {
+            var iface = !string.IsNullOrWhiteSpace(lanIface) ? lanIface : "GigabitEthernet0/1";
+            await _session.SendCommandAsync("system-view", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync($"interface {iface}", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("ip address 192.168.1.1 255.255.255.0", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("undo shutdown", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("quit", TimeSpan.FromSeconds(5), ct);
+
+            // Garante link ativo na GigabitEthernet0/0 caso o técnico conecte na outra porta
+            try
+            {
+                await _session.SendCommandAsync("interface GigabitEthernet0/0", TimeSpan.FromSeconds(3), ct);
+                await _session.SendCommandAsync("undo shutdown", TimeSpan.FromSeconds(3), ct);
+                await _session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), ct);
+            }
+            catch { }
+
+            await _session.SendCommandAsync("dhcp enable", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("dhcp server ip-pool SPARC_STAGING", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("network 192.168.1.0 mask 255.255.255.0", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("gateway-list 192.168.1.1", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("quit", TimeSpan.FromSeconds(5), ct);
+
+            await _session.SendCommandAsync("telnet server enable", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("user-interface vty 0 4", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("authentication-mode password", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("set authentication password simple PRO1ANPRO1AN", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("user-role level-15", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("return", TimeSpan.FromSeconds(5), ct);
+        }
+        else // Cisco
+        {
+            var iface = !string.IsNullOrWhiteSpace(lanIface)
+                ? lanIface
+                : (series == DeviceSeries.Isr841 ? "Vlan1" : (series == DeviceSeries.Isr921 ? "Vlan1" : "GigabitEthernet0/0"));
+
+            // Garante que o console saia de qualquer submodo com 'end' antes de entrar em config terminal
+            try { await _session.SendCommandAsync("end", TimeSpan.FromSeconds(3), ct); } catch { }
+
+            await _session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync($"interface {iface}", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("ip address 192.168.1.1 255.255.255.0", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("no shutdown", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("exit", TimeSpan.FromSeconds(5), ct);
+
+            // Garante link ativo na GigabitEthernet0/1 para modelos modulares (ex: Cisco 1905, 1921, 1941, 2901)
+            if (series == DeviceSeries.Series1900 || series == DeviceSeries.Series2900 || series == DeviceSeries.Unknown)
+            {
+                try
+                {
+                    await _session.SendCommandAsync("interface GigabitEthernet0/1", TimeSpan.FromSeconds(3), ct);
+                    await _session.SendCommandAsync("no shutdown", TimeSpan.FromSeconds(3), ct);
+                    await _session.SendCommandAsync("exit", TimeSpan.FromSeconds(3), ct);
+                }
+                catch { }
+            }
+            // Para switches integrados (ISR 841 / 921), garante 'no shutdown' nas portas físicas da switch LAN
+            else if (series == DeviceSeries.Isr841 || series == DeviceSeries.Isr921)
+            {
+                try
+                {
+                    await _session.SendCommandAsync("interface range GigabitEthernet 0 - 3", TimeSpan.FromSeconds(3), ct);
+                    await _session.SendCommandAsync("no shutdown", TimeSpan.FromSeconds(3), ct);
+                    await _session.SendCommandAsync("exit", TimeSpan.FromSeconds(3), ct);
+                }
+                catch
+                {
+                    try
+                    {
+                        await _session.SendCommandAsync("interface range FastEthernet 0 - 3", TimeSpan.FromSeconds(3), ct);
+                        await _session.SendCommandAsync("no shutdown", TimeSpan.FromSeconds(3), ct);
+                        await _session.SendCommandAsync("exit", TimeSpan.FromSeconds(3), ct);
+                    }
+                    catch { }
+                }
+            }
+
+            await _session.SendCommandAsync("ip dhcp pool SPARC_STAGING", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("network 192.168.1.0 255.255.255.0", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("default-router 192.168.1.1", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("exit", TimeSpan.FromSeconds(5), ct);
+
+            await _session.SendCommandAsync("line vty 0 4", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("transport input telnet", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("privilege level 15", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("password CQMR", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("login", TimeSpan.FromSeconds(5), ct);
+            await _session.SendCommandAsync("end", TimeSpan.FromSeconds(5), ct);
+        }
+
+        await progress("[✓] Staging temporário aplicado com sucesso (IP 192.168.1.1 / DHCP / Telnet ativo)!");
     }
 
     /// <summary>
@@ -1036,34 +1739,44 @@ public sealed class DeviceConnectionManager
     {
         await DisconnectTelnetAsync();
 
-        var transport = new TcpTelnetTransport(routerIp, port);
-        await transport.OpenAsync(ct);
-        var session = new DeviceSession(transport, new SessionOptions
-        {
-            PromptMatcher = RegexPromptMatcher.Universal(),
-            Username = username,
-            Password = password,
-            ConnectTimeout = TimeSpan.FromSeconds(20),
-            CommandTimeout = TimeSpan.FromSeconds(30),
-            LeaveOpen = true
-        });
+        var candidatePasswords = new List<string>();
+        if (!string.IsNullOrWhiteSpace(password)) candidatePasswords.Add(password);
+        if (!candidatePasswords.Contains("CQMR")) candidatePasswords.Add("CQMR");
+        if (!candidatePasswords.Contains("PRO1ANPRO1AN")) candidatePasswords.Add("PRO1ANPRO1AN");
+        if (!candidatePasswords.Contains("PRO1AN")) candidatePasswords.Add("PRO1AN");
 
-        try
+        foreach (var pwd in candidatePasswords)
         {
-            await session.ConnectAsync(ct);
-        }
-        catch (Exception ex)
-        {
-            log?.Invoke($"[!] Telnet {routerIp}:{port} recusado ({ex.Message}) — usando console serial.");
-            await session.DisposeAsync();
-            await transport.DisposeAsync();
-            return false;
+            var transport = new TcpTelnetTransport(routerIp, port, connectTimeout: TimeSpan.FromSeconds(6));
+            try
+            {
+                await transport.OpenAsync(ct);
+                var session = new DeviceSession(transport, new SessionOptions
+                {
+                    PromptMatcher = RegexPromptMatcher.Universal(),
+                    Username = username,
+                    Password = pwd,
+                    ConnectTimeout = TimeSpan.FromSeconds(8),
+                    CommandTimeout = TimeSpan.FromSeconds(20),
+                    LeaveOpen = true
+                });
+
+                await session.ConnectAsync(ct);
+                _telnetTransport = transport;
+                _telnetSession = session;
+                log?.Invoke($"[✓] Telnet conectado em {routerIp}:{port} (user={username}). Prompt '{session.CurrentPrompt}'.");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                try { await transport.CloseAsync(); } catch { }
+                try { await transport.DisposeAsync(); } catch { }
+                log?.Invoke($"[!] Telnet {routerIp}:{port} (user={username}) com senha {(pwd.Length > 0 ? new string('*', pwd.Length) : "(vazia)")} recusado: {ex.Message}");
+            }
         }
 
-        _telnetTransport = transport;
-        _telnetSession = session;
-        log?.Invoke($"[✓] Telnet conectado em {routerIp}:{port} (prompt '{session.CurrentPrompt}').");
-        return true;
+        log?.Invoke($"[!] Telnet {routerIp}:{port} não autenticou com nenhuma credencial conhecida — mantendo console serial.");
+        return false;
     }
 
     /// <summary>
@@ -1101,51 +1814,61 @@ public sealed class DeviceConnectionManager
     public async Task<bool> SwitchToTelnetSessionAsync(string routerIp, int port, string? username, string? password,
         Action<string>? log = null, CancellationToken ct = default)
     {
-        var transport = new TcpTelnetTransport(routerIp, port, connectTimeout: TimeSpan.FromSeconds(6));
-        try
+        var candidatePasswords = new List<string>();
+        if (!string.IsNullOrWhiteSpace(password)) candidatePasswords.Add(password);
+        if (!candidatePasswords.Contains("CQMR")) candidatePasswords.Add("CQMR");
+        if (!candidatePasswords.Contains("PRO1ANPRO1AN")) candidatePasswords.Add("PRO1ANPRO1AN");
+        if (!candidatePasswords.Contains("PRO1AN")) candidatePasswords.Add("PRO1AN");
+
+        foreach (var pwd in candidatePasswords)
         {
-            await transport.OpenAsync(ct);
-            var session = new DeviceSession(transport, new SessionOptions
+            var transport = new TcpTelnetTransport(routerIp, port, connectTimeout: TimeSpan.FromSeconds(6));
+            try
             {
-                PromptMatcher = RegexPromptMatcher.Universal(),
-                Username = username,
-                Password = password,
-                ConnectTimeout = TimeSpan.FromSeconds(10),
-                CommandTimeout = TimeSpan.FromSeconds(20),
-                LeaveOpen = true
-            });
+                await transport.OpenAsync(ct);
+                var session = new DeviceSession(transport, new SessionOptions
+                {
+                    PromptMatcher = RegexPromptMatcher.Universal(),
+                    Username = username,
+                    Password = pwd,
+                    ConnectTimeout = TimeSpan.FromSeconds(8),
+                    CommandTimeout = TimeSpan.FromSeconds(15),
+                    LeaveOpen = true
+                });
 
-            await session.ConnectAsync(ct);
+                await session.ConnectAsync(ct);
 
-            // Somente após o Telnet autenticar com sucesso desconectamos o serial e ativamos o Telnet como sessão principal
-            await DisconnectUsbOnlyAsync();
-            await DisconnectTelnetAsync();
+                // Somente após o Telnet autenticar com sucesso desconectamos o serial e ativamos o Telnet como sessão principal
+                await DisconnectUsbOnlyAsync();
+                await DisconnectTelnetAsync();
 
-            _transport = transport;
-            _session = session;
-            _telnetTransport = transport;
-            _telnetSession = session;
+                _transport = transport;
+                _session = session;
+                _telnetTransport = transport;
+                _telnetSession = session;
 
-            OnConnectionStateChanged?.Invoke(true);
-            ResumeReadLoop();
+                OnConnectionStateChanged?.Invoke(true);
+                ResumeReadLoop();
 
-            log?.Invoke($"[✓] Sessão Telnet conectada em {routerIp}:{port} (prompt '{session.CurrentPrompt}'). Terminal operacional via Ethernet.");
-            return true;
+                log?.Invoke($"[✓] Sessão Telnet conectada em {routerIp}:{port} (user={username}). Terminal operacional via Ethernet.");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                try { await transport.CloseAsync(); } catch { }
+                try { await transport.DisposeAsync(); } catch { }
+                log?.Invoke($"[!] Tentativa Telnet com senha {(pwd.Length > 0 ? new string('*', pwd.Length) : "(vazia)")} em {routerIp}:{port} falhou: {ex.Message}");
+            }
         }
-        catch (Exception ex)
-        {
-            log?.Invoke($"[!] Telnet {routerIp}:{port} inacessível ({ex.Message}).");
-            try { await transport.CloseAsync(); } catch { }
-            try { await transport.DisposeAsync(); } catch { }
-            return false;
-        }
+
+        return false;
     }
 
     private void ThrowIfPasswordLocked()
     {
         if (LastDetectionResult?.OperatingState == DeviceOperatingState.PasswordProtected)
             throw new DeviceSessionException(
-                "Equipamento BLOQUEADO por senha — use a aba Quebra de Senha antes do firmware.");
+                "Equipamento BLOQUEADO por senha — use a aba Zerar Configuração antes do firmware.");
     }
 
     /// <summary>
@@ -1241,7 +1964,7 @@ public sealed class DeviceConnectionManager
         }
     }
 
-    private static void AttachFtpProgress(EmbeddedFtpServer ftp, Func<string, Task> progress)
+    private void AttachFtpProgress(EmbeddedFtpServer ftp, Func<string, Task> progress)
     {
         var lastPct = -1;
         ftp.TransferProgress += (_, sent, total) =>
@@ -1250,6 +1973,7 @@ public sealed class DeviceConnectionManager
             if (pct != lastPct && (pct % 5 == 0 || pct == 100))
             {
                 lastPct = pct;
+                ReportFirmwareProgress(pct, "Transferindo via FTP...", $"{sent / 1048576.0:F1} / {total / 1048576.0:F1} MB", sent, total);
                 progress($"[*] FTP: {sent}/{total} bytes ({pct}%)...").GetAwaiter().GetResult();
             }
         };
@@ -1315,6 +2039,7 @@ public sealed class DeviceConnectionManager
                 if (pct != lastPct && (pct % 5 == 0 || pct == 100))
                 {
                     lastPct = pct;
+                    ReportFirmwareProgress(pct, "Transferindo via HTTP...", $"{sent / 1048576.0:F1} / {total / 1048576.0:F1} MB", sent, total);
                     progress($"[*] HTTP: {sent}/{total} bytes ({pct}%)...").GetAwaiter().GetResult();
                 }
             };
@@ -1349,6 +2074,61 @@ public sealed class DeviceConnectionManager
         }
     }
 
+    /// <summary>
+    /// Audita a conformidade de firmware com a porta serial isolada (pausa o loop de background
+    /// para garantir leitura CLI determinística e sem perda de pacotes para o terminal).
+    /// </summary>
+    public async Task<NetworkDevice.Core.Firmware.RouterFirmwareStatus> AuditFirmwareComplianceAsync(
+        DeviceSeries series,
+        NetworkDevice.Core.Firmware.RemoteFirmwareInfo? officialRemote,
+        Func<string, Task>? progress = null,
+        CancellationToken ct = default)
+    {
+        if (_transport == null || !_transport.IsOpen)
+            throw new InvalidOperationException("Console serial USB não está conectado.");
+
+        var log = progress ?? (_ => Task.CompletedTask);
+
+        await PauseReadLoopAsync();
+        try
+        {
+            _session = await EnsureConsoleSessionAsync(log, ct);
+            var updater = new NetworkDevice.Core.Firmware.RouterDirectFirmwareUpdater(log);
+            return await updater.AuditComplianceAsync(_session, series, officialRemote, ct);
+        }
+        finally
+        {
+            ResumeReadLoop();
+        }
+    }
+
+    /// <summary>
+    /// Diagnostica a porta WAN e conectividade com a internet diretamente pelo roteador,
+    /// com a porta serial isolada do loop de leitura de terminal.
+    /// </summary>
+    public async Task<NetworkDevice.Core.Firmware.WanDiagnosticsResult> CheckWanAndInternetAsync(
+        DeviceSeries series,
+        Func<string, Task>? progress = null,
+        CancellationToken ct = default)
+    {
+        if (_transport == null || !_transport.IsOpen)
+            throw new InvalidOperationException("Console serial USB não está conectado.");
+
+        var log = progress ?? (_ => Task.CompletedTask);
+
+        await PauseReadLoopAsync();
+        try
+        {
+            _session = await EnsureConsoleSessionAsync(log, ct);
+            var updater = new NetworkDevice.Core.Firmware.RouterDirectFirmwareUpdater(log);
+            return await updater.CheckWanAndInternetAsync(_session, series, ct);
+        }
+        finally
+        {
+            ResumeReadLoop();
+        }
+    }
+
     public async Task DisconnectAsync()
     {
         await PauseReadLoopAsync();
@@ -1369,6 +2149,9 @@ public sealed class DeviceConnectionManager
 
         LastDetectionResult = null;
         LastAppliedConfig = null;
+        LastResolvedUser = null;
+        LastResolvedPassword = null;
+        LastResolvedEnableSecret = null;
         OnConnectionStateChanged?.Invoke(false);
     }
 }

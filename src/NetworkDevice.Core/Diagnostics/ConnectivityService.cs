@@ -472,16 +472,27 @@ public class ConnectivityService
                 }
             }
 
-            // 4 - Enviar Password (tenta senha informada e fallback para senha de complexidade PRO1ANPRO1AN)
+            // 4 - Enviar Password (tenta senha informada e fallback para credenciais padrão Claro/SPARC: CQMR, PRO1ANPRO1AN, PRO1AN)
             var passAttempts = new List<string>();
             if (!string.IsNullOrEmpty(password)) passAttempts.Add(password);
-            if (password == "PRO1AN" && !passAttempts.Contains("PRO1ANPRO1AN")) passAttempts.Add("PRO1ANPRO1AN");
-            if (password == "PRO1ANPRO1AN" && !passAttempts.Contains("PRO1AN")) passAttempts.Add("PRO1AN");
+            if (string.Equals(username, "EBT", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!passAttempts.Contains("CQMR")) passAttempts.Add("CQMR");
+                if (!passAttempts.Contains("PRO1ANPRO1AN")) passAttempts.Add("PRO1ANPRO1AN");
+                if (!passAttempts.Contains("PRO1AN")) passAttempts.Add("PRO1AN");
+            }
+            else
+            {
+                if (password == "PRO1AN" && !passAttempts.Contains("PRO1ANPRO1AN")) passAttempts.Add("PRO1ANPRO1AN");
+                if (password == "PRO1ANPRO1AN" && !passAttempts.Contains("PRO1AN")) passAttempts.Add("PRO1AN");
+                if (!passAttempts.Contains("CQMR")) passAttempts.Add("CQMR");
+            }
 
             var loginOk = false;
-            foreach (var pass in passAttempts)
+            for (var pIdx = 0; pIdx < passAttempts.Count; pIdx++)
             {
-                await LogAsync($"[4/5] Enviando Password: {new string('*', pass.Length)}");
+                var pass = passAttempts[pIdx];
+                await LogAsync($"[4/5] Enviando Password ({pIdx + 1}/{passAttempts.Count}): {new string('*', pass.Length)}");
                 await WriteTelnetAsync(stream, pass + "\r\n", cts.Token);
                 await Task.Delay(1000, cts.Token);
 
@@ -503,6 +514,23 @@ public class ConnectivityService
                 {
                     loginOk = true;
                     break;
+                }
+
+                // Se o dispositivo rejeitou a autenticação e pediu login/usuário novamente, reenvia o username para a próxima tentativa
+                if (pIdx + 1 < passAttempts.Count &&
+                    (banner.Contains("Login invalid", StringComparison.OrdinalIgnoreCase) ||
+                     banner.Contains("Bad passwords", StringComparison.OrdinalIgnoreCase) ||
+                     afterPass.Contains("Username:", StringComparison.OrdinalIgnoreCase) ||
+                     afterPass.Contains("login:", StringComparison.OrdinalIgnoreCase)))
+                {
+                    if (!string.IsNullOrEmpty(username))
+                    {
+                        await LogAsync($"      → Credencial rejeitada pelo equipamento. Reenviando '{username}' para próxima senha...");
+                        await WriteTelnetAsync(stream, username + "\r\n", cts.Token);
+                        await Task.Delay(800, cts.Token);
+                        var reBanner = await ReadAndNegotiateTelnetAsync(stream, 2500, cts.Token);
+                        banner += "\n" + reBanner;
+                    }
                 }
             }
 

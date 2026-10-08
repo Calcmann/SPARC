@@ -38,6 +38,7 @@ public sealed class RouterDirectFirmwareUpdater
             DeviceSeries.Isr841 => "c841",
             DeviceSeries.Isr921 => "c921",
             DeviceSeries.Series1900 => "c1900",
+            DeviceSeries.Series2900 => "c2900",
             DeviceSeries.FortiGate40F => "fgt40f",
             DeviceSeries.Msr954 => "msr954",
             DeviceSeries.Msr930 => "msr930",
@@ -79,6 +80,7 @@ public sealed class RouterDirectFirmwareUpdater
         {
             if (series is DeviceSeries.Msr930 or DeviceSeries.Msr954 or DeviceSeries.Msr1002)
             {
+                try { await session.SendCommandAsync("screen-length disable", TimeSpan.FromSeconds(5), ct).ConfigureAwait(false); } catch { }
                 rawOutput = await session.SendCommandAsync("display version", TimeSpan.FromSeconds(15), ct).ConfigureAwait(false);
             }
             else if (series == DeviceSeries.FortiGate40F)
@@ -87,7 +89,17 @@ public sealed class RouterDirectFirmwareUpdater
             }
             else
             {
-                rawOutput = await session.SendCommandAsync("show version", TimeSpan.FromSeconds(15), ct).ConfigureAwait(false);
+                // Cisco IOS:
+                // 1. Acorda a console e sai de submodos com 'end' para garantir Privileged EXEC
+                try { await session.SendCommandAsync("\r\n", TimeSpan.FromSeconds(2), ct).ConfigureAwait(false); } catch { }
+                try { await session.SendCommandAsync("end", TimeSpan.FromSeconds(3), ct).ConfigureAwait(false); } catch { }
+                // 2. 'terminal length 0' evita que saídas longas parem no prompt '--More--' gerando timeout de 15s
+                try { await session.SendCommandAsync("terminal length 0", TimeSpan.FromSeconds(5), ct).ConfigureAwait(false); } catch { }
+                rawOutput = await session.SendCommandAsync("show version", TimeSpan.FromSeconds(20), ct).ConfigureAwait(false);
+                if (string.IsNullOrWhiteSpace(rawOutput) || !rawOutput.Contains("Version", StringComparison.OrdinalIgnoreCase))
+                {
+                    try { rawOutput = await session.SendCommandAsync("do show version", TimeSpan.FromSeconds(15), ct).ConfigureAwait(false); } catch { }
+                }
             }
         }
         catch (Exception ex)
@@ -96,6 +108,34 @@ public sealed class RouterDirectFirmwareUpdater
         }
 
         var currentVer = ExtractDisplayVersion(series, rawOutput);
+
+        // Fallback para Cisco IOS: se não detectou a imagem em execução, consulta 'dir flash0:' ou 'dir flash:'
+        if (series is DeviceSeries.Isr841 or DeviceSeries.Isr921 or DeviceSeries.Series1900 or DeviceSeries.Series2900)
+        {
+            if (string.IsNullOrWhiteSpace(currentVer) || currentVer == "Não identificado" || currentVer == "Cisco IOS")
+            {
+                try
+                {
+                    string dirResp = string.Empty;
+                    try { dirResp = await session.SendCommandAsync("dir flash0:", TimeSpan.FromSeconds(10), ct).ConfigureAwait(false); } catch { }
+                    if (string.IsNullOrWhiteSpace(dirResp) || dirResp.Contains("Invalid") || dirResp.Contains("Error"))
+                    {
+                        try { dirResp = await session.SendCommandAsync("dir flash:", TimeSpan.FromSeconds(10), ct).ConfigureAwait(false); } catch { }
+                    }
+
+                    var binMatch = Regex.Match(dirResp, @"(?im)\b(?<file>[a-zA-Z0-9_\.\-]+\.bin)\b");
+                    if (binMatch.Success)
+                    {
+                        var binFileName = binMatch.Groups["file"].Value.Trim();
+                        var parsed = ExtractCiscoCanonical(binFileName);
+                        currentVer = !string.IsNullOrWhiteSpace(parsed) ? $"{parsed} ({binFileName})" : binFileName;
+                        rawOutput = $"{rawOutput}\r\n{dirResp}";
+                        await _logger($"[*] Imagem identificada na flash: {currentVer}");
+                    }
+                }
+                catch { }
+            }
+        }
         var officialName = officialRemote?.FileName;
         var officialSize = officialRemote?.SizeBytes ?? 0L;
 
@@ -148,8 +188,8 @@ public sealed class RouterDirectFirmwareUpdater
             }
         }
 
-        // 2. Cisco IOS (ISR 841, ISR 921, 1900, etc.)
-        if (series is DeviceSeries.Isr841 or DeviceSeries.Isr921 or DeviceSeries.Series1900)
+        // 2. Cisco IOS (ISR 841, ISR 921, 1900, 2900, etc.)
+        if (series is DeviceSeries.Isr841 or DeviceSeries.Isr921 or DeviceSeries.Series1900 or DeviceSeries.Series2900)
         {
             return EvaluateCiscoStrict(rawDeviceOutput, currentVer, cleanTarget);
         }
@@ -176,7 +216,7 @@ public sealed class RouterDirectFirmwareUpdater
         // Se a saída contém o System image file idêntico
         if (!string.IsNullOrWhiteSpace(rawOutput))
         {
-            var imgMatch = Regex.Match(rawOutput, @"(?im)System\s+image\s+file\s+is\s+""(?:[^:\""]+:)?(?:\/)?(?<fileName>[^\""\r\n]+)""");
+            var imgMatch = Regex.Match(rawOutput, @"(?im)System\s+image\s+file\s+is\s+""?(?:[a-zA-Z0-9_\-]+:)?(?:\/)?(?<fileName>[a-zA-Z0-9_\.\-]+\.bin)""?");
             if (imgMatch.Success)
             {
                 var runningFile = Path.GetFileName(imgMatch.Groups["fileName"].Value.Trim());
@@ -299,6 +339,7 @@ public sealed class RouterDirectFirmwareUpdater
         {
             if (series is DeviceSeries.Msr930 or DeviceSeries.Msr954 or DeviceSeries.Msr1002)
             {
+                try { await session.SendCommandAsync("screen-length disable", TimeSpan.FromSeconds(5), ct).ConfigureAwait(false); } catch { }
                 var resp = await session.SendCommandAsync("display version", TimeSpan.FromSeconds(15), ct).ConfigureAwait(false);
                 return ExtractDisplayVersion(series, resp);
             }
@@ -310,8 +351,20 @@ public sealed class RouterDirectFirmwareUpdater
             else
             {
                 // Cisco IOS
-                var resp = await session.SendCommandAsync("show version", TimeSpan.FromSeconds(15), ct).ConfigureAwait(false);
-                return ExtractDisplayVersion(series, resp);
+                try { await session.SendCommandAsync("terminal length 0", TimeSpan.FromSeconds(5), ct).ConfigureAwait(false); } catch { }
+                var resp = await session.SendCommandAsync("show version", TimeSpan.FromSeconds(20), ct).ConfigureAwait(false);
+                var ver = ExtractDisplayVersion(series, resp);
+                if (ver == "Não identificado" || ver == "Cisco IOS")
+                {
+                    try
+                    {
+                        var dirResp = await session.SendCommandAsync("dir flash0:", TimeSpan.FromSeconds(8), ct).ConfigureAwait(false);
+                        var m = Regex.Match(dirResp, @"(?im)\b(?<file>[a-zA-Z0-9_\.\-]+\.bin)\b");
+                        if (m.Success) return m.Groups["file"].Value.Trim();
+                    }
+                    catch { }
+                }
+                return ver;
             }
         }
         catch
@@ -342,22 +395,41 @@ public sealed class RouterDirectFirmwareUpdater
         {
             // Cisco IOS
             string? fileName = null;
-            var imgMatch = Regex.Match(rawOutput, @"(?im)System\s+image\s+file\s+is\s+""(?:[^:\""]+:)?(?:\/)?(?<fileName>[^\""\r\n]+)""");
+            var imgMatch = Regex.Match(rawOutput, @"(?im)System\s+image\s+file\s+is\s+""?(?:[a-zA-Z0-9_\-]+:)?(?:\/)?(?<fileName>[a-zA-Z0-9_\.\-]+\.bin)""?");
             if (imgMatch.Success)
             {
                 fileName = Path.GetFileName(imgMatch.Groups["fileName"].Value.Trim());
             }
 
             string? ver = null;
-            var verMatch = Regex.Match(rawOutput, @"(?im)Cisco\s+IOS\s+Software.*?(?:Version\s+|,\s*Version\s*)(?<ver>[0-9]+\.[0-9]+\([0-9]+\)[A-Za-z0-9]+)");
+            var verMatch = Regex.Match(rawOutput, @"(?im)(?:Cisco\s+IOS\s+Software|C[0-9]+\s+Software)[^\r\n]*(?:\r?\n[^\r\n]*)?(?:Version\s+|,\s*Version\s*)(?<ver>[0-9]+\.[0-9]+\([0-9]+\)[A-Za-z0-9]+)");
             if (verMatch.Success)
             {
                 ver = verMatch.Groups["ver"].Value.Trim();
             }
             else
             {
-                var genMatch = Regex.Match(rawOutput, @"(?im)\bVersion\s+(?<ver>[0-9]+\.[0-9]+\([0-9]+\)[A-Za-z0-9]+)");
+                var genMatch = Regex.Match(rawOutput, @"(?im)^(?!\s*ROM:).*?\bVersion\s+(?<ver>[0-9]+\.[0-9]+\([0-9]+\)[A-Za-z0-9]+)");
                 if (genMatch.Success) ver = genMatch.Groups["ver"].Value.Trim();
+            }
+
+            // Se encontrou o nome do arquivo mas não a linha de versão, extrai a versão canônica do próprio nome do arquivo
+            if (string.IsNullOrWhiteSpace(ver) && !string.IsNullOrWhiteSpace(fileName))
+            {
+                ver = ExtractCiscoCanonical(fileName);
+            }
+            // Se não encontrou 'System image file is', mas há um arquivo .bin na saída
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                var anyBin = Regex.Match(rawOutput, @"(?im)\b(?<file>[a-zA-Z0-9_\.\-]+\.bin)\b");
+                if (anyBin.Success)
+                {
+                    fileName = anyBin.Groups["file"].Value.Trim();
+                    if (string.IsNullOrWhiteSpace(ver))
+                    {
+                        ver = ExtractCiscoCanonical(fileName);
+                    }
+                }
             }
 
             if (!string.IsNullOrWhiteSpace(ver) && !string.IsNullOrWhiteSpace(fileName))

@@ -29,12 +29,20 @@ public sealed class DeviceDetector : IDeviceDetector
         @"^[ \t]*[A-Za-z0-9_\-\.\/]+(?:\([A-Za-z0-9_\-\.\/]+\))?[>#]\s*$",
         RegexOptions.Compiled | RegexOptions.Multiline);
 
+    public static readonly Regex CiscoConfigPromptRegex = new(
+        @"^[ \t]*[A-Za-z0-9_\-\.\/]+(?:\([A-Za-z0-9_\-\.\/]*config[A-Za-z0-9_\-\.\/]*\))[>#]\s*$",
+        RegexOptions.Compiled | RegexOptions.Multiline);
+
     public static readonly Regex FortiPromptRegex = new(
         @"(?i)(?:FortiGate|FGT|FG)[A-Za-z0-9_\-]*\s*(?:\([^()\r\n]*\))?\s*[#$]\s*$",
         RegexOptions.Compiled);
 
     public static readonly Regex Cisco1900ModelRegex = new(
-        @"(?i)(?:\bC19[0-9]{2}\b|\bCISCO19[0-9]{2}(?:[A-Za-z0-9\-\/]+)?\b|\bcisco\s+19[0-9]{2}\b|\b19[0-9]{2}\s*(?:BR|[A-Z]{2})?\s*(?:platform|Series|with|Integrated)\b|\bBootstrap,\s*Version\s*15\.0\(1r\)M|\bc1900-universalk9|\bc1900-)",
+        @"(?i)(?:\bC19[0-9]{2}\b|\bCISCO\s*19[0-9]{2}(?:[A-Za-z0-9\-\/]+)?\b|\bcisco\s+19[0-9]{2}\b|\b(?:C19[0-9]{2}|CISCO19[0-9]{2}|19[0-9]{2})\s*(?:BR|[A-Z]{2})?\s*(?:platform|Series|with|Integrated|router)\b|\bBootstrap,\s*Version\s*15\.0\(1r\)M|\bc1900-universalk9|\bc1900-|\bCISCO1905\b|\bCISCO1921\b|\bCISCO1941\b|\bC1905\b|\bC1921\b|\bC1941\b)",
+        RegexOptions.Compiled);
+
+    public static readonly Regex Cisco2900ModelRegex = new(
+        @"(?i)(?:\bC29[0-9]{2}\b|\bCISCO\s*29[0-9]{2}(?:[A-Za-z0-9\-\/]+)?\b|\bcisco\s+29[0-9]{2}\b|\b(?:C29[0-9]{2}|CISCO29[0-9]{2}|29[0-9]{2})\s*(?:BR|[A-Z]{2})?\s*(?:platform|Series|with|Integrated|router)\b|\bc2900-universalk9|\bc2900-|\bCISCO2901\b|\bCISCO2911\b|\bCISCO2921\b|\bCISCO2951\b|\bC2901\b|\bC2911\b|\bC2921\b|\bC2951\b)",
         RegexOptions.Compiled);
 
     public static readonly Regex Cisco900ModelRegex = new(
@@ -98,9 +106,21 @@ public sealed class DeviceDetector : IDeviceDetector
                     continue;
                 }
 
+                if (CiscoConfigPromptRegex.IsMatch(current) ||
+                    Regex.IsMatch(current, @"\([A-Za-z0-9_\-\.\/]*config[A-Za-z0-9_\-\.\/]*\)\s*[>#]\s*$"))
+                {
+                    rxAccumulator.Clear();
+                    await transport.WriteAsync(Encoding.UTF8.GetBytes("end\r\n"), ct);
+                    await Task.Delay(250, ct);
+                    await transport.WriteAsync(Encoding.UTF8.GetBytes("\r\n"), ct);
+                    silenceDeadline = DateTime.UtcNow.AddSeconds(1.5);
+                    continue;
+                }
+
                 if (PasswordPromptRegex.IsMatch(current) ||
                     HpePromptRegex.IsMatch(current) ||
                     CiscoPromptRegex.IsMatch(current) ||
+                    CiscoConfigPromptRegex.IsMatch(current) ||
                     FortiPromptRegex.IsMatch(current) ||
                     current.Contains("Verifying password", StringComparison.OrdinalIgnoreCase) ||
                     current.Contains("choice", StringComparison.OrdinalIgnoreCase) ||
@@ -260,12 +280,22 @@ public sealed class DeviceDetector : IDeviceDetector
             || userSelectedSeries == DeviceSeries.FortiGate40F;
 
         var isCisco = !isFortinet && (isRommon
+            || rawPrompt.Contains("User Access Verification", StringComparison.OrdinalIgnoreCase)
+            || rawPrompt.Contains("Bad passwords", StringComparison.OrdinalIgnoreCase)
+            || rawPrompt.Contains("Bad secrets", StringComparison.OrdinalIgnoreCase)
             || rawPrompt.Contains("cisco", StringComparison.OrdinalIgnoreCase)
             || rawPrompt.Contains("IOS", StringComparison.OrdinalIgnoreCase)
             || rawPrompt.Contains("initial configuration dialog", StringComparison.OrdinalIgnoreCase)
             || rawPrompt.Contains("terminate autoinstall", StringComparison.OrdinalIgnoreCase)
+            || rawPrompt.Contains("(config", StringComparison.OrdinalIgnoreCase)
             || CiscoPromptRegex.IsMatch(rawPrompt)
+            || CiscoConfigPromptRegex.IsMatch(rawPrompt)
+            || Cisco841ModelRegex.IsMatch(rawPrompt)
+            || Cisco900ModelRegex.IsMatch(rawPrompt)
+            || Cisco1900ModelRegex.IsMatch(rawPrompt)
+            || Cisco2900ModelRegex.IsMatch(rawPrompt)
             || userSelectedSeries == DeviceSeries.Series1900
+            || userSelectedSeries == DeviceSeries.Series2900
             || userSelectedSeries == DeviceSeries.Isr921
             || userSelectedSeries == DeviceSeries.Isr841);
 
@@ -301,17 +331,21 @@ public sealed class DeviceDetector : IDeviceDetector
                     series = DeviceSeries.Unknown;
                 }
             }
-            else if (Cisco1900ModelRegex.IsMatch(rawPrompt))
+            else if (Cisco841ModelRegex.IsMatch(rawPrompt))
             {
-                series = DeviceSeries.Series1900;
+                series = DeviceSeries.Isr841;
             }
             else if (Cisco900ModelRegex.IsMatch(rawPrompt))
             {
                 series = DeviceSeries.Isr921;
             }
-            else if (Cisco841ModelRegex.IsMatch(rawPrompt))
+            else if (Cisco2900ModelRegex.IsMatch(rawPrompt))
             {
-                series = DeviceSeries.Isr841;
+                series = DeviceSeries.Series2900;
+            }
+            else if (Cisco1900ModelRegex.IsMatch(rawPrompt))
+            {
+                series = DeviceSeries.Series1900;
             }
             else if (isCisco)
             {

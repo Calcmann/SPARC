@@ -36,20 +36,20 @@ public sealed record CiscoIOSVersionInfo(
 /// </summary>
 public static class CiscoIOSFirmwareVersionInspector
 {
-    // Ex.: System image file is "flash:c900-universalk9-mz.SPA.159-3.M4.bin" ou "flash:/c900-universalk9-mz.SPA.15.9-3.M4.bin"
+    // Ex.: System image file is "flash:c900-universalk9-mz.SPA.159-3.M4.bin" ou flash0:c1900-universalk9-mz.SPA.157-3.M9.bin
     private static readonly Regex SystemImageFileRegex = new(
-        @"(?im)System\s+image\s+file\s+is\s+""(?:[^:\""]+:)?(?:\/)?(?<fileName>[^\""\r\n]+)""",
+        @"(?im)System\s+image\s+file\s+is\s+""?(?:[a-zA-Z0-9_\-]+:)?(?:\/)?(?<fileName>[a-zA-Z0-9_\.\-]+\.bin)""?",
         RegexOptions.Compiled);
 
-    // Ex.: Cisco IOS Software, C900 Software (C900-UNIVERSALK9-M), Version 15.9(3)M4, RELEASE SOFTWARE (fc2)
-    // ou: Cisco IOS Software, C800 Software (C800-UNIVERSALK9-M), Version 15.6(3)M2, RELEASE SOFTWARE (fc2)
+    // Ex.: Cisco IOS Software, C1900 Software (C1900-UNIVERSALK9-M), Version 15.7(3)M9, RELEASE SOFTWARE (fc2)
+    // ou: Cisco IOS Software, C900 Software (C900-UNIVERSALK9-M), Version 15.9(3)M4, RELEASE SOFTWARE (fc2)
     private static readonly Regex ShowVersionLineRegex = new(
-        @"(?im)Cisco\s+IOS\s+Software.*?(?:Version\s+|,\s*Version\s*)(?<ver>[0-9]+\.[0-9]+\([0-9]+\)[A-Za-z0-9]+)",
+        @"(?im)(?:Cisco\s+IOS\s+Software|C[0-9]+\s+Software)[^\r\n]*(?:\r?\n[^\r\n]*)?(?:Version\s+|,\s*Version\s*)(?<ver>[0-9]+\.[0-9]+\([0-9]+\)[A-Za-z0-9]+)",
         RegexOptions.Compiled);
 
-    // Fallback para linha genérica 'Version 15.9(3)M4'
+    // Fallback para linha genérica 'Version 15.9(3)M4' (ignora linha de ROM Bootstrap)
     private static readonly Regex GenericVersionRegex = new(
-        @"(?im)\bVersion\s+(?<ver>[0-9]+\.[0-9]+\([0-9]+\)[A-Za-z0-9]+)",
+        @"(?im)^(?!\s*ROM:).*?\bVersion\s+(?<ver>[0-9]+\.[0-9]+\([0-9]+\)[A-Za-z0-9]+)",
         RegexOptions.Compiled);
 
     // Padrão 1 de arquivo binário: c900-universalk9-mz.SPA.159-3.M4.bin -> major=159, minor=3, train=M4
@@ -183,14 +183,25 @@ public static class CiscoIOSFirmwareVersionInspector
             }
         }
 
-        // 2. Comparação estrita de versão canônica (ex.: "15.9(3)M4" == "15.9(3)M4")
-        if (currentVersion.HasVersion && targetVersion.HasVersion)
+        // 2. Comparação estrita de versão canônica (ex.: "15.9(3)M4" == "15.9(3)M4" ou "15.7(3)M9" == "15.7(3)M9")
+        var currentCanon = currentVersion.CanonicalVersion;
+        if (string.IsNullOrWhiteSpace(currentCanon) && !string.IsNullOrWhiteSpace(currentVersion.RunningImageFileName))
         {
-            return currentVersion.CanonicalVersion!.Equals(targetVersion.CanonicalVersion, StringComparison.OrdinalIgnoreCase);
+            currentCanon = ExtractFromFileName(currentVersion.RunningImageFileName).CanonicalVersion;
+        }
+
+        if (!string.IsNullOrWhiteSpace(currentCanon) && targetVersion.HasVersion)
+        {
+            if (currentCanon.Equals(targetVersion.CanonicalVersion, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
         }
 
         // 3. Verificação de nome exato presente no show version
         if (showVerOutput != null && (
+            showVerOutput.Contains(targetCleanBin, StringComparison.OrdinalIgnoreCase) ||
+            showVerOutput.Contains(Path.GetFileNameWithoutExtension(targetCleanBin), StringComparison.OrdinalIgnoreCase) ||
             showVerOutput.Contains($":{targetCleanBin}", StringComparison.OrdinalIgnoreCase) ||
             showVerOutput.Contains($"/{targetCleanBin}", StringComparison.OrdinalIgnoreCase) ||
             showVerOutput.Contains($"\"{targetCleanBin}\"", StringComparison.OrdinalIgnoreCase)))

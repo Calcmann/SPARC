@@ -31,6 +31,7 @@ public class RouterDirectFirmwareUpdaterTests
     [InlineData(DeviceSeries.Isr841, "c841")]
     [InlineData(DeviceSeries.Isr921, "c921")]
     [InlineData(DeviceSeries.Series1900, "c1900")]
+    [InlineData(DeviceSeries.Series2900, "c2900")]
     [InlineData(DeviceSeries.FortiGate40F, "fgt40f")]
     [InlineData(DeviceSeries.Msr954, "msr954")]
     [InlineData(DeviceSeries.Msr930, "msr930")]

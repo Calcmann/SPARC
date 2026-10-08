@@ -17,7 +17,7 @@
         <Tab Title="Firmware &amp; WAN">
             <ShellContent ContentTemplate="{DataTemplate views:FirmwarePage}" Route="FirmwarePage" />
         </Tab>
-        <Tab Title="Quebra Senha">
+        <Tab Title="Zerar Configuração">
             <ShellContent ContentTemplate="{DataTemplate views:RecoveryPage}" Route="RecoveryPage" />
         </Tab>
         <Tab x:Name="TabY1564" Title="Y.1564 / SLA" IsVisible="False">

@@ -24,6 +24,10 @@ public class MatrixWorkflowTests
     [InlineData(DeviceManufacturer.Cisco, DeviceSeries.Series1900, DeviceOperatingState.Ready, WorkflowType.Provisioning)]
     [InlineData(DeviceManufacturer.Cisco, DeviceSeries.Series1900, DeviceOperatingState.PasswordProtected, WorkflowType.PasswordRecovery)]
     [InlineData(DeviceManufacturer.Cisco, DeviceSeries.Series1900, DeviceOperatingState.BootFailure, WorkflowType.FirmwareRecovery)]
+    // Cisco 2900 (3 Estados)
+    [InlineData(DeviceManufacturer.Cisco, DeviceSeries.Series2900, DeviceOperatingState.Ready, WorkflowType.Provisioning)]
+    [InlineData(DeviceManufacturer.Cisco, DeviceSeries.Series2900, DeviceOperatingState.PasswordProtected, WorkflowType.PasswordRecovery)]
+    [InlineData(DeviceManufacturer.Cisco, DeviceSeries.Series2900, DeviceOperatingState.BootFailure, WorkflowType.FirmwareRecovery)]
     // Cisco 921 (3 Estados)
     [InlineData(DeviceManufacturer.Cisco, DeviceSeries.Isr921, DeviceOperatingState.Ready, WorkflowType.Provisioning)]
     [InlineData(DeviceManufacturer.Cisco, DeviceSeries.Isr921, DeviceOperatingState.PasswordProtected, WorkflowType.PasswordRecovery)]
@@ -142,6 +146,19 @@ public class MatrixWorkflowTests
     }
 
     [Fact]
+    public void DeviceDetector_ClassifiesCisco2900ReadyState()
+    {
+        var detector = new DeviceDetector();
+        var result = detector.ClassifyPrompt("Router#", DeviceSeries.Series2900);
+
+        Assert.Equal(DeviceManufacturer.Cisco, result.Manufacturer);
+        Assert.Equal(DeviceSeries.Series2900, result.Series);
+        Assert.Equal(DeviceOperatingState.Ready, result.OperatingState);
+        Assert.Equal(WorkflowType.Provisioning, result.RecommendedWorkflow);
+        Assert.Equal(AccessState.Open, result.AccessState);
+    }
+
+    [Fact]
     public void DeviceDetector_ClassifiesCisco921PasswordState()
     {
         var detector = new DeviceDetector();
@@ -181,6 +198,23 @@ public class MatrixWorkflowTests
 
         Assert.Equal(DeviceManufacturer.Cisco, result.Manufacturer);
         Assert.Equal(DeviceSeries.Series1900, result.Series);
+    }
+
+    [Theory]
+    [InlineData("Cisco CISCO2901/K9 (revision 1.0) with 487424K/36864K bytes of memory.\nRouter>")]
+    [InlineData("CISCO2911/K9 platform with 524288 Kbytes of main memory\nRouter#")]
+    [InlineData("Cisco IOS Software, C2900 Software (C2900-UNIVERSALK9-M), Version 15.7(3)M9\nRouter#")]
+    [InlineData("cisco 2921 (revision 1.0) with 487424K/36864K bytes of memory.\nRouter>")]
+    [InlineData("cisco 2951 with 512MB memory\nRouter#")]
+    [InlineData("CISCO2901/K9 platform with 524288 Kbytes of main memory\nrommon 1 > ")]
+    [InlineData("Cisco IOS Software, C2900 Software (C2900-UNIVERSALK9-M), Version 15.4(3)M3\nROM: System Bootstrap, Version 15.0(1r)M16, RELEASE SOFTWARE (fc1)\nCisco CISCO2901/K9 (revision 1.0) with 483328K/40960K bytes of memory.\nS_FNS#")]
+    public void DeviceDetector_CorrectlyIdentifiesCisco2900Family(string output)
+    {
+        var detector = new DeviceDetector();
+        var result = detector.ClassifyPrompt(output);
+
+        Assert.Equal(DeviceManufacturer.Cisco, result.Manufacturer);
+        Assert.Equal(DeviceSeries.Series2900, result.Series);
     }
 
     [Theory]

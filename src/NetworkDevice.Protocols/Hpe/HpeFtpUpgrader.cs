@@ -89,8 +89,17 @@ public sealed class HpeFtpUpgrader
         await ProgressAsync("[*] Salvando configuração (save)...");
         await SaveAsync(session, cancellationToken);
 
+        // 4b. Zeramento conjunto de configuração no mesmo reload (aproveita o reboot obrigatório de upgrade do SO)
+        await ProgressAsync("[*] Zerando configurações salvas do Comware (reset saved-configuration) para boot limpo...");
+        try
+        {
+            await session.WriteLineAsync("reset saved-configuration", cancellationToken);
+            await AnswerYesNoAsync(session, "reset saved-configuration", TimeSpan.FromSeconds(10), cancellationToken, acceptSilenceAsDone: true);
+        }
+        catch { }
+
         // 5. Reboot + verificação de retorno
-        await ProgressAsync("[*] Reiniciando (reboot)...");
+        await ProgressAsync("[*] [RELOAD AUTOMÁTICO CONJUNTO] Reiniciando HPE Comware (novo firmware + base limpa)...");
         await session.WriteLineAsync("reboot", cancellationToken);
         await AnswerYesNoAsync(session, "reboot", TimeSpan.FromSeconds(30), cancellationToken, acceptSilenceAsDone: true);
 

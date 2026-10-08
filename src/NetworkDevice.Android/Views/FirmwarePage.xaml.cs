@@ -17,6 +17,10 @@ public partial class FirmwarePage : ContentPage
     public FirmwarePage()
     {
         InitializeComponent();
+        _connManager.OnFirmwareProgress += state => MainThread.BeginInvokeOnMainThread(() =>
+        {
+            UpdateFirmwareProgress(state.Percentage, state.Stage, state.Details, $"{state.BytesTransferred / 1048576.0:F1} / {state.TotalBytes / 1048576.0:F1} MB");
+        });
     }
 
     protected override void OnAppearing()
@@ -37,6 +41,11 @@ public partial class FirmwarePage : ContentPage
         {
             AuditModelLabel.Text = "Nenhum equipamento identificado no console.";
         }
+    }
+
+    private async void OnOpenRepoModalClicked(object? sender, EventArgs e)
+    {
+        await Navigation.PushModalAsync(new NavigationPage(new FirmwareRepoPage()));
     }
 
     private async void OnAuditarFwClicked(object? sender, EventArgs e)
@@ -96,10 +105,10 @@ public partial class FirmwarePage : ContentPage
                 AuditOfficialLabel.Text = "Nenhum arquivo homologado cadastrado.";
             }
 
-            // 3. Executa a auditoria no roteador
-            if (_connManager.CurrentSession == null)
+            // 3. Executa a auditoria no roteador com serial isolada
+            if (!_connManager.IsConnected)
             {
-                AppendLog("[!] Sessão serial interativa não disponível. Conecte na aba Provisionamento.");
+                AppendLog("[!] Console serial não está conectado. Conecte o cabo USB primeiro.");
                 return;
             }
 
@@ -109,7 +118,15 @@ public partial class FirmwarePage : ContentPage
                 return Task.CompletedTask;
             });
 
-            var result = await updater.AuditComplianceAsync(_connManager.CurrentSession, detected.Series, _cachedOfficialRemote, cts.Token);
+            var result = await _connManager.AuditFirmwareComplianceAsync(
+                detected.Series,
+                _cachedOfficialRemote,
+                msg =>
+                {
+                    MainThread.BeginInvokeOnMainThread(() => AppendLog(msg));
+                    return Task.CompletedTask;
+                },
+                cts.Token);
 
             AuditCurrentVersionLabel.Text = result.CurrentVersion;
             AuditStatusMsgLabel.Text = result.Message;
@@ -129,7 +146,14 @@ public partial class FirmwarePage : ContentPage
             AppendLog($"[✓] Homologada Nuvem : {result.OfficialFirmwareName ?? "N/D"}");
 
             // 4. Diagnóstico de Porta WAN e Internet
-            var wanDiag = await updater.CheckWanAndInternetAsync(_connManager.CurrentSession, detected.Series, cts.Token);
+            var wanDiag = await _connManager.CheckWanAndInternetAsync(
+                detected.Series,
+                msg =>
+                {
+                    MainThread.BeginInvokeOnMainThread(() => AppendLog(msg));
+                    return Task.CompletedTask;
+                },
+                cts.Token);
             AtualizarStatusWanVisual(wanDiag);
 
             // Cenário 1-c: WAN física está DOWN
@@ -148,7 +172,14 @@ public partial class FirmwarePage : ContentPage
                     if (opt == "🔌 Conectar Porta WAN no Acesso e Retestar")
                     {
                         AppendLog($"[*] Retestando porta WAN {wanDiag.InterfaceName}...");
-                        wanDiag = await updater.CheckWanAndInternetAsync(_connManager.CurrentSession, detected.Series, cts.Token);
+                        wanDiag = await _connManager.CheckWanAndInternetAsync(
+                            detected.Series,
+                            msg =>
+                            {
+                                MainThread.BeginInvokeOnMainThread(() => AppendLog(msg));
+                                return Task.CompletedTask;
+                            },
+                            cts.Token);
                         AtualizarStatusWanVisual(wanDiag);
                         if (wanDiag.IsPhysicalUp)
                         {
@@ -209,7 +240,22 @@ public partial class FirmwarePage : ContentPage
                     if (retestar)
                     {
                         AppendLog("[*] Retestando conectividade com a internet a partir do roteador...");
-                        var okInternet = await updater.TestWanReachabilityAsync(_connManager.CurrentSession, detected.Series, cts.Token);
+                        bool okInternet = false;
+                        await _connManager.PauseReadLoopAsync();
+                        try
+                        {
+                            var sessWan = await _connManager.EnsureConsoleSessionAsync(msg =>
+                            {
+                                MainThread.BeginInvokeOnMainThread(() => AppendLog(msg));
+                                return Task.CompletedTask;
+                            }, cts.Token);
+                            okInternet = await updater.TestWanReachabilityAsync(sessWan, detected.Series, cts.Token);
+                        }
+                        finally
+                        {
+                            _connManager.ResumeReadLoop();
+                        }
+
                         if (okInternet)
                         {
                             wanDiag = new WanDiagnosticsResult(wanDiag.InterfaceName, true, true, "Conectividade Internet OK");
@@ -377,21 +423,36 @@ public partial class FirmwarePage : ContentPage
         AuditarFwBtn.IsEnabled = false;
         AppendLog("[*] Iniciando processo de download no roteador...");
 
+        ShowFirmwareProgress(
+            "DOWNLOAD DE FIRMWARE VIA WAN",
+            fileName,
+            "Flash do Roteador",
+            "Link WAN Direto");
+
         try
         {
             if (_connManager.CurrentSession == null)
             {
+                FinishFirmwareProgress(false, "Sessão serial interativa não disponível.");
                 await DisplayAlert("Aviso", "Sessão serial interativa não disponível.", "OK");
                 return;
             }
 
             var updater = new RouterDirectFirmwareUpdater(msg =>
             {
-                MainThread.BeginInvokeOnMainThread(() => AppendLog(msg));
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    AppendLog(msg);
+                    AppendFirmwareProgressLog(msg);
+                });
                 return Task.CompletedTask;
             });
 
             var ok = await updater.TriggerDownloadOnRouterAsync(_connManager.CurrentSession, series, url, fileName, ct);
+            FinishFirmwareProgress(ok, ok
+                ? $"Download concluído e gravado na flash: {fileName}!"
+                : "Transferência não confirmada pelo roteador.");
+
             if (ok)
             {
                 AppendLog("\n[✓] PROCESSO DE FIRMWARE FINALIZADO COM SUCESSO NO ROTEADOR!");
@@ -407,6 +468,7 @@ public partial class FirmwarePage : ContentPage
         }
         catch (Exception ex)
         {
+            FinishFirmwareProgress(false, $"Erro na operação: {ex.Message}");
             AppendLog($"\n[X] Falha na operação: {ex.Message}");
             await DisplayAlert("Erro", ex.Message, "OK");
         }
@@ -529,6 +591,13 @@ public partial class FirmwarePage : ContentPage
         AppendLog("[*]       TRANSFERÊNCIA LOCAL DE FIRMWARE EM BANCADA (OTG + ETH)      ");
         AppendLog("[*] =================================================================");
 
+        var fwName = System.IO.Path.GetFileName(_selectedLocalFirmwarePath);
+        ShowFirmwareProgress(
+            "TRANSFERÊNCIA DE FIRMWARE EM BANCADA",
+            fwName,
+            "Flash do Roteador",
+            isForti || isHpe ? "OTG + ETH (FTP :2121)" : "OTG + ETH (HTTP :8080)");
+
         var ethBound = AndroidEthernetManager.Instance.BindProcessToEthernet(AppendLog);
         using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(20));
 
@@ -536,7 +605,11 @@ public partial class FirmwarePage : ContentPage
         {
             Func<string, Task> logger = msg =>
             {
-                MainThread.BeginInvokeOnMainThread(() => AppendLog(msg));
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    AppendLog(msg);
+                    AppendFirmwareProgressLog(msg);
+                });
                 return Task.CompletedTask;
             };
 
@@ -572,6 +645,10 @@ public partial class FirmwarePage : ContentPage
                     ct: cts.Token);
             }
 
+            FinishFirmwareProgress(success, success
+                ? $"Firmware {fwName} enviado e gravado na flash com sucesso!"
+                : "A transferência não foi confirmada pelo roteador.");
+
             if (success)
             {
                 AppendLog("\n[✓] FIRMWARE ENVIADO E GRAVADO NA FLASH COM SUCESSO VIA OTG + ETH!");
@@ -585,6 +662,7 @@ public partial class FirmwarePage : ContentPage
         }
         catch (Exception ex)
         {
+            FinishFirmwareProgress(false, $"Erro na transferência: {ex.Message}");
             AppendLog($"\n[X] Falha na transferência local: {ex.Message}");
             await DisplayAlert("Erro na Transferência", ex.Message, "OK");
         }
@@ -698,4 +776,98 @@ public partial class FirmwarePage : ContentPage
     {
         FwLogEditor.Text += message + Environment.NewLine;
     }
+
+    #region Overlay de Progresso de Firmware em Primeiro Plano
+
+    public void ShowFirmwareProgress(string titulo, string fileName, string target, string method)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            try { DeviceDisplay.Current.KeepScreenOn = true; } catch { }
+            OverlayFirmwareProgress.IsVisible = true;
+            FwProgressSpinner.IsRunning = true;
+            FwProgressTitleLabel.Text = titulo;
+            FwProgressTitleLabel.TextColor = Color.FromArgb("#38BDF8");
+            FwProgressFileNameLabel.Text = fileName;
+            FwProgressTargetLabel.Text = target;
+            FwProgressMethodLabel.Text = method;
+            FwProgressStageLabel.Text = "Iniciando transferência...";
+            FwProgressPercentLabel.Text = "0%";
+            FwProgressBar.Progress = 0.0;
+            FwProgressDetailLabel.Text = "Estabelecendo comunicação com o roteador...";
+            FwProgressBytesLabel.Text = "0 / 0 MB";
+            FwProgressLogEditor.Text = $"[*] {DateTime.Now:HH:mm:ss} - Iniciando gravação de {fileName}...\n";
+            FwProgressDismissBtn.IsVisible = false;
+        });
+    }
+
+    public void UpdateFirmwareProgress(double percentage, string stage, string details, string bytesText)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (!OverlayFirmwareProgress.IsVisible) OverlayFirmwareProgress.IsVisible = true;
+            var clamped = Math.Clamp(percentage / 100.0, 0.0, 1.0);
+            FwProgressBar.Progress = clamped;
+            FwProgressPercentLabel.Text = $"{percentage:F0}%";
+            if (!string.IsNullOrWhiteSpace(stage)) FwProgressStageLabel.Text = stage;
+            if (!string.IsNullOrWhiteSpace(details)) FwProgressDetailLabel.Text = details;
+            if (!string.IsNullOrWhiteSpace(bytesText)) FwProgressBytesLabel.Text = bytesText;
+            AppendFirmwareProgressLog($"[{percentage:F0}%] {stage} - {details}");
+        });
+    }
+
+    public void AppendFirmwareProgressLog(string line)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            try
+            {
+                var txt = FwProgressLogEditor.Text ?? "";
+                if (txt.Length > 2500) txt = txt.Substring(txt.Length - 1500);
+                FwProgressLogEditor.Text = txt + line + "\n";
+            }
+            catch { }
+        });
+    }
+
+    public void FinishFirmwareProgress(bool success, string message)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            try { DeviceDisplay.Current.KeepScreenOn = false; } catch { }
+            FwProgressSpinner.IsRunning = false;
+            if (success)
+            {
+                FwProgressTitleLabel.Text = "✅ FIRMWARE GRAVADO COM SUCESSO!";
+                FwProgressTitleLabel.TextColor = Color.FromArgb("#4ADE80");
+                FwProgressBar.Progress = 1.0;
+                FwProgressPercentLabel.Text = "100%";
+                FwProgressStageLabel.Text = "Operação Finalizada com Sucesso!";
+                FwProgressDetailLabel.Text = message;
+                FwProgressDismissBtn.Text = "CONCLUIR";
+                FwProgressDismissBtn.BackgroundColor = Color.FromArgb("#16A34A");
+                FwProgressDismissBtn.IsVisible = true;
+                AppendFirmwareProgressLog($"[✓] {message}");
+            }
+            else
+            {
+                FwProgressTitleLabel.Text = "❌ FALHA NA ATUALIZAÇÃO";
+                FwProgressTitleLabel.TextColor = Color.FromArgb("#EF4444");
+                FwProgressStageLabel.Text = "Erro durante gravação do firmware";
+                FwProgressDetailLabel.Text = message;
+                FwProgressDismissBtn.Text = "FECHAR";
+                FwProgressDismissBtn.BackgroundColor = Color.FromArgb("#B91C1C");
+                FwProgressDismissBtn.IsVisible = true;
+                AppendFirmwareProgressLog($"[!] {message}");
+            }
+        });
+    }
+
+    private void OnDismissFirmwareProgressClicked(object? sender, EventArgs e)
+    {
+        OverlayFirmwareProgress.IsVisible = false;
+        try { DeviceDisplay.Current.KeepScreenOn = false; } catch { }
+    }
+
+    #endregion
 }

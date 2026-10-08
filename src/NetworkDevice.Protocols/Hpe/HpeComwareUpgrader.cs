@@ -1256,6 +1256,29 @@ public sealed class HpeComwareUpgrader
         await session.SendCommandAsync("system-view", TimeSpan.FromSeconds(5), ct);
         await Task.Delay(200, ct);
 
+        // Desativa timeout de inatividade na console para proteger pausas e ausências do técnico
+        try
+        {
+            await session.SendCommandAsync("line aux 0", TimeSpan.FromSeconds(3), ct);
+            await session.SendCommandAsync("idle-timeout 0 0", TimeSpan.FromSeconds(3), ct);
+            await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), ct);
+        }
+        catch { }
+        try
+        {
+            await session.SendCommandAsync("line con 0", TimeSpan.FromSeconds(3), ct);
+            await session.SendCommandAsync("idle-timeout 0 0", TimeSpan.FromSeconds(3), ct);
+            await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), ct);
+        }
+        catch { }
+        try
+        {
+            await session.SendCommandAsync("user-interface aux 0", TimeSpan.FromSeconds(3), ct);
+            await session.SendCommandAsync("idle-timeout 0 0", TimeSpan.FromSeconds(3), ct);
+            await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), ct);
+        }
+        catch { }
+
         await session.SendCommandAsync("interface GigabitEthernet0/0", TimeSpan.FromSeconds(5), ct);
         await Task.Delay(200, ct);
         await session.SendCommandAsync("undo ip address", TimeSpan.FromSeconds(5), ct);
@@ -1293,10 +1316,17 @@ public sealed class HpeComwareUpgrader
         var briefOut = string.Empty;
         for (var retry = 0; retry < 3; retry++)
         {
-            briefOut = await session.SendCommandAsync("display interface GigabitEthernet0/1", TimeSpan.FromSeconds(8), ct);
-            var tmpUp = briefOut.Contains("Current state: UP", StringComparison.OrdinalIgnoreCase)
-                     || briefOut.Contains("Line protocol state: UP", StringComparison.OrdinalIgnoreCase);
-            if (tmpUp) break;
+            try
+            {
+                briefOut = await session.SendCommandAsync("display interface GigabitEthernet0/1", TimeSpan.FromSeconds(10), ct);
+                var tmpUp = briefOut.Contains("Current state: UP", StringComparison.OrdinalIgnoreCase)
+                         || briefOut.Contains("Line protocol state: UP", StringComparison.OrdinalIgnoreCase);
+                if (tmpUp) break;
+            }
+            catch
+            {
+                try { await session.WriteLineAsync(string.Empty, ct); } catch { }
+            }
             await Task.Delay(2500, ct);
         }
         var isUp = briefOut.Contains("Current state: UP", StringComparison.OrdinalIgnoreCase)
@@ -1325,17 +1355,40 @@ public sealed class HpeComwareUpgrader
                     ct);
             }
 
-            // Aguarda e valida se a porta subiu o link físico
-            for (var i = 0; i < 15; i++)
+            // Acorda o terminal Comware e absorve eventuais syslogs decorrentes do encaixe do cabo e tempo de espera
+            try
             {
-                await Task.Delay(1000, ct);
-                briefOut = await session.SendCommandAsync("display interface GigabitEthernet0/1", TimeSpan.FromSeconds(5), ct);
-                if (briefOut.Contains("Current state: UP", StringComparison.OrdinalIgnoreCase)
-                 || briefOut.Contains("Line protocol state: UP", StringComparison.OrdinalIgnoreCase)
-                 || briefOut.Contains("GigabitEthernet0/1 is UP", StringComparison.OrdinalIgnoreCase))
+                await session.WriteLineAsync(string.Empty, ct);
+                await Task.Delay(500, ct);
+                await session.WriteLineAsync(string.Empty, ct);
+                await Task.Delay(500, ct);
+            }
+            catch { }
+
+            // Aguarda e valida se a porta subiu o link físico com tolerância e retry seguro
+            for (var i = 0; i < 20; i++)
+            {
+                await Task.Delay(1500, ct);
+                try
                 {
-                    await ProgressAsync("[OK] Link físico UP detectado na porta GigabitEthernet0/1 (GE1)!");
-                    break;
+                    briefOut = await session.SendCommandAsync("display interface GigabitEthernet0/1", TimeSpan.FromSeconds(15), ct);
+                    if (briefOut.Contains("Current state: UP", StringComparison.OrdinalIgnoreCase)
+                     || briefOut.Contains("Line protocol state: UP", StringComparison.OrdinalIgnoreCase)
+                     || briefOut.Contains("GigabitEthernet0/1 is UP", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await ProgressAsync("[OK] Link físico UP detectado na porta GigabitEthernet0/1 (GE1)!");
+                        break;
+                    }
+                }
+                catch (SessionTimeoutException)
+                {
+                    // Envia newline para destravar a console caso um log assíncrono tenha mascarado o prompt
+                    try { await session.WriteLineAsync(string.Empty, ct); } catch { }
+                }
+                catch (Exception ex)
+                {
+                    await ProgressAsync($"[INFO] Sincronizando console serial após conexão do cabo: {ex.Message}");
+                    try { await session.WriteLineAsync(string.Empty, ct); } catch { }
                 }
             }
         }

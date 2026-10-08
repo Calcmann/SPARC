@@ -22,12 +22,7 @@ public sealed class Cisco921ProvisioningEngine : IProvisioningEngine
         CancellationToken ct = default)
     {
         if (progress != null) await progress(10, "Provisionamento Cisco 921", "Configurando interfaces GigabitEthernet 4 (WAN) e GigabitEthernet 5 (LAN)...");
-        var cmds = CiscoSaipConfigurator.GenerateCommands(saip, "GigabitEthernet 4", "GigabitEthernet 5");
-        foreach (var cmd in cmds)
-        {
-            await session.WriteLineAsync(cmd, ct);
-            await Task.Delay(100, ct);
-        }
+        await _configurator.ApplyConfigAsync(session, saip, "GigabitEthernet 4", "GigabitEthernet 5", ct);
         if (progress != null) await progress(100, "Provisionamento Concluído", "Configuração aplicada no Cisco 921.");
         return true;
     }
@@ -61,8 +56,14 @@ public sealed class Cisco921PasswordRecoveryEngine : IPasswordRecoveryEngine
             }
             await session.WriteLineAsync(knownPassword, ct);
             await Task.Delay(500, ct);
-            await session.WriteLineAsync("enable", ct);
-            await Task.Delay(500, ct);
+            var candidates = new List<string> { knownPassword };
+            if (!candidates.Contains("PRO1AN")) candidates.Add("PRO1AN");
+            var adapter = new CiscoIOSAdapter(enableSecret: knownPassword, candidatePasswords: candidates);
+            try
+            {
+                await adapter.EnterPrivilegedExecAsync(session, candidates, ct);
+            }
+            catch { }
             return true;
         }
 
@@ -101,7 +102,8 @@ public sealed class Cisco921FirmwareRecoveryEngine : IFirmwareRecoveryEngine
             null,
             null,
             instructOperator,
-            ct);
+            ct,
+            candidatePasswords: new[] { "PRO1AN" });
     }
 }
 

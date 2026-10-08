@@ -252,4 +252,122 @@ rommon 2 > ";
         Assert.Equal(DeviceSeries.Isr841, result.Series);
         Assert.Equal(DeviceOperatingState.BootFailure, result.OperatingState);
     }
+
+    [Fact]
+    public void ClassifyPrompt_UserAccessVerification_DetectsCiscoAndUserAndPasswordRequired()
+    {
+        var prompt = "User Access Verification\r\n\r\nUsername: ";
+        var result = _detector.ClassifyPrompt(prompt);
+
+        Assert.Equal(DeviceManufacturer.Cisco, result.Manufacturer);
+        Assert.Equal(DeviceOperatingState.PasswordProtected, result.OperatingState);
+        Assert.Equal(AccessState.UserAndPasswordRequired, result.AccessState);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_Cisco841_UserAccessVerification_DetectsIsr841Series()
+    {
+        var prompt = "C841M-ROUTER\r\nUser Access Verification\r\n\r\nUsername: ";
+        var result = _detector.ClassifyPrompt(prompt);
+
+        Assert.Equal(DeviceManufacturer.Cisco, result.Manufacturer);
+        Assert.Equal(DeviceSeries.Isr841, result.Series);
+        Assert.Equal(DeviceOperatingState.PasswordProtected, result.OperatingState);
+        Assert.Equal(AccessState.UserAndPasswordRequired, result.AccessState);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_Cisco841_WithNumbersLike1941InOutput_RemainsIsr841AndDoesNotFallInto1900()
+    {
+        var output = @"Router>
+show version
+Cisco IOS Software, C800M Software (C800M-UNIVERSALK9-M), Version 15.6(3)M2, RELEASE SOFTWARE (fc2)
+Technical Support: http://www.cisco.com/techsupport
+Copyright (c) 1986-2016 by Cisco Systems, Inc.
+
+Cisco C841M-4X-JSEC/K9 (revision 1.0) with 490496K/33792K bytes of memory.
+Processor board ID FGL 1941 23XX
+Configuration register is 0x2102
+Router>";
+
+        var result = _detector.ClassifyPrompt(output);
+
+        Assert.Equal(DeviceManufacturer.Cisco, result.Manufacturer);
+        Assert.Equal(DeviceSeries.Isr841, result.Series);
+        Assert.NotEqual(DeviceSeries.Series1900, result.Series);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_Cisco1921_DetectsSeries1900()
+    {
+        var output = @"Router>
+show version
+Cisco IOS Software, C1900 Software (C1900-UNIVERSALK9-M), Version 15.7(3)M2
+Cisco CISCO1921/K9 (revision 1.0) with 491520K/32768K bytes of memory.
+Processor board ID FGL12345678
+Router>";
+
+        var result = _detector.ClassifyPrompt(output);
+
+        Assert.Equal(DeviceManufacturer.Cisco, result.Manufacturer);
+        Assert.Equal(DeviceSeries.Series1900, result.Series);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_Cisco2900_DetectsSeries2900()
+    {
+        var output = @"Router>
+show version
+Cisco IOS Software, C2900 Software (C2900-UNIVERSALK9-M), Version 15.7(3)M2
+Cisco CISCO2911/K9 (revision 1.0) with 491520K/32768K bytes of memory.
+Processor board ID FGL87654321
+Router>";
+
+        var result = _detector.ClassifyPrompt(output);
+
+        Assert.Equal(DeviceManufacturer.Cisco, result.Manufacturer);
+        Assert.Equal(DeviceSeries.Series2900, result.Series);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_CiscoConfigMode_DetectsCiscoAndReadyOpenState()
+    {
+        var prompt = "LDA-IP-02580(config)#";
+        var result = _detector.ClassifyPrompt(prompt);
+
+        Assert.Equal(DeviceManufacturer.Cisco, result.Manufacturer);
+        Assert.Equal(DeviceOperatingState.Ready, result.OperatingState);
+        Assert.Equal(AccessState.Open, result.AccessState);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_CiscoConfigSubmode_DetectsCiscoAndReadyOpenState()
+    {
+        var prompt = "Router(config-if)#";
+        var result = _detector.ClassifyPrompt(prompt);
+
+        Assert.Equal(DeviceManufacturer.Cisco, result.Manufacturer);
+        Assert.Equal(DeviceOperatingState.Ready, result.OperatingState);
+        Assert.Equal(AccessState.Open, result.AccessState);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_CiscoConfigMode_WithShowVersion_EnrichesSeries1900()
+    {
+        var output = @"LDA-IP-02580(config)#
+end
+LDA-IP-02580#
+show version
+Cisco IOS Software, C1900 Software (C1900-UNIVERSALK9-M), Version 15.7(3)M2
+Cisco CISCO1905/K9 (revision 1.0) with 491520K/32768K bytes of memory.
+Processor board ID FGL12345678
+Configuration register is 0x2102
+LDA-IP-02580#";
+
+        var result = _detector.ClassifyPrompt(output);
+
+        Assert.Equal(DeviceManufacturer.Cisco, result.Manufacturer);
+        Assert.Equal(DeviceSeries.Series1900, result.Series);
+        Assert.Equal(DeviceOperatingState.Ready, result.OperatingState);
+    }
 }

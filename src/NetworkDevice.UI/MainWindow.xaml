@@ -126,6 +126,7 @@
                                     <ComboBoxItem Content="🖧 HPE MSR 930 / 931 / 935 (Ctrl+B @ 9600 - BootWare)" Tag="hpe.msr930.ctrl-b" />
                                     <ComboBoxItem Content="🖧 HPE MSR 1002 / 1003 (Ctrl+B @ 9600 - BootWare)" Tag="hpe.msr1002.ctrl-b" />
                                     <ComboBoxItem Content="🖧 Cisco Série 1900 / 1921 / 1941 / 1905 (Break @ 9600 - ROMMON)" Tag="cisco.c1900.break" />
+                                    <ComboBoxItem Content="🖧 Cisco Série 2900 / 2911 / 2921 / 2951 (Break @ 9600 - ROMMON)" Tag="cisco.c2900.break" />
                                     <ComboBoxItem Content="🖧 Cisco Série 900 / C921-4P (Ctrl+C Puro @ 9600)" Tag="cisco.c900.ctrl-c" />
                                     <ComboBoxItem Content="🖧 Cisco Série 800 / C841M (Break @ 9600 - ROMMON)" Tag="cisco.c841.break" />
                                     <ComboBoxItem Content="🛡️ Fortinet FortiGate 40F (FortiOS @ 9600 / 115200 - Console)" Tag="fortinet.fgt40f.fortios" />
@@ -497,6 +498,7 @@
                             <ComboBoxItem Content="HPE MSR 930 / 931 / 935 (Ctrl+B @ 9600 - BootWare)" Tag="hpe.msr930.ctrl-b" />
                             <ComboBoxItem Content="HPE MSR 1002 / 1003 (Ctrl+B @ 9600 - BootWare)" Tag="hpe.msr1002.ctrl-b" />
                             <ComboBoxItem Content="Cisco Série 1900 / 1921 / 1941 / 1905 (Break @ 9600 - ROMMON)" Tag="cisco.c1900.break" />
+                            <ComboBoxItem Content="Cisco Série 2900 / 2911 / 2921 / 2951 (Break @ 9600 - ROMMON)" Tag="cisco.c2900.break" />
                             <ComboBoxItem Content="Cisco Série 900 / C921-4P (Ctrl+C Puro @ 9600)" Tag="cisco.c900.ctrl-c" />
                             <ComboBoxItem Content="Cisco Série 800 / C841M (Break @ 9600 - ROMMON)" Tag="cisco.c841.break" />
                             <ComboBoxItem Content="Fortinet FortiGate 40F (FortiOS @ 9600 / 115200 - Console)" Tag="fortinet.fgt40f.fortios" />
@@ -868,9 +870,9 @@
                                     <TextBlock Text="Porta:" VerticalAlignment="Center" Foreground="#E4E4E7" Margin="0,0,4,0" FontSize="13" />
                                     <TextBox x:Name="TxtTelnetPort" Width="50" Text="23" VerticalAlignment="Center" Margin="0,0,8,0" Padding="4,2" />
                                     <TextBlock Text="User:" VerticalAlignment="Center" Foreground="#E4E4E7" Margin="0,0,4,0" FontSize="13" />
-                                    <TextBox x:Name="TxtTelnetUser" Width="70" Text="EBT" VerticalAlignment="Center" Margin="0,0,6,0" Padding="4,2" ToolTip="Usuário Telnet provisionado (HPE: EBT)" />
+                                    <TextBox x:Name="TxtTelnetUser" Width="70" Text="EBT" VerticalAlignment="Center" Margin="0,0,6,0" Padding="4,2" ToolTip="Usuário Telnet provisionado (Cisco/HPE/Fortinet: EBT)" />
                                     <TextBlock Text="Senha:" VerticalAlignment="Center" Foreground="#E4E4E7" Margin="0,0,4,0" FontSize="13" />
-                                    <TextBox x:Name="TxtTelnetPass" Width="100" Text="PRO1ANPRO1AN" VerticalAlignment="Center" Margin="0,0,8,0" Padding="4,2" ToolTip="Senha Telnet (HPE: PRO1ANPRO1AN)" />
+                                    <TextBox x:Name="TxtTelnetPass" Width="100" Text="CQMR" VerticalAlignment="Center" Margin="0,0,8,0" Padding="4,2" ToolTip="Senha Telnet (Cisco/Fortinet: CQMR | HPE: PRO1ANPRO1AN)" />
                                 </StackPanel>
                                 <TextBlock Text="Testa conexão TCP na porta 23, negocia opções RFC 854 IAC e valida login com usuário e senha do provisionamento." Foreground="#A1A1AA" FontSize="13" TextWrapping="Wrap" />
                             </StackPanel>

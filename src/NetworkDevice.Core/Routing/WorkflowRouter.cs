@@ -56,6 +56,13 @@ public static class WorkflowRouter
             (DeviceManufacturer.Cisco, DeviceSeries.Series1900, WorkflowType.FirmwareRecovery) =>
                 "Cisco Série 1900 — Recuperação de IOS via ROMMON TFTP / Xmodem",
 
+            (DeviceManufacturer.Cisco, DeviceSeries.Series2900, WorkflowType.Provisioning) =>
+                "Cisco Série 2900 — Provisionamento Canônico Cisco IOS",
+            (DeviceManufacturer.Cisco, DeviceSeries.Series2900, WorkflowType.PasswordRecovery) =>
+                "Cisco Série 2900 — Recuperação de Senha ROMMON (0x2142)",
+            (DeviceManufacturer.Cisco, DeviceSeries.Series2900, WorkflowType.FirmwareRecovery) =>
+                "Cisco Série 2900 — Recuperação de IOS via ROMMON TFTP / Xmodem",
+
             (DeviceManufacturer.Cisco, DeviceSeries.Isr921, WorkflowType.Provisioning) =>
                 "Cisco ISR 921 — Provisionamento Canônico Cisco IOS",
             (DeviceManufacturer.Cisco, DeviceSeries.Isr921, WorkflowType.PasswordRecovery) =>

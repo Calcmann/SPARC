@@ -2,7 +2,7 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="NetworkDevice.Android.Views.RecoveryPage"
-             Title="Quebra de Senha"
+             Title="Zerar Configuração"
              BackgroundColor="#0B0F19">
     <ScrollView>
         <VerticalStackLayout Padding="14" Spacing="12">
@@ -10,7 +10,7 @@
             <!-- Cabeçalho -->
             <Grid ColumnDefinitions="*, Auto">
                 <VerticalStackLayout Spacing="2">
-                    <Label Text="🛠️ SPARC Mobile • Quebra de Senha e Reset" FontSize="16" FontAttributes="Bold" TextColor="#F87171" />
+                    <Label Text="🛠️ SPARC Mobile • Zerar Configuração e Reset" FontSize="16" FontAttributes="Bold" TextColor="#F87171" />
                     <Label Text="Desbloqueio autônomo e restauração de fábrica para bancada" FontSize="11" TextColor="#94A3B8" />
                 </VerticalStackLayout>
                 <Button Grid.Column="1" x:Name="CloseModalBtn" Text="✕ Voltar" Clicked="OnCloseClicked" BackgroundColor="#334155" TextColor="White" CornerRadius="8" FontSize="12" HeightRequest="36" Padding="12, 0" />
@@ -73,13 +73,13 @@
                 </VerticalStackLayout>
             </Frame>
 
-            <!-- Opção 2: Quebra autônoma e Zeramento -->
+            <!-- Opção 2: Zeramento autônomo e Reset -->
             <Frame BackgroundColor="#0F172A" CornerRadius="10" Padding="12" BorderColor="#7F1D1D">
                 <VerticalStackLayout Spacing="8">
-                    <Label Text="Opção 2 • Quebra Autônoma e Reset de Fábrica" FontSize="13" FontAttributes="Bold" TextColor="#FCA5A5" />
+                    <Label Text="Opção 2 • Zeramento Autônomo e Reset de Fábrica" FontSize="13" FontAttributes="Bold" TextColor="#FCA5A5" />
                     <Label Text="• Cisco: DESLIGUE/RELIGUE na fonte (o app envia Break e ajusta confreg 0x2142).&#10;• HPE: DESLIGUE/RELIGUE (o app envia Ctrl+B e pula a config no BootWare).&#10;• Fortinet: Siga o procedimento guiado de reset físico acima.&#10;Mantenha a tela ligada durante o procedimento." FontSize="10.5" TextColor="#94A3B8" LineHeight="1.2" />
 
-                    <Button x:Name="BreakBtn" Text="⚡ QUEBRAR SENHA E ZERAR EQUIPAMENTO" Clicked="OnBreakClicked" BackgroundColor="#B91C1C" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="44" FontSize="12.5" />
+                    <Button x:Name="BreakBtn" Text="⚡ ZERAR CONFIGURAÇÃO E SENHA DO EQUIPAMENTO" Clicked="OnBreakClicked" BackgroundColor="#B91C1C" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="44" FontSize="12.5" />
                 </VerticalStackLayout>
             </Frame>
 
@@ -90,7 +90,7 @@
                         <Label Grid.Column="0" Text="Console de Recuperação" FontSize="13" FontAttributes="Bold" TextColor="#F8FAFC" VerticalOptions="Center" />
                         <Button Grid.Column="1" Text="Copiar Log" Clicked="OnCopyLogClicked" BackgroundColor="#1E293B" TextColor="#94A3B8" CornerRadius="6" FontSize="10.5" HeightRequest="28" Padding="8,0" />
                     </Grid>
-                    <Editor x:Name="RecoveryLogEditor" HeightRequest="160" IsReadOnly="True" BackgroundColor="#000000" TextColor="#FBBF24" FontFamily="Consolas" FontSize="11" Text="[SPARC Mobile] Aguardando verificação de bloqueio..." />
+                    <Editor x:Name="RecoveryLogEditor" HeightRequest="160" IsReadOnly="True" BackgroundColor="#000000" TextColor="#FBBF24" FontFamily="Consolas" FontSize="11" Text="[SPARC Mobile] Console de Zeramento de Configuração..." />
                 </VerticalStackLayout>
             </Frame>
 

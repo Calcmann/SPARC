@@ -54,8 +54,8 @@ public sealed class DeviceSession : IAsyncDisposable
             var needWakeup = false;
             var passwordAttemptCount = 0;
             var usernameAttemptCount = 0;
-            var triedBlankPassword = false;
             var triedConfiguredPassword = false;
+            var lastUserSent = _options.Username ?? "EBT";
 
             while (attempts++ < maxAttempts && DateTime.UtcNow < deadline)
             {
@@ -109,15 +109,15 @@ public sealed class DeviceSession : IAsyncDisposable
                         }
                         else if (_options.Username.Equals("EBT", StringComparison.OrdinalIgnoreCase))
                         {
-                            userToSend = "admin";
+                            userToSend = usernameAttemptCount == 2 ? "EBT" : (usernameAttemptCount == 3 ? "admin" : "cisco");
                         }
                         else if (_options.Username.Equals("admin", StringComparison.OrdinalIgnoreCase))
                         {
-                            userToSend = "cisco";
+                            userToSend = usernameAttemptCount == 2 ? "admin" : (usernameAttemptCount == 3 ? "EBT" : "cisco");
                         }
                         else if (_options.Username.Equals("cisco", StringComparison.OrdinalIgnoreCase))
                         {
-                            userToSend = "admin";
+                            userToSend = usernameAttemptCount == 2 ? "EBT" : "admin";
                         }
                         else
                         {
@@ -126,17 +126,20 @@ public sealed class DeviceSession : IAsyncDisposable
                     }
                     else
                     {
-                        // Fallback proativo para credenciais comuns de rede (Cisco CP, Admin, EBT)
+                        // Fallback proativo alinhado com operadora Claro/Embratel (Cisco: EBT/CQMR; HPE: EBT/PRO1AN; Fábrica: admin, cisco)
                         if (usernameAttemptCount == 1)
-                            userToSend = "cisco";
-                        else if (usernameAttemptCount == 2)
-                            userToSend = "admin";
-                        else if (usernameAttemptCount == 3)
                             userToSend = "EBT";
+                        else if (usernameAttemptCount == 2)
+                            userToSend = "EBT";
+                        else if (usernameAttemptCount == 3)
+                            userToSend = "admin";
+                        else if (usernameAttemptCount == 4)
+                            userToSend = "cisco";
                         else
                             throw new LoginException("Dispositivo pediu usuário, mas nenhuma credencial foi fornecida ou aceita.");
                     }
 
+                    lastUserSent = userToSend;
                     await _transport.WriteAsync(Text(userToSend + "\r"), cancellationToken);
                     await Task.Delay(200, cancellationToken);
                 }
@@ -144,27 +147,47 @@ public sealed class DeviceSession : IAsyncDisposable
                 {
                     passwordAttemptCount++;
                     string pass;
-                    if (!triedConfiguredPassword && !string.IsNullOrEmpty(_options.Password))
+                    if (!triedConfiguredPassword && _options.Password != null)
                     {
                         pass = _options.Password;
                         triedConfiguredPassword = true;
                     }
-                    else if (!triedBlankPassword)
-                    {
-                        pass = "";
-                        triedBlankPassword = true;
-                    }
                     else
                     {
-                        // Alterna entre senhas padrão conhecidas se a senha configurada ou em branco não tiverem sido aceitas
-                        if (passwordAttemptCount == 2)
-                            pass = "cisco";
-                        else if (passwordAttemptCount == 3)
-                            pass = "CQMR";
-                        else if (passwordAttemptCount == 4)
-                            pass = "admin";
+                        // Alterna entre senhas padrão conhecidas em sincronia com os usuários tentados:
+                        if (lastUserSent.Equals("EBT", StringComparison.OrdinalIgnoreCase))
+                        {
+                            // Cisco Claro padrão: CQMR; HPE Claro padrão & Cisco enable: PRO1AN
+                            if (passwordAttemptCount == 1) pass = "CQMR";
+                            else if (passwordAttemptCount == 2) pass = "PRO1AN";
+                            else if (passwordAttemptCount == 3) pass = "cisco";
+                            else pass = "";
+                        }
+                        else if (lastUserSent.Equals("admin", StringComparison.OrdinalIgnoreCase))
+                        {
+                            // Fortinet Claro: CQMR; Fortinet fábrica: em branco; HPE fábrica: admin; Cisco: cisco
+                            if (passwordAttemptCount == 1) pass = "CQMR";
+                            else if (passwordAttemptCount == 2) pass = "";
+                            else if (passwordAttemptCount == 3) pass = "admin";
+                            else if (passwordAttemptCount == 4) pass = "cisco";
+                            else pass = "PRO1AN";
+                        }
+                        else if (lastUserSent.Equals("cisco", StringComparison.OrdinalIgnoreCase))
+                        {
+                            // Cisco fábrica: cisco; Claro: CQMR, PRO1AN
+                            if (passwordAttemptCount == 1) pass = "cisco";
+                            else if (passwordAttemptCount == 2) pass = "CQMR";
+                            else if (passwordAttemptCount == 3) pass = "PRO1AN";
+                            else pass = "";
+                        }
                         else
-                            pass = _options.Password ?? "";
+                        {
+                            if (passwordAttemptCount == 1) pass = "CQMR";
+                            else if (passwordAttemptCount == 2) pass = "PRO1AN";
+                            else if (passwordAttemptCount == 3) pass = "cisco";
+                            else if (passwordAttemptCount == 4) pass = "admin";
+                            else pass = "";
+                        }
                     }
 
                     await _transport.WriteAsync(Text(pass + "\r"), cancellationToken);
@@ -370,11 +393,12 @@ public sealed class DeviceSession : IAsyncDisposable
                             }
 
                             // Auto-recuperação caso a sessão caia inesperadamente para login: / username: / password:
-                            if (autoLoginAttempts < 4 && !string.IsNullOrEmpty(_options.Username))
+                            if (autoLoginAttempts < 4 && (!string.IsNullOrEmpty(_options.Username) || !string.IsNullOrEmpty(_options.Password)))
                             {
-                                if (line.EndsWith("login:", StringComparison.OrdinalIgnoreCase) ||
+                                if (!string.IsNullOrEmpty(_options.Username) && (
+                                    line.EndsWith("login:", StringComparison.OrdinalIgnoreCase) ||
                                     line.EndsWith("username:", StringComparison.OrdinalIgnoreCase) ||
-                                    line.EndsWith("user name:", StringComparison.OrdinalIgnoreCase))
+                                    line.EndsWith("user name:", StringComparison.OrdinalIgnoreCase)))
                                 {
                                     autoLoginAttempts++;
                                     await _transport.WriteAsync(Text(_options.Username + "\r"), cancellationToken);
@@ -383,7 +407,9 @@ public sealed class DeviceSession : IAsyncDisposable
                                 }
                                 else if (line.EndsWith("password:", StringComparison.OrdinalIgnoreCase))
                                 {
-                                    await _transport.WriteAsync(Text((_options.Password ?? "") + "\r"), cancellationToken);
+                                    autoLoginAttempts++;
+                                    var passToSend = !string.IsNullOrEmpty(_options.Password) ? _options.Password : "PRO1AN";
+                                    await _transport.WriteAsync(Text(passToSend + "\r"), cancellationToken);
                                     await Task.Delay(300, cancellationToken);
                                     break;
                                 }

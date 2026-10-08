@@ -132,6 +132,8 @@ public class CloudLicenseServiceTests : IDisposable
     public async System.Threading.Tasks.Task ApproveActivationRequest_GeneratesSignedLicense_And_UpdatesRecord()
     {
         var svc = new CloudLicenseService(_tempFile);
+        svc.ForceLocalOnly = true;
+        svc.GitHubToken = "none";
         var signer = new LicenseSignerService();
 
         var req = new OnlineActivationRequest
@@ -172,6 +174,8 @@ public class CloudLicenseServiceTests : IDisposable
     public async System.Threading.Tasks.Task RejectActivationRequest_UpdatesStatusToRejected()
     {
         var svc = new CloudLicenseService(_tempFile);
+        svc.ForceLocalOnly = true;
+        svc.GitHubToken = "none";
         var req = new OnlineActivationRequest
         {
             MachineGuid = "reject-guid-789",
@@ -195,6 +199,8 @@ public class CloudLicenseServiceTests : IDisposable
     public async System.Threading.Tasks.Task DeleteActivationRequest_And_DeleteDevice_RemovesRecords()
     {
         var svc = new CloudLicenseService(_tempFile);
+        svc.ForceLocalOnly = true;
+        svc.GitHubToken = "none";
         var req = new OnlineActivationRequest
         {
             MachineGuid = "del-test-guid-001",

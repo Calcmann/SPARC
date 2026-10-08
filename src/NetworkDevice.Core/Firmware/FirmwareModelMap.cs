@@ -47,6 +47,13 @@ public static class FirmwareModelMap
             ".bin",
             "*.bin"),
 
+        [DeviceSeries.Series2900] = new(
+            DeviceSeries.Series2900,
+            "cisco-c2900",
+            "Cisco Série 2900 / 2911 / G2",
+            ".bin",
+            "*.bin"),
+
         [DeviceSeries.Msr954] = new(
             DeviceSeries.Msr954,
             "hpe-msr954",
@@ -98,6 +105,7 @@ public static class FirmwareModelMap
         if (t.Contains("c900") || t.Contains("921")) return DeviceSeries.Isr921;
         if (t.Contains("c841") || t.Contains("c800") || t.Contains("841")) return DeviceSeries.Isr841;
         if (t.Contains("c1900") || t.Contains("1921") || t.Contains("1941") || t.Contains("1900")) return DeviceSeries.Series1900;
+        if (t.Contains("c2900") || t.Contains("2901") || t.Contains("2911") || t.Contains("2921") || t.Contains("2951") || t.Contains("2900")) return DeviceSeries.Series2900;
         if (t.Contains("954") || t.Contains("958") || t.Contains("95x")) return DeviceSeries.Msr954;
         if (t.Contains("930") || t.Contains("931") || t.Contains("935") || t.Contains("93x")) return DeviceSeries.Msr930;
         if (t.Contains("1002") || t.Contains("1003") || t.Contains("1000") || t.Contains("100x") || t.Contains("msr100")) return DeviceSeries.Msr1002;

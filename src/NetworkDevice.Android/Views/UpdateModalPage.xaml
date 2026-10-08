@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="NetworkDevice.Android.Views.UpdateModalPage"
+             BackgroundColor="#18181B"
+             NavigationPage.HasNavigationBar="False">
+
+    <Grid VerticalOptions="Center" HorizontalOptions="Fill" Padding="20">
+        <Frame BackgroundColor="#27272A" BorderColor="#52525B" CornerRadius="16" Padding="18" HasShadow="True">
+            <VerticalStackLayout Spacing="14">
+                <!-- Cabeçalho -->
+                <Border BackgroundColor="#052E16" Stroke="#16A34A" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="10, 5" HorizontalOptions="Center">
+                    <HorizontalStackLayout Spacing="6">
+                        <Label Text="🚀" FontSize="12" VerticalOptions="Center" />
+                        <Label Text="ATUALIZAÇÃO HOMOLOGADA" FontSize="11" FontAttributes="Bold" TextColor="#4ADE80" VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+                </Border>
+
+                <VerticalStackLayout Spacing="2" HorizontalOptions="Center">
+                    <Label Text="SPARC Mobile" FontSize="20" FontAttributes="Bold" TextColor="#EE1C25" HorizontalTextAlignment="Center" />
+                    <Label x:Name="LblVersionTitle" Text="Nova Versão v0.8.74" FontSize="13" TextColor="#E2E8F0" HorizontalTextAlignment="Center" />
+                </VerticalStackLayout>
+
+                <!-- Informações e Notas da Versão -->
+                <Border BackgroundColor="#18181B" Stroke="#3F3F46" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="12">
+                    <VerticalStackLayout Spacing="6">
+                        <Grid ColumnDefinitions="Auto, *">
+                            <Label Grid.Column="0" Text="Arquivo:" FontSize="11" FontAttributes="Bold" TextColor="#94A3B8" />
+                            <Label Grid.Column="1" x:Name="LblFileName" Text="SPARC-Mobile.apk" FontSize="11" TextColor="#F8FAFC" HorizontalTextAlignment="End" LineBreakMode="TailTruncation" />
+                        </Grid>
+                        <Grid ColumnDefinitions="Auto, *" x:Name="RowNotes">
+                            <Label Grid.Column="0" Text="Novidades:" FontSize="11" FontAttributes="Bold" TextColor="#94A3B8" />
+                            <Label Grid.Column="1" x:Name="LblReleaseNotes" Text="Melhorias gerais e correções." FontSize="10.5" TextColor="#38BDF8" HorizontalTextAlignment="End" LineBreakMode="WordWrap" MaxLines="3" />
+                        </Grid>
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- Seção de Progresso Interativo -->
+                <VerticalStackLayout Spacing="8">
+                    <Grid ColumnDefinitions="*, Auto">
+                        <Label Grid.Column="0" x:Name="LblStatus" Text="Iniciando download..." FontSize="12" FontAttributes="Bold" TextColor="#F8FAFC" VerticalOptions="End" />
+                        <Label Grid.Column="1" x:Name="LblPercent" Text="0%" FontSize="24" FontAttributes="Bold" TextColor="#38BDF8" VerticalOptions="End" />
+                    </Grid>
+
+                    <ProgressBar x:Name="PbDownload" Progress="0.0" ProgressColor="#00D26A" HeightRequest="12" />
+
+                    <Grid ColumnDefinitions="*, Auto">
+                        <Label Grid.Column="0" x:Name="LblBytes" Text="Conectando..." FontSize="10.5" TextColor="#94A3B8" LineBreakMode="TailTruncation" />
+                        <ActivityIndicator x:Name="Spinner" IsRunning="True" Color="#38BDF8" WidthRequest="18" HeightRequest="18" VerticalOptions="Center" />
+                    </Grid>
+                </VerticalStackLayout>
+
+                <!-- Aviso de Aguardo Obrigatório -->
+                <Border BackgroundColor="#1E293B" Stroke="#334155" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="10">
+                    <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
+                        <Label Text="⏳" FontSize="16" VerticalOptions="Center" />
+                        <Label x:Name="LblWaitNotice" Text="Por favor, aguarde o download. O instalador oficial do Android será acionado automaticamente."
+                               FontSize="10.5" TextColor="#CBD5E1" VerticalOptions="Center" LineBreakMode="WordWrap" HorizontalOptions="FillAndExpand" />
+                    </HorizontalStackLayout>
+                </Border>
+
+                <!-- Mensagem de Erro (visível apenas em caso de falha) -->
+                <Border x:Name="BorderError" BackgroundColor="#450A0A" Stroke="#DC2626" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="10" IsVisible="False">
+                    <Label x:Name="LblError" Text="" FontSize="11" TextColor="#FCA5A5" LineBreakMode="WordWrap" />
+                </Border>
+
+                <!-- Botões de Ação -->
+                <Grid ColumnDefinitions="*, *" ColumnSpacing="8" Margin="0, 4, 0, 0">
+                    <Button Grid.Column="0" x:Name="BtnCancel" Text="Cancelar" Clicked="OnCancelClicked"
+                            BackgroundColor="#3F3F46" TextColor="#FFFFFF" CornerRadius="8" FontSize="12" HeightRequest="40" />
+                    <Button Grid.Column="1" x:Name="BtnAction" Text="Aguarde..." Clicked="OnActionClicked" IsEnabled="False"
+                            BackgroundColor="#0284C7" TextColor="#FFFFFF" CornerRadius="8" FontSize="12" FontAttributes="Bold" HeightRequest="40" />
+                </Grid>
+            </VerticalStackLayout>
+        </Frame>
+    </Grid>
+</ContentPage>

@@ -767,6 +767,72 @@ public sealed class FortiGate40FTests
         Assert.Contains("7.2.11", targetVer);
         Assert.Contains("1757", targetVer);
     }
+
+    [Fact]
+    public void GenerateCommands_ProducesFullBldClaroComponents_WhenEnabled()
+    {
+        var circuit = new SaipCircuitData
+        {
+            NumeroOts = "OTS-998877",
+            DesignacaoIp = "CIRCUITO-TESTE-BLD",
+            ClienteRazaoSocial = "EMPRESA TESTE S.A.",
+            WanIp = "200.200.200.2",
+            WanSubnetMask = "255.255.255.252",
+            WanGateway = "200.200.200.1",
+            LanIp = "10.10.10.1",
+            LanSubnetMask = "255.255.255.0",
+            BandaMbpsNominal = 100,
+            PeLoopbackIp = "200.255.0.1",
+            WanIpv6 = "2001:db8:1::2",
+            WanIpv6Prefix = 64,
+            WanIpv6Gateway = "2001:db8:1::1",
+            LanIpv6 = "2001:db8:2::1",
+            LanIpv6Prefix = 64
+        };
+
+        var cmds = FortiOsSaipConfigurator.GenerateCommands(circuit, "wan", "lan", adminUser: "EBT", adminPassword: "CQMR", incluirPolicyNat: true, incluirAdmin: true, incluirBldClaro: true);
+        var joined = string.Join("\n", cmds);
+
+        // Hostname
+        Assert.Contains("set hostname \"CIRCUITO-TESTE-BLD\"", joined);
+
+        // Banner Claro
+        Assert.Contains("set pre-login-banner enable", joined);
+        Assert.Contains("CLARO Brasil S.A.", joined);
+        Assert.Contains("SOMENTE USUARIOS AUTORIZADOS", joined);
+
+        // NTP Oficial Claro
+        Assert.Contains("config system ntp", joined);
+        Assert.Contains("set server \"200.20.186.75\"", joined);
+        Assert.Contains("set server \"200.20.186.94\"", joined);
+
+        // SNMP Oficial Claro
+        Assert.Contains("config system snmp community", joined);
+        Assert.Contains("set name \"claro21sup\"", joined);
+        Assert.Contains("set name \"LIDER\"", joined);
+        Assert.Contains("set ip 200.255.156.192 255.255.255.192", joined);
+
+        // TACACS+ Oficial Claro
+        Assert.Contains("config user tacacs+", joined);
+        Assert.Contains("edit \"TACACS-SERVER-CLARO\"", joined);
+        Assert.Contains("set server \"200.255.166.129\"", joined);
+
+        // QoS Traffic Shaping
+        Assert.Contains("config firewall traffic-shaper", joined);
+        Assert.Contains("edit \"SHAPE_OUT\"", joined);
+        Assert.Contains("set maximum-bandwidth 100000", joined);
+
+        // Trusted Hosts no Admin EBT
+        Assert.Contains("config system admin", joined);
+        Assert.Contains("edit \"EBT\"", joined);
+        Assert.Contains("set trusthost1 200.255.156.192 255.255.255.192", joined);
+        Assert.Contains("set trusthost2 200.200.200.1 255.255.255.255", joined);
+
+        // IPv6 Dual-Stack
+        Assert.Contains("set ip6-address 2001:db8:1::2/64", joined);
+        Assert.Contains("config router static6", joined);
+        Assert.Contains("set gateway 2001:db8:1::1", joined);
+    }
 }
 
 

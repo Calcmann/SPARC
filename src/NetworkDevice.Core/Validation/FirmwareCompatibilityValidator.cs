@@ -28,6 +28,10 @@ public static class FirmwareCompatibilityValidator
         @"(?i)^c19[0-9]{2}",
         RegexOptions.Compiled);
 
+    private static readonly Regex Cisco2900FirmwareRegex = new(
+        @"(?i)^c29[0-9]{2}",
+        RegexOptions.Compiled);
+
     private static readonly Regex Hpe954FirmwareRegex = new(
         @"(?i)msr95[0-9]|msr954",
         RegexOptions.Compiled);
@@ -111,6 +115,7 @@ public static class FirmwareCompatibilityValidator
 
                 if (Cisco900FirmwareRegex.IsMatch(fileName) ||
                     Cisco841FirmwareRegex.IsMatch(fileName) ||
+                    Cisco2900FirmwareRegex.IsMatch(fileName) ||
                     fileName.StartsWith("c2900", StringComparison.OrdinalIgnoreCase) ||
                     fileName.StartsWith("c3900", StringComparison.OrdinalIgnoreCase) ||
                     fileName.Contains("msr", StringComparison.OrdinalIgnoreCase) ||
@@ -123,6 +128,30 @@ public static class FirmwareCompatibilityValidator
                         "c1900-universalk9-mz.*.bin");
                 }
                 return new FirmwareValidationResult(true, string.Empty, "c1900-universalk9-mz.*.bin");
+
+            case DeviceSeries.Series2900:
+                if (ext != ".bin")
+                {
+                    return new FirmwareValidationResult(
+                        false,
+                        $"O arquivo '{fileName}' possui extensão '{ext}'. Roteadores Cisco Série 2900 aceitam exclusivamente imagens executáveis no formato .BIN.",
+                        "c2900-universalk9-mz.*.bin");
+                }
+
+                if (Cisco900FirmwareRegex.IsMatch(fileName) ||
+                    Cisco841FirmwareRegex.IsMatch(fileName) ||
+                    Cisco1900FirmwareRegex.IsMatch(fileName) ||
+                    fileName.StartsWith("c3900", StringComparison.OrdinalIgnoreCase) ||
+                    fileName.Contains("msr", StringComparison.OrdinalIgnoreCase) ||
+                    fileName.Contains("cmw", StringComparison.OrdinalIgnoreCase) ||
+                    ext == ".ipe")
+                {
+                    return new FirmwareValidationResult(
+                        false,
+                        $"O firmware '{fileName}' é incompatível com o Cisco Série 2900 (arquivo destinado a outro modelo como Série 1900, Série 900, Série 800 ou HPE).",
+                        "c2900-universalk9-mz.*.bin");
+                }
+                return new FirmwareValidationResult(true, string.Empty, "c2900-universalk9-mz.*.bin");
 
             case DeviceSeries.Msr954:
                 if (ext != ".ipe" && ext != ".bin")
@@ -139,6 +168,7 @@ public static class FirmwareCompatibilityValidator
                     fileName.StartsWith("c800", StringComparison.OrdinalIgnoreCase) ||
                     fileName.StartsWith("c841", StringComparison.OrdinalIgnoreCase) ||
                     fileName.StartsWith("c1900", StringComparison.OrdinalIgnoreCase) ||
+                    fileName.StartsWith("c2900", StringComparison.OrdinalIgnoreCase) ||
                     fileName.Contains("cisco", StringComparison.OrdinalIgnoreCase))
                 {
                     return new FirmwareValidationResult(
@@ -163,6 +193,7 @@ public static class FirmwareCompatibilityValidator
                     fileName.StartsWith("c800", StringComparison.OrdinalIgnoreCase) ||
                     fileName.StartsWith("c841", StringComparison.OrdinalIgnoreCase) ||
                     fileName.StartsWith("c1900", StringComparison.OrdinalIgnoreCase) ||
+                    fileName.StartsWith("c2900", StringComparison.OrdinalIgnoreCase) ||
                     fileName.Contains("cisco", StringComparison.OrdinalIgnoreCase))
                 {
                     return new FirmwareValidationResult(
@@ -187,6 +218,7 @@ public static class FirmwareCompatibilityValidator
                     fileName.StartsWith("c800", StringComparison.OrdinalIgnoreCase) ||
                     fileName.StartsWith("c841", StringComparison.OrdinalIgnoreCase) ||
                     fileName.StartsWith("c1900", StringComparison.OrdinalIgnoreCase) ||
+                    fileName.StartsWith("c2900", StringComparison.OrdinalIgnoreCase) ||
                     fileName.Contains("cisco", StringComparison.OrdinalIgnoreCase))
                 {
                     return new FirmwareValidationResult(
@@ -211,6 +243,7 @@ public static class FirmwareCompatibilityValidator
                     fileName.StartsWith("c800", StringComparison.OrdinalIgnoreCase) ||
                     fileName.StartsWith("c841", StringComparison.OrdinalIgnoreCase) ||
                     fileName.StartsWith("c1900", StringComparison.OrdinalIgnoreCase) ||
+                    fileName.StartsWith("c2900", StringComparison.OrdinalIgnoreCase) ||
                     fileName.Contains("cisco", StringComparison.OrdinalIgnoreCase))
                 {
                     return new FirmwareValidationResult(

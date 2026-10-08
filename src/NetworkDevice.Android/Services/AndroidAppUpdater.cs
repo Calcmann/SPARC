@@ -17,66 +17,59 @@ public static class AndroidAppUpdater
     {
         if (release == null || string.IsNullOrWhiteSpace(release.DownloadUrl))
         {
-            await page.DisplayAlert("Atualização", "Link de download inválido ou não disponível.", "OK");
+            await page.DisplayAlert("Atualização", "Link de download inválido ou não disponível no momento.", "OK");
             return;
         }
 
-        var updateService = new SparcAppUpdateService();
-        var targetFileName = !string.IsNullOrWhiteSpace(release.FileName) ? release.FileName : $"SPARC-Mobile-v{release.Version}.apk";
-        var targetPath = Path.Combine(FileSystem.CacheDirectory, targetFileName);
+        // Confirmação prévia amigável com notas da versão
+        var notesText = string.IsNullOrWhiteSpace(release.ReleaseNotes) ? "" : $"\n\nNotas da Versão:\n{release.ReleaseNotes}";
+        var answer = await page.DisplayAlert(
+            $"Atualização SPARC Mobile v{release.Version}",
+            $"Uma nova versão oficial homologada está disponível no repositório.{notesText}\n\nDeseja baixar e instalar agora?",
+            "ATUALIZAR AGORA",
+            "DEPOIS");
 
+        if (!answer) return;
+
+        // Abre a tela modal interativa de progresso
         try
         {
-            // Confirmação com o usuário
-            var answer = await page.DisplayAlert(
-                $"Atualização SPARC Mobile v{release.Version}",
-                $"Tamanho estimado: {targetFileName}\n\n" +
-                (string.IsNullOrWhiteSpace(release.ReleaseNotes) ? "" : $"Notas da Versão:\n{release.ReleaseNotes}\n\n") +
-                "Deseja iniciar o download e instalação agora?",
-                "BAIXAR E INSTALAR",
-                "CANCELAR");
-
-            if (!answer) return;
-
-            // Inicia download
-            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
-            
-            // Notificação inicial
-            await page.DisplayAlert(
-                "Baixando Atualização",
-                "O download do pacote de atualização oficial foi iniciado em segundo plano.\n\nO instalador do Android será aberto automaticamente assim que o download for concluído.",
-                "OK");
-
-            var downloadedFile = await updateService.DownloadUpdateFileAsync(
-                release.DownloadUrl,
-                targetPath,
-                null,
-                cts.Token);
-
-            if (!File.Exists(downloadedFile))
-            {
-                await page.DisplayAlert("Erro no Download", "O arquivo baixado não foi encontrado no dispositivo.", "OK");
-                return;
-            }
-
-            // Dispara o instalador nativo do Android
-            TriggerApkInstall(downloadedFile);
-        }
-        catch (OperationCanceledException)
-        {
-            await page.DisplayAlert("Atualização Cancelada", "O download da atualização foi cancelado ou atingiu o tempo limite.", "OK");
+            var updateModal = new Views.UpdateModalPage(release);
+            await page.Navigation.PushModalAsync(updateModal, true);
         }
         catch (Exception ex)
         {
-            await page.DisplayAlert("Falha na Atualização", $"Não foi possível concluir o download da atualização homologada:\n\n{ex.Message}", "OK");
+            await page.DisplayAlert("Falha na Atualização", $"Não foi possível abrir o assistente de atualização: {ex.Message}", "OK");
         }
     }
 
     /// <summary>
-    /// Dispara a Intent nativa do instalador de pacotes do Android via FileProvider.
+    /// Dispara a Intent nativa do instalador de pacotes do Android via FileProvider após validar a integridade.
     /// </summary>
     public static void TriggerApkInstall(string apkFilePath)
     {
+        if (!File.Exists(apkFilePath))
+        {
+            throw new FileNotFoundException("O pacote APK baixado não foi encontrado.", apkFilePath);
+        }
+
+        var fi = new FileInfo(apkFilePath);
+        if (fi.Length < 35_000_000)
+        {
+            throw new InvalidDataException($"Pacote APK corrompido ou incompleto ({fi.Length / (1024.0 * 1024.0):F2} MB). Tamanho mínimo esperado: 35 MB.");
+        }
+
+        // Validação de magic bytes (ZIP / APK: 0x50, 0x4B, 0x03, 0x04)
+        using (var fs = File.OpenRead(apkFilePath))
+        {
+            var magic = new byte[4];
+            var r = fs.Read(magic, 0, 4);
+            if (r < 4 || magic[0] != 0x50 || magic[1] != 0x4B || magic[2] != 0x03 || magic[3] != 0x04)
+            {
+                throw new InvalidDataException("O arquivo baixado não é um APK válido.");
+            }
+        }
+
 #if ANDROID
         try
         {
@@ -89,6 +82,7 @@ public static class AndroidAppUpdater
             intent.SetDataAndType(apkUri, "application/vnd.android.package-archive");
             intent.AddFlags(global::Android.Content.ActivityFlags.GrantReadUriPermission);
             intent.AddFlags(global::Android.Content.ActivityFlags.NewTask);
+            intent.AddFlags(global::Android.Content.ActivityFlags.ClearTop);
 
             context.StartActivity(intent);
         }

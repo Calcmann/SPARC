@@ -23,11 +23,32 @@ public sealed class HpeSaipConfigurator
         @"(?im)^\s*(?<route>ip\s+route-static\s+\S+\s+\S+.*)$",
         RegexOptions.Compiled);
 
+    public const string BannerMotd =
+        "||========================================||\r\n" +
+        "||========== CLARO Brasil S.A. ===========||\r\n" +
+        "||========================================||\r\n" +
+        "\r\n" +
+        "SOMENTE USUARIOS AUTORIZADOS\r\n" +
+        "AUTHORIZED USERS ONLY\r\n" +
+        "\r\n" +
+        "OS ACESSOS SERAO MONITORADOS\r\n" +
+        "ACCESSES WILL BE MONITORED\r\n" +
+        "\r\n" +
+        "||========================================||";
+
     private readonly Func<string, Task>? _progress;
 
     public HpeSaipConfigurator(Func<string, Task>? progress = null)
     {
         _progress = progress;
+    }
+
+    public static string SanitizeHostname(string? raw, string fallback = "ROUTER-CPE")
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return fallback;
+        var clean = Regex.Replace(raw.Trim(), @"[^a-zA-Z0-9_\-\.]", "-");
+        clean = Regex.Replace(clean, @"-+", "-").Trim('-');
+        return string.IsNullOrWhiteSpace(clean) ? fallback : clean;
     }
 
     /// <summary>
@@ -242,14 +263,18 @@ public sealed class HpeSaipConfigurator
         SaipCircuitData circuit,
         string wanInterface = "GigabitEthernet0/0",
         string lanInterface = "GigabitEthernet0/1",
-        bool isComware5 = false)
+        bool isComware5 = false,
+        bool incluirBldClaro = true)
     {
+        var hostname = SanitizeHostname(circuit.DesignacaoIp ?? circuit.NumeroOts, "ROUTER-CPE");
         var wanDesc = SanitizeDescription(circuit.DesignacaoIp ?? circuit.NumeroOts ?? "LINK");
         var lanDesc = SanitizeDescription(circuit.ClienteRazaoSocial);
+        var bandaKbps = circuit.BandaKbps ?? (long)((circuit.BandaMbpsNominal ?? 50) * 1000);
 
         var cmds = new List<string>
         {
             "system-view",
+            $"sysname {hostname}",
 
             // 1. WAN (GE 0 - Modo Router)
             $"interface {wanInterface}",
@@ -270,6 +295,109 @@ public sealed class HpeSaipConfigurator
             // 3. Rota Default Canônica (Única sintaxe)
             $"ip route-static 0.0.0.0 0.0.0.0 {circuit.WanGateway}",
         };
+
+        if (incluirBldClaro)
+        {
+            // Banners Oficiais Claro Brasil S.A.
+            cmds.AddRange(new[]
+            {
+                "header legal % CLARO Brasil S.A. - SOMENTE USUARIOS AUTORIZADOS - OS ACESSOS SERAO MONITORADOS %",
+                "header login % CLARO Brasil S.A. - SOMENTE USUARIOS AUTORIZADOS - OS ACESSOS SERAO MONITORADOS %",
+            });
+
+            // NTP Oficial Claro
+            cmds.AddRange(new[]
+            {
+                "ntp-service enable",
+                $"ntp-service unicast-server 200.20.186.75 source-interface {wanInterface}",
+                $"ntp-service unicast-server 200.20.186.94 source-interface {wanInterface}",
+            });
+
+            // SNMP Oficial Claro
+            cmds.AddRange(new[]
+            {
+                "snmp-agent",
+                "snmp-agent sys-info version v2c",
+                "snmp-agent community read claro21sup",
+                "snmp-agent community read LIDER",
+                "snmp-agent target-host trap address udp-domain 200.255.156.194 params securityname LIDER v2c",
+            });
+
+            // TACACS+ Oficial Claro (HWTACACS)
+            cmds.AddRange(new[]
+            {
+                "hwtacacs scheme CLARO",
+                " primary authentication 200.255.166.129",
+                " primary authorization 200.255.166.129",
+                " primary accounting 200.255.166.129",
+                " key authentication cipher 080F636D2A152505052B",
+                " user-name-format without-domain",
+                "quit",
+            });
+
+            // QoS (Traffic Shaping na WAN)
+            cmds.AddRange(new[]
+            {
+                $"interface {wanInterface}",
+                $" qos lr outbound cir {bandaKbps}",
+                "quit",
+            });
+
+            // ACL de Bloqueio Telnet/SSH Gerência Claro
+            if (isComware5)
+            {
+                cmds.AddRange(new[]
+                {
+                    "acl number 3087",
+                    " rule 5 permit ip source 200.255.156.192 0.0.0.63 destination any",
+                    $" rule 10 permit ip source host {circuit.WanGateway} destination any",
+                });
+                if (!string.IsNullOrWhiteSpace(circuit.PeLoopbackIp))
+                {
+                    cmds.Add($" rule 15 permit ip source host {circuit.PeLoopbackIp} destination any");
+                }
+                cmds.Add("quit");
+            }
+            else
+            {
+                cmds.AddRange(new[]
+                {
+                    "acl advanced 3087",
+                    " rule 5 permit ip source 200.255.156.192 0.0.0.63 destination any",
+                    $" rule 10 permit ip source host {circuit.WanGateway} destination any",
+                });
+                if (!string.IsNullOrWhiteSpace(circuit.PeLoopbackIp))
+                {
+                    cmds.Add($" rule 15 permit ip source host {circuit.PeLoopbackIp} destination any");
+                }
+                cmds.Add("quit");
+            }
+
+            // IPv6 Dual-Stack (se preenchido)
+            if (!string.IsNullOrWhiteSpace(circuit.WanIpv6))
+            {
+                cmds.AddRange(new[]
+                {
+                    "ipv6",
+                    $"interface {wanInterface}",
+                    $" ipv6 address {circuit.WanIpv6}/{circuit.WanIpv6Prefix ?? 64}",
+                    "quit",
+                });
+                if (!string.IsNullOrWhiteSpace(circuit.LanIpv6))
+                {
+                    cmds.AddRange(new[]
+                    {
+                        $"interface {lanInterface}",
+                        $" ipv6 address {circuit.LanIpv6}/{circuit.LanIpv6Prefix ?? 64}",
+                        "quit",
+                    });
+                }
+                if (!string.IsNullOrWhiteSpace(circuit.WanIpv6Gateway))
+                {
+                    cmds.Add($"ipv6 route-static :: 0 {circuit.WanIpv6Gateway}");
+                }
+            }
+        }
 
         if (isComware5)
         {
@@ -296,6 +424,7 @@ public sealed class HpeSaipConfigurator
                 "authentication-mode scheme",
                 "user privilege level 3",
                 "protocol inbound telnet",
+                incluirBldClaro ? "acl 3087 inbound" : "quit",
                 "quit",
             });
         }
@@ -323,6 +452,7 @@ public sealed class HpeSaipConfigurator
                 "authentication-mode scheme",
                 "user-role network-admin",
                 "protocol inbound telnet",
+                incluirBldClaro ? "acl 3087 inbound" : "quit",
                 "quit",
             });
         }
@@ -375,6 +505,29 @@ public sealed class HpeSaipConfigurator
         await ProgressAsync("[OK] User View confirmado");
 
         await EnsureSystemViewAsync(session, _progress, cancellationToken);
+
+        // Desativa timeout de inatividade na console para proteger o operador contra expiração de sessão
+        try
+        {
+            await session.SendCommandAsync("line aux 0", TimeSpan.FromSeconds(3), cancellationToken);
+            await session.SendCommandAsync("idle-timeout 0 0", TimeSpan.FromSeconds(3), cancellationToken);
+            await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
+        }
+        catch { }
+        try
+        {
+            await session.SendCommandAsync("line con 0", TimeSpan.FromSeconds(3), cancellationToken);
+            await session.SendCommandAsync("idle-timeout 0 0", TimeSpan.FromSeconds(3), cancellationToken);
+            await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
+        }
+        catch { }
+        try
+        {
+            await session.SendCommandAsync("user-interface aux 0", TimeSpan.FromSeconds(3), cancellationToken);
+            await session.SendCommandAsync("idle-timeout 0 0", TimeSpan.FromSeconds(3), cancellationToken);
+            await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
+        }
+        catch { }
 
         // 2. Limpeza pré-provisionamento determinística
         await ProgressAsync("[*] [FASE C] Limpando vestígios HPE (rotas existentes + interfaces)...");
@@ -639,21 +792,24 @@ public sealed class HpeSaipConfigurator
         string lanInterface = "GigabitEthernet0/1",
         Func<string, CancellationToken, Task>? requestOperatorAction = null,
         Func<string, Task>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Action<int, string, string>? onProgress = null)
     {
         var cleanLan = lanInterface.Replace(" ", "");
         var cleanWan = cleanLan.EndsWith("0/1") ? cleanLan.Replace("0/1", "0/0") : "GigabitEthernet0/0";
 
         // Janela de estabilização pós undo shutdown: evita falso DOWN se verificado logo em sequência
-        await Task.Delay(3000, cancellationToken);
+        await Task.Delay(2000, cancellationToken);
 
         var hpeLanPattern = @"(?:GigabitEthernet0/1|GE0/1|GigabitEthernet1|GE1)";
         var hpeWanPattern = @"(?:GigabitEthernet0/0|GE0/0|GigabitEthernet0|GE0)";
 
         var operatorNotified = false;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
 
         for (var attempt = 1; attempt <= 60; attempt++)
         {
+            var elapsedSec = (int)sw.Elapsed.TotalSeconds;
             string output = string.Empty;
             try
             {
@@ -672,8 +828,22 @@ public sealed class HpeSaipConfigurator
             if (isLanUp)
             {
                 if (progress != null)
-                    await progress($"[OK] Porta LAN HPE ({lanInterface} / GE1 - Porta 1) confirmada com link ativo (UP).");
+                    await progress($"[OK] Porta LAN HPE ({lanInterface} / GE1 - Porta 1) confirmada com link ativo (UP) ({elapsedSec}s).");
+                onProgress?.Invoke(55, "Porta LAN Conectada!", $"Link ativo confirmado na porta GE1 ({elapsedSec}s).");
                 return true;
+            }
+
+            if (isWanUp && !isLanUp)
+            {
+                if (progress != null && (attempt == 1 || attempt % 3 == 0))
+                    await progress($"[AGUARDANDO TROCA DE CABO] Cabo detectado na porta WAN GE0 ao invés da LAN GE1... {elapsedSec}s decorridos (Tentativa {attempt}/60)");
+                onProgress?.Invoke(50, "Aguardando Troca de Cabo...", $"Cabo na porta GE0 (WAN). Conecte na porta GE1 (LAN) ({elapsedSec}s)...");
+            }
+            else if (!isLanUp)
+            {
+                if (progress != null && (attempt == 1 || attempt % 3 == 0))
+                    await progress($"[AGUARDANDO CABO LAN] Detectando link físico na porta GE1... {elapsedSec}s decorridos (Tentativa {attempt}/60)");
+                onProgress?.Invoke(50, "Aguardando Conexão LAN...", $"Aguardando sincronização da porta GE1... ({elapsedSec}s)");
             }
 
             // Notifica operador na tentativa 2 (após auto-negotiation inicial) ou periodicamente a cada 20 tentativas
@@ -695,16 +865,111 @@ public sealed class HpeSaipConfigurator
                       $"Clique em OK após conectar o cabo na porta GE1.";
 
                 await requestOperatorAction(msg, cancellationToken);
-                await session.WriteLineAsync(string.Empty, cancellationToken);
-                await Task.Delay(1500, cancellationToken);
+                if (progress != null)
+                    await progress($"[*] Operador confirmou conexão. Sincronizando link da porta GE1...");
+                onProgress?.Invoke(50, "Sincronizando Porta LAN...", $"Aguardando link ativo na porta GE1... ({elapsedSec}s)");
+
+                try
+                {
+                    await session.WriteLineAsync(string.Empty, cancellationToken);
+                    await Task.Delay(500, cancellationToken);
+                    await session.WriteLineAsync(string.Empty, cancellationToken);
+                    await Task.Delay(1000, cancellationToken);
+                }
+                catch { }
             }
 
-            await Task.Delay(2000, cancellationToken);
+            for (var d = 0; d < 2; d++)
+            {
+                await Task.Delay(1000, cancellationToken);
+                if (onProgress != null)
+                {
+                    var sec = (int)sw.Elapsed.TotalSeconds;
+                    onProgress(50, isWanUp ? "Aguardando Troca de Cabo..." : "Aguardando Link LAN...", $"Aguardando sinal na porta GE1... ({sec}s)");
+                }
+            }
         }
 
         if (progress != null)
-            await progress($"[AVISO CRÍTICO] Tempo limite de espera para link na porta LAN HPE ({lanInterface}) esgotado.");
+            await progress($"[AVISO CRÍTICO] Tempo limite de espera para link na porta LAN HPE ({lanInterface}) esgotado ({(int)sw.Elapsed.TotalSeconds}s).");
 
         return false;
+    }
+
+    /// <summary>
+    /// Avalia se o equipamento HPE Comware já se encontra em padrão de fábrica limpo ("zero lixo")
+    /// ou se possui configurações residuais de serviços/clientes anteriores que requerem higienização.
+    /// </summary>
+    public static async Task<DeviceSanitizationStatus> DetectSanitizationStatusAsync(
+        DeviceSession session,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        var findings = new List<string>();
+        string? detectedHostname = null;
+        var hasCustomHostname = false;
+        var hasStaleRoutes = false;
+        var hasConfiguredInterfaces = false;
+
+        try
+        {
+            await EnsureSystemViewAsync(session, ct: ct);
+            var displayCfg = await session.SendCommandAsync("display current-configuration | include sysname|route-static|ip address", TimeSpan.FromSeconds(10), ct);
+
+            // 1. Hostname / sysname
+            var matchSysname = Regex.Match(displayCfg, @"(?im)^\s*sysname\s+(\S+)");
+            if (matchSysname.Success)
+            {
+                detectedHostname = matchSysname.Groups[1].Value.Trim();
+                if (!detectedHostname.Equals("HPE", StringComparison.OrdinalIgnoreCase) &&
+                    !detectedHostname.Equals("HP", StringComparison.OrdinalIgnoreCase) &&
+                    !detectedHostname.Equals("H3C", StringComparison.OrdinalIgnoreCase))
+                {
+                    hasCustomHostname = true;
+                    findings.Add($"Hostname customizado: '{detectedHostname}'");
+                }
+            }
+
+            // 2. Rotas estáticas residuais
+            var routes = ParseStaticRoutes(displayCfg);
+            if (routes.Count > 0)
+            {
+                hasStaleRoutes = true;
+                findings.Add($"{routes.Count} rota(s) estática(s) residual(is)");
+            }
+
+            // 3. IPs atribuídos em interfaces além de default
+            var ipMatches = Regex.Matches(displayCfg, @"(?im)^\s*ip\s+address\s+(\d+\.\d+\.\d+\.\d+)");
+            foreach (Match m in ipMatches)
+            {
+                var ip = m.Groups[1].Value;
+                if (!ip.StartsWith("192.168.") && !ip.StartsWith("0."))
+                {
+                    hasConfiguredInterfaces = true;
+                    findings.Add($"Interface com IP residual: {ip}");
+                    break;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            return DeviceSanitizationStatus.Clean($"Não foi possível inspecionar completamente ({ex.Message}) — assumindo baseline.");
+        }
+
+        var isClean = !hasCustomHostname && !hasStaleRoutes && !hasConfiguredInterfaces;
+        var summary = isClean
+            ? "Equipamento HPE em padrão de fábrica (zero lixo detectado — reload desnecessário)."
+            : $"Configuração anterior detectada ({string.Join(", ", findings)}).";
+
+        return new DeviceSanitizationStatus
+        {
+            IsClean = isClean,
+            Summary = summary,
+            DetectedHostname = detectedHostname,
+            HasCustomHostname = hasCustomHostname,
+            HasStaleRoutes = hasStaleRoutes,
+            HasConfiguredInterfaces = hasConfiguredInterfaces
+        };
     }
 }

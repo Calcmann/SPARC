@@ -80,6 +80,94 @@ public sealed class AndroidEthernetManager
     }
 
     /// <summary>
+    /// Verifica se há hardware de interface Ethernet (adaptador USB-Ethernet cabeado via HUB ou OTG)
+    /// presente no smartphone, mesmo que o cabo RJ45 ainda esteja desconectado ou sem link.
+    /// </summary>
+    public bool HasEthernetHardwareInterface()
+    {
+        // 1. Consulta dispositivos USB diretamente (Adaptadores USB Ethernet ou HUBs multiporta)
+        try
+        {
+            var usbDevices = DeviceConnectionManager.Instance.ScanUsbDevices();
+            if (usbDevices.Count > 0)
+            {
+                if (usbDevices.Any(DeviceConnectionManager.IsNetworkOrHubDevice))
+                {
+                    return true;
+                }
+                // Se houver mais de 1 dispositivo USB conectado no smartphone, obrigatoriamente está usando um HUB USB
+                if (usbDevices.Count > 1)
+                {
+                    return true;
+                }
+            }
+        }
+        catch { }
+
+        // 2. ConnectivityManager
+        if (_connectivityManager != null)
+        {
+            try
+            {
+                var networks = _connectivityManager.GetAllNetworks();
+                foreach (var net in networks)
+                {
+                    var caps = _connectivityManager.GetNetworkCapabilities(net);
+                    if (caps != null && caps.HasTransport(TransportType.Ethernet))
+                    {
+                        return true;
+                    }
+                }
+            }
+            catch { }
+        }
+
+        // 3. NetworkInterface
+        try
+        {
+            return NetworkInterface.GetAllNetworkInterfaces()
+                .Any(ni => (ni.Name.StartsWith("eth", StringComparison.OrdinalIgnoreCase) ||
+                            ni.Name.StartsWith("usb", StringComparison.OrdinalIgnoreCase)) &&
+                           !ni.Name.StartsWith("rmnet", StringComparison.OrdinalIgnoreCase) &&
+                           !ni.Name.StartsWith("ccmni", StringComparison.OrdinalIgnoreCase) &&
+                           !ni.Name.StartsWith("wlan", StringComparison.OrdinalIgnoreCase) &&
+                           !ni.Name.StartsWith("dummy", StringComparison.OrdinalIgnoreCase) &&
+                           !ni.Name.StartsWith("tun", StringComparison.OrdinalIgnoreCase) &&
+                           !ni.Name.StartsWith("p2p", StringComparison.OrdinalIgnoreCase));
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Avalia se o smartphone está operando com HUB USB contendo adaptador Serial e Ethernet
+    /// conectados simultaneamente.
+    /// </summary>
+    public bool IsHubUsbSimultaneousActive(bool isSerialConnected)
+    {
+        // Se a serial está conectada ou identificada
+        if (!isSerialConnected && !DeviceConnectionManager.Instance.HasSupportedSerialConnected())
+            return false;
+
+        // Se há interface Ethernet física detectada (enlace ativo ou adaptador plugado no USB)
+        if (IsEthernetConnected() || HasEthernetHardwareInterface())
+            return true;
+
+        // Se há múltiplos dispositivos USB conectados (HUB USB com serial + rede)
+        try
+        {
+            var usbDevices = DeviceConnectionManager.Instance.ScanUsbDevices();
+            if (usbDevices.Count > 1)
+                return true;
+        }
+        catch { }
+
+        return false;
+    }
+
+    /// <summary>
     /// Retorna o IPv4 atual atribuído à interface Ethernet cabeada no dispositivo Android.
     /// Retorna null se a interface ainda não tiver recebido IP (DHCP pendente ou IP estático não configurado).
     /// </summary>

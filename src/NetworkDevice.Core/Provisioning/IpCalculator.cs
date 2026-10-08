@@ -150,4 +150,44 @@ public static class IpCalculator
 
         return $"{resBytes[0]}.{resBytes[1]}.{resBytes[2]}.{resBytes[3]}";
     }
+
+    /// <summary>
+    /// Calcula o gateway IPv6 WAN da operadora (PE) a partir do IP do usuário (ex: /126).
+    /// </summary>
+    public static string CalculateWanIpv6Gateway(string userWanIpv6, int prefix = 126)
+    {
+        if (string.IsNullOrWhiteSpace(userWanIpv6)) return string.Empty;
+        if (!IPAddress.TryParse(userWanIpv6.Trim(), out var ip) || ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetworkV6)
+            return userWanIpv6.Trim();
+
+        var bytes = ip.GetAddressBytes();
+        if (prefix == 126)
+        {
+            byte last = bytes[15];
+            byte baseByte = (byte)(last & 0xFC);
+            byte firstUsable = (byte)(baseByte | 0x01);
+            byte secondUsable = (byte)(baseByte | 0x02);
+            bytes[15] = (last == secondUsable) ? firstUsable : secondUsable;
+        }
+        else
+        {
+            bytes[15] = (byte)((bytes[15] & 0xFC) | 0x01);
+        }
+
+        return new IPAddress(bytes).ToString();
+    }
+
+    /// <summary>
+    /// Calcula o primeiro IP útil IPv6 para o bloco da rede LAN do cliente (ex: /56 ou /64).
+    /// </summary>
+    public static string CalculateFirstUsableIpv6(string networkIpv6, int prefix = 64)
+    {
+        if (string.IsNullOrWhiteSpace(networkIpv6)) return string.Empty;
+        if (!IPAddress.TryParse(networkIpv6.Trim(), out var ip) || ip.AddressFamily != System.Net.Sockets.AddressFamily.InterNetworkV6)
+            return networkIpv6.Trim();
+
+        var bytes = ip.GetAddressBytes();
+        bytes[15] = (byte)(bytes[15] | 0x01);
+        return new IPAddress(bytes).ToString();
+    }
 }

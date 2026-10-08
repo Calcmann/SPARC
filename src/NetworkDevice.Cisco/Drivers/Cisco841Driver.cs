@@ -56,8 +56,14 @@ public sealed class Cisco841PasswordRecoveryEngine : IPasswordRecoveryEngine
             }
             await session.WriteLineAsync(knownPassword, ct);
             await Task.Delay(500, ct);
-            await session.WriteLineAsync("enable", ct);
-            await Task.Delay(500, ct);
+            var candidates = new List<string> { knownPassword };
+            if (!candidates.Contains("PRO1AN")) candidates.Add("PRO1AN");
+            var adapter = new CiscoIOSAdapter(enableSecret: knownPassword, candidatePasswords: candidates);
+            try
+            {
+                await adapter.EnterPrivilegedExecAsync(session, candidates, ct);
+            }
+            catch { }
             return true;
         }
 
@@ -96,7 +102,8 @@ public sealed class Cisco841FirmwareRecoveryEngine : IFirmwareRecoveryEngine
             null,
             null,
             instructOperator,
-            ct);
+            ct,
+            candidatePasswords: new[] { "PRO1AN" });
     }
 }
 

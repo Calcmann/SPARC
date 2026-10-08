@@ -39,10 +39,21 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private readonly string? _enableSecret;
+    private readonly List<string> _candidatePasswords = new();
 
-    public CiscoIOSAdapter(string? enableSecret = null)
+    public string? ResolvedEnableSecret { get; private set; }
+
+    public CiscoIOSAdapter(string? enableSecret = null, IEnumerable<string>? candidatePasswords = null)
     {
         _enableSecret = enableSecret;
+        if (candidatePasswords != null)
+        {
+            foreach (var p in candidatePasswords)
+            {
+                if (!string.IsNullOrWhiteSpace(p) && !_candidatePasswords.Contains(p.Trim()))
+                    _candidatePasswords.Add(p.Trim());
+            }
+        }
     }
 
     public string Vendor => "Cisco";
@@ -55,35 +66,192 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
             Password = password
         };
 
-    public async Task EnterPrivilegedExecAsync(DeviceSession session, CancellationToken cancellationToken = default)
+    public Task EnterPrivilegedExecAsync(DeviceSession session, CancellationToken cancellationToken = default) =>
+        EnterPrivilegedExecAsync(session, candidatePasswords: null, cancellationToken);
+
+    public async Task EnterPrivilegedExecAsync(DeviceSession session, IEnumerable<string>? candidatePasswords, CancellationToken cancellationToken = default)
     {
-        if (session.Mode is ExecMode.PrivilegedExec or ExecMode.GlobalConfig or ExecMode.Rommon ||
-            (session.CurrentPrompt != null && (session.CurrentPrompt.EndsWith("#") || session.CurrentPrompt.Contains("rommon", StringComparison.OrdinalIgnoreCase))))
-            return;
-
-        var result = await session.SendExpectAsync(
-            "enable",
-            new StopCondition[] { new StopCondition.Contains("Password", "Password:"), new StopCondition.Prompt() },
-            TimeSpan.FromSeconds(20),
-            cancellationToken);
-
-        if (result.Matched is StopCondition.Contains)
-        {
-            if (_enableSecret is null)
-                throw new DeviceSessionException("Dispositivo solicitou senha de enable (modo privilegiado protegido), mas nenhuma foi configurada.");
-            await session.SendCommandAsync(_enableSecret, cancellationToken: cancellationToken);
-        }
-
         if (session.Mode == ExecMode.Rommon || session.CurrentPrompt?.Contains("rommon", StringComparison.OrdinalIgnoreCase) == true)
             return;
 
-        if (session.Mode is not (ExecMode.PrivilegedExec or ExecMode.GlobalConfig) && (session.CurrentPrompt == null || !session.CurrentPrompt.EndsWith("#")))
+        // Se estiver em submodo de configuração (ex: (config)#, (config-if)#), volta para privileged exec
+        var curPrompt = session.CurrentPrompt?.Trim() ?? string.Empty;
+        if (curPrompt.Contains("(config", StringComparison.OrdinalIgnoreCase))
         {
-            // Se o output terminou com '#' ou '>'
-            if (result.Output.TrimEnd().EndsWith("#") || result.Output.Contains("rommon"))
-                return;
+            try
+            {
+                await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
+            }
+            catch { }
+        }
 
-            throw new DeviceSessionException("Falha ao entrar em modo privilegiado (enable).");
+        // 1. Se o prompt termina com '#', verifica se já é realmente nível 15
+        // (roteadores com 'prompt hostname#' podem exibir '#' mesmo em nível 1).
+        if (curPrompt.EndsWith("#"))
+        {
+            try
+            {
+                var privCheck = await session.SendCommandAsync("show privilege", TimeSpan.FromSeconds(5), cancellationToken);
+                if (privCheck.Contains("privilege level is 15", StringComparison.OrdinalIgnoreCase))
+                {
+                    return; // Já está no nível 15!
+                }
+            }
+            catch { }
+        }
+
+        // 2. DISPARA COMANDO 'enable'
+        // Testamos se o roteador entra direto sem senha ou se exige senha
+        var passwordRegex = new Regex(@"(?i)(?:password|secret)\s*[:?]");
+
+        var result = await session.SendExpectAsync(
+            "enable",
+            new StopCondition[]
+            {
+                new StopCondition.LineRegex("password", passwordRegex),
+                new StopCondition.Contains("Password", "Password:"),
+                new StopCondition.Contains("password_lower", "password:"),
+                new StopCondition.Prompt()
+            },
+            TimeSpan.FromSeconds(15),
+            cancellationToken);
+
+        bool requestedPassword = result.Matched is StopCondition.Contains ||
+                                 result.Matched is StopCondition.LineRegex ||
+                                 result.Output.Contains("Password", StringComparison.OrdinalIgnoreCase) ||
+                                 passwordRegex.IsMatch(result.Output);
+
+        // SITUAÇÃO 1: SEM SENHA
+        // O roteador não solicitou senha e retornou diretamente o prompt privilegiado
+        if (!requestedPassword)
+        {
+            // Valida se subiu para level 15
+            var privAfter = "";
+            try { privAfter = await session.SendCommandAsync("show privilege", TimeSpan.FromSeconds(5), cancellationToken); } catch { }
+            if (privAfter.Contains("privilege level is 15", StringComparison.OrdinalIgnoreCase) ||
+                session.CurrentPrompt?.EndsWith("#") == true)
+            {
+                return; // Sucesso sem senha!
+            }
+        }
+
+        // SITUAÇÃO 2: COM SENHA
+        // Monta lista de senhas candidatas em ordem de prioridade
+        var candidates = new List<string>();
+        if (!string.IsNullOrWhiteSpace(_enableSecret)) candidates.Add(_enableSecret.Trim());
+        if (!string.IsNullOrWhiteSpace(ResolvedEnableSecret)) candidates.Add(ResolvedEnableSecret.Trim());
+        if (candidatePasswords != null)
+        {
+            foreach (var p in candidatePasswords)
+            {
+                if (!string.IsNullOrWhiteSpace(p) && !candidates.Contains(p.Trim()))
+                    candidates.Add(p.Trim());
+            }
+        }
+        foreach (var p in _candidatePasswords)
+        {
+            if (!string.IsNullOrWhiteSpace(p) && !candidates.Contains(p.Trim()))
+                candidates.Add(p.Trim());
+        }
+
+        // Padrão Embratel / Telecom / SPARC
+        if (!candidates.Contains("PRO1AN")) candidates.Add("PRO1AN");
+        // Padrões comuns de fábrica
+        if (!candidates.Contains("cisco")) candidates.Add("cisco");
+        if (!candidates.Contains("cisco123")) candidates.Add("cisco123");
+        if (!candidates.Contains("admin")) candidates.Add("admin");
+        if (!candidates.Contains("CQMR")) candidates.Add("CQMR");
+
+        bool authSuccess = false;
+        for (int i = 0; i < candidates.Count; i++)
+        {
+            var pass = candidates[i];
+            if (cancellationToken.IsCancellationRequested) break;
+
+            var passResult = await session.SendExpectAsync(
+                pass,
+                new StopCondition[]
+                {
+                    new StopCondition.LineRegex("password", passwordRegex),
+                    new StopCondition.Contains("Password", "Password:"),
+                    new StopCondition.Contains("password_lower", "password:"),
+                    new StopCondition.Contains("BadSecrets", "% Bad secrets"),
+                    new StopCondition.Prompt()
+                },
+                TimeSpan.FromSeconds(8),
+                cancellationToken);
+
+            if (passResult.Output.Contains("% Bad secrets", StringComparison.OrdinalIgnoreCase))
+            {
+                // Cisco encerrou o bloco de 3 tentativas e retornou para o prompt do usuário (ex: Router>).
+                // Se ainda restam candidatos a testar, enviamos 'enable' novamente para abrir nova rodada!
+                if (i < candidates.Count - 1)
+                {
+                    try
+                    {
+                        var reEnable = await session.SendExpectAsync(
+                            "enable",
+                            new StopCondition[]
+                            {
+                                new StopCondition.LineRegex("password", passwordRegex),
+                                new StopCondition.Contains("Password", "Password:"),
+                                new StopCondition.Prompt()
+                            },
+                            TimeSpan.FromSeconds(5),
+                            cancellationToken);
+
+                        if (reEnable.Matched is StopCondition.Prompt &&
+                            !passwordRegex.IsMatch(reEnable.Output) &&
+                            !reEnable.Output.Contains("Password", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (session.CurrentPrompt?.EndsWith("#") == true)
+                            {
+                                authSuccess = true;
+                                break;
+                            }
+                        }
+                    }
+                    catch { }
+                    continue;
+                }
+                break;
+            }
+
+            if (passResult.Output.Contains("Password:", StringComparison.OrdinalIgnoreCase) ||
+                passwordRegex.IsMatch(passResult.Output))
+            {
+                // Senha incorreta, Cisco solicitou novamente
+                continue;
+            }
+
+            // Chegou a um prompt sem solicitar mais senha!
+            // Confirma privilégio
+            var privVerif = "";
+            try { privVerif = await session.SendCommandAsync("show privilege", TimeSpan.FromSeconds(5), cancellationToken); } catch { }
+            if (privVerif.Contains("privilege level is 15", StringComparison.OrdinalIgnoreCase) ||
+                session.CurrentPrompt?.EndsWith("#") == true)
+            {
+                ResolvedEnableSecret = pass;
+                authSuccess = true;
+                break;
+            }
+        }
+
+        // Limpeza de segurança: se ainda estiver preso no prompt de senha, envia Ctrl+C + Enter
+        if (!authSuccess)
+        {
+            try
+            {
+                await session.SendCtrlCAsync(cancellationToken);
+                await Task.Delay(100, cancellationToken);
+                await session.SendRawAsync("\r\n", cancellationToken);
+                await Task.Delay(200, cancellationToken);
+            }
+            catch { }
+
+            throw new DeviceSessionException(
+                "O roteador Cisco exige senha para entrar em modo privilegiado (enable). " +
+                "As senhas testadas ('PRO1AN', senhas de console e padrões) não foram aceitas.");
         }
     }
 
@@ -216,7 +384,8 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
         string lanInterface = "GigabitEthernet 0/1",
         Func<string, CancellationToken, Task>? requestOperatorAction = null,
         Func<string, Task>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Action<int, string, string>? onProgress = null)
     {
         var cleanLan = lanInterface.Replace(" ", ""); // ex: GigabitEthernet0/5, GigabitEthernet5, GigabitEthernet0/1
         var cleanWan = cleanLan.Contains("0/5") ? "GigabitEthernet0/4" :
@@ -245,9 +414,11 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
         var wanPattern = BuildInterfaceRegex(cleanWan);
 
         var operatorNotified = false;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
 
         for (var attempt = 1; attempt <= 60; attempt++)
         {
+            var elapsedSec = (int)sw.Elapsed.TotalSeconds;
             string output = string.Empty;
             try
             {
@@ -268,14 +439,17 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
             if (isLanUp)
             {
                 if (progress is not null)
-                    await progress($"[OK] Link físico confirmado na porta LAN ({displayLan}) — status UP/UP.");
+                    await progress($"[OK] Link físico confirmado na porta LAN ({displayLan}) — status UP/UP ({elapsedSec}s)!");
+                onProgress?.Invoke(55, "Porta LAN Conectada!", $"Link ativo confirmado na porta {shortLan} ({elapsedSec}s).");
                 return true;
             }
 
             if (isWanUp && !isLanUp)
             {
-                if (progress is not null && (attempt % 5 == 1))
-                    await progress($"[CRÍTICA DE PORTA] Cabo de rede detectado na porta WAN ({shortWan}) ao invés da porta LAN ({shortLan})!");
+                if (progress is not null && (attempt == 1 || attempt % 3 == 0))
+                    await progress($"[AGUARDANDO TROCA DE CABO] Cabo detectado na porta WAN ({shortWan}) ao invés da LAN ({shortLan})... {elapsedSec}s decorridos (Tentativa {attempt}/60)");
+
+                onProgress?.Invoke(50, "Aguardando Troca de Cabo...", $"Cabo na porta WAN ({shortWan}). Troque para a porta LAN ({shortLan}) ({elapsedSec}s)...");
 
                 if (requestOperatorAction is not null && (!operatorNotified || attempt == 20 || attempt == 40))
                 {
@@ -290,14 +464,20 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
                         cancellationToken);
 
                     // Operador clicou em OK após trocar o cabo: acorda console do Cisco e absorve syslogs
+                    if (progress is not null)
+                        await progress($"[*] Operador confirmou a troca do cabo. Detectando sincronização na porta LAN ({shortLan})...");
+                    onProgress?.Invoke(50, "Sincronizando Porta LAN...", $"Aguardando link ativo na porta {shortLan}... ({elapsedSec}s)");
+
                     await session.WriteLineAsync(string.Empty, cancellationToken);
                     await Task.Delay(1500, cancellationToken);
                 }
             }
             else if (!isLanUp)
             {
-                if (progress is not null && (attempt % 5 == 1))
-                    await progress($"[AVISO] Porta LAN ({displayLan}) sem link físico (DOWN). Aguardando conexão do cabo de rede ({attempt}/60)...");
+                if (progress is not null && (attempt == 1 || attempt % 3 == 0))
+                    await progress($"[AGUARDANDO CABO LAN] Detectando link físico na porta LAN ({shortLan})... {elapsedSec}s decorridos (Tentativa {attempt}/60)");
+
+                onProgress?.Invoke(50, "Aguardando Conexão LAN...", $"Aguardando sincronização da porta {shortLan}... ({elapsedSec}s)");
 
                 if (requestOperatorAction is not null && (!operatorNotified || attempt == 20 || attempt == 40))
                 {
@@ -312,16 +492,32 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
                         cancellationToken);
 
                     // Operador clicou em OK após conectar o cabo: acorda console do Cisco e absorve syslogs de porta UP
+                    if (progress is not null)
+                        await progress($"[*] Operador confirmou conexão do cabo. Detectando sincronização na porta LAN ({shortLan})...");
+                    onProgress?.Invoke(50, "Sincronizando Porta LAN...", $"Aguardando link ativo na porta {shortLan}... ({elapsedSec}s)");
+
                     await session.WriteLineAsync(string.Empty, cancellationToken);
                     await Task.Delay(1500, cancellationToken);
                 }
             }
 
-            await Task.Delay(2000, cancellationToken);
+            // Intervalo de verificação com atualização dinâmica de segundos para evitar qualquer sensação de travamento
+            for (var d = 0; d < 2; d++)
+            {
+                await Task.Delay(1000, cancellationToken);
+                if (onProgress is not null)
+                {
+                    var sec = (int)sw.Elapsed.TotalSeconds;
+                    var statusSub = isWanUp
+                        ? $"Cabo na porta WAN ({shortWan}). Troque para a porta LAN ({shortLan}) ({sec}s)..."
+                        : $"Aguardando sinal na porta LAN ({shortLan})... ({sec}s)";
+                    onProgress(50, isWanUp ? "Aguardando Troca de Cabo..." : "Aguardando Link LAN...", statusSub);
+                }
+            }
         }
 
         if (progress is not null)
-            await progress($"[AVISO CRÍTICO] Tempo limite de espera para link na porta LAN ({displayLan}) esgotado.");
+            await progress($"[AVISO CRÍTICO] Tempo limite de espera para link na porta LAN ({displayLan}) esgotado ({(int)sw.Elapsed.TotalSeconds}s).");
 
         return false;
     }
