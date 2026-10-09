@@ -18,6 +18,7 @@ using NetworkDevice.Core.Detection;
 using NetworkDevice.Core.Device;
 using NetworkDevice.Core.Diagnostics;
 using NetworkDevice.Core.Domain;
+using NetworkDevice.Core.Firmware;
 using NetworkDevice.Core.Provisioning;
 using NetworkDevice.Core.Recovery;
 using NetworkDevice.Core.Routing;
@@ -462,6 +463,47 @@ public partial class MainWindow : Window
             EscreverLinha($"\n[BLOQUEIO DE SEGURANÇA] Firmware '{Path.GetFileName(filePath)}' rejeitado: {res.ErrorMessage}");
             return false;
         }
+        return true;
+    }
+
+    private bool ValidarAlertaVersaoNaoHomologada(string? filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath)) return true;
+
+        var serie = ObterSerieAtualSelecionadaOuDetectada();
+        if (serie == DeviceSeries.Unknown)
+        {
+            serie = FirmwareModelMap.MatchSeriesFromFileName(filePath);
+        }
+
+        if (serie == DeviceSeries.Unknown) return true;
+
+        if (!FirmwareHomologationChecker.IsVersaoHomologada(serie, filePath, _firmwareRepoService, out var homologadoEsperado))
+        {
+            var fileName = Path.GetFileName(filePath);
+            var modeloDesc = FirmwareModelMap.GetDefinition(serie)?.DisplayName ?? serie.ToString();
+
+            var msg =
+                $"Atenção: A imagem de firmware selecionada não é a homologada pela Claro/Embratel para o equipamento {modeloDesc}.\n\n" +
+                $"• Versão Homologada: {homologadoEsperado}\n" +
+                $"• Versão Indicada:   {fileName}\n\n" +
+                "Deseja utilizar esta versão mesmo assim?";
+
+            var resp = MessageBox.Show(this,
+                msg,
+                "Versão Não Homologada — SPARC",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (resp != MessageBoxResult.Yes)
+            {
+                EscreverLinha($"[*] Seleção cancelada pelo operador: '{fileName}' não é a versão homologada ({homologadoEsperado}).");
+                return false;
+            }
+
+            EscreverLinha($"\n[AVISO] Operador confirmou o uso da versão alternativa/não-homologada para {modeloDesc}: {fileName}");
+        }
+
         return true;
     }
 
@@ -3648,6 +3690,11 @@ public partial class MainWindow : Window
                 return;
             }
 
+            if (!ValidarAlertaVersaoNaoHomologada(dlg.FileName))
+            {
+                return;
+            }
+
             _selectedIosBinPath = dlg.FileName;
             var fi = new System.IO.FileInfo(dlg.FileName);
             var sizeMb = (fi.Length / (1024.0 * 1024.0)).ToString("N1");
@@ -5266,6 +5313,11 @@ public partial class MainWindow : Window
                 return;
             }
 
+            if (!ValidarAlertaVersaoNaoHomologada(dlg.FileName))
+            {
+                return;
+            }
+
             var ext = Path.GetExtension(dlg.FileName).ToLowerInvariant();
             var fileName = Path.GetFileName(dlg.FileName);
 
@@ -6103,8 +6155,11 @@ public partial class MainWindow : Window
 
                 if (resp == MessageBoxResult.Yes)
                 {
-                    tcs.SetResult(firmwareCandidate);
-                    return;
+                    if (ValidarAlertaVersaoNaoHomologada(firmwareCandidate))
+                    {
+                        tcs.SetResult(firmwareCandidate);
+                        return;
+                    }
                 }
             }
 
@@ -6117,6 +6172,12 @@ public partial class MainWindow : Window
             if (dlg.ShowDialog() == true)
             {
                 if (!ValidarEBloquearFirmwareIncompativel(dlg.FileName, mostrarAlertaModal: true))
+                {
+                    tcs.SetResult(null);
+                    return;
+                }
+
+                if (!ValidarAlertaVersaoNaoHomologada(dlg.FileName))
                 {
                     tcs.SetResult(null);
                     return;
@@ -6328,6 +6389,7 @@ public partial class MainWindow : Window
             AtualizarProgresso(50, "Fase C: Configurando Cisco Série 800 / C841M...", $"WAN GE0/4 ({_loadedSaipCircuit.WanIp}), LAN GE0/5 ({_loadedSaipCircuit.LanIp})...");
             var ciscoConfig = new CiscoSaipConfigurator(EscreverLinhaAsync);
             ciscoConfig.IncluirNatLab = ChkNatLab?.IsChecked == true;
+            ciscoConfig.BootImage = !string.IsNullOrWhiteSpace(_selectedIosBinPath) ? Path.GetFileName(_selectedIosBinPath) : null;
             await ciscoConfig.ApplyConfigAsync(session, _loadedSaipCircuit, "GigabitEthernet0/4", "GigabitEthernet0/5", ct);
 
             // Valida se o técnico conectou o cabo na porta LAN (GE 0/5 / GigabitEthernet0/5) antes de prosseguir
@@ -6343,6 +6405,7 @@ public partial class MainWindow : Window
             AtualizarProgresso(50, "Fase C: Configurando Cisco Série 900 / C921-4P...", $"WAN GE4 ({_loadedSaipCircuit.WanIp}), LAN GE5 ({_loadedSaipCircuit.LanIp})...");
             var ciscoConfig = new CiscoSaipConfigurator(EscreverLinhaAsync);
             ciscoConfig.IncluirNatLab = ChkNatLab?.IsChecked == true;
+            ciscoConfig.BootImage = !string.IsNullOrWhiteSpace(_selectedIosBinPath) ? Path.GetFileName(_selectedIosBinPath) : null;
             await ciscoConfig.ApplyConfigAsync(session, _loadedSaipCircuit, "GigabitEthernet 4", "GigabitEthernet 5", ct);
 
             // Valida se o técnico conectou o cabo na porta LAN (GE5 / GigabitEthernet 5) antes de prosseguir
@@ -6358,6 +6421,7 @@ public partial class MainWindow : Window
             AtualizarProgresso(50, "Fase C: Configurando Cisco Série 2900...", $"WAN GE0/0 ({_loadedSaipCircuit.WanIp}), LAN GE0/1 ({_loadedSaipCircuit.LanIp})...");
             var ciscoConfig = new CiscoSaipConfigurator(EscreverLinhaAsync);
             ciscoConfig.IncluirNatLab = ChkNatLab?.IsChecked == true;
+            ciscoConfig.BootImage = !string.IsNullOrWhiteSpace(_selectedIosBinPath) ? Path.GetFileName(_selectedIosBinPath) : null;
             await ciscoConfig.ApplyConfigAsync(session, _loadedSaipCircuit, "GigabitEthernet 0/0", "GigabitEthernet 0/1", ct);
 
             // Valida se o técnico conectou o cabo na porta LAN (GE 0/1) antes de prosseguir
@@ -6373,6 +6437,7 @@ public partial class MainWindow : Window
             AtualizarProgresso(50, "Fase C: Configurando Cisco...", $"WAN GE0/0 ({_loadedSaipCircuit.WanIp}), LAN GE0/1 ({_loadedSaipCircuit.LanIp})...");
             var ciscoConfig = new CiscoSaipConfigurator(EscreverLinhaAsync);
             ciscoConfig.IncluirNatLab = ChkNatLab?.IsChecked == true;
+            ciscoConfig.BootImage = !string.IsNullOrWhiteSpace(_selectedIosBinPath) ? Path.GetFileName(_selectedIosBinPath) : null;
             await ciscoConfig.ApplyConfigAsync(session, _loadedSaipCircuit, "GigabitEthernet 0/0", "GigabitEthernet 0/1", ct);
 
             // Valida se o técnico conectou o cabo na porta LAN (GE 0/1) antes de prosseguir

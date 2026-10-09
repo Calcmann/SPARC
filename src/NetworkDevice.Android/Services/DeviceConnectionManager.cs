@@ -40,6 +40,7 @@ public sealed class DeviceConnectionManager
     public bool IsTelnetConnected => _telnetSession?.IsConnected == true;
 
     public DeviceDetectionResult? LastDetectionResult { get; private set; }
+    public DeviceSeries ConnectedDeviceSeries => LastDetectionResult?.Series ?? DeviceSeries.Unknown;
     public string? LastDetectedSerial { get; set; }
     public SaipCircuitData? LoadedCircuit { get; set; }
 
@@ -54,6 +55,11 @@ public sealed class DeviceConnectionManager
     /// Paridade com o checkbox secreto "NAT LAB" do Windows (default desligado).
     /// </summary>
     public bool IncluirNatLab { get; set; }
+
+    /// <summary>
+    /// Imagem de firmware indicada pelo operador para boot no provisionamento.
+    /// </summary>
+    public string? CustomBootImage { get; set; }
 
     /// <summary>
     /// Running-config capturada após o último provisionamento (paridade com o relatório TXT do Windows).
@@ -975,7 +981,11 @@ public sealed class DeviceConnectionManager
 
             if (detected.Manufacturer == DeviceManufacturer.Cisco)
             {
-                var configurator = new CiscoSaipConfigurator(progressCallback) { IncluirNatLab = IncluirNatLab };
+                var configurator = new CiscoSaipConfigurator(progressCallback)
+                {
+                    IncluirNatLab = IncluirNatLab,
+                    BootImage = CustomBootImage
+                };
                 if (wanIface is null)
                     await configurator.ApplyConfigAsync(_session, circuit, cancellationToken: ct);
                 else
@@ -995,7 +1005,11 @@ public sealed class DeviceConnectionManager
             {
                 // Default fallback para Cisco
                 await progressCallback("[AVISO] Fabricante não identificado com certeza. Aplicando perfil padrão Cisco IOS...");
-                var configurator = new CiscoSaipConfigurator(progressCallback) { IncluirNatLab = IncluirNatLab };
+                var configurator = new CiscoSaipConfigurator(progressCallback)
+                {
+                    IncluirNatLab = IncluirNatLab,
+                    BootImage = CustomBootImage
+                };
                 await configurator.ApplyConfigAsync(_session, circuit, cancellationToken: ct);
             }
 

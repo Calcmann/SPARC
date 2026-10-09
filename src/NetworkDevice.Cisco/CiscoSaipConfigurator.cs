@@ -19,6 +19,12 @@ public sealed class CiscoSaipConfigurator
     /// </summary>
     public bool IncluirNatLab { get; set; }
 
+    /// <summary>
+    /// Imagem de firmware de boot indicada pelo operador (ex.: c1900-universalk9-mz.SPA.157-3.M7.bin).
+    /// Quando informada, sobrepõe a versão padrão da família do hardware no template SAIP.
+    /// </summary>
+    public string? BootImage { get; set; }
+
     public CiscoSaipConfigurator(Func<string, Task>? progress = null)
     {
         _progress = progress;
@@ -112,7 +118,7 @@ public sealed class CiscoSaipConfigurator
             else if (cleanWan.Contains("0/4", StringComparison.OrdinalIgnoreCase) ||
                      cleanWan.Contains("0/5", StringComparison.OrdinalIgnoreCase))
             {
-                resolvedBoot = "c800-universalk9-mz.SPA.159-3.M12.bin";
+                resolvedBoot = "c800m-universalk9-mz.SPA.159-3.M12.bin";
             }
             else if (circuit.RawSource.Contains("29", StringComparison.OrdinalIgnoreCase) ||
                      wanInterface.Contains("29", StringComparison.OrdinalIgnoreCase))
@@ -121,7 +127,7 @@ public sealed class CiscoSaipConfigurator
             }
             else
             {
-                resolvedBoot = "c1900-universalk9-mz.SPA.158-3.M9.bin";
+                resolvedBoot = "c1900-universalk9-mz.SPA.157-3.M9.bin";
             }
         }
 
@@ -139,6 +145,15 @@ public sealed class CiscoSaipConfigurator
             "service password-encryption",
             "boot-start-marker",
             $"boot system flash:{resolvedBoot}",
+        };
+
+        if (resolvedBoot.Contains("c1900", StringComparison.OrdinalIgnoreCase))
+        {
+            cmds.Add($"boot system usbflash0:{resolvedBoot}");
+        }
+
+        cmds.AddRange(new[]
+        {
             "boot-end-marker",
             "logging buffered 51200 warnings",
             "no logging console",
@@ -187,7 +202,7 @@ public sealed class CiscoSaipConfigurator
             " class class-default",
             $"  shape average {bandaBps}",
             " exit",
-        };
+        });
 
         // 5. INTERFACES
         // Desabilita portas de switch integradas quando aplicável
@@ -549,7 +564,7 @@ public sealed class CiscoSaipConfigurator
         await Task.Delay(300, cancellationToken);
 
         // 5. Lista de comandos a serem aplicados com cadência otimizada e segura de 200ms
-        var commands = GenerateCommands(circuit, wanInterface, lanInterface, IncluirNatLab);
+        var commands = GenerateCommands(circuit, wanInterface, lanInterface, IncluirNatLab, BootImage);
         if (IncluirNatLab)
             await ProgressAsync("[*] Opção secreta NAT (LAB) ATIVA: inside/outside + overload serão aplicados.");
 

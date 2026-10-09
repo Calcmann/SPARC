@@ -3,6 +3,7 @@ using Xunit;
 
 namespace NetworkDevice.Tests;
 
+[Collection("EmbeddedTokenVaultTests")]
 public class EmbeddedTokenVaultTests
 {
     [Fact]

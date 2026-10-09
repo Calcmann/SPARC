@@ -172,4 +172,25 @@ public class CiscoSaipConfigModeTests
         Assert.Contains(fake.Commands, c => c == "show ip interface brief");
         Assert.DoesNotContain(fake.Commands, c => c.StartsWith("do "));
     }
+
+    [Theory]
+    [InlineData("GigabitEthernet 0/0", "GigabitEthernet 0/1", "c1900-universalk9-mz.SPA.157-3.M7.bin", true)]
+    [InlineData("GigabitEthernet 0/0", "GigabitEthernet 0/1", "c2900-universalk9-mz.SPA.157-3.M7.bin", false)]
+    [InlineData("GigabitEthernet0/4", "GigabitEthernet0/5", "c800m-universalk9-mz.SPA.159-3.M10.bin", false)]
+    [InlineData("GigabitEthernet 4", "GigabitEthernet 5", "c900-universalk9-mz.SPA.159-3.M9.bin", false)]
+    public void GenerateCommands_GaranteBootImageCustomizadaParaTodosOsModelos(
+        string wan, string lan, string customBoot, bool expectUsbflash0)
+    {
+        var cmds = CiscoSaipConfigurator.GenerateCommands(SampleCircuit(), wan, lan, bootImage: customBoot);
+
+        Assert.Contains(cmds, c => c == $"boot system flash:{customBoot}");
+        if (expectUsbflash0)
+        {
+            Assert.Contains(cmds, c => c == $"boot system usbflash0:{customBoot}");
+        }
+        else
+        {
+            Assert.DoesNotContain(cmds, c => c.StartsWith("boot system usbflash0:"));
+        }
+    }
 }

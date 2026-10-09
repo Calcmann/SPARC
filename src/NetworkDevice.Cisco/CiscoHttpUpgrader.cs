@@ -80,8 +80,11 @@ public sealed class CiscoHttpUpgrader
 
         // 2. Estado atual: versão, flash, boot
         var showVer = await CiscoSaipConfigurator.SendShowAsync(session, "show version", TimeSpan.FromSeconds(15), cancellationToken);
-        var dirFlash = await CiscoSaipConfigurator.SendShowAsync(session, "dir flash:", TimeSpan.FromSeconds(15), cancellationToken);
-        if (dirFlash.Contains("% Invalid", StringComparison.OrdinalIgnoreCase))
+        var fsPrefix = CiscoIOSFlashParser.DetectFlashFilesystemPrefix(showVer);
+        var dirFlash = await CiscoSaipConfigurator.SendShowAsync(session, $"dir {fsPrefix}", TimeSpan.FromSeconds(15), cancellationToken);
+        if (dirFlash.Contains("% Invalid", StringComparison.OrdinalIgnoreCase) || dirFlash.Contains("% Error", StringComparison.OrdinalIgnoreCase))
+            dirFlash = await CiscoSaipConfigurator.SendShowAsync(session, "dir flash:", TimeSpan.FromSeconds(15), cancellationToken);
+        if (dirFlash.Contains("% Invalid", StringComparison.OrdinalIgnoreCase) || dirFlash.Contains("% Error", StringComparison.OrdinalIgnoreCase))
             dirFlash = await CiscoSaipConfigurator.SendShowAsync(session, "dir", TimeSpan.FromSeconds(15), cancellationToken);
         var showBoot = await CiscoSaipConfigurator.SendShowAsync(session, "show running-config | include boot", TimeSpan.FromSeconds(10), cancellationToken);
 
@@ -89,6 +92,20 @@ public sealed class CiscoHttpUpgrader
         var isFileOnFlash = dirFlash.Contains(fileName, StringComparison.OrdinalIgnoreCase);
         var isBootConfigured = showBoot.Contains(fileName, StringComparison.OrdinalIgnoreCase);
         await ProgressAsync($"[*] Versão atual: {curVer.DisplayString} | Arquivo na flash: {(isFileOnFlash ? "SIM" : "NÃO")} | Boot configurado: {(isBootConfigured ? "SIM" : "NÃO")}");
+
+        // Se a imagem já existe na Flash mas há versões concorrentes antigas, exclui para garantir boot exclusivo no alvo
+        if (isFileOnFlash)
+        {
+            var conflictingOnFlash = CiscoIOSFlashParser.GetConflictingFirmwareFiles(dirFlash, fileName);
+            if (conflictingOnFlash.Count > 0)
+            {
+                await ProgressAsync($"[*] [Flash] Detectada(s) {conflictingOnFlash.Count} versão(ões) concorrente(s) na Flash. Limpando para garantir boot exclusivo em {fileName}...");
+                foreach (var cf in conflictingOnFlash)
+                {
+                    await DeleteFileFromFlashAsync(session, cf, fsPrefix, cancellationToken);
+                }
+            }
+        }
 
         if (isRunningTarget && isBootConfigured && isFileOnFlash)
         {
@@ -136,9 +153,26 @@ public sealed class CiscoHttpUpgrader
         // 5. Cópia HTTP (interativa: Destination filename + [confirm] + transferência longa)
         if (!isFileOnFlash)
         {
+            var availBytes = CiscoIOSFlashParser.ParseAvailableBytes(dirFlash);
+            var confFilesPre = CiscoIOSFlashParser.GetConflictingFirmwareFiles(dirFlash, fileName);
+            if (confFilesPre.Count > 0 && (availBytes > 0 && fileSizeBytes > 0 && availBytes < fileSizeBytes * 1.05))
+            {
+                var availMb = (availBytes / (1024.0 * 1024.0)).ToString("N1");
+                var sizeMb = (fileSizeBytes / (1024.0 * 1024.0)).ToString("N1");
+                await ProgressAsync($"[!] Espaço livre na Flash ({availMb} MB) insuficiente para o novo firmware ({sizeMb} MB).");
+                await ProgressAsync($"[*] Excluindo versão(ões) concorrente(s) na Flash para liberar espaço...");
+                foreach (var cf in confFilesPre)
+                {
+                    await DeleteFileFromFlashAsync(session, cf, fsPrefix, cancellationToken);
+                }
+            }
+
             await CopyHttpAsync(session, phoneIp, phonePort, fileName, fileSizeBytes, cancellationToken);
 
-            dirFlash = await CiscoSaipConfigurator.SendShowAsync(session, "dir flash:", TimeSpan.FromSeconds(15), cancellationToken);
+            dirFlash = await CiscoSaipConfigurator.SendShowAsync(session, $"dir {fsPrefix}", TimeSpan.FromSeconds(15), cancellationToken);
+            if (dirFlash.Contains("% Invalid", StringComparison.OrdinalIgnoreCase) || dirFlash.Contains("% Error", StringComparison.OrdinalIgnoreCase))
+                dirFlash = await CiscoSaipConfigurator.SendShowAsync(session, "dir flash:", TimeSpan.FromSeconds(15), cancellationToken);
+
             if (!dirFlash.Contains(fileName, StringComparison.OrdinalIgnoreCase))
                 throw new DeviceSessionException($"Arquivo {fileName} não localizado na flash: após a transferência.");
             await ProgressAsync($"[OK] {fileName} transferido via HTTP e validado na flash:!");
@@ -158,11 +192,30 @@ public sealed class CiscoHttpUpgrader
                 : $"[AVISO] MD5 divergente ou não confirmado:\n{md5.Trim()}");
         }
 
+        // 6b. Limpeza pós-transferência de qualquer outra versão presente na Flash para garantir boot exclusivo no firmware indicado
+        var curDirFlash = await CiscoSaipConfigurator.SendShowAsync(session, $"dir {fsPrefix}", TimeSpan.FromSeconds(15), cancellationToken);
+        if (curDirFlash.Contains("% Invalid", StringComparison.OrdinalIgnoreCase) || curDirFlash.Contains("% Error", StringComparison.OrdinalIgnoreCase))
+            curDirFlash = await CiscoSaipConfigurator.SendShowAsync(session, "dir flash:", TimeSpan.FromSeconds(15), cancellationToken);
+
+        var remainingConf = CiscoIOSFlashParser.GetConflictingFirmwareFiles(curDirFlash, fileName);
+        if (remainingConf.Count > 0)
+        {
+            await ProgressAsync($"[*] [Flash] Limpando {remainingConf.Count} versão(ões) concorrente(s) na Flash para liberar espaço e garantir boot exclusivo em {fileName}...");
+            foreach (var cf in remainingConf)
+            {
+                await DeleteFileFromFlashAsync(session, cf, fsPrefix, cancellationToken);
+            }
+        }
+
         // 7. Boot system + register + save
         await ProgressAsync($"[*] Configurando boot system para 'flash:{fileName}'...");
         await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(10), cancellationToken);
         await session.SendCommandAsync("no boot system", TimeSpan.FromSeconds(10), cancellationToken);
         await session.SendCommandAsync($"boot system flash:{fileName}", TimeSpan.FromSeconds(10), cancellationToken);
+        if (fsPrefix.StartsWith("usbflash", StringComparison.OrdinalIgnoreCase))
+        {
+            await session.SendCommandAsync($"boot system {fsPrefix}{fileName}", TimeSpan.FromSeconds(10), cancellationToken);
+        }
         await session.SendCommandAsync("config-register 0x2102", TimeSpan.FromSeconds(10), cancellationToken);
         await session.SendCommandAsync("end", TimeSpan.FromSeconds(10), cancellationToken);
         await session.SendCommandAsync("write memory", TimeSpan.FromSeconds(30), cancellationToken);
@@ -316,6 +369,83 @@ public sealed class CiscoHttpUpgrader
         {
             throw new DeviceSessionException($"Falha na cópia HTTP de {fileName}. Resposta: {output.Trim()}");
         }
+    }
+
+    private async Task<bool> DeleteFileFromFlashAsync(
+        DeviceSession session,
+        string fileName,
+        string fsPrefix,
+        CancellationToken ct)
+    {
+        await ProgressAsync($"[*] Removendo versão antiga/concorrente da flash para liberar espaço e garantir boot: {fileName}...");
+
+        var prefixesToTry = new List<string> { fsPrefix };
+        if (!fsPrefix.Equals("flash:", StringComparison.OrdinalIgnoreCase))
+            prefixesToTry.Add("flash:");
+        if (!fsPrefix.Equals("usbflash0:", StringComparison.OrdinalIgnoreCase))
+            prefixesToTry.Add("usbflash0:");
+
+        foreach (var pfx in prefixesToTry.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var delCmd = $"delete /force {pfx}{fileName}";
+                var delRes = await session.SendExpectAsync(
+                    delCmd,
+                    new StopCondition[]
+                    {
+                        new StopCondition.Contains("confirm", "[confirm]"),
+                        new StopCondition.Contains("question", "?"),
+                        new StopCondition.Contains("invalid", "% Invalid"),
+                        new StopCondition.Contains("error", "%Error"),
+                        new StopCondition.Prompt()
+                    },
+                    TimeSpan.FromSeconds(15),
+                    ct);
+
+                if (delRes.Output.Contains("% Invalid", StringComparison.OrdinalIgnoreCase))
+                {
+                    await session.WriteLineAsync($"delete {pfx}{fileName}", ct);
+                    for (int i = 0; i < 3; i++)
+                    {
+                        var promptRes = await session.WaitForAsync(
+                            new StopCondition[]
+                            {
+                                new StopCondition.Contains("confirm", "[confirm]"),
+                                new StopCondition.Contains("question", "?"),
+                                new StopCondition.Prompt()
+                            },
+                            TimeSpan.FromSeconds(5),
+                            ct);
+
+                        if (promptRes.Matched is StopCondition.Prompt)
+                            break;
+
+                        await session.WriteLineAsync(string.Empty, ct);
+                        await Task.Delay(400, ct);
+                    }
+                }
+                else if (delRes.Output.Contains("[confirm]", StringComparison.OrdinalIgnoreCase) ||
+                         delRes.Output.Contains("?", StringComparison.OrdinalIgnoreCase))
+                {
+                    await session.WriteLineAsync(string.Empty, ct);
+                    await Task.Delay(400, ct);
+                }
+
+                if (!delRes.Output.Contains("%Error opening", StringComparison.OrdinalIgnoreCase) &&
+                    !delRes.Output.Contains("No such file", StringComparison.OrdinalIgnoreCase))
+                {
+                    await ProgressAsync($"[OK] Versão antiga {fileName} excluída com sucesso em {pfx}.");
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                await ProgressAsync($"[AVISO] Falha ao tentar excluir {fileName} em {pfx}: {ex.Message}");
+            }
+        }
+
+        return false;
     }
 
     private static async Task<string> DetectLanInterfaceAsync(DeviceSession session, CancellationToken ct)

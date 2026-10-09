@@ -102,8 +102,17 @@ public sealed class CiscoIOSUpgrader
         var showVer = "";
         try { showVer = await session.SendCommandAsync("show version", TimeSpan.FromSeconds(15), cancellationToken); } catch { }
 
+        var fsPrefix = CiscoIOSFlashParser.DetectFlashFilesystemPrefix(showVer);
         var dirFlash = "";
-        try { dirFlash = await session.SendCommandAsync("dir flash:", TimeSpan.FromSeconds(15), cancellationToken); } catch { }
+        try { dirFlash = await session.SendCommandAsync($"dir {fsPrefix}", TimeSpan.FromSeconds(15), cancellationToken); } catch { }
+        if (string.IsNullOrWhiteSpace(dirFlash) || dirFlash.Contains("% Error") || dirFlash.Contains("% Invalid"))
+        {
+            try { dirFlash = await session.SendCommandAsync("dir flash:", TimeSpan.FromSeconds(15), cancellationToken); } catch { }
+        }
+        if (string.IsNullOrWhiteSpace(dirFlash) || dirFlash.Contains("% Error") || dirFlash.Contains("% Invalid"))
+        {
+            try { dirFlash = await session.SendCommandAsync("show flash:", TimeSpan.FromSeconds(15), cancellationToken); } catch { }
+        }
 
         var showBoot = "";
         try { showBoot = await session.SendCommandAsync("show running-config | include boot", TimeSpan.FromSeconds(10), cancellationToken); } catch { }
@@ -133,6 +142,10 @@ public sealed class CiscoIOSUpgrader
                 await ProgressAsync($"[*] Gravando boot system persistente para 'flash:{binFileName}'...");
                 await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(10), cancellationToken);
                 await session.SendCommandAsync($"boot system flash:{binFileName}", TimeSpan.FromSeconds(10), cancellationToken);
+                if (fsPrefix.StartsWith("usbflash", StringComparison.OrdinalIgnoreCase))
+                {
+                    await session.SendCommandAsync($"boot system {fsPrefix}{binFileName}", TimeSpan.FromSeconds(10), cancellationToken);
+                }
                 await session.SendCommandAsync("config-register 0x2102", TimeSpan.FromSeconds(10), cancellationToken);
                 await session.SendCommandAsync("end", TimeSpan.FromSeconds(10), cancellationToken);
                 await session.SendCommandAsync("write memory", TimeSpan.FromSeconds(30), cancellationToken);
@@ -142,6 +155,21 @@ public sealed class CiscoIOSUpgrader
             await ProgressAsync("=================================================================\n");
             _onProgress?.Invoke(100, "Fase B: Firmware OK", $"Equipamento já executa {binFileName} ({curVer.CanonicalVersion ?? curVer.DisplayString}).");
             return true;
+        }
+
+        // Se a imagem alvo já existe na Flash mas há versões concorrentes antigas,
+        // exclui imediatamente para liberar espaço e garantir que o boot ocorra no alvo
+        if (isFileOnFlash)
+        {
+            var conflictingOnFlash = CiscoIOSFlashParser.GetConflictingFirmwareFiles(dirFlash, binFileName);
+            if (conflictingOnFlash.Count > 0)
+            {
+                await ProgressAsync($"[*] [Flash] Detectada(s) {conflictingOnFlash.Count} versão(ões) concorrente(s) na Flash. Limpando para garantir boot exclusivo em {binFileName}...");
+                foreach (var cf in conflictingOnFlash)
+                {
+                    await DeleteFileFromFlashAsync(session, cf, fsPrefix, cancellationToken);
+                }
+            }
         }
 
         // CASO B: A imagem já existe na Flash e o boot system já aponta para ela
@@ -282,6 +310,20 @@ public sealed class CiscoIOSUpgrader
 
                     // Limpa buffers residuais do console antes de iniciar cópia
                     try { await session.SendCommandAsync(string.Empty, TimeSpan.FromMilliseconds(500), cancellationToken); } catch { }
+
+                    // Verifica espaço disponível na Flash e limpa versões concorrentes se necessário
+                    var availBytes = CiscoIOSFlashParser.ParseAvailableBytes(dirFlash);
+                    var confFilesBeforeCopy = CiscoIOSFlashParser.GetConflictingFirmwareFiles(dirFlash, binFileName);
+                    if (confFilesBeforeCopy.Count > 0 && (availBytes > 0 && availBytes < fileSize * 1.05))
+                    {
+                        var availMb = (availBytes / (1024.0 * 1024.0)).ToString("N1");
+                        await ProgressAsync($"[!] Espaço livre na Flash ({availMb} MB) insuficiente para o novo firmware ({sizeMb} MB).");
+                        await ProgressAsync($"[*] Excluindo versão(ões) concorrente(s) na Flash para liberar espaço de gravação...");
+                        foreach (var cf in confFilesBeforeCopy)
+                        {
+                            await DeleteFileFromFlashAsync(session, cf, fsPrefix, cancellationToken);
+                        }
+                    }
 
                     // Envia o comando de cópia TFTP para a flash
                     await ProgressAsync($"[*] Solicitando cópia TFTP: copy tftp://{hostIpAddress}/{binFileName} flash:{binFileName}...");
@@ -455,6 +497,23 @@ public sealed class CiscoIOSUpgrader
                 }
             }
 
+            // 7c. Limpeza de qualquer outra versão presente na Flash para liberar espaço e garantir boot exclusivo na versão indicada
+            var curDirFlash = "";
+            try { curDirFlash = await session.SendCommandAsync($"dir {fsPrefix}", TimeSpan.FromSeconds(15), cancellationToken); } catch { }
+            if (string.IsNullOrWhiteSpace(curDirFlash) || curDirFlash.Contains("% Error") || curDirFlash.Contains("% Invalid"))
+            {
+                try { curDirFlash = await session.SendCommandAsync("dir flash:", TimeSpan.FromSeconds(15), cancellationToken); } catch { }
+            }
+            var remainingConflicting = CiscoIOSFlashParser.GetConflictingFirmwareFiles(curDirFlash, binFileName);
+            if (remainingConflicting.Count > 0)
+            {
+                await ProgressAsync($"[*] [Flash] Limpando {remainingConflicting.Count} versão(ões) concorrente(s) na Flash para liberar espaço e garantir boot exclusivo em {binFileName}...");
+                foreach (var cf in remainingConflicting)
+                {
+                    await DeleteFileFromFlashAsync(session, cf, fsPrefix, cancellationToken);
+                }
+            }
+
             // 8. Configura o boot system com a nova imagem e registra 0x2102
             await ProgressAsync($"[*] Configurando boot system para 'flash:{binFileName}'...");
             await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(10), cancellationToken);
@@ -465,6 +524,12 @@ public sealed class CiscoIOSUpgrader
 
             await session.SendCommandAsync($"boot system flash:{binFileName}", TimeSpan.FromSeconds(10), cancellationToken);
             await Task.Delay(500, cancellationToken);
+
+            if (fsPrefix.StartsWith("usbflash", StringComparison.OrdinalIgnoreCase))
+            {
+                await session.SendCommandAsync($"boot system {fsPrefix}{binFileName}", TimeSpan.FromSeconds(10), cancellationToken);
+                await Task.Delay(500, cancellationToken);
+            }
 
             await session.SendCommandAsync("config-register 0x2102", TimeSpan.FromSeconds(10), cancellationToken);
             await Task.Delay(500, cancellationToken);
@@ -503,6 +568,84 @@ public sealed class CiscoIOSUpgrader
             await ProgressAsync($"[OK] Ciclo de reinicialização do Cisco IOS concluído com sucesso!");
 
             return true;
+    }
+
+    private async Task<bool> DeleteFileFromFlashAsync(
+        DeviceSession session,
+        string fileName,
+        string fsPrefix,
+        CancellationToken ct)
+    {
+        await ProgressAsync($"[*] Removendo versão antiga/concorrente da flash para liberar espaço e garantir boot: {fileName}...");
+
+        var prefixesToTry = new List<string> { fsPrefix };
+        if (!fsPrefix.Equals("flash:", StringComparison.OrdinalIgnoreCase))
+            prefixesToTry.Add("flash:");
+        if (!fsPrefix.Equals("usbflash0:", StringComparison.OrdinalIgnoreCase))
+            prefixesToTry.Add("usbflash0:");
+
+        foreach (var pfx in prefixesToTry.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var delCmd = $"delete /force {pfx}{fileName}";
+                var delRes = await session.SendExpectAsync(
+                    delCmd,
+                    new StopCondition[]
+                    {
+                        new StopCondition.Contains("confirm", "[confirm]"),
+                        new StopCondition.Contains("question", "?"),
+                        new StopCondition.Contains("invalid", "% Invalid"),
+                        new StopCondition.Contains("error", "%Error"),
+                        new StopCondition.Prompt()
+                    },
+                    TimeSpan.FromSeconds(15),
+                    ct);
+
+                if (delRes.Output.Contains("% Invalid", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Versões que não aceitam /force: tenta delete simples e confirma diálogos
+                    await session.WriteLineAsync($"delete {pfx}{fileName}", ct);
+                    for (int i = 0; i < 3; i++)
+                    {
+                        var promptRes = await session.WaitForAsync(
+                            new StopCondition[]
+                            {
+                                new StopCondition.Contains("confirm", "[confirm]"),
+                                new StopCondition.Contains("question", "?"),
+                                new StopCondition.Prompt()
+                            },
+                            TimeSpan.FromSeconds(5),
+                            ct);
+
+                        if (promptRes.Matched is StopCondition.Prompt)
+                            break;
+
+                        await session.WriteLineAsync(string.Empty, ct);
+                        await Task.Delay(400, ct);
+                    }
+                }
+                else if (delRes.Output.Contains("[confirm]", StringComparison.OrdinalIgnoreCase) ||
+                         delRes.Output.Contains("?", StringComparison.OrdinalIgnoreCase))
+                {
+                    await session.WriteLineAsync(string.Empty, ct);
+                    await Task.Delay(400, ct);
+                }
+
+                if (!delRes.Output.Contains("%Error opening", StringComparison.OrdinalIgnoreCase) &&
+                    !delRes.Output.Contains("No such file", StringComparison.OrdinalIgnoreCase))
+                {
+                    await ProgressAsync($"[OK] Versão antiga {fileName} excluída com sucesso em {pfx}.");
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                await ProgressAsync($"[AVISO] Falha ao tentar excluir {fileName} em {pfx}: {ex.Message}");
+            }
+        }
+
+        return false;
     }
 
     private async Task ExecutarReloadCiscoAsync(

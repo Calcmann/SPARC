@@ -523,7 +523,35 @@ public partial class FirmwarePage : ContentPage
 
             if (res != null)
             {
+                var series = _connManager.ConnectedDeviceSeries;
+                if (series == DeviceSeries.Unknown)
+                {
+                    series = FirmwareModelMap.MatchSeriesFromFileName(res.FileName);
+                }
+
+                if (!FirmwareHomologationChecker.IsVersaoHomologada(series, res.FileName, _firmwareRepo, out var homologadoEsperado))
+                {
+                    var modeloDesc = FirmwareModelMap.GetDefinition(series)?.DisplayName ?? series.ToString();
+                    var confirm = await DisplayAlert(
+                        "Versão Não Homologada",
+                        $"Atenção: A imagem de firmware selecionada não é a homologada pela Claro/Embratel para o equipamento {modeloDesc}.\n\n" +
+                        $"• Versão Homologada: {homologadoEsperado}\n" +
+                        $"• Versão Indicada:   {res.FileName}\n\n" +
+                        "Deseja utilizar esta versão mesmo assim?",
+                        "CONTINUAR MESMO ASSIM",
+                        "CANCELAR");
+
+                    if (!confirm)
+                    {
+                        AppendLog($"[*] Seleção cancelada pelo operador: '{res.FileName}' não é a versão homologada ({homologadoEsperado}).");
+                        return;
+                    }
+
+                    AppendLog($"[AVISO] Operador confirmou o uso da versão alternativa/não-homologada para {modeloDesc}: {res.FileName}");
+                }
+
                 _selectedLocalFirmwarePath = res.FullPath;
+                _connManager.CustomBootImage = res.FileName;
                 var fi = new System.IO.FileInfo(res.FullPath);
                 var sizeMb = fi.Exists ? (fi.Length / (1024.0 * 1024.0)) : 0.0;
                 SelectedLocalFwLabel.Text = $"{res.FileName} ({sizeMb:F1} MB)";

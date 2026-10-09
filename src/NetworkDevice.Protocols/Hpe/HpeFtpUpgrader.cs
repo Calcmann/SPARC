@@ -74,12 +74,22 @@ public sealed class HpeFtpUpgrader
 
         // 3. Download FTP interativo (ftp> é subshell: user/pass/binary/get/quit)
         if (!fileOnFlash)
+        {
+            await GarantirEspacoFlashParaFtpAsync(session, fileName, flashDir, cancellationToken);
             await FtpGetAsync(session, fileName, phoneIp, phonePort, ftpUser, ftpPass, fileSizeBytes, cancellationToken);
+        }
 
         flashDir = await session.SendCommandAsync("dir flash:", TimeSpan.FromSeconds(15), cancellationToken);
         if (!flashDir.Contains(fileName, StringComparison.OrdinalIgnoreCase))
             throw new DeviceSessionException($"Arquivo {fileName} não localizado na flash: após o FTP.");
         await ProgressAsync($"[OK] {fileName} transferido via FTP e validado na flash:!");
+
+        // 3b. Limpeza de versões concorrentes na Flash para liberar espaço e garantir boot exclusivo na versão indicada
+        var targetTag = ExtrairVersaoDeNomeArquivo(fileName);
+        if (!string.IsNullOrWhiteSpace(targetTag))
+        {
+            await LimparVersoesDiferentesAsync(session, targetTag, flashDir, cancellationToken);
+        }
 
         // 4. boot-loader + save
         await ProgressAsync($"[*] Configurando boot-loader para 'flash:/{fileName}'...");
@@ -287,6 +297,161 @@ public sealed class HpeFtpUpgrader
     {
         if (_progress is not null)
             await _progress(message);
+    }
+
+    private async Task GarantirEspacoFlashParaFtpAsync(DeviceSession session, string targetFileName, string dirOut, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(dirOut)) return;
+
+        var fileMatches = Regex.Matches(dirOut, @"(?i)\b(?<file>[A-Za-z0-9_\-\.]+\.(?:ipe|bin))\b");
+        var targetTag = ExtrairVersaoDeNomeArquivo(targetFileName);
+        var filesToDelete = new List<string>();
+
+        foreach (Match m in fileMatches)
+        {
+            var f = m.Groups["file"].Value;
+            if (string.IsNullOrWhiteSpace(f) || f.Equals(targetFileName, StringComparison.OrdinalIgnoreCase)) continue;
+
+            if (f.EndsWith(".cfg", StringComparison.OrdinalIgnoreCase) ||
+                f.EndsWith(".mdb", StringComparison.OrdinalIgnoreCase) ||
+                f.EndsWith(".license", StringComparison.OrdinalIgnoreCase) ||
+                f.EndsWith(".key", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // Remove .ipe antigo
+            if (f.EndsWith(".ipe", StringComparison.OrdinalIgnoreCase))
+            {
+                filesToDelete.Add(f);
+                continue;
+            }
+
+            // Se for bin de versão diferente da alvo, remove
+            if (!string.IsNullOrWhiteSpace(targetTag) && !f.Contains(targetTag, StringComparison.OrdinalIgnoreCase))
+            {
+                filesToDelete.Add(f);
+            }
+        }
+
+        if (filesToDelete.Count > 0)
+        {
+            foreach (var f in filesToDelete)
+            {
+                await ProgressAsync($"[*] Removendo arquivo legado na Flash para liberar espaço de gravação: {f}...");
+                await DeletarArquivoFlashPermanenteAsync(session, f, ct);
+            }
+            await EnviarComandoComConfirmacaoAsync(session, "reset recycle-bin", ct);
+        }
+    }
+
+    private async Task LimparVersoesDiferentesAsync(DeviceSession session, string targetVersionTag, string dirOut, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(targetVersionTag) || string.IsNullOrWhiteSpace(dirOut)) return;
+        var targetNorm = targetVersionTag.TrimStart('R', 'r');
+
+        var fileMatches = Regex.Matches(dirOut, @"(?i)\b(?<file>[A-Za-z0-9_\-\.]+\.(?:bin|ipe))\b");
+        var filesToDelete = new List<string>();
+
+        foreach (Match m in fileMatches)
+        {
+            var file = m.Groups["file"].Value;
+            if (string.IsNullOrWhiteSpace(file)) continue;
+
+            if (file.Contains(targetNorm, StringComparison.OrdinalIgnoreCase) ||
+                file.Contains(targetVersionTag, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (file.EndsWith(".cfg", StringComparison.OrdinalIgnoreCase) ||
+                file.EndsWith(".mdb", StringComparison.OrdinalIgnoreCase) ||
+                file.EndsWith(".license", StringComparison.OrdinalIgnoreCase) ||
+                file.EndsWith(".key", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            filesToDelete.Add(file);
+        }
+
+        if (filesToDelete.Count > 0)
+        {
+            await ProgressAsync($"[*] [Flash] Liberando versões diferentes de {targetVersionTag} na Flash para garantir boot exclusivo...");
+            foreach (var file in filesToDelete)
+            {
+                await ProgressAsync($"[*] Apagando permanentemente arquivo legado na Flash: {file}...");
+                await DeletarArquivoFlashPermanenteAsync(session, file, ct);
+            }
+            await EnviarComandoComConfirmacaoAsync(session, "reset recycle-bin", ct);
+        }
+    }
+
+    private static async Task DeletarArquivoFlashPermanenteAsync(DeviceSession session, string fileName, CancellationToken ct)
+    {
+        try
+        {
+            var path = fileName.StartsWith("flash:/", StringComparison.OrdinalIgnoreCase) ? fileName : $"flash:/{fileName}";
+            var res = await session.SendExpectAsync(
+                $"delete /unreserved {path}",
+                new StopCondition[]
+                {
+                    new StopCondition.Contains("[Y/N]", "[Y/N]"),
+                    new StopCondition.Contains("Continue?", "Continue?"),
+                    new StopCondition.Prompt()
+                },
+                TimeSpan.FromSeconds(15),
+                ct);
+
+            if (res.Output.Contains("[Y/N]", StringComparison.OrdinalIgnoreCase) ||
+                res.Output.Contains("Continue", StringComparison.OrdinalIgnoreCase))
+            {
+                await session.WriteLineAsync("Y", ct);
+                await session.WaitForAsync(new StopCondition[] { new StopCondition.Prompt() }, TimeSpan.FromSeconds(15), ct);
+                await Task.Delay(500, ct);
+            }
+        }
+        catch { }
+    }
+
+    private static async Task EnviarComandoComConfirmacaoAsync(DeviceSession session, string cmd, CancellationToken ct)
+    {
+        try
+        {
+            var res = await session.SendExpectAsync(
+                cmd,
+                new StopCondition[]
+                {
+                    new StopCondition.Contains("[Y/N]", "[Y/N]"),
+                    new StopCondition.Contains("Continue?", "Continue?"),
+                    new StopCondition.Prompt()
+                },
+                TimeSpan.FromSeconds(10),
+                ct);
+
+            if (res.Output.Contains("[Y/N]", StringComparison.OrdinalIgnoreCase) ||
+                res.Output.Contains("Continue", StringComparison.OrdinalIgnoreCase))
+            {
+                await session.WriteLineAsync("Y", ct);
+                await Task.Delay(500, ct);
+                await session.WaitForAsync(new StopCondition[] { new StopCondition.Prompt() }, TimeSpan.FromSeconds(15), ct);
+            }
+        }
+        catch { }
+    }
+
+    private static string ExtrairVersaoDeNomeArquivo(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName)) return string.Empty;
+        var match = Regex.Match(fileName, @"(?i)(?:[-_.]|\b)(?<ver>R\d+(?:P\d+)?)(?:[-_.]|\.ipe|\.bin|$)", RegexOptions.Compiled);
+        if (match.Success) return match.Groups["ver"].Value.ToUpperInvariant();
+        var matchCmw = Regex.Match(fileName, @"(?i)CMW\d+[-_](?<ver>R\d+(?:P\d+)?)", RegexOptions.Compiled);
+        if (matchCmw.Success) return matchCmw.Groups["ver"].Value.ToUpperInvariant();
+        var matchNumeric = Regex.Match(fileName, @"(?i)(?:[-_.]|\b)(?<ver>\d{4}(?:P\d+)?)(?:[-_.]|\.ipe|\.bin|$)", RegexOptions.Compiled);
+        if (matchNumeric.Success)
+        {
+            var v = matchNumeric.Groups["ver"].Value.ToUpperInvariant();
+            return v.StartsWith("R") ? v : "R" + v;
+        }
+        return string.Empty;
     }
 
     private static string FirstLine(string text)
