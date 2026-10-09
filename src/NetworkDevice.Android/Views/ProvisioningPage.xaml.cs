@@ -1033,6 +1033,50 @@ public partial class ProvisioningPage : ContentPage
                     }
                 }
 
+                // Se o firmware não está no repositório local e o download falhou ou esteve offline,
+                // permite ao técnico selecionar o arquivo (.bin, .ipe, .out) da memória/Downloads do celular
+                if (localFw == null || !File.Exists(localFw.LocalFilePath))
+                {
+                    var nomeEsperado = officialRemote?.FileName ?? detected.Series.ToString();
+                    var desejaSelecionar = await MainThread.InvokeOnMainThreadAsync(() =>
+                        DisplayAlert("📁 Firmware Homologado Não Encontrado",
+                            $"O arquivo de firmware homologado ({nomeEsperado}) não foi localizado no armazenamento do smartphone.\n\n" +
+                            "Deseja selecionar o arquivo de imagem (.bin, .ipe ou .out) da memória/Downloads do celular agora?",
+                            "SELECIONAR ARQUIVO", "PULAR PARA WAN"));
+
+                    if (desejaSelecionar)
+                    {
+                        try
+                        {
+                            var res = await FilePicker.Default.PickAsync(new PickOptions
+                            {
+                                PickerTitle = $"Selecione o Firmware para {detected.Series}",
+                                FileTypes = new FilePickerFileType(new Dictionary<DevicePlatform, IEnumerable<string>>
+                                {
+                                    { DevicePlatform.Android, new[] { "application/octet-stream", "*/*" } }
+                                })
+                            });
+
+                            if (res != null && File.Exists(res.FullPath))
+                            {
+                                var folder = _firmwareRepo.GetLocalFolderForSeries(detected.Series);
+                                var destPath = Path.Combine(folder, res.FileName);
+                                if (!destPath.Equals(res.FullPath, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    File.Copy(res.FullPath, destPath, true);
+                                }
+                                localFw = _firmwareRepo.GetLocalFirmware(detected.Series) ??
+                                          new LocalFirmwareInfo(detected.Series, Path.GetFileName(folder), destPath, res.FileName, new FileInfo(destPath).Length, DateTime.UtcNow, null);
+                                LogAuto($"[✓] Firmware importado do celular: {res.FileName}");
+                            }
+                        }
+                        catch (Exception exPick)
+                        {
+                            LogAuto($"[!] Falha ao selecionar arquivo: {exPick.Message}");
+                        }
+                    }
+                }
+
                 bool transferiuLocalmente = false;
 
                 // CENÁRIO 1: HUB USB COM SERIAL E ETHERNET SIMULTANEAMENTE
@@ -1041,13 +1085,18 @@ public partial class ProvisioningPage : ContentPage
                     LogAuto("\n>>> [MODO HUB USB DETECTADO] Serial e Ethernet operando simultaneamente via HUB USB.");
                     if (localFw != null && File.Exists(localFw.LocalFilePath))
                     {
+                        // 1. Aplica Staging via Serial PRIMEIRO para ligar a porta LAN do roteador e ativar o pool DHCP
+                        Progresso(28, "1/7 Aplicando Staging via Serial...");
+                        await _connManager.ApplyTemporaryLanStagingAsync(detected.Manufacturer, detected.Series, null, s => { LogAuto(s); return Task.CompletedTask; }, ct);
+
+                        // 2. Se a Ethernet ainda não tem link ou IP atribuído, orienta o operador
                         if (!hasEth || string.IsNullOrWhiteSpace(ethMgr.GetEthernetIpAddress()))
                         {
                             var conectouCabo = await MainThread.InvokeOnMainThreadAsync(() =>
                                 DisplayAlert("🔌 Conectar Cabo de Rede no HUB",
-                                    $"O HUB USB com Serial e Ethernet foi detectado!\n\n" +
+                                    $"O staging temporário foi ativado na LAN do roteador (IP 192.168.1.1 + DHCP)!\n\n" +
                                     $"Firmware homologado: {localFw.FileName}\n\n" +
-                                    "Por favor, conecte o cabo de rede RJ45 do HUB à porta LAN do roteador (ex: GE0/0 ou GE0/1) para iniciar a transferência de alta velocidade.\n\n" +
+                                    "Por favor, conecte o cabo de rede RJ45 do HUB USB à porta LAN do roteador (ex: GE0/0 ou GE0/1) para iniciar a transferência de alta velocidade.\n\n" +
                                     "O cabo serial permanecerá conectado.",
                                     "CONECTEI O CABO", "PULAR ATUALIZAÇÃO"));
 
@@ -1063,11 +1112,8 @@ public partial class ProvisioningPage : ContentPage
                             }
                         }
 
-                        if (hasEth)
+                        if (hasEth || !string.IsNullOrWhiteSpace(ethMgr.GetEthernetIpAddress()))
                         {
-                            Progresso(28, "1/7 Aplicando Staging via Serial...");
-                            await _connManager.ApplyTemporaryLanStagingAsync(detected.Manufacturer, detected.Series, null, s => { LogAuto(s); return Task.CompletedTask; }, ct);
-
                             var ethIp = ethMgr.GetEthernetIpAddress() ?? circuit.HostLanIp ?? "192.168.1.2";
                             LogAuto($"[*] Transferindo firmware via HUB USB (OTG/ETH {ethIp})...");
                             Progresso(30, "1/7 Gravando Firmware e Zerando...");

@@ -38,22 +38,22 @@ public sealed class FirmwareRepositoryService
         var handler = new SocketsHttpHandler
         {
             PooledConnectionLifetime = TimeSpan.FromMinutes(15),
-            ConnectTimeout = TimeSpan.FromSeconds(10),
+            ConnectTimeout = TimeSpan.FromSeconds(30),
             ConnectCallback = async (context, ct) =>
             {
-                // 1. Tenta a rota padrão primária do sistema operacional
+                // 1. Tenta a rota padrão primária do sistema operacional com timeout adequado (15s para redes móveis 4G/5G)
                 try
                 {
                     var socket = new Socket(SocketType.Stream, ProtocolType.Tcp);
                     using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                    linkedCts.CancelAfter(TimeSpan.FromSeconds(3));
+                    linkedCts.CancelAfter(TimeSpan.FromSeconds(15));
                     await socket.ConnectAsync(context.DnsEndPoint.Host, context.DnsEndPoint.Port, linkedCts.Token).ConfigureAwait(false);
                     return new NetworkStream(socket, ownsSocket: true);
                 }
                 catch when (!ct.IsCancellationRequested)
                 {
-                    // Se falhar ou der timeout na rota primária (ex: bancada sem internet),
-                    // tenta conectar vinculando aos outros adaptadores locais IPv4 (ex: Wi-Fi ativo)
+                    // Se falhar ou der timeout na rota primária (ex: em desktop onde a placa Ethernet cabeada não tem rota de internet mas o Wi-Fi tem),
+                    // tenta conectar vinculando aos outros adaptadores locais IPv4
                     var candidateIps = GetActiveLocalIpv4Addresses();
                     foreach (var ip in candidateIps)
                     {
@@ -62,7 +62,7 @@ public sealed class FirmwareRepositoryService
                             var altSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
                             altSocket.Bind(new IPEndPoint(ip, 0));
                             using var altCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                            altCts.CancelAfter(TimeSpan.FromSeconds(4));
+                            altCts.CancelAfter(TimeSpan.FromSeconds(10));
                             await altSocket.ConnectAsync(context.DnsEndPoint.Host, context.DnsEndPoint.Port, altCts.Token).ConfigureAwait(false);
                             return new NetworkStream(altSocket, ownsSocket: true);
                         }
@@ -71,7 +71,11 @@ public sealed class FirmwareRepositoryService
                             // Tenta próximo IP de interface
                         }
                     }
-                    throw;
+
+                    // Último recurso: tenta conexão padrão direta respeitando apenas o CancellationToken global
+                    var fallbackSocket = new Socket(SocketType.Stream, ProtocolType.Tcp);
+                    await fallbackSocket.ConnectAsync(context.DnsEndPoint.Host, context.DnsEndPoint.Port, ct).ConfigureAwait(false);
+                    return new NetworkStream(fallbackSocket, ownsSocket: true);
                 }
             }
         };
@@ -284,7 +288,70 @@ public sealed class FirmwareRepositoryService
             .OrderByDescending(f => f.LastWriteTimeUtc)
             .ToList();
 
-        if (validFiles.Count == 0) return null;
+        if (validFiles.Count == 0)
+        {
+            // Fallback: varre diretórios comuns de Download e documentos (muito comuns no Android e Windows)
+            var candidateRoots = new List<string>();
+            try
+            {
+                var dl = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+                if (Directory.Exists(dl)) candidateRoots.Add(dl);
+            }
+            catch { }
+            try
+            {
+                var androidDl = "/storage/emulated/0/Download";
+                if (Directory.Exists(androidDl)) candidateRoots.Add(androidDl);
+            }
+            catch { }
+            try
+            {
+                var docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+                if (Directory.Exists(docs)) candidateRoots.Add(docs);
+            }
+            catch { }
+
+            foreach (var cRoot in candidateRoots.Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var cDi = new DirectoryInfo(cRoot);
+                    var cFiles = cDi.GetFiles("*.*", SearchOption.TopDirectoryOnly)
+                        .Where(f => !f.Name.StartsWith(".") && !f.Name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase))
+                        .Where(f => IsFirmwareExtension(f.Extension))
+                        .Where(f => FirmwareModelMap.MatchSeriesFromFileName(f.Name) == series)
+                        .OrderByDescending(f => f.LastWriteTimeUtc)
+                        .ToList();
+
+                    if (cFiles.Count > 0)
+                    {
+                        var cFile = cFiles[0];
+                        try
+                        {
+                            var destPath = Path.Combine(folder, cFile.Name);
+                            if (!File.Exists(destPath) || new FileInfo(destPath).Length != cFile.Length)
+                            {
+                                File.Copy(cFile.FullName, destPath, true);
+                                cFile = new FileInfo(destPath);
+                            }
+                        }
+                        catch { }
+
+                        return new LocalFirmwareInfo(
+                            series,
+                            def?.FolderName ?? Path.GetFileName(folder),
+                            cFile.FullName,
+                            cFile.Name,
+                            cFile.Length,
+                            cFile.LastWriteTimeUtc,
+                            ExtractVersionString(cFile.Name));
+                    }
+                }
+                catch { }
+            }
+
+            return null;
+        }
 
         var file = validFiles[0];
         return new LocalFirmwareInfo(

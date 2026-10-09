@@ -27,8 +27,12 @@ public sealed class CiscoHttpUpgrader
         _progress = progress;
     }
 
-    public static string BuildCopyCommand(string phoneIp, int phonePort, string fileName) =>
-        $"copy http://{phoneIp}:{phonePort}/{fileName} flash:{fileName}";
+    public static string BuildCopyCommand(string phoneIp, int phonePort, string fileName, string fsPrefix = "flash:")
+    {
+        var pfx = !string.IsNullOrWhiteSpace(fsPrefix) ? fsPrefix.Trim() : "flash:";
+        if (!pfx.EndsWith(":")) pfx += ":";
+        return $"copy http://{phoneIp}:{phonePort}/{fileName} {pfx}{fileName}";
+    }
 
     /// <param name="session">Sessão (console ou Telnet) já aberta no transporte.</param>
     /// <param name="fileName">Nome base do .bin servido pelo HTTP do celular.</param>
@@ -113,14 +117,19 @@ public sealed class CiscoHttpUpgrader
             return true;
         }
 
-        // 3. Cliente HTTP disponível na imagem? (show ip http client all)
+        // 3. Cliente HTTP disponível na imagem?
         var httpClientOut = await CiscoSaipConfigurator.SendShowAsync(session, "show ip http client all", TimeSpan.FromSeconds(10), cancellationToken);
         if (httpClientOut.Contains("% Invalid input", StringComparison.OrdinalIgnoreCase) ||
             httpClientOut.Contains("% Incomplete", StringComparison.OrdinalIgnoreCase))
         {
-            throw new DeviceSessionException(
-                "Esta imagem IOS não possui cliente HTTP ('show ip http client all' inválido). " +
-                "Use um notebook com servidor TFTP (:69) e 'copy tftp:' para este equipamento.");
+            // Valida se o comando 'copy ?' lista http: antes de emitir erro impeditivo
+            var copyHelp = await CiscoSaipConfigurator.SendShowAsync(session, "copy ?", TimeSpan.FromSeconds(10), cancellationToken);
+            if (!copyHelp.Contains("http:", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new DeviceSessionException(
+                    "Esta imagem IOS não possui suporte a cliente HTTP ('show ip http client all' inválido e 'copy http:' indisponível). " +
+                    "Use um notebook com servidor TFTP (:69) e 'copy tftp:' para este equipamento.");
+            }
         }
 
         // 4. IP temporário no roteador (caso zerado) + teste de alcance ao celular
@@ -167,7 +176,7 @@ public sealed class CiscoHttpUpgrader
                 }
             }
 
-            await CopyHttpAsync(session, phoneIp, phonePort, fileName, fileSizeBytes, cancellationToken);
+            await CopyHttpAsync(session, phoneIp, phonePort, fileName, fileSizeBytes, fsPrefix, cancellationToken);
 
             dirFlash = await CiscoSaipConfigurator.SendShowAsync(session, $"dir {fsPrefix}", TimeSpan.FromSeconds(15), cancellationToken);
             if (dirFlash.Contains("% Invalid", StringComparison.OrdinalIgnoreCase) || dirFlash.Contains("% Error", StringComparison.OrdinalIgnoreCase))
@@ -286,9 +295,9 @@ public sealed class CiscoHttpUpgrader
     }
 
     private async Task CopyHttpAsync(DeviceSession session, string phoneIp, int phonePort,
-        string fileName, long fileSizeBytes, CancellationToken ct)
+        string fileName, long fileSizeBytes, string fsPrefix, CancellationToken ct)
     {
-        var copyCmd = BuildCopyCommand(phoneIp, phonePort, fileName);
+        var copyCmd = BuildCopyCommand(phoneIp, phonePort, fileName, fsPrefix);
         await ProgressAsync($"[*] Copiando: {copyCmd} ...");
         await session.WriteLineAsync(copyCmd, ct);
         var full = new System.Text.StringBuilder();
