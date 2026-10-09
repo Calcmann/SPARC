@@ -11,6 +11,7 @@ using NetworkDevice.Protocols.Http;
 using NetworkDevice.Protocols.Hpe;
 using NetworkDevice.Protocols.Telnet;
 using System.Net.NetworkInformation;
+using System.Text;
 using UsbSerialForAndroid.Net;
 using UsbSerialForAndroid.Net.Drivers;
 using UsbSerialForAndroid.Net.Helper;
@@ -30,6 +31,27 @@ public sealed class DeviceConnectionManager
     private CancellationTokenSource? _readCts;
     private Task? _readLoopTask;
     private readonly SemaphoreSlim _loopLock = new(1, 1);
+
+    private void SetSession(DeviceSession? newSession)
+    {
+        if (_session != null)
+        {
+            _session.RawOutput -= OnSessionRawOutput;
+        }
+        _session = newSession;
+        if (_session != null)
+        {
+            _session.RawOutput += OnSessionRawOutput;
+        }
+    }
+
+    private void OnSessionRawOutput(string chunk)
+    {
+        if (!string.IsNullOrEmpty(chunk))
+        {
+            OnTerminalDataReceived?.Invoke(chunk);
+        }
+    }
 
     public ITransport? CurrentTransport => _transport;
     public DeviceSession? CurrentSession => _session;
@@ -420,7 +442,7 @@ public sealed class DeviceConnectionManager
         _transport = transport;
 
         var options = new SessionOptions { LeaveOpen = true };
-        _session = new DeviceSession(_transport, options);
+        SetSession(new DeviceSession(_transport, options));
 
         OnConnectionStateChanged?.Invoke(true);
 
@@ -431,7 +453,7 @@ public sealed class DeviceConnectionManager
     {
         _transport = customTransport;
         var options = new SessionOptions { LeaveOpen = true };
-        _session = new DeviceSession(_transport, options);
+        SetSession(new DeviceSession(_transport, options));
         OnConnectionStateChanged?.Invoke(true);
     }
 
@@ -445,7 +467,7 @@ public sealed class DeviceConnectionManager
             }
             if (_session != null)
             {
-                _session = null;
+                SetSession(null);
             }
             OnConnectionStateChanged?.Invoke(true);
         }
@@ -1038,8 +1060,7 @@ public sealed class DeviceConnectionManager
 
     /// <summary>
     /// Sonda a sessão reaproveitada: se o console estiver preso no setup dialog do IOS
-    /// zerado (sem prompt válido), descarta a sessão e reconecta do zero — o
-    /// <see cref="DeviceSession.ConnectAsync"/> responde 'no'/autoinstall/press-return.
+    /// zerado (sem prompt válido), responde 'no' e ENTER para restabelecer o prompt operacional.
     /// </summary>
     private async Task EnsureNoSetupDialogAsync(Func<string, Task> progress, CancellationToken ct)
     {
@@ -1049,36 +1070,348 @@ public sealed class DeviceConnectionManager
         string probe;
         try
         {
-            probe = await _session.SendCommandAsync(string.Empty, TimeSpan.FromSeconds(6), ct);
+            probe = await _session.SendCommandAsync(string.Empty, TimeSpan.FromSeconds(5), ct);
         }
         catch (SessionTimeoutException)
         {
-            probe = "TIMEOUT SEM PROMPT";
+            probe = string.Empty;
         }
 
         var text = (_session.CurrentPrompt ?? string.Empty) + "\n" + probe;
-        if (!IsCiscoSetupDialog(text) && !text.Contains("TIMEOUT"))
-            return;
+        if (!IsCiscoSetupDialog(text))
+        {
+            var p = (_session.CurrentPrompt ?? string.Empty).Trim();
+            if (p.EndsWith(">") || p.EndsWith("#") || p.StartsWith("<") || p.StartsWith("["))
+                return;
+        }
 
-        await progress("[*] Console preso no diálogo inicial — reconectando e respondendo...");
-        await _session.DisposeAsync();
-        _session = null;
+        if (IsCiscoSetupDialog(text))
+        {
+            await progress("[*] Diálogo de configuração inicial detectado na console — respondendo 'no' e estabelecendo prompt...");
+            try
+            {
+                var upgrader = new CiscoIOSUpgrader(progress);
+                var candidates = new List<string>();
+                if (!string.IsNullOrWhiteSpace(LastResolvedPassword)) candidates.Add(LastResolvedPassword);
+                if (!string.IsNullOrWhiteSpace(LastResolvedEnableSecret)) candidates.Add(LastResolvedEnableSecret);
+                candidates.Add("CQMR");
+                candidates.Add("PRO1AN");
 
+                await _session.WriteLineAsync("no", ct);
+                await Task.Delay(500, ct);
+                await _session.WriteLineAsync(string.Empty, ct);
+
+                await upgrader.AguardarBootCiscoIOSAsync(_session, TimeSpan.FromMinutes(3), ct, LastResolvedEnableSecret, candidates);
+                await upgrader.EstabilizarCliPosBootAsync(_session, LastResolvedEnableSecret, candidates, ct);
+                await progress("[✓] Prompt restabelecido com sucesso após o diálogo inicial!");
+                return;
+            }
+            catch (Exception ex)
+            {
+                await progress($"[AVISO] Tentativa direta de responder diálogo: {ex.Message}. Reconectando sessão...");
+            }
+
+            await _session.DisposeAsync();
+            SetSession(null);
+
+            try
+            {
+                await _transport.WriteAsync(new byte[] { 0x03 }, ct);
+                await Task.Delay(150, ct);
+            }
+            catch { }
+
+            var newSess = new DeviceSession(_transport, new SessionOptions
+            {
+                Username = LastResolvedUser,
+                Password = LastResolvedPassword,
+                ConnectTimeout = TimeSpan.FromMinutes(3),
+                CommandTimeout = TimeSpan.FromSeconds(60),
+                LeaveOpen = true
+            });
+            SetSession(newSess);
+            await _session.ConnectAsync(ct);
+            await progress("[✓] Sessão restabelecida após o diálogo inicial!");
+        }
+    }
+
+    /// <summary>
+    /// Acompanha o boot completo do dispositivo após reload/reboot/factoryreset em tempo real,
+    /// transmitindo cada caractere e marco do boot para a console CLI e log da UI, respondendo
+    /// automaticamente a diálogos de autoinstall e setup inicial, e estabilizando a sessão no prompt operacional.
+    /// </summary>
+    public async Task<bool> WaitForDeviceBootAsync(
+        DeviceManufacturer manufacturer,
+        DeviceSeries series,
+        Func<string, Task> progress,
+        CancellationToken ct)
+    {
+        if (_transport == null || !_transport.IsOpen)
+            throw new InvalidOperationException("Console serial USB não está conectado.");
+
+        if (_session == null)
+        {
+            var s = new DeviceSession(_transport, new SessionOptions
+            {
+                Username = LastResolvedUser,
+                Password = LastResolvedPassword,
+                ConnectTimeout = TimeSpan.FromMinutes(8),
+                CommandTimeout = TimeSpan.FromSeconds(60),
+                LeaveOpen = true
+            });
+            SetSession(s);
+        }
+
+        if (manufacturer == DeviceManufacturer.Cisco)
+        {
+            await progress("[*] Acompanhando inicialização do Cisco IOS em tempo real (até 8 min)...");
+            var upgrader = new CiscoIOSUpgrader(progress);
+
+            var candidates = new List<string>();
+            if (!string.IsNullOrWhiteSpace(LastResolvedPassword)) candidates.Add(LastResolvedPassword);
+            if (!string.IsNullOrWhiteSpace(LastResolvedEnableSecret)) candidates.Add(LastResolvedEnableSecret);
+            candidates.Add("CQMR");
+            candidates.Add("PRO1AN");
+            candidates.Add("cisco");
+
+            await upgrader.AguardarBootCiscoIOSAsync(_session!, TimeSpan.FromMinutes(8), ct, LastResolvedEnableSecret, candidates);
+            await upgrader.EstabilizarCliPosBootAsync(_session!, LastResolvedEnableSecret, candidates, ct);
+            await progress("[OK] Cisco IOS reinicializado e pronto para provisionamento!");
+            return true;
+        }
+        else if (manufacturer == DeviceManufacturer.Hpe)
+        {
+            await progress("[*] Acompanhando inicialização do HPE Comware em tempo real (até 6 min)...");
+            return await WaitForHpeBootAsync(_session!, progress, ct);
+        }
+        else if (manufacturer == DeviceManufacturer.Fortinet)
+        {
+            await progress("[*] Acompanhando inicialização do FortiGate em tempo real (até 4 min)...");
+            return await WaitForFortiGateBootAsync(_session!, progress, ct);
+        }
+        else
+        {
+            await progress("[*] Acompanhando inicialização do dispositivo...");
+            var upgrader = new CiscoIOSUpgrader(progress);
+            await upgrader.AguardarBootCiscoIOSAsync(_session!, TimeSpan.FromMinutes(6), ct, LastResolvedEnableSecret, null);
+            await upgrader.EstabilizarCliPosBootAsync(_session!, LastResolvedEnableSecret, null, ct);
+            return true;
+        }
+    }
+
+    private async Task<bool> WaitForHpeBootAsync(
+        DeviceSession session,
+        Func<string, Task> progress,
+        CancellationToken ct)
+    {
+        var bootStartTime = DateTime.UtcNow;
+        var bootTimeout = DateTime.UtcNow.AddMinutes(6);
+        var maxTimeout = DateTime.UtcNow.AddMinutes(12);
+        var lastActivity = DateTime.UtcNow;
+        var lastStatus = DateTime.MinValue;
+        var lastEnter = DateTime.UtcNow;
+        var promptRegex = new System.Text.RegularExpressions.Regex(@"^[<\[][A-Za-z0-9_\-\.]+[>\]]\s*$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        var loggedMilestones = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var lineAccum = new StringBuilder();
+
+        Action<string> onChunk = chunk =>
+        {
+            lastActivity = DateTime.UtcNow;
+            lineAccum.Append(chunk);
+            var str = lineAccum.ToString();
+            var nl = str.IndexOf('\n');
+            while (nl >= 0)
+            {
+                var line = str.Substring(0, nl).Trim('\r', '\n', ' ');
+                if (!string.IsNullOrWhiteSpace(line))
+                {
+                    if (line.Contains("Starting BootROM", StringComparison.OrdinalIgnoreCase) ||
+                        line.Contains("Loading the software", StringComparison.OrdinalIgnoreCase) ||
+                        line.Contains("Decompressing the software", StringComparison.OrdinalIgnoreCase) ||
+                        line.Contains("System is restarting", StringComparison.OrdinalIgnoreCase) ||
+                        line.Contains("Line aux0 is available", StringComparison.OrdinalIgnoreCase) ||
+                        line.Contains("User interface aux0 is available", StringComparison.OrdinalIgnoreCase) ||
+                        line.StartsWith("%", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (loggedMilestones.Add(line))
+                        {
+                            _ = progress($"  │ [BOOT] {line}");
+                        }
+                    }
+                }
+                str = str.Substring(nl + 1);
+                nl = str.IndexOf('\n');
+            }
+            lineAccum.Clear();
+            lineAccum.Append(str);
+        };
+
+        session.RawOutput += onChunk;
         try
         {
-            await _transport.WriteAsync(new byte[] { 0x03 }, ct);
-            await Task.Delay(150, ct);
-        }
-        catch { }
+            while (DateTime.UtcNow < bootTimeout && DateTime.UtcNow < maxTimeout && !ct.IsCancellationRequested)
+            {
+                if ((DateTime.UtcNow - lastActivity).TotalSeconds < 45)
+                {
+                    var ext = DateTime.UtcNow.AddSeconds(120);
+                    if (ext > bootTimeout && ext < maxTimeout) bootTimeout = ext;
+                }
 
-        _session = new DeviceSession(_transport, new SessionOptions
+                var elapsed = (DateTime.UtcNow - bootStartTime).TotalSeconds;
+                var remaining = (int)Math.Max(0, (bootTimeout - DateTime.UtcNow).TotalSeconds);
+
+                if ((DateTime.UtcNow - lastStatus).TotalSeconds >= 12)
+                {
+                    lastStatus = DateTime.UtcNow;
+                    await progress($"[*] Aguardando boot do HPE Comware (~{remaining}s restantes)...");
+                }
+
+                if (elapsed >= 30 && (DateTime.UtcNow - lastEnter).TotalSeconds >= 5)
+                {
+                    lastEnter = DateTime.UtcNow;
+                    await session.SendRawAsync("\r\n", ct);
+                }
+
+                try
+                {
+                    var res = await session.WaitForAsync(
+                        new StopCondition[]
+                        {
+                            new StopCondition.LineRegex("hpe-prompt", promptRegex),
+                            new StopCondition.Prompt()
+                        },
+                        TimeSpan.FromSeconds(2), ct);
+
+                    if (elapsed < 25) continue;
+
+                    await progress("[OK] HPE Comware reinicializado e pronto para operação!");
+                    try { await session.SendCommandAsync("screen-length disable", TimeSpan.FromSeconds(4), ct); } catch { }
+                    return true;
+                }
+                catch (SessionTimeoutException) { }
+            }
+        }
+        finally
         {
-            ConnectTimeout = TimeSpan.FromSeconds(60),
-            CommandTimeout = TimeSpan.FromSeconds(60),
-            LeaveOpen = true
-        });
-        await _session.ConnectAsync(ct);
-        await progress("[✓] Sessão restabelecida após o diálogo inicial!");
+            session.RawOutput -= onChunk;
+        }
+
+        throw new TimeoutException("Tempo limite esgotado aguardando boot do HPE Comware.");
+    }
+
+    private async Task<bool> WaitForFortiGateBootAsync(
+        DeviceSession session,
+        Func<string, Task> progress,
+        CancellationToken ct)
+    {
+        var bootStartTime = DateTime.UtcNow;
+        var bootTimeout = DateTime.UtcNow.AddMinutes(4);
+        var maxTimeout = DateTime.UtcNow.AddMinutes(8);
+        var lastActivity = DateTime.UtcNow;
+        var lastStatus = DateTime.MinValue;
+        var lastEnter = DateTime.UtcNow;
+
+        var loggedMilestones = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var lineAccum = new StringBuilder();
+
+        Action<string> onChunk = chunk =>
+        {
+            lastActivity = DateTime.UtcNow;
+            lineAccum.Append(chunk);
+            var str = lineAccum.ToString();
+            var nl = str.IndexOf('\n');
+            while (nl >= 0)
+            {
+                var line = str.Substring(0, nl).Trim('\r', '\n', ' ');
+                if (!string.IsNullOrWhiteSpace(line))
+                {
+                    if (line.Contains("Formatting", StringComparison.OrdinalIgnoreCase) ||
+                        line.Contains("System is starting", StringComparison.OrdinalIgnoreCase) ||
+                        line.Contains("FortiGate", StringComparison.OrdinalIgnoreCase) ||
+                        line.Contains("login:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (loggedMilestones.Add(line))
+                        {
+                            _ = progress($"  │ [BOOT] {line}");
+                        }
+                    }
+                }
+                str = str.Substring(nl + 1);
+                nl = str.IndexOf('\n');
+            }
+            lineAccum.Clear();
+            lineAccum.Append(str);
+        };
+
+        session.RawOutput += onChunk;
+        try
+        {
+            while (DateTime.UtcNow < bootTimeout && DateTime.UtcNow < maxTimeout && !ct.IsCancellationRequested)
+            {
+                if ((DateTime.UtcNow - lastActivity).TotalSeconds < 30)
+                {
+                    var ext = DateTime.UtcNow.AddSeconds(90);
+                    if (ext > bootTimeout && ext < maxTimeout) bootTimeout = ext;
+                }
+
+                var elapsed = (DateTime.UtcNow - bootStartTime).TotalSeconds;
+                var remaining = (int)Math.Max(0, (bootTimeout - DateTime.UtcNow).TotalSeconds);
+
+                if ((DateTime.UtcNow - lastStatus).TotalSeconds >= 10)
+                {
+                    lastStatus = DateTime.UtcNow;
+                    await progress($"[*] Aguardando boot do FortiGate (~{remaining}s restantes)...");
+                }
+
+                if (elapsed >= 20 && (DateTime.UtcNow - lastEnter).TotalSeconds >= 4)
+                {
+                    lastEnter = DateTime.UtcNow;
+                    await session.SendRawAsync("\r\n", ct);
+                }
+
+                try
+                {
+                    var res = await session.WaitForAsync(
+                        new StopCondition[]
+                        {
+                            new StopCondition.Contains("login", "login:"),
+                            new StopCondition.Contains("password", "Password:"),
+                            new StopCondition.LineRegex("forti-prompt", new System.Text.RegularExpressions.Regex(@"^[A-Za-z0-9_\-\.]+\s*[#$]\s*$")),
+                            new StopCondition.Prompt()
+                        },
+                        TimeSpan.FromSeconds(2), ct);
+
+                    if (elapsed < 15) continue;
+
+                    if (res.Output.Contains("login:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await progress("[*] Prompt de login do FortiGate detectado — autenticando admin...");
+                        await session.WriteLineAsync("admin", ct);
+                        await Task.Delay(500, ct);
+                    }
+                    else if (res.Output.Contains("password:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var pass = !string.IsNullOrWhiteSpace(LastResolvedPassword) ? LastResolvedPassword : "";
+                        await progress("[*] Enviando senha do FortiGate...");
+                        await session.WriteLineAsync(pass, ct);
+                        await Task.Delay(500, ct);
+                    }
+                    else
+                    {
+                        await progress("[OK] FortiGate reinicializado e pronto para operação!");
+                        return true;
+                    }
+                }
+                catch (SessionTimeoutException) { }
+            }
+        }
+        finally
+        {
+            session.RawOutput -= onChunk;
+        }
+
+        throw new TimeoutException("Tempo limite esgotado aguardando boot do FortiGate.");
     }
 
     /// <summary>
@@ -1522,7 +1855,7 @@ public sealed class DeviceConnectionManager
             }
 
             // Equipamento agora em padrão de fábrica: força re-identificação no provisionamento
-            _session = null;
+            SetSession(null);
             LastDetectionResult = null;
             return ok;
         }
@@ -1556,19 +1889,20 @@ public sealed class DeviceConnectionManager
             }
             catch { }
 
-            _session = new DeviceSession(_transport, new SessionOptions
+            var sess = new DeviceSession(_transport, new SessionOptions
             {
                 Username = LastResolvedUser,
                 Password = LastResolvedPassword,
-                ConnectTimeout = TimeSpan.FromSeconds(60),
+                ConnectTimeout = TimeSpan.FromSeconds(120),
                 CommandTimeout = TimeSpan.FromSeconds(60),
                 LeaveOpen = true
             });
-            await _session.ConnectAsync(ct);
+            SetSession(sess);
+            await sess.ConnectAsync(ct);
 
             try
             {
-                await _session.SendCommandAsync("terminal length 0", TimeSpan.FromSeconds(4), ct).ConfigureAwait(false);
+                await sess.SendCommandAsync("terminal length 0", TimeSpan.FromSeconds(4), ct).ConfigureAwait(false);
             }
             catch { }
 
@@ -1804,7 +2138,7 @@ public sealed class DeviceConnectionManager
         if (_session != null)
         {
             try { await _session.DisposeAsync(); } catch { }
-            _session = null;
+            SetSession(null);
         }
 
         if (_transport != null)
@@ -1857,7 +2191,7 @@ public sealed class DeviceConnectionManager
                 await DisconnectTelnetAsync();
 
                 _transport = transport;
-                _session = session;
+                SetSession(session);
                 _telnetTransport = transport;
                 _telnetSession = session;
 
@@ -2197,9 +2531,9 @@ public sealed class DeviceConnectionManager
                 if (resetRes.Output.Contains("y/n", StringComparison.OrdinalIgnoreCase))
                 {
                     await _session.WriteLineAsync("y", ct);
-                    await progress("[OK] Confirmação 'y' enviada. FortiGate reiniciando de fábrica (aprox. 45s)...");
-                    await Task.Delay(45000, ct);
-                    return true;
+                    await progress("[OK] Confirmação 'y' enviada. FortiGate reiniciando de fábrica...");
+                    await Task.Delay(10000, ct);
+                    return await WaitForDeviceBootAsync(DeviceManufacturer.Fortinet, series, progress, ct);
                 }
                 return false;
             }
@@ -2219,29 +2553,10 @@ public sealed class DeviceConnectionManager
                 await Task.Delay(500, ct);
                 // Confirma 'y' para prosseguir com o reboot
                 await _session.WriteLineAsync("y", ct);
+                await progress("[OK] Confirmação de reboot enviada ao HPE Comware!");
+                await Task.Delay(10000, ct);
 
-                await progress("[*] Aguardando boot do Comware (até 5 min)...");
-                var deadline = DateTime.UtcNow.AddMinutes(5);
-                while (DateTime.UtcNow < deadline && !ct.IsCancellationRequested)
-                {
-                    try
-                    {
-                        var res = await _session.WaitForAsync(
-                            new StopCondition[]
-                            {
-                                new StopCondition.Prompt(),
-                                new StopCondition.LineRegex("hpe", new System.Text.RegularExpressions.Regex(@"^[<\[][A-Za-z0-9_\-\.]+[>\]]\s*$")),
-                            },
-                            TimeSpan.FromSeconds(15), ct);
-                        await progress("[OK] HPE Comware reinicializado em padrão de fábrica!");
-                        return true;
-                    }
-                    catch (SessionTimeoutException)
-                    {
-                        await progress("[*] Aguardando boot do Comware...");
-                    }
-                }
-                return false;
+                return await WaitForDeviceBootAsync(DeviceManufacturer.Hpe, series, progress, ct);
             }
             else
             {
@@ -2279,13 +2594,19 @@ public sealed class DeviceConnectionManager
                         catch { }
                     }
                     await _session.WriteLineAsync(string.Empty, ct); // Confirma [confirm] com Enter
+                    await progress("[OK] Confirmação de reload enviada ao Cisco IOS!");
+                    await progress("[*] Aguardando reset físico da CPU do roteador (10s)...");
+                    await Task.Delay(10000, ct);
                 }
                 catch { }
 
-                await progress("[*] Aguardando boot do Cisco IOS (até 6 min)...");
-                await EnsureNoSetupDialogAsync(progress, ct);
-                await progress("[OK] Roteador Cisco reinicializado com NVRAM limpa!");
-                return true;
+                await progress("[*] Acompanhando boot do Cisco IOS em tempo real (até 8 min)...");
+                var ok = await WaitForDeviceBootAsync(DeviceManufacturer.Cisco, series, progress, ct);
+                if (ok)
+                {
+                    await progress("[OK] Roteador Cisco reinicializado com NVRAM limpa e pronto para provisionamento!");
+                }
+                return ok;
             }
         }
         finally
@@ -2348,7 +2669,7 @@ public sealed class DeviceConnectionManager
         if (_session != null)
         {
             await _session.DisposeAsync();
-            _session = null;
+            SetSession(null);
         }
 
         if (_transport != null)

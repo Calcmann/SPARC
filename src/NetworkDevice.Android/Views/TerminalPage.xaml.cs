@@ -58,7 +58,12 @@ public partial class TerminalPage : ContentPage
     {
         MainThread.BeginInvokeOnMainThread(() =>
         {
-            TerminalOutput.Text += text;
+            var cur = TerminalOutput.Text ?? "";
+            if (cur.Length > 60000)
+            {
+                cur = cur.Substring(cur.Length - 40000);
+            }
+            TerminalOutput.Text = cur + text;
             TerminalScrollView.ScrollToAsync(TerminalOutput, ScrollToPosition.End, false);
         });
     }
