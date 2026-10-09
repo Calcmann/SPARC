@@ -244,6 +244,22 @@ public sealed class AndroidLicenseManager
 
     public async Task<(bool Approved, string Message)> CheckOnlineApprovalAsync(CancellationToken ct = default)
     {
+        // 1. Primeiro verifica se o dispositivo foi liberado ou aprovado diretamente na base de cópias em campo (devices.json)
+        try
+        {
+            var (allowed, revoked, statusMsg) = await VerifyLicenseStartupAsync(ct);
+            if (allowed)
+            {
+                return (true, "Dispositivo liberado pelo Administrador! O SPARC Mobile foi ativado com sucesso.");
+            }
+            if (revoked)
+            {
+                return (false, "Esta cópia permanece revogada ou suspensa pelo Administrador.");
+            }
+        }
+        catch { }
+
+        // 2. Se ainda não estiver liberado em devices.json, consulta a fila de requisições pendentes (requests/)
         var (found, req, msg) = await _cloudService.CheckActivationRequestStatusAsync(GetMachineGuid(), ct);
         if (!found || req == null)
         {

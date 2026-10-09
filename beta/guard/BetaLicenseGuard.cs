@@ -98,6 +98,82 @@ internal static class BetaLicenseGuard
         }
     }
 
+    /// <summary>
+    /// Verificação em tempo de execução chamada durante verificação de atualizações online
+    /// ou rotina periódica em segundo plano no Windows.
+    /// Se a cópia foi revogada ou expirou na nuvem, bloqueia imediatamente.
+    /// Se foi prorrogada ou liberada, atualiza a licença local silenciosamente.
+    /// </summary>
+    public static async Task<(bool Allowed, bool Revoked, bool Expired, string Message)> CheckRuntimeLicenseOnlineAsync()
+    {
+        try
+        {
+            var machine = MachineId.Current();
+            var saved = BetaLicenseStore.Load();
+            var now = BetaClock.EffectiveUtcNow();
+
+            var (isOnline, isRevoked, newToken) = await Task.Run(() => CheckOnlineStatusSync(machine, saved)).ConfigureAwait(false);
+            if (isOnline)
+            {
+                if (isRevoked)
+                {
+                    try { if (File.Exists(BetaConfig.LicensePath)) File.Delete(BetaConfig.LicensePath); } catch { }
+                    await Application.Current.Dispatcher.InvokeAsync(() =>
+                    {
+                        MessageBox.Show(
+                            "Esta cópia do SPARC foi suspensa ou revogada pelo Administrador corporativo.\n\nO acesso ao sistema foi bloqueado.",
+                            "SPARC - Acesso Revogado", MessageBoxButton.OK, MessageBoxImage.Stop);
+                        var dlg = new ActivationWindow("Esta cópia foi revogada pelo Administrador corporativo.", machine, BetaConfig.ExpiresUtc);
+                        dlg.ShowDialog();
+                        Application.Current.Shutdown();
+                    });
+                    return (false, true, false, "Licença revogada pelo Administrador.");
+                }
+
+                if (!string.IsNullOrWhiteSpace(newToken))
+                {
+                    if (LicenseCrypto.TryValidate(newToken, out var newInfo) && newInfo != null)
+                    {
+                        saved = newToken;
+                        try
+                        {
+                            var dir = Path.GetDirectoryName(BetaConfig.LicensePath);
+                            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                            File.WriteAllText(BetaConfig.LicensePath, newToken);
+                        }
+                        catch { }
+                    }
+                }
+            }
+
+            // Valida chave salva
+            if (saved != null && LicenseCrypto.TryValidate(saved, out var info) && info != null
+                && LicenseCrypto.IsAuthorizedForThisMachine(info, now, out var reason))
+            {
+                BetaClock.Touch(now);
+                return (true, false, false, $"Licença ativa até {info.ExpiresUtc:dd/MM/yyyy}.");
+            }
+
+            // Expirada
+            await Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                MessageBox.Show(
+                    "A licença de uso do SPARC expirou.\n\nEntre em contato com o administrador para renovar o acesso.",
+                    "SPARC - Licença Expirada", MessageBoxButton.OK, MessageBoxImage.Warning);
+                var dlg = new ActivationWindow("A chave expirou ou é inválida.", machine, BetaConfig.ExpiresUtc);
+                if (dlg.ShowDialog() != true)
+                {
+                    Application.Current.Shutdown();
+                }
+            });
+            return (false, false, true, "Licença expirada.");
+        }
+        catch (Exception ex)
+        {
+            return (true, false, false, $"Offline: {ex.Message}");
+        }
+    }
+
     private static (bool IsOnline, bool IsRevoked, string? NewToken) CheckOnlineStatusSync(MachineIdentity machine, string? currentToken)
     {
         try

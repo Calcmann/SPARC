@@ -57,6 +57,7 @@ public partial class ProvisioningPage : ContentPage
         UpdateTechnicianHeader();
         UpdateSpecialFunctionsVisibility();
         UpdateFirmwareRepoSummary();
+        IniciarVerificacaoPeriodicaLicenca();
     }
 
     private void UpdateFirmwareRepoSummary()
@@ -2252,6 +2253,25 @@ public partial class ProvisioningPage : ContentPage
     {
         try
         {
+            // 1. Auditoria prioritária de licença online (revogação ou expiração remota)
+            using var licCts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+            var (allowed, revoked, licMsg) = await Services.AndroidLicenseManager.Instance.VerifyLicenseStartupAsync(licCts.Token);
+
+            if (revoked)
+            {
+                await DisplayAlert("Acesso Revogado", "Esta cópia do SPARC foi suspensa ou revogada pelo Administrador corporativo.\n\nO acesso ao aplicativo foi bloqueado.", "OK");
+                Application.Current!.MainPage = new NavigationPage(new ActivationPage());
+                return;
+            }
+
+            if (!allowed)
+            {
+                await DisplayAlert("Licença Expirada / Bloqueada", $"{licMsg}\n\nO acesso ao aplicativo requer renovação da licença junto ao Administrador.", "OK");
+                Application.Current!.MainPage = new NavigationPage(new ActivationPage());
+                return;
+            }
+
+            // 2. Verificação de versão online
             var updateService = new NetworkDevice.Core.Firmware.SparcAppUpdateService();
             var (hasUpdate, release, msg) = await updateService.CheckForUpdateAsync(AppInfo.Current.VersionString, "android");
 
@@ -2261,13 +2281,54 @@ public partial class ProvisioningPage : ContentPage
             }
             else
             {
-                await DisplayAlert("SPARC Mobile Atualizado", msg, "OK");
+                await DisplayAlert("SPARC Mobile Atualizado", $"{msg}\n\nSituação da licença: {licMsg}", "OK");
             }
         }
         catch (Exception ex)
         {
-            await DisplayAlert("Verificação OTA", $"Não foi possível verificar atualizações: {ex.Message}", "OK");
+            await DisplayAlert("Verificação OTA", $"Não foi possível verificar status/atualizações: {ex.Message}", "OK");
         }
+    }
+
+    private IDispatcherTimer? _periodicLicenseTimer;
+
+    private void IniciarVerificacaoPeriodicaLicenca()
+    {
+        if (_periodicLicenseTimer != null) return;
+        try
+        {
+            _periodicLicenseTimer = Dispatcher.CreateTimer();
+            _periodicLicenseTimer.Interval = TimeSpan.FromMinutes(30);
+            _periodicLicenseTimer.Tick += async (s, e) =>
+            {
+                try
+                {
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(6));
+                    var (allowed, revoked, msg) = await Services.AndroidLicenseManager.Instance.VerifyLicenseStartupAsync(cts.Token);
+                    if (revoked || !allowed)
+                    {
+                        MainThread.BeginInvokeOnMainThread(async () =>
+                        {
+                            if (revoked)
+                            {
+                                await DisplayAlert("Acesso Revogado", "Esta cópia do SPARC foi suspensa pelo Administrador corporativo.\n\nO acesso foi bloqueado.", "OK");
+                            }
+                            else
+                            {
+                                await DisplayAlert("Licença Expirada", "A licença do SPARC expirou.\n\nO acesso foi bloqueado até a renovação pelo Administrador.", "OK");
+                            }
+                            Application.Current!.MainPage = new NavigationPage(new ActivationPage());
+                        });
+                    }
+                }
+                catch
+                {
+                    // Silencioso se offline no momento
+                }
+            };
+            _periodicLicenseTimer.Start();
+        }
+        catch { }
     }
 
     private void AppendLog(string message)

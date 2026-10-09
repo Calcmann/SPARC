@@ -604,11 +604,13 @@ public partial class AdminWindow : Window
         if (dev != null)
         {
             var reg = !string.IsNullOrWhiteSpace(dev.Cluster) ? $" [{dev.Cluster}/{dev.Uf}]" : "";
-            TxtCopiaSelecionadaInfo.Text = $"Técnico: {dev.FullName}{reg} ({dev.Phone}) - Expira: {dev.ExpirationDateIso}";
+            TxtCopiaSelecionadaInfo.Text = $"Técnico: {dev.FullName}{reg} ({dev.Phone}) - Status: {dev.StatusBadge} - Expira: {dev.ExpirationDateIso}";
             BtnEditarCopia.IsEnabled = true;
+            BtnLiberarAcesso.IsEnabled = true;
             BtnConceder30Dias.IsEnabled = true;
             BtnConceder60Dias.IsEnabled = true;
             BtnConceder90Dias.IsEnabled = true;
+            BtnProrrogarPersonalizado.IsEnabled = true;
             BtnChamarWhatsApp.IsEnabled = !string.IsNullOrWhiteSpace(dev.Phone);
             BtnRevogarAcesso.IsEnabled = dev.CalculatedStatus != DeviceLicenseStatus.Revoked;
         }
@@ -616,12 +618,125 @@ public partial class AdminWindow : Window
         {
             TxtCopiaSelecionadaInfo.Text = "Selecione um técnico na tabela acima para gerenciar a licença";
             BtnEditarCopia.IsEnabled = false;
+            BtnLiberarAcesso.IsEnabled = false;
             BtnConceder30Dias.IsEnabled = false;
             BtnConceder60Dias.IsEnabled = false;
             BtnConceder90Dias.IsEnabled = false;
+            BtnProrrogarPersonalizado.IsEnabled = false;
             BtnChamarWhatsApp.IsEnabled = false;
             BtnRevogarAcesso.IsEnabled = false;
         }
+    }
+
+    private async void BtnLiberarAcesso_Click(object sender, RoutedEventArgs e)
+    {
+        var dev = DgCopiasCampo.SelectedItem as OnlineDeviceRecord;
+        if (dev == null) return;
+
+        var msgAviso = dev.CalculatedStatus == DeviceLicenseStatus.Revoked
+            ? $"Deseja REATIVAR e LIBERAR o acesso do técnico {dev.FullName}?\n\nO bloqueio será cancelado e será gerada uma nova chave criptográfica válida por 30 dias na nuvem."
+            : $"Deseja liberar e prorrogar por +30 dias a licença do técnico {dev.FullName}?";
+
+        var resp = MessageBox.Show(msgAviso, "Confirmar Liberação de Acesso", MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (resp == MessageBoxResult.Yes)
+        {
+            var (success, msg, updated) = await _cloudLicenseService.UnrevokeDeviceAsync(
+                dev.MachineGuid, _licenseService, 30, $"Acesso liberado/reativado pelo administrador em {DateTime.UtcNow:dd/MM/yyyy HH:mm} UTC");
+            CarregarCopiasCampo();
+            if (success)
+            {
+                MessageBox.Show(
+                    $"Acesso liberado com sucesso para {dev.FullName}!\n\n{msg}\n\nO técnico será reativado automaticamente na próxima conexão à rede.",
+                    "Liberação Concluída", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                MessageBox.Show($"Erro ao liberar acesso: {msg}", "Erro", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+    }
+
+    private void BtnProrrogarPersonalizado_Click(object sender, RoutedEventArgs e)
+    {
+        var dev = DgCopiasCampo.SelectedItem as OnlineDeviceRecord;
+        if (dev == null) return;
+
+        var dlg = new Window
+        {
+            Title = "Ampliar Prazo de Licença",
+            Width = 360,
+            Height = 180,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Owner = this,
+            Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(24, 24, 27)),
+            ResizeMode = ResizeMode.NoResize
+        };
+
+        var sp = new StackPanel { Margin = new Thickness(16) };
+        var lbl = new TextBlock
+        {
+            Text = $"Dias adicionais para {dev.FullName}:",
+            Foreground = System.Windows.Media.Brushes.White,
+            FontWeight = FontWeights.SemiBold,
+            FontSize = 12.5,
+            Margin = new Thickness(0, 0, 0, 8)
+        };
+        var txt = new TextBox
+        {
+            Text = "45",
+            Height = 30,
+            Padding = new Thickness(6, 4, 6, 4),
+            Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(39, 39, 42)),
+            Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(56, 189, 248)),
+            BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(82, 82, 91)),
+            FontSize = 13,
+            FontWeight = FontWeights.Bold
+        };
+
+        var pnlBtns = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
+        var btnOk = new Button
+        {
+            Content = "Confirmar",
+            Width = 90,
+            Height = 30,
+            Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(22, 163, 74)),
+            Foreground = System.Windows.Media.Brushes.White,
+            FontWeight = FontWeights.Bold,
+            Margin = new Thickness(0, 0, 8, 0),
+            Cursor = System.Windows.Input.Cursors.Hand
+        };
+        var btnCancel = new Button
+        {
+            Content = "Cancelar",
+            Width = 80,
+            Height = 30,
+            Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(63, 63, 70)),
+            Foreground = System.Windows.Media.Brushes.White,
+            Cursor = System.Windows.Input.Cursors.Hand
+        };
+
+        btnOk.Click += (_, _) =>
+        {
+            if (int.TryParse(txt.Text.Trim(), out var d) && d > 0)
+            {
+                dlg.DialogResult = true;
+                dlg.Close();
+                ConcederDiasSelecionado(d);
+            }
+            else
+            {
+                MessageBox.Show("Informe um número válido de dias (maior que 0).", "Aviso", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        };
+        btnCancel.Click += (_, _) => dlg.Close();
+
+        pnlBtns.Children.Add(btnOk);
+        pnlBtns.Children.Add(btnCancel);
+        sp.Children.Add(lbl);
+        sp.Children.Add(txt);
+        sp.Children.Add(pnlBtns);
+        dlg.Content = sp;
+        dlg.ShowDialog();
     }
 
     private async void BtnEditarCopia_Click(object sender, RoutedEventArgs e)
@@ -663,7 +778,7 @@ public partial class AdminWindow : Window
         {
             CarregarCopiasCampo();
             MessageBox.Show(
-                $"Prazo estendido com sucesso para {dev.FullName}!\n\n{msg}\n\nO técnico será atualizado automaticamente ao conectar à internet.",
+                $"Prazo ampliado com sucesso para {dev.FullName} (+{dias} dias)!\n\n{msg}\n\nO técnico será atualizado automaticamente ao conectar à internet.",
                 "Renovação Concluída", MessageBoxButton.OK, MessageBoxImage.Information);
         }
         else

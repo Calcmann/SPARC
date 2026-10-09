@@ -264,6 +264,79 @@ public class CloudLicenseServiceTests : IDisposable
         Assert.Equal("Android", loaded[0].Platform);
         Assert.Equal("📱 Android", loaded[0].PlatformBadge);
     }
+
+    [Fact]
+    public void UnrevokeDevice_RestoresStatusToActive_AndGeneratesValidToken()
+    {
+        var svc = new CloudLicenseService(_tempFile);
+        var signer = new LicenseSignerService();
+        var req = new ActivationRequestData("req", "guid-unrevoke", "fp-unrevoke", true, null, "Lucas", "Silva", "11999998888", "lucas@teste.com");
+        var lic = signer.GenerateLicense(req, 30, "Lucas Silva", "Inicial");
+        svc.RegisterOrUpdateDevice(req, lic);
+
+        // Revoga
+        svc.RevokeDevice("guid-unrevoke", "Suspeita de extravio");
+        var listRevoked = svc.LoadLocalDevices();
+        Assert.Equal("Revoked", listRevoked[0].Status);
+
+        // Desbloqueia / Libera
+        var (ok, msg, dev) = svc.UnrevokeDevice("guid-unrevoke", signer, 30, "Liberado pelo administrador");
+        Assert.True(ok);
+        Assert.NotNull(dev);
+        Assert.Equal("Active", dev.Status);
+        Assert.Equal(DeviceLicenseStatus.Active, dev.CalculatedStatus);
+        Assert.Contains("[LIBERADO]", dev.Notes);
+        Assert.False(string.IsNullOrWhiteSpace(dev.AuthorizedToken));
+
+        var listAfter = svc.LoadLocalDevices();
+        Assert.Equal("Active", listAfter[0].Status);
+        Assert.Equal(dev.AuthorizedToken, listAfter[0].AuthorizedToken);
+    }
+
+    [Fact]
+    public void ExtendLicense_OnRevokedDevice_ClearsRevokedAndRestoresActive()
+    {
+        var svc = new CloudLicenseService(_tempFile);
+        var signer = new LicenseSignerService();
+        var req = new ActivationRequestData("req", "guid-extend-revoked", "fp-extend-revoked", true, null, "Marcos", "Mendes");
+        var lic = signer.GenerateLicense(req, 30, "Marcos Mendes");
+        svc.RegisterOrUpdateDevice(req, lic);
+
+        // Revoga
+        svc.RevokeDevice("guid-extend-revoked", "Suspenso");
+        Assert.Equal("Revoked", svc.LoadLocalDevices()[0].Status);
+
+        // Amplia prazo em +60 dias
+        var (ok, msg, updated) = svc.ExtendLicense("guid-extend-revoked", 60, signer);
+        Assert.True(ok);
+        Assert.NotNull(updated);
+        Assert.Equal("Active", updated.Status);
+        Assert.Equal(DeviceLicenseStatus.Active, updated.CalculatedStatus);
+        Assert.Contains("[REATIVADO/ESTENDIDO]", updated.Notes);
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task VerifyLicenseStartup_BlocksWhenDeviceIsRevoked()
+    {
+        var svc = new CloudLicenseService(_tempFile);
+        svc.ForceLocalOnly = true;
+        var signer = new LicenseSignerService();
+        var req = new ActivationRequestData("req", "guid-verify-revoked", "fp-verify-revoked", true, null, "João", "Teste");
+        var lic = signer.GenerateLicense(req, 30, "João Teste");
+        svc.RegisterOrUpdateDevice(req, lic);
+
+        svc.RevokeDevice("guid-verify-revoked", "Revogado por justa causa");
+
+        var (allowed, revoked, newToken, msg) = await svc.VerifyLicenseStartupAsync(
+            "guid-verify-revoked",
+            "fp-verify-revoked",
+            lic.LicenseToken,
+            token => true);
+
+        Assert.False(allowed);
+        Assert.True(revoked);
+        Assert.Contains("revogada", msg, StringComparison.OrdinalIgnoreCase);
+    }
 }
 
 

@@ -297,8 +297,10 @@ public sealed class CloudLicenseService
     }
 
     /// <summary>
+    /// <summary>
     /// Concede tempo adicional de licença para uma máquina diretamente no controle administrativo.
     /// Gera novo token assinado com a chave privada RSA do gestor.
+    /// Se a máquina estiver revogada, ela é automaticamente reativada com status Active.
     /// </summary>
     public (bool Success, string Message, OnlineDeviceRecord? Device) ExtendLicense(
         string machineGuid,
@@ -313,14 +315,16 @@ public sealed class CloudLicenseService
             return (false, "Dispositivo não encontrado no registro local.", null);
         }
 
-        // Calcula a nova data base (a partir da data atual ou da data de expiração anterior se ainda válida)
+        // Calcula a nova data base (a partir da data atual ou da data de expiração anterior se ainda válida e não revogada)
         DateTime baseDate = DateTime.UtcNow;
-        if (DateTime.TryParse(dev.ExpirationDateIso, out var currentExp) && currentExp > DateTime.UtcNow)
+        if (DateTime.TryParse(dev.ExpirationDateIso, out var currentExp) && 
+            currentExp > DateTime.UtcNow && 
+            !string.Equals(dev.Status, "Revoked", StringComparison.OrdinalIgnoreCase))
         {
             baseDate = currentExp;
         }
 
-        var totalDays = Math.Max(1, (int)(baseDate.AddDays(additionalDays) - DateTime.UtcNow).TotalDays);
+        var totalDays = Math.Max(additionalDays, (int)(baseDate.AddDays(additionalDays) - DateTime.UtcNow).TotalDays);
 
         var fakeReq = new ActivationRequestData(
             RawRequest: string.Empty,
@@ -332,10 +336,15 @@ public sealed class CloudLicenseService
             LastName: dev.LastName,
             Phone: dev.Phone,
             Email: dev.Email,
-            ClientVersion: dev.ClientVersion);
+            Cluster: dev.Cluster,
+            Uf: dev.Uf,
+            ClientVersion: dev.ClientVersion,
+            Platform: dev.Platform,
+            Company: dev.Company,
+            EmployeeId: dev.EmployeeId);
 
         var result = signer.GenerateLicense(fakeReq, totalDays, dev.FullName, adminNotes ?? $"Renovação de +{additionalDays} dias via Admin");
-        if (!result.Success)
+        if (!result.Success || string.IsNullOrEmpty(result.LicenseToken))
         {
             return (false, $"Falha ao gerar assinatura criptográfica: {result.ErrorMessage}", dev);
         }
@@ -345,10 +354,95 @@ public sealed class CloudLicenseService
         dev.Status = "Active";
         dev.AuthorizedToken = result.LicenseToken;
         dev.LastSeenUtc = DateTime.UtcNow;
-        if (!string.IsNullOrWhiteSpace(adminNotes)) dev.Notes = adminNotes;
+        if (!string.IsNullOrWhiteSpace(adminNotes))
+        {
+            dev.Notes = adminNotes;
+        }
+        else if (dev.Notes.Contains("[REVOGADO]"))
+        {
+            dev.Notes = $"[REATIVADO/ESTENDIDO]: Renovado por +{additionalDays} dias em {DateTime.UtcNow:dd/MM/yyyy HH:mm} UTC";
+        }
 
         SaveLocalDevices(devices);
         return (true, $"Licença estendida com sucesso até {result.ExpirationDateIso} ({totalDays} dias).", dev);
+    }
+
+    /// <summary>
+    /// Libera e reativa imediatamente o acesso de um dispositivo previamente revogado ou bloqueado.
+    /// Gera novo token assinado com a chave privada RSA do gestor e restabelece status para Active.
+    /// </summary>
+    public (bool Success, string Message, OnlineDeviceRecord? Device) UnrevokeDevice(
+        string machineGuid,
+        LicenseSignerService signer,
+        int additionalDays = 30,
+        string? adminNotes = null)
+    {
+        var devices = LoadLocalDevices();
+        var dev = devices.FirstOrDefault(d => d.MachineGuid.Equals(machineGuid, StringComparison.OrdinalIgnoreCase));
+        if (dev == null) return (false, "Dispositivo não encontrado no registro local.", null);
+
+        DateTime baseDate = DateTime.UtcNow;
+        if (DateTime.TryParse(dev.ExpirationDateIso, out var currentExp) && 
+            currentExp > DateTime.UtcNow &&
+            !string.Equals(dev.Status, "Revoked", StringComparison.OrdinalIgnoreCase))
+        {
+            baseDate = currentExp;
+        }
+
+        var totalDays = Math.Max(additionalDays, (int)(baseDate.AddDays(additionalDays) - DateTime.UtcNow).TotalDays);
+
+        var reqData = new ActivationRequestData(
+            RawRequest: string.Empty,
+            MachineGuid: dev.MachineGuid,
+            MachineFingerprint: dev.MachineFingerprint,
+            IsValid: true,
+            ErrorMessage: null,
+            FirstName: dev.FirstName,
+            LastName: dev.LastName,
+            Phone: dev.Phone,
+            Email: dev.Email,
+            Cluster: dev.Cluster,
+            Uf: dev.Uf,
+            ClientVersion: dev.ClientVersion,
+            Platform: dev.Platform,
+            Company: dev.Company,
+            EmployeeId: dev.EmployeeId);
+
+        var result = signer.GenerateLicense(reqData, totalDays, dev.FullName, adminNotes ?? $"Acesso liberado/reativado pelo Administrador (+{totalDays} dias)");
+        if (!result.Success || string.IsNullOrEmpty(result.LicenseToken))
+        {
+            return (false, $"Falha ao gerar nova chave criptográfica: {result.ErrorMessage}", dev);
+        }
+
+        dev.Status = "Active";
+        dev.ExpirationDateIso = result.ExpirationDateIso;
+        dev.ValidDays = totalDays;
+        dev.AuthorizedToken = result.LicenseToken;
+        dev.LastSeenUtc = DateTime.UtcNow;
+        dev.Notes = !string.IsNullOrWhiteSpace(adminNotes) && adminNotes.Contains("[LIBERADO]")
+            ? adminNotes
+            : $"[LIBERADO]: {adminNotes ?? $"Reativado pelo administrador em {DateTime.UtcNow:dd/MM/yyyy HH:mm} UTC (+{totalDays} dias)"}";
+
+        SaveLocalDevices(devices);
+        return (true, $"Acesso liberado com sucesso para {dev.FullName}! Válido até {dev.ExpirationDateIso} ({totalDays} dias).", dev);
+    }
+
+    /// <summary>
+    /// Libera e reativa o acesso de um dispositivo previamente revogado e sincroniza imediatamente com a nuvem (devices.json).
+    /// </summary>
+    public async Task<(bool Success, string Message, OnlineDeviceRecord? Device)> UnrevokeDeviceAsync(
+        string machineGuid,
+        LicenseSignerService signer,
+        int additionalDays = 30,
+        string? adminNotes = null,
+        CancellationToken ct = default)
+    {
+        var (ok, msg, dev) = UnrevokeDevice(machineGuid, signer, additionalDays, adminNotes);
+        if (ok)
+        {
+            await SyncDevicesToRemoteAsync(ct).ConfigureAwait(false);
+        }
+        return (ok, msg, dev);
     }
 
     /// <summary>
@@ -372,6 +466,11 @@ public sealed class CloudLicenseService
     /// </summary>
     public async Task<List<OnlineDeviceRecord>> FetchRemoteDevicesAsync(CancellationToken ct = default)
     {
+        if (ForceLocalOnly)
+        {
+            return LoadLocalDevices();
+        }
+
         if (string.IsNullOrWhiteSpace(GitHubToken))
         {
             GitHubToken = ResolveGitHubToken();
@@ -544,7 +643,7 @@ public sealed class CloudLicenseService
 
     /// <summary>
     /// Validação prioritária de licença na inicialização (Windows e Android):
-    /// 1. Se online: consulta status em tempo real. Se revogado, bloqueia; se tem novo token/prorrogação, atualiza localmente.
+    /// 1. Se online: consulta status em tempo real. Se revogado ou expirado, bloqueia; se tem novo token/prorrogação, atualiza localmente.
     /// 2. Se offline: valida chave local armazenada e permite uso se válida.
     /// </summary>
     public async Task<(bool Allowed, bool Revoked, string? NewToken, string Message)> VerifyLicenseStartupAsync(
@@ -573,6 +672,9 @@ public sealed class CloudLicenseService
                         return (false, true, null, "Esta cópia do SPARC foi suspensa ou revogada pelo Administrador.");
                     }
 
+                    var isExpired = dev.CalculatedStatus == DeviceLicenseStatus.Expired ||
+                                    (DateTime.TryParse(dev.ExpirationDateIso, out var exp) && exp.Date < DateTime.UtcNow.Date);
+
                     if (!string.IsNullOrWhiteSpace(dev.AuthorizedToken))
                     {
                         if (!dev.AuthorizedToken.Equals(currentLocalToken, StringComparison.Ordinal))
@@ -584,8 +686,17 @@ public sealed class CloudLicenseService
                         }
                         else
                         {
-                            return (true, false, null, $"Licença online verificada e ativa até {dev.ExpirationDateIso}.");
+                            if (!isExpired && offlineValidator(currentLocalToken))
+                            {
+                                return (true, false, null, $"Licença online verificada e ativa até {dev.ExpirationDateIso}.");
+                            }
+                            return (false, false, null, $"Licença expirada em {dev.ExpirationDateIso}. Solicite ampliação do prazo ao Administrador.");
                         }
+                    }
+
+                    if (isExpired)
+                    {
+                        return (false, false, null, $"Licença expirada em {dev.ExpirationDateIso}. Solicite ampliação do prazo ao Administrador.");
                     }
                 }
             }
@@ -605,13 +716,13 @@ public sealed class CloudLicenseService
     }
 
     /// <summary>
-    /// Utilizado pelo SPARC do técnico para checar se o administrador concedeu mais tempo online
-    /// ou revogou o acesso da máquina.
+    /// Utilizado pelo SPARC do técnico para checar se o administrador concedeu mais tempo online,
+    /// liberou acesso ou revogou a máquina.
     /// </summary>
-    public async Task<(bool HasNewAuthorization, string? NewToken, bool IsRevoked, string? Message)> CheckOnlineStatusAsync(
+    public async Task<(bool HasNewAuthorization, string? NewToken, bool IsRevoked, bool IsExpired, string? Message)> CheckOnlineStatusAsync(
         string machineGuid,
         string machineFingerprint,
-        string currentLocalToken,
+        string? currentLocalToken,
         CancellationToken ct = default)
     {
         try
@@ -623,24 +734,32 @@ public sealed class CloudLicenseService
 
             if (dev == null)
             {
-                return (false, null, false, "Máquina não encontrada no cadastro online.");
+                return (false, null, false, false, "Máquina não encontrada no cadastro online.");
             }
 
             if (string.Equals(dev.Status, "Revoked", StringComparison.OrdinalIgnoreCase))
             {
-                return (false, null, true, "Licença revogada pelo Administrador.");
+                return (false, null, true, false, "Licença revogada pelo Administrador.");
             }
+
+            var isExpired = dev.CalculatedStatus == DeviceLicenseStatus.Expired ||
+                            (DateTime.TryParse(dev.ExpirationDateIso, out var exp) && exp.Date < DateTime.UtcNow.Date);
 
             if (!string.IsNullOrWhiteSpace(dev.AuthorizedToken) && !dev.AuthorizedToken.Equals(currentLocalToken, StringComparison.Ordinal))
             {
-                return (true, dev.AuthorizedToken, false, $"Nova autorização concedida até {dev.ExpirationDateIso}.");
+                return (true, dev.AuthorizedToken, false, isExpired, $"Nova autorização concedida até {dev.ExpirationDateIso}.");
             }
 
-            return (false, null, false, "Licença atualizada.");
+            if (isExpired)
+            {
+                return (false, null, false, true, $"Licença expirada em {dev.ExpirationDateIso}.");
+            }
+
+            return (false, null, false, false, "Licença atualizada.");
         }
         catch (Exception ex)
         {
-            return (false, null, false, $"Falha de conexão com a nuvem: {ex.Message}");
+            return (false, null, false, false, $"Falha de conexão com a nuvem: {ex.Message}");
         }
     }
 

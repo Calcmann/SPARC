@@ -93,14 +93,58 @@ public partial class MainWindow : Window
             source.AddHook(WndProc);
         }
 
-        // Verificação de atualização online com a versão homologada no repositório
+        // Verificação de atualização online e auditoria de licença remota
         _ = VerificarAtualizacaoOnlineAsync();
+        IniciarVerificacaoPeriodicaLicenca();
+    }
+
+    private System.Windows.Threading.DispatcherTimer? _periodicLicenseTimer;
+
+    private void IniciarVerificacaoPeriodicaLicenca()
+    {
+        try
+        {
+            _periodicLicenseTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMinutes(30)
+            };
+            _periodicLicenseTimer.Tick += async (s, e) =>
+            {
+                await VerificarLicencaOnlineWindowsAsync();
+            };
+            _periodicLicenseTimer.Start();
+        }
+        catch { }
+    }
+
+    private async Task VerificarLicencaOnlineWindowsAsync()
+    {
+        try
+        {
+            var betaGuardType = Type.GetType("NetworkDevice.UI.Beta.BetaLicenseGuard, SPARC") ??
+                                Type.GetType("NetworkDevice.UI.Beta.BetaLicenseGuard");
+            if (betaGuardType != null)
+            {
+                var method = betaGuardType.GetMethod("CheckRuntimeLicenseOnlineAsync", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                if (method != null)
+                {
+                    var task = (Task)method.Invoke(null, null)!;
+                    await task.ConfigureAwait(false);
+                }
+            }
+        }
+        catch
+        {
+        }
     }
 
     private async Task VerificarAtualizacaoOnlineAsync()
     {
         try
         {
+            // 1. Auditoria prioritária de licença online (revogação ou expiração remota)
+            await VerificarLicencaOnlineWindowsAsync();
+
             var updateSvc = new NetworkDevice.Core.Firmware.SparcAppUpdateService();
             var verStr = AppReleaseVersion.Replace("Release", "").Replace("Beta", "").Replace("v", "").Trim();
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
