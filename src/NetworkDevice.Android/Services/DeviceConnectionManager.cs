@@ -1538,7 +1538,7 @@ public sealed class DeviceConnectionManager
     /// </summary>
     public async Task<DeviceSession> EnsureConsoleSessionAsync(Func<string, Task>? progress = null, CancellationToken ct = default)
     {
-        if (_transport == null || !_transport.IsOpen)
+        if (_transport == null || !_transport.IsOpen || !HasSupportedSerialConnected())
             throw new InvalidOperationException("Console serial USB não está conectado.");
 
         Func<string, Task> prog = progress ?? (_ => Task.CompletedTask);

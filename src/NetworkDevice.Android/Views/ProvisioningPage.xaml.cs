@@ -1137,108 +1137,144 @@ public partial class ProvisioningPage : ContentPage
                 {
                     LogAuto("\n>>> [ATUALIZAÇÃO EM BANCADA — PORTA ÚNICA USB]");
                     var desejaSwap = await MainThread.InvokeOnMainThreadAsync(() =>
-                        DisplayAlert("🔄 Troca de Adaptador (Serial ➔ Ethernet)",
+                        DisplayAlert("⚡ Atualização de Firmware em Bancada",
                             $"Firmware desatualizado detectado ({versaoExibida}).\n" +
                             $"A imagem homologada ({localFw.FileName}) está salva no smartphone.\n\n" +
-                            "Deseja atualizar via cabo de rede em bancada?\n" +
-                            "O SPARC aplicará configuração de staging (IP 192.168.1.1 + DHCP + Telnet) antes da troca.\n\n" +
-                            "O firmware será gravado e a configuração antiga será zerada no MESMO PROCESSO com um único reload.",
-                            "SIM, FAZER TROCA", "DEIXAR PARA A WAN"));
+                            "Deseja atualizar via cabo de rede em bancada?\n\n" +
+                            "⚠️ ATENÇÃO: MANTENHA O CABO SERIAL CONECTADO!\n" +
+                            "O SPARC configurará a porta LAN do roteador (IP 192.168.1.1 + DHCP) antes de solicitar a troca de cabo.\n\n" +
+                            "O firmware será gravado e a base será zerada em um ÚNICO reload.",
+                            "SIM, ATUALIZAR EM BANCADA", "PULAR PARA WAN"));
 
                     if (desejaSwap)
                     {
-                        Progresso(28, "1/7 Aplicando Staging no Roteador...");
-                        await _connManager.ApplyTemporaryLanStagingAsync(detected.Manufacturer, detected.Series, null, s => { LogAuto(s); return Task.CompletedTask; }, ct);
+                        Progresso(28, "1/7 Aplicando Staging no Roteador via Serial...");
+                        bool stagingOk = false;
 
-                        await MainThread.InvokeOnMainThreadAsync(() =>
-                            DisplayAlert("Troca de Adaptador",
-                                "1. Desconecte o cabo Console Serial da porta USB do celular.\n" +
-                                "2. Conecte o adaptador Ethernet USB ao celular (ligado à porta LAN do roteador).\n\n" +
-                                "Toque em OK após conectar o adaptador de rede.", "OK"));
-
-                        LogAuto("[*] Aguardando enlace Ethernet no smartphone (até 20s)...");
-                        for (int w = 0; w < 20 && !ct.IsCancellationRequested; w++)
+                        // Se o técnico porventura já desconectou o cabo serial antes de confirmar:
+                        if (!_connManager.HasSupportedSerialConnected())
                         {
-                            await Task.Delay(1000, ct);
-                            if (ethMgr.IsEthernetConnected() && !string.IsNullOrWhiteSpace(ethMgr.GetEthernetIpAddress())) break;
+                            LogAuto("[!] Cabo serial não detectado. Exibindo assistente para reconectar o console...");
+                            var reconectou = await SolicitarTrocaAdaptadorAsync(
+                                ContextoTrocaAdaptador.FirmwareBancadaParaSerial,
+                                circuit,
+                                null,
+                                ct);
+
+                            if (!reconectou || !_connManager.IsConnected)
+                            {
+                                LogAuto("[!] Serial não reconectada. Postergando gravação para a WAN.");
+                            }
                         }
-                        hasEth = ethMgr.IsEthernetConnected();
 
-                        if (hasEth)
+                        if (_connManager.IsConnected || _connManager.HasSupportedSerialConnected())
                         {
-                            var ethIp = ethMgr.GetEthernetIpAddress() ?? circuit.HostLanIp ?? "192.168.1.2";
-                            LogAuto($"[*] Transferindo firmware localmente em bancada ({ethIp})...");
-                            Progresso(30, "1/7 Enviando Firmware e Zerando...");
-
-                            ShowFirmwareProgress(
-                                "GRAVAÇÃO DE FIRMWARE EM BANCADA",
-                                localFw.FileName,
-                                "Flash do Roteador",
-                                isForti || detected.Manufacturer == DeviceManufacturer.Hpe ? "OTG + ETH (FTP :2121)" : "OTG + ETH (HTTP :8080)");
-
-                            var ethBoundLocal = ethMgr.BindProcessToEthernet(LogAuto);
                             try
                             {
-                                bool successLocal = false;
-                                if (isForti)
-                                {
-                                    successLocal = await _connManager.RestoreFirmwareFortiFtpAsync(
-                                        localFw.LocalFilePath, ethIp, "sparc", "claro123", msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; }, ct);
-                                }
-                                else if (detected.Manufacturer == DeviceManufacturer.Hpe)
-                                {
-                                    successLocal = await _connManager.UpgradeFirmwareHpeFtpAsync(
-                                        localFw.LocalFilePath, ethIp, "sparc", "claro123", msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; }, ct);
-                                }
-                                else
-                                {
-                                    var routerIp = circuit.LanIp ?? "192.168.1.1";
-                                    successLocal = await _connManager.UpgradeFirmwareCiscoHttpAsync(
-                                        localFw.LocalFilePath,
-                                        phoneIp: ethIp,
-                                        routerIp: routerIp,
-                                        telnetUser: "EBT",
-                                        telnetPass: "CQMR",
-                                        routerTempIp: circuit.LanIp ?? "192.168.1.1",
-                                        routerTempMask: circuit.LanSubnetMask ?? "255.255.255.0",
-                                        lanInterface: null,
-                                        expectedMd5: null,
-                                        progress: msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; },
-                                        ct: ct);
-                                }
+                                await _connManager.ApplyTemporaryLanStagingAsync(detected.Manufacturer, detected.Series, null, s => { LogAuto(s); return Task.CompletedTask; }, ct);
+                                stagingOk = true;
+                            }
+                            catch (Exception exStaging)
+                            {
+                                LogAuto($"[!] Falha ao aplicar staging via serial: {exStaging.Message}. Postergando atualização para a WAN.");
+                                stagingOk = false;
+                            }
+                        }
 
-                                FinishFirmwareProgress(successLocal, successLocal
-                                    ? $"Firmware {localFw.FileName} gravado, base zerada e validado com sucesso!"
-                                    : "Transferência finalizada, mas o roteador não confirmou.");
+                        if (stagingOk)
+                        {
+                            LogAuto("[*] Staging aplicado no roteador. Exibindo assistente em azul para troca do adaptador...");
+                            var conectouEth = await SolicitarTrocaAdaptadorAsync(
+                                ContextoTrocaAdaptador.FirmwareBancadaParaEthernet,
+                                circuit,
+                                localFw.FileName,
+                                ct);
 
-                                if (successLocal)
+                            if (conectouEth && ethMgr.IsEthernetConnected())
+                            {
+                                var ethIp = ethMgr.GetEthernetIpAddress() ?? circuit.HostLanIp ?? "192.168.1.2";
+                                LogAuto($"[*] Transferindo firmware localmente em bancada ({ethIp})...");
+                                Progresso(30, "1/7 Enviando Firmware e Zerando...");
+
+                                ShowFirmwareProgress(
+                                    "GRAVAÇÃO DE FIRMWARE EM BANCADA",
+                                    localFw.FileName,
+                                    "Flash do Roteador",
+                                    isForti || detected.Manufacturer == DeviceManufacturer.Hpe ? "OTG + ETH (FTP :2121)" : "OTG + ETH (HTTP :8080)");
+
+                                var ethBoundLocal = ethMgr.BindProcessToEthernet(LogAuto);
+                                try
                                 {
-                                    transferiuLocalmente = true;
-                                    SetEtapa(1, $"✅ 1. Firmware & Zerar — Atualizado ({localFw.FileName}) e Zerado (1 reload)", "#16A34A");
-                                    LogAuto($"[✓] Firmware {localFw.FileName} gravado e roteador zerado com sucesso em um ÚNICO reload!");
+                                    bool successLocal = false;
+                                    if (isForti)
+                                    {
+                                        successLocal = await _connManager.RestoreFirmwareFortiFtpAsync(
+                                            localFw.LocalFilePath, ethIp, "sparc", "claro123", msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; }, ct);
+                                    }
+                                    else if (detected.Manufacturer == DeviceManufacturer.Hpe)
+                                    {
+                                        successLocal = await _connManager.UpgradeFirmwareHpeFtpAsync(
+                                            localFw.LocalFilePath, ethIp, "sparc", "claro123", msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; }, ct);
+                                    }
+                                    else
+                                    {
+                                        var routerIp = circuit.LanIp ?? "192.168.1.1";
+                                        successLocal = await _connManager.UpgradeFirmwareCiscoHttpAsync(
+                                            localFw.LocalFilePath,
+                                            phoneIp: ethIp,
+                                            routerIp: routerIp,
+                                            telnetUser: "EBT",
+                                            telnetPass: "CQMR",
+                                            routerTempIp: circuit.LanIp ?? "192.168.1.1",
+                                            routerTempMask: circuit.LanSubnetMask ?? "255.255.255.0",
+                                            lanInterface: null,
+                                            expectedMd5: null,
+                                            progress: msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; },
+                                            ct: ct);
+                                    }
+
+                                    FinishFirmwareProgress(successLocal, successLocal
+                                        ? $"Firmware {localFw.FileName} gravado, base zerada e validado com sucesso!"
+                                        : "Transferência finalizada, mas o roteador não confirmou.");
+
+                                    if (successLocal)
+                                    {
+                                        transferiuLocalmente = true;
+                                        SetEtapa(1, $"✅ 1. Firmware & Zerar — Atualizado ({localFw.FileName}) e Zerado (1 reload)", "#16A34A");
+                                        LogAuto($"[✓] Firmware {localFw.FileName} gravado e roteador zerado com sucesso em um ÚNICO reload!");
+                                    }
+                                }
+                                catch (Exception exFw)
+                                {
+                                    FinishFirmwareProgress(false, $"Erro na gravação: {exFw.Message}");
+                                    LogAuto($"[!] Falha na gravação do firmware: {exFw.Message}");
+                                }
+                                finally
+                                {
+                                    if (ethBoundLocal) ethMgr.UnbindProcessFromNetwork(LogAuto);
+
+                                    // Reconexão da serial com auto-detecção no Quadro Azul!
+                                    if (!_connManager.HasSupportedSerialConnected())
+                                    {
+                                        LogAuto("[*] Transferência finalizada. Aguardando reconexão do cabo Console Serial no assistente...");
+                                        await SolicitarTrocaAdaptadorAsync(
+                                            ContextoTrocaAdaptador.FirmwareBancadaParaSerial,
+                                            circuit,
+                                            null,
+                                            ct);
+                                    }
                                 }
                             }
-                            catch (Exception exFw)
+                            else
                             {
-                                FinishFirmwareProgress(false, $"Erro na gravação: {exFw.Message}");
-                                LogAuto($"[!] Falha na gravação do firmware: {exFw.Message}");
-                            }
-                            finally
-                            {
-                                if (ethBoundLocal) ethMgr.UnbindProcessFromNetwork(LogAuto);
-
+                                LogAuto("[!] Transferência em bancada cancelada ou adaptador Ethernet não conectado.");
                                 if (!_connManager.HasSupportedSerialConnected())
                                 {
-                                    await MainThread.InvokeOnMainThreadAsync(() =>
-                                        DisplayAlert("🔄 Reconectar Cabo Serial",
-                                            "A etapa de transferência via cabo de rede foi finalizada.\n\n" +
-                                            "Para continuar com o provisionamento da ficha SAIP:\n" +
-                                            "1. Desconecte o adaptador Ethernet do celular.\n" +
-                                            "2. Reconecte o cabo Console Serial USB ao smartphone.\n\n" +
-                                            "Toque em OK após reconectar a serial.", "OK"));
-
-                                    LogAuto("[*] Reconectando console serial USB...");
-                                    await _connManager.ConnectUsbAsync(null, 9600, s => LogAuto(s), ct);
+                                    await SolicitarTrocaAdaptadorAsync(
+                                        ContextoTrocaAdaptador.FirmwareBancadaParaSerial,
+                                        circuit,
+                                        null,
+                                        ct);
                                 }
                             }
                         }
@@ -1711,86 +1747,226 @@ public partial class ProvisioningPage : ContentPage
         return new TripleIcmpData(lanRes, wanRes, webRes);
     }
 
+    public enum ContextoTrocaAdaptador
+    {
+        FirmwareBancadaParaEthernet,
+        FirmwareBancadaParaSerial,
+        TestesRedeParaEthernet,
+        TestesRedeParaSerial
+    }
+
+    private ContextoTrocaAdaptador _contextoTrocaAtual = ContextoTrocaAdaptador.TestesRedeParaEthernet;
     private TaskCompletionSource<bool>? _trocaEthTcs;
 
-    private async Task<bool> SolicitarTrocaAdaptadorAsync(SaipCircuitData circuit, CancellationToken ct)
+    private Task<bool> SolicitarTrocaAdaptadorAsync(SaipCircuitData? circuit, CancellationToken ct)
     {
+        return SolicitarTrocaAdaptadorAsync(ContextoTrocaAdaptador.TestesRedeParaEthernet, circuit, null, ct);
+    }
+
+    private async Task<bool> SolicitarTrocaAdaptadorAsync(
+        ContextoTrocaAdaptador contexto,
+        SaipCircuitData? circuit,
+        string? customInfo,
+        CancellationToken ct)
+    {
+        _contextoTrocaAtual = contexto;
         _trocaEthTcs = new TaskCompletionSource<bool>();
         using var reg = ct.Register(() => _trocaEthTcs.TrySetResult(false));
 
-        MainThread.BeginInvokeOnMainThread(() =>
+        MainThread.BeginInvokeOnMainThread(async () =>
         {
-            try
+            switch (contexto)
             {
-                var hostIp = !string.IsNullOrWhiteSpace(circuit.HostLanIp) 
-                    ? circuit.HostLanIp 
-                    : IpCalculator.CalculateHostLanIp(circuit.LanIp, circuit.LanCidr);
-                LblTrocaEthIpInfo.Text = $"IP Host Previsto: {hostIp} | Gateway (Roteador): {circuit.LanIp}";
-                LblTrocaEthMaskInfo.Text = $"Máscara: {circuit.LanSubnetMask} (/{circuit.LanCidr}) • DHCP Temporário Ativo no Roteador";
-            }
-            catch
-            {
-                LblTrocaEthIpInfo.Text = $"Gateway (Roteador): {circuit.LanIp}";
-                LblTrocaEthMaskInfo.Text = $"Máscara: {circuit.LanSubnetMask} • DHCP Temporário Ativo";
+                case ContextoTrocaAdaptador.FirmwareBancadaParaEthernet:
+                    LblTrocaIcone.Text = "⚡";
+                    LblTrocaTitulo.Text = "TROCA DE ADAPTADOR: GRAVAR FIRMWARE";
+                    LblTrocaTitulo.TextColor = Color.FromArgb("#38BDF8");
+                    LblTrocaSubtitulo.Text = $"Roteador configurado em 192.168.1.1! Conecte o cabo de rede para transferir {customInfo ?? "a imagem homologada"}.";
+                    LblTrocaInstrucaoHeader.Text = "Para iniciar a transferência local em alta velocidade:";
+                    LblTrocaPasso1.Text = "1️⃣ Desconecte o cabo Console USB do celular.";
+                    LblTrocaPasso2.Text = "2️⃣ Conecte o Adaptador USB-Ethernet (RJ45) no celular.";
+                    LblTrocaPasso3.Text = "3️⃣ Conecte o cabo de rede RJ45 em uma porta LAN do roteador (ex: GE0/0 ou GE0/1).";
+                    BorderTrocaParametrosIp.IsVisible = true;
+                    GridTrocaAcoesIp.IsVisible = true;
+                    LblTrocaIpHeader.Text = "PARÂMETROS DE REDE TEMPORÁRIOS (STAGING BANCADA):";
+                    LblTrocaEthIpInfo.Text = "IP Host (DHCP): 192.168.1.10 - .30 | Roteador: 192.168.1.1";
+                    LblTrocaEthMaskInfo.Text = "Máscara: 255.255.255.0 (/24) • DHCP Ativo no Roteador";
+                    BtnTrocaEthConfirmar.Text = "⚡ Gravar Firmware Local";
+                    BtnTrocaEthConfirmar.BackgroundColor = Color.FromArgb("#0284C7");
+                    BtnTrocaEthPular.Text = "⏭ Pular para WAN";
+                    BtnTrocaEthPular.BackgroundColor = Color.FromArgb("#475569");
+                    LblStatusTrocaEth.Text = "Aguardando conexão do adaptador Ethernet RJ45...";
+                    LblStatusTrocaEth.TextColor = Color.FromArgb("#38BDF8");
+                    break;
+
+                case ContextoTrocaAdaptador.FirmwareBancadaParaSerial:
+                    LblTrocaIcone.Text = "🔌";
+                    LblTrocaTitulo.Text = "RECONECTAR CABO CONSOLE SERIAL";
+                    LblTrocaTitulo.TextColor = Color.FromArgb("#A5B4FC");
+                    LblTrocaSubtitulo.Text = "Firmware gravado com sucesso! Reconecte o console serial para continuar o provisionamento.";
+                    LblTrocaInstrucaoHeader.Text = "Para continuar com o provisionamento da ficha SAIP:";
+                    LblTrocaPasso1.Text = "1️⃣ Desconecte o adaptador Ethernet do celular.";
+                    LblTrocaPasso2.Text = "2️⃣ Reconecte o cabo Console Serial USB ao smartphone.";
+                    LblTrocaPasso3.Text = "3️⃣ O SPARC detectará a conexão e retomará o console automaticamente.";
+                    BorderTrocaParametrosIp.IsVisible = false;
+                    GridTrocaAcoesIp.IsVisible = false;
+                    BtnTrocaEthConfirmar.Text = "🔌 Reconectar Serial";
+                    BtnTrocaEthConfirmar.BackgroundColor = Color.FromArgb("#16A34A");
+                    BtnTrocaEthPular.Text = "✖ Cancelar";
+                    BtnTrocaEthPular.BackgroundColor = Color.FromArgb("#B91C1C");
+                    LblStatusTrocaEth.Text = "Aguardando conexão do cabo Console Serial USB...";
+                    LblStatusTrocaEth.TextColor = Color.FromArgb("#38BDF8");
+                    break;
+
+                case ContextoTrocaAdaptador.TestesRedeParaEthernet:
+                default:
+                    LblTrocaIcone.Text = "🔄";
+                    LblTrocaTitulo.Text = "TROCA DE ADAPTADOR REQUERIDA";
+                    LblTrocaTitulo.TextColor = Color.FromArgb("#A5B4FC");
+                    LblTrocaSubtitulo.Text = "Configuração básica gravada com sucesso via Console!";
+                    LblTrocaInstrucaoHeader.Text = "Para prosseguir com os testes de rede e acesso Telnet:";
+                    LblTrocaPasso1.Text = "1️⃣ Desconecte o cabo Console USB do celular.";
+                    LblTrocaPasso2.Text = "2️⃣ Conecte o Adaptador USB-Ethernet (RJ45) no celular.";
+                    LblTrocaPasso3.Text = "3️⃣ Conecte o cabo de rede RJ45 em uma porta LAN do roteador.";
+                    BorderTrocaParametrosIp.IsVisible = true;
+                    GridTrocaAcoesIp.IsVisible = true;
+                    LblTrocaIpHeader.Text = "CONFIGURAÇÃO DE IP ESTÁTICO (ROTEADOR ESTÁTICO):";
+                    if (circuit != null)
+                    {
+                        try
+                        {
+                            var hostIp = !string.IsNullOrWhiteSpace(circuit.HostLanIp) 
+                                ? circuit.HostLanIp 
+                                : IpCalculator.CalculateHostLanIp(circuit.LanIp, circuit.LanCidr);
+                            LblTrocaEthIpInfo.Text = $"IP Host Previsto: {hostIp} | Gateway (Roteador): {circuit.LanIp}";
+                            LblTrocaEthMaskInfo.Text = $"Máscara: {circuit.LanSubnetMask} (/{circuit.LanCidr}) • DHCP Temporário Ativo no Roteador";
+                        }
+                        catch
+                        {
+                            LblTrocaEthIpInfo.Text = $"Gateway (Roteador): {circuit.LanIp}";
+                            LblTrocaEthMaskInfo.Text = $"Máscara: {circuit.LanSubnetMask} • DHCP Temporário Ativo";
+                        }
+                    }
+                    BtnTrocaEthConfirmar.Text = "🔌 Iniciar Testes de Rede";
+                    BtnTrocaEthConfirmar.BackgroundColor = Color.FromArgb("#16A34A");
+                    BtnTrocaEthPular.Text = "⏭ Pular Testes Ethernet";
+                    BtnTrocaEthPular.BackgroundColor = Color.FromArgb("#475569");
+                    LblStatusTrocaEth.Text = "Aguardando conexão do adaptador Ethernet RJ45...";
+                    LblStatusTrocaEth.TextColor = Color.FromArgb("#38BDF8");
+                    break;
             }
 
-            LblStatusTrocaEth.Text = "Aguardando conexão do adaptador Ethernet RJ45...";
-            LblStatusTrocaEth.TextColor = Color.FromArgb("#38BDF8");
             IndicatorTrocaEth.IsRunning = true;
             IndicatorTrocaEth.IsVisible = true;
             FrameTrocaAdaptador.IsVisible = true;
+
+            try
+            {
+                await ViewModoAutomatico.ScrollToAsync(FrameTrocaAdaptador, ScrollToPosition.MakeVisible, true);
+            }
+            catch { }
         });
 
-        // Polling de detecção em background (600ms)
+        // Polling de detecção em tempo real em background (500ms)
         _ = Task.Run(async () =>
         {
             var ethManager = AndroidEthernetManager.Instance;
             while (!_trocaEthTcs.Task.IsCompleted && !ct.IsCancellationRequested)
             {
-                await Task.Delay(600, ct);
-                if (ethManager.IsEthernetConnected())
+                await Task.Delay(500, ct);
+
+                if (contexto == ContextoTrocaAdaptador.FirmwareBancadaParaSerial || contexto == ContextoTrocaAdaptador.TestesRedeParaSerial)
                 {
-                    var ip = ethManager.GetEthernetIpAddress();
-                    if (!string.IsNullOrWhiteSpace(ip))
+                    if (_connManager.HasSupportedSerialConnected())
                     {
                         MainThread.BeginInvokeOnMainThread(() =>
                         {
-                            LblStatusTrocaEth.Text = $"✅ IP {ip} obtido via DHCP! Iniciando testes...";
-                            LblStatusTrocaEth.TextColor = Color.FromArgb("#4ADE80");
-                            IndicatorTrocaEth.IsRunning = false;
-                            IndicatorTrocaEth.IsVisible = false;
+                            LblStatusTrocaEth.Text = "🔌 Adaptador Serial USB detectado! Reconectando sessão console...";
+                            LblStatusTrocaEth.TextColor = Color.FromArgb("#FBBF24");
+                            IndicatorTrocaEth.IsRunning = true;
+                            IndicatorTrocaEth.IsVisible = true;
                         });
 
-                        // Intervalo para estabilização do link de rede no Android
-                        await Task.Delay(1200, ct);
-                        _trocaEthTcs.TrySetResult(true);
-                        break;
+                        try
+                        {
+                            await _connManager.ConnectUsbAsync(null, 9600, s => AppendLog(s), ct);
+                            if (_connManager.IsConnected)
+                            {
+                                MainThread.BeginInvokeOnMainThread(() =>
+                                {
+                                    LblStatusTrocaEth.Text = "✅ Console Serial USB reconectado com sucesso!";
+                                    LblStatusTrocaEth.TextColor = Color.FromArgb("#4ADE80");
+                                    IndicatorTrocaEth.IsRunning = false;
+                                    IndicatorTrocaEth.IsVisible = false;
+                                });
+
+                                await Task.Delay(1000, ct);
+                                _trocaEthTcs.TrySetResult(true);
+                                break;
+                            }
+                        }
+                        catch { }
                     }
                     else
                     {
                         MainThread.BeginInvokeOnMainThread(() =>
                         {
-                            LblStatusTrocaEth.Text = "⏳ Cabo Ethernet conectado! Solicitando IP via DHCP do roteador...";
+                            LblStatusTrocaEth.Text = "Aguardando conexão do cabo Console Serial USB...";
                             LblStatusTrocaEth.TextColor = Color.FromArgb("#38BDF8");
+                            IndicatorTrocaEth.IsRunning = true;
+                            IndicatorTrocaEth.IsVisible = true;
                         });
                     }
                 }
                 else
                 {
-                    var hasHw = ethManager.HasEthernetHardwareInterface();
-                    MainThread.BeginInvokeOnMainThread(() =>
+                    if (ethManager.IsEthernetConnected())
                     {
-                        if (hasHw)
+                        var ip = ethManager.GetEthernetIpAddress();
+                        if (!string.IsNullOrWhiteSpace(ip))
                         {
-                            LblStatusTrocaEth.Text = "⚠️ Adaptador USB plugado, mas LAN do roteador SEM LINK! Verifique cabo RJ45 e porta...";
-                            LblStatusTrocaEth.TextColor = Color.FromArgb("#F87171");
+                            MainThread.BeginInvokeOnMainThread(() =>
+                            {
+                                var msgOk = contexto == ContextoTrocaAdaptador.FirmwareBancadaParaEthernet
+                                    ? $"✅ Enlace Ethernet ativo (IP {ip})! Pronto para gravar firmware..."
+                                    : $"✅ IP {ip} obtido via DHCP! Iniciando testes...";
+                                LblStatusTrocaEth.Text = msgOk;
+                                LblStatusTrocaEth.TextColor = Color.FromArgb("#4ADE80");
+                                IndicatorTrocaEth.IsRunning = false;
+                                IndicatorTrocaEth.IsVisible = false;
+                            });
+
+                            // Intervalo para estabilização do link de rede no Android
+                            await Task.Delay(1200, ct);
+                            _trocaEthTcs.TrySetResult(true);
+                            break;
                         }
                         else
                         {
-                            LblStatusTrocaEth.Text = "Aguardando conexão do adaptador Ethernet RJ45...";
-                            LblStatusTrocaEth.TextColor = Color.FromArgb("#38BDF8");
+                            MainThread.BeginInvokeOnMainThread(() =>
+                            {
+                                LblStatusTrocaEth.Text = "⏳ Cabo Ethernet conectado! Solicitando IP via DHCP do roteador...";
+                                LblStatusTrocaEth.TextColor = Color.FromArgb("#38BDF8");
+                            });
                         }
-                    });
+                    }
+                    else
+                    {
+                        var hasHw = ethManager.HasEthernetHardwareInterface() || _connManager.HasEthernetOrHubDeviceConnected();
+                        MainThread.BeginInvokeOnMainThread(() =>
+                        {
+                            if (hasHw)
+                            {
+                                LblStatusTrocaEth.Text = "⚠️ Adaptador USB plugado, mas LAN do roteador SEM LINK! Verifique cabo RJ45 e porta...";
+                                LblStatusTrocaEth.TextColor = Color.FromArgb("#F87171");
+                            }
+                            else
+                            {
+                                LblStatusTrocaEth.Text = "Aguardando conexão do adaptador Ethernet RJ45...";
+                                LblStatusTrocaEth.TextColor = Color.FromArgb("#38BDF8");
+                            }
+                        });
+                    }
                 }
             }
         }, ct);
@@ -1839,24 +2015,57 @@ public partial class ProvisioningPage : ContentPage
 
     private async void OnTrocaEthConfirmarClicked(object? sender, EventArgs e)
     {
-        if (!AndroidEthernetManager.Instance.IsEthernetConnected())
+        if (_contextoTrocaAtual == ContextoTrocaAdaptador.FirmwareBancadaParaSerial ||
+            _contextoTrocaAtual == ContextoTrocaAdaptador.TestesRedeParaSerial)
         {
-            await DisplayAlert("⚠️ Porta LAN Desconectada",
-                "A interface Ethernet cabeada está sem link físico com o roteador.\n\n" +
-                "• Verifique se o cabo RJ45 está conectado à porta LAN do roteador (ex: GE0/0 ou GE0/1).\n" +
-                "• Verifique se os LEDs de LINK da porta Ethernet no roteador e no adaptador acenderam.", "OK");
-            return;
+            if (!_connManager.HasSupportedSerialConnected())
+            {
+                await DisplayAlert("⚠️ Cabo Serial Desconectado",
+                    "Nenhum adaptador serial USB compatível foi detectado na porta OTG.\n\n" +
+                    "Conecte o cabo Console Serial USB ao smartphone para continuar.", "OK");
+                return;
+            }
+
+            try
+            {
+                await _connManager.ConnectUsbAsync(null, 9600, s => AppendLog(s), CancellationToken.None);
+                if (_connManager.IsConnected)
+                {
+                    _trocaEthTcs?.TrySetResult(true);
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                await DisplayAlert("Falha na Serial", $"Não foi possível abrir o console: {ex.Message}", "OK");
+                return;
+            }
         }
+        else
+        {
+            if (!AndroidEthernetManager.Instance.IsEthernetConnected())
+            {
+                await DisplayAlert("⚠️ Porta LAN Desconectada",
+                    "A interface Ethernet cabeada está sem link físico com o roteador.\n\n" +
+                    "• Verifique se o cabo RJ45 está conectado à porta LAN do roteador (ex: GE0/0 ou GE0/1).\n" +
+                    "• Verifique se os LEDs de LINK da porta Ethernet no roteador e no adaptador acenderam.", "OK");
+                return;
+            }
+        }
+
         _trocaEthTcs?.TrySetResult(true);
     }
 
     private async void OnTrocaEthPularClicked(object? sender, EventArgs e)
     {
-        if (!_connManager.HasSupportedSerialConnected())
+        if (_contextoTrocaAtual == ContextoTrocaAdaptador.TestesRedeParaEthernet)
         {
-            await DisplayAlert("🔄 Reconectar Cabo Serial",
-                "Você optou por pular os testes Ethernet.\n\n" +
-                "Se você desconectou a serial para ligar o adaptador de rede, reconecte o cabo Console Serial USB ao smartphone caso queira continuar operando o console.", "OK");
+            if (!_connManager.HasSupportedSerialConnected())
+            {
+                await DisplayAlert("🔄 Reconectar Cabo Serial",
+                    "Você optou por pular os testes Ethernet.\n\n" +
+                    "Se você desconectou a serial para ligar o adaptador de rede, reconecte o cabo Console Serial USB ao smartphone caso queira continuar operando o console.", "OK");
+            }
         }
         _trocaEthTcs?.TrySetResult(false);
     }

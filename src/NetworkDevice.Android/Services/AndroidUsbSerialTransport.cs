@@ -148,8 +148,12 @@ public sealed class AndroidUsbSerialTransport : ITransport
                 // Timeout expirou sem bytes disponíveis
                 return 0;
             }
-            catch (Exception)
+            catch (Exception exRead)
             {
+                if (exRead.Message?.Contains("UsbDeviceConnection", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    _isOpen = false;
+                }
                 return 0;
             }
             finally
@@ -179,8 +183,16 @@ public sealed class AndroidUsbSerialTransport : ITransport
             {
                 await _driver.WriteAsync(array, 0, array.Length, cancellationToken);
             }
-            catch
+            catch (Exception exWriteAsync)
             {
+                // Identifica se a falha decorre de hardware USB desconectado pelo usuário
+                if (exWriteAsync.Message?.Contains("UsbDeviceConnection", StringComparison.OrdinalIgnoreCase) == true ||
+                    exWriteAsync is NullReferenceException || exWriteAsync is ArgumentNullException)
+                {
+                    _isOpen = false;
+                    throw new DeviceSessionException("Cabo serial USB foi desconectado do smartphone.", exWriteAsync);
+                }
+
                 // Fallback para Write síncrono caso o canal assíncrono tenha rejeitado
                 try
                 {
@@ -188,6 +200,12 @@ public sealed class AndroidUsbSerialTransport : ITransport
                 }
                 catch (Exception ex)
                 {
+                    if (ex.Message?.Contains("UsbDeviceConnection", StringComparison.OrdinalIgnoreCase) == true ||
+                        ex is NullReferenceException || ex is ArgumentNullException)
+                    {
+                        _isOpen = false;
+                        throw new DeviceSessionException("Cabo serial USB foi desconectado do smartphone.", ex);
+                    }
                     throw new DeviceSessionException($"Falha ao transmitir bytes pela porta serial USB: {ex.Message}", ex);
                 }
             }
