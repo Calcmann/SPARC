@@ -479,17 +479,28 @@ public sealed class CiscoIOSUpgrader
             await ProgressAsync("[*] Zerando configurações antigas e senhas residuais da NVRAM (write erase) para boot limpo...");
             try
             {
-                await session.WriteLineAsync("write erase", cancellationToken);
-                await Task.Delay(400, cancellationToken);
-                await session.WriteLineAsync(string.Empty, cancellationToken);
-                await Task.Delay(800, cancellationToken);
+                var weRes = await session.SendExpectAsync(
+                    "write erase",
+                    new StopCondition[]
+                    {
+                        new StopCondition.Contains("confirm", "[confirm]"),
+                        new StopCondition.Prompt()
+                    },
+                    TimeSpan.FromSeconds(10),
+                    cancellationToken);
+
+                if (weRes.Output.Contains("[confirm]", StringComparison.OrdinalIgnoreCase))
+                {
+                    await session.WriteLineAsync(string.Empty, cancellationToken);
+                }
+                await Task.Delay(1500, cancellationToken);
             }
             catch { }
 
             // 9. Reload automático
             await ProgressAsync($"\n[*] [RELOAD AUTOMÁTICO CONJUNTO] Reiniciando roteador Cisco (novo firmware {binFileName} + base limpa)...");
             await ExecutarReloadCiscoAsync(session, cancellationToken, enableSecret, candidatePasswords);
-            await ProgressAsync($"[OK] Comando de reinicialização enviado ao Cisco IOS!");
+            await ProgressAsync($"[OK] Ciclo de reinicialização do Cisco IOS concluído com sucesso!");
 
             return true;
     }
@@ -508,15 +519,15 @@ public sealed class CiscoIOSUpgrader
                 {
                     new StopCondition.Contains("Proceed with reload? [confirm]", "Proceed with reload? [confirm]"),
                     new StopCondition.Contains("[confirm]", "[confirm]"),
-                    new StopCondition.Contains("System configuration has been modified", "System configuration has been modified"),
-                    new StopCondition.Prompt()
+                    new StopCondition.Contains("System configuration has been modified", "System configuration has been modified")
                 },
                 TimeSpan.FromSeconds(15),
                 ct);
 
             if (reloadRes.Output.Contains("System configuration has been modified", StringComparison.OrdinalIgnoreCase))
             {
-                await session.WriteLineAsync("yes", ct);
+                // CRUCIAL: Como a NVRAM foi apagada com write erase, respondemos 'no' para NÃO regravar a running-config sobre a NVRAM apagada!
+                await session.WriteLineAsync("no", ct);
                 await Task.Delay(500, ct);
                 try
                 {
@@ -532,7 +543,11 @@ public sealed class CiscoIOSUpgrader
                 catch { }
             }
 
+            // Confirma o reload com Enter
             await session.WriteLineAsync(string.Empty, ct);
+            await ProgressAsync("[OK] Comando de reinicialização enviado ao Cisco IOS!");
+            await ProgressAsync("[*] Aguardando reset físico da CPU do roteador (10s)...");
+            await Task.Delay(10000, ct);
         }
         catch { }
 
@@ -666,7 +681,8 @@ public sealed class CiscoIOSUpgrader
                     }
 
                     // Detecta conclusão de descompressão [OK] ou início da execução do IOS
-                    if (trimmed.EndsWith("[OK]") || trimmed.Contains("[OK]") ||
+                    if ((trimmed.Contains("decompress", StringComparison.OrdinalIgnoreCase) && trimmed.Contains("[OK]")) ||
+                        (decompressionReported && (trimmed.EndsWith("[OK]") || trimmed.Contains("[OK]"))) ||
                         trimmed.Contains("Cisco IOS Software", StringComparison.OrdinalIgnoreCase) ||
                         trimmed.StartsWith("%SYS-5-CONFIG_I", StringComparison.OrdinalIgnoreCase) ||
                         trimmed.StartsWith("%SYS-5-RESTART", StringComparison.OrdinalIgnoreCase))
@@ -828,6 +844,15 @@ public sealed class CiscoIOSUpgrader
                         }
                         else if (lr.Name == "cisco-prompt" || result.Matched is StopCondition.Prompt)
                         {
+                            // BLINDAGEM ANTI-ECO PRÉ-RELOAD:
+                            // Um roteador Cisco (1900/2900/800/900) NUNCA conclui a reinicialização em menos de 45 segundos.
+                            // Se ainda não se passaram 45s e não houve registro de descompressão/kernel pós-reboot,
+                            // qualquer prompt detectado é resíduo da sessão anterior e deve ser ignorado.
+                            if (elapsedTotal < 45 && !decompressionCompleted)
+                            {
+                                continue;
+                            }
+
                             await ProgressAsync("[OK] Cisco IOS reinicializado e pronto para provisionamento!");
                             await Task.Delay(1500, ct);
                             return;
@@ -835,6 +860,11 @@ public sealed class CiscoIOSUpgrader
                     }
                     else if (result.Matched is StopCondition.Prompt)
                     {
+                        if (elapsedTotal < 45 && !decompressionCompleted)
+                        {
+                            continue;
+                        }
+
                         await ProgressAsync("[OK] Prompt do Cisco IOS confirmado.");
                         await Task.Delay(1500, ct);
                         return;

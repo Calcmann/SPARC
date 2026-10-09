@@ -187,8 +187,8 @@ public sealed class CiscoHttpUpgrader
                 new StopCondition[]
                 {
                     new StopCondition.Contains("Proceed with reload? [confirm]", "Proceed with reload? [confirm]"),
+                    new StopCondition.Contains("[confirm]", "[confirm]"),
                     new StopCondition.Contains("System configuration has been modified", "System configuration has been modified"),
-                    new StopCondition.Prompt(),
                 },
                 TimeSpan.FromSeconds(20), cancellationToken);
             var tail = reloadRes.Output;
@@ -200,10 +200,12 @@ public sealed class CiscoHttpUpgrader
                     TimeSpan.FromSeconds(15), cancellationToken);
             }
             await session.WriteLineAsync(string.Empty, cancellationToken); // confirma [confirm]
+            await Task.Delay(10000, cancellationToken); // Aguarda reset físico da CPU do roteador
         }
         catch (SessionTimeoutException)
         {
             await ProgressAsync("[AVISO] Confirmação de reload não detectada — o equipamento pode já estar reiniciando.");
+            await Task.Delay(5000, cancellationToken);
         }
 
         await ProgressAsync("[*] Aguardando boot do novo IOS (até 8 min)...");

@@ -1304,7 +1304,7 @@ public partial class ProvisioningPage : ContentPage
             LogAuto("\n>>> [AUTO 3/7] Auditoria de Status das Interfaces (Físico & Lógico no Roteador)");
 
             var ifacesResult = await _connManager.VerifyInterfacesStatusAsync(
-                detected.Series,
+                detected?.Series ?? DeviceSeries.Unknown,
                 circuit.WanIp,
                 circuit.LanIp,
                 msg => { LogAuto(msg); return Task.CompletedTask; },
