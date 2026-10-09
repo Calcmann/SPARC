@@ -845,9 +845,9 @@ public partial class ProvisioningPage : ContentPage
         {
             var nome = i switch
             {
-                1 => "Zerar Configuração",
-                2 => "Atualizar Firmware",
-                3 => "Provisionar Equipamento",
+                1 => "Firmware & Zerar Configuração",
+                2 => "Provisionar Configurações",
+                3 => "Verificar Status Interfaces",
                 4 => "Configurar IP de Teste",
                 5 => "Testar Conectividade (ICMP)",
                 6 => "Testar Acesso Remoto (Telnet / SSH)",
@@ -879,510 +879,407 @@ public partial class ProvisioningPage : ContentPage
         try
         {
             // =====================================================================
-            // FASE 1: ZERAR CONFIGURAÇÃO / FACTORY RESET
+            // FASE 1: FIRMWARE & ZERAR CONFIGURAÇÃO (RELOAD ÚNICO)
             // =====================================================================
-            SetEtapa(1, "⏳ 1. Zerar Configuração — em execução", "#D97706");
-            Progresso(15, "1/7 Zerando Configuração...");
-            LogAuto("\n>>> [AUTO 1/7] Zeramento de Configuração / Factory Reset");
+            SetEtapa(1, "⏳ 1. Firmware & Zerar — auditando...", "#D97706");
+            Progresso(10, "1/7 Auditando Firmware...");
+            LogAuto("\n>>> [AUTO 1/7] Auditoria de Firmware e Zeramento de Configuração (Reload Único)");
 
-            if (detected?.OperatingState == DeviceOperatingState.Ready)
+            var atualizarFw = ChkAtualizarFirmwareAuto.IsChecked;
+            RemoteFirmwareInfo? officialRemote = null;
+            NetworkDevice.Core.Firmware.RouterFirmwareStatus? fwAudit = null;
+            string versaoExibida = detected?.Series.ToString() ?? "Desconhecido";
+
+            if (detected != null)
             {
-                SetEtapa(1, "⏭ 1. Zerar Configuração — pulado (Equipamento Pronto)", "#16A34A");
-                LogAuto("[*] Equipamento sem bloqueio de senha. Prosseguindo...");
-            }
-            else if (detected?.OperatingState == DeviceOperatingState.PasswordProtected)
-            {
-                LogAuto("[!] Equipamento protegido por senha. Executando quebra autônoma...");
-                var resetOk = await _connManager.RecoverPasswordAsync(
-                    msg => { LogAuto(msg); return Task.CompletedTask; },
-                    null,
-                    ct);
-                if (resetOk)
+                // 1. Consulta versão homologada central
+                try
                 {
-                    SetEtapa(1, "✅ 1. Zerar Configuração — OK (Desbloqueado)", "#16A34A");
-                    LogAuto("[✓] Desbloqueio e zeramento realizados com sucesso!");
+                    using var ctsFw = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    ctsFw.CancelAfter(TimeSpan.FromSeconds(10));
+                    officialRemote = await _firmwareRepo.QueryRemoteForSeriesAsync(detected.Series, ctsFw.Token);
+                }
+                catch (Exception ex)
+                {
+                    LogAuto($"  [AVISO] Falha ao consultar repositório online: {ex.Message}");
+                }
+
+                // 2. Audita versão em execução no equipamento com loop serial isolado
+                fwAudit = await _connManager.AuditFirmwareComplianceAsync(
+                    detected.Series,
+                    officialRemote,
+                    s => { LogAuto(s); return Task.CompletedTask; },
+                    ct);
+
+                versaoExibida = !string.IsNullOrWhiteSpace(fwAudit.CurrentVersion) && fwAudit.CurrentVersion != "Não identificado"
+                    ? fwAudit.CurrentVersion
+                    : $"{detected.Series} (Instalado)";
+            }
+
+            bool precisaAtualizarFw = atualizarFw && detected != null && officialRemote != null && fwAudit != null && !fwAudit.IsCompliant;
+
+            // =====================================================================
+            // CASO A: FIRMWARE HOMOLOGADO OK (OU OPERADOR DISPENSOU ATUALIZAÇÃO)
+            // =====================================================================
+            if (!precisaAtualizarFw)
+            {
+                if (officialRemote != null && fwAudit?.IsCompliant == true)
+                {
+                    LogAuto($"[✓] Firmware em conformidade com a versão homologada ({officialRemote.FileName}). Nenhuma atualização de SO necessária.");
+                }
+                else if (!atualizarFw)
+                {
+                    LogAuto($"[*] Atualização de firmware dispensada pelo operador. Mantendo {versaoExibida}.");
                 }
                 else
                 {
-                    SetEtapa(1, "⚠️ 1. Zerar Configuração — atenção", "#FBBF24");
+                    LogAuto($"[*] Nenhum firmware homologado cadastrado para {detected?.Series}. Mantendo {versaoExibida}.");
                 }
-            }
-            else
-            {
-                SetEtapa(1, "✅ 1. Zerar Configuração — OK", "#16A34A");
-            }
-            Progresso(25, "1/7 Concluído");
 
-            // =====================================================================
-            // FASE 2: ATUALIZAR FIRMWARE
-            // =====================================================================
-            var atualizarFw = ChkAtualizarFirmwareAuto.IsChecked;
-            if (atualizarFw)
-            {
-                SetEtapa(2, "⏳ 2. Atualizar Firmware — em execução", "#D97706");
-                Progresso(35, "2/7 Auditando Firmware...");
-                LogAuto("\n>>> [AUTO 2/7] Auditoria e Atualização de Firmware");
+                // 3. Avalia se precisa zerar a configuração
+                Progresso(20, "1/7 Avaliando Configuração (Zero Lixo)...");
+                LogAuto("[*] Avaliando estado de configuração do roteador (higienização/senhas)...");
 
-                if (detected != null)
+                if (detected?.OperatingState == DeviceOperatingState.PasswordProtected)
                 {
-                    var updater = new RouterDirectFirmwareUpdater(msg =>
-                    {
-                        LogAuto(msg);
-                        return Task.CompletedTask;
-                    });
-
-                    // 1. Consulta versão homologada central (remota ou cache)
-                    LogAuto($"[*] Consultando base de firmwares homologados para '{detected.Series}'...");
-                    RemoteFirmwareInfo? officialRemote = null;
-                    try
-                    {
-                        using var ctsFw = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                        ctsFw.CancelAfter(TimeSpan.FromSeconds(10));
-                        officialRemote = await _firmwareRepo.QueryRemoteForSeriesAsync(detected.Series, ctsFw.Token);
-                    }
-                    catch (Exception ex)
-                    {
-                        LogAuto($"  [AVISO] Falha ao consultar repositório online: {ex.Message}");
-                    }
-
-                    // 2. Audita versão em execução no equipamento com loop serial isolado
-                    var audit = await _connManager.AuditFirmwareComplianceAsync(
-                        detected.Series,
-                        officialRemote,
-                        s => { LogAuto(s); return Task.CompletedTask; },
+                    LogAuto("[!] Equipamento protegido por senha. Executando quebra autônoma e zeramento...");
+                    SetEtapa(1, "⏳ 1. Firmware & Zerar — Desbloqueando e zerando...", "#D97706");
+                    var resetOk = await _connManager.RecoverPasswordAsync(
+                        msg => { LogAuto(msg); return Task.CompletedTask; },
+                        null,
                         ct);
-
-                    var versaoExibida = !string.IsNullOrWhiteSpace(audit.CurrentVersion) && audit.CurrentVersion != "Não identificado"
-                        ? audit.CurrentVersion
-                        : $"{detected.Series} (Instalado)";
-
-                    if (officialRemote == null)
+                    if (resetOk)
                     {
-                        LogAuto($"[AVISO] Nenhum firmware homologado cadastrado na base para {detected.Series}.");
-                        LogAuto($"[✓] Firmware mantido na versão atual: {versaoExibida}");
-                        SetEtapa(2, $"⚠️ 2. Firmware — {versaoExibida} (Sem Homologado)", "#CA8A04");
-                    }
-                    else if (audit.IsCompliant)
-                    {
-                        LogAuto($"[✓] Firmware em conformidade com a versão homologada ({officialRemote.FileName}). Nenhuma atualização necessária.");
-                        SetEtapa(2, $"✅ 2. Firmware — {versaoExibida} (Já Homologado)", "#16A34A");
+                        SetEtapa(1, $"✅ 1. Firmware & Zerar — {versaoExibida} (Desbloqueado e Zerado)", "#16A34A");
+                        LogAuto("[✓] Desbloqueio e zeramento realizados com sucesso!");
                     }
                     else
                     {
-                        LogAuto($"[!] Firmware desatualizado detectado no {detected.Series}!");
-                        LogAuto($"    Versão em execução : {versaoExibida}");
-                        LogAuto($"    Versão homologada  : {officialRemote.FileName}");
+                        SetEtapa(1, $"⚠️ 1. Firmware & Zerar — {versaoExibida} (Aviso no desbloqueio)", "#FBBF24");
+                    }
+                }
+                else
+                {
+                    var sanitization = await _connManager.DetectSanitizationAsync(ct);
+                    LogAuto($"[*] [AVALIAÇÃO DE CONFIGURAÇÃO] {sanitization.Summary}");
 
-                        // 3. Avalia topologia de hardware (HUB USB Simultâneo vs Porta Única com Swap vs Download WAN)
-                        var ethMgr = AndroidEthernetManager.Instance;
-                        bool hasSerial = _connManager.IsConnected || _connManager.HasSupportedSerialConnected();
-                        bool hasEthHw = ethMgr.HasEthernetHardwareInterface() || _connManager.HasEthernetOrHubDeviceConnected();
-                        bool hasEth = ethMgr.IsEthernetConnected();
-                        bool isHubSimultaneous = ethMgr.IsHubUsbSimultaneousActive(hasSerial) || (hasSerial && hasEthHw);
+                    if (sanitization.IsClean)
+                    {
+                        // ZERO LIXO: Pula o zeramento e economiza o reload!
+                        SetEtapa(1, $"✅ 1. Firmware & Zerar — {versaoExibida} (Limpo / Reload dispensado)", "#16A34A");
+                        LogAuto("[✓] Equipamento já em padrão de fábrica limpo (zero lixo). Zeramento e reload dispensados com sucesso!");
+                    }
+                    else
+                    {
+                        // Configuração anterior detectada: precisa zerar seguido de 1 reload
+                        SetEtapa(1, "⏳ 1. Firmware & Zerar — Zerando config antiga (1 reload)...", "#D97706");
+                        Progresso(25, "1/7 Zerando e Reiniciando...");
+                        LogAuto($"[*] Configuração residual identificada ({sanitization.Summary}). Aplicando comandos de zeramento e reiniciando...");
 
-                        var localFw = _firmwareRepo.GetLocalFirmware(detected.Series);
+                        var zerou = await _connManager.EraseConfigurationAndReloadAsync(
+                            detected!.Manufacturer,
+                            detected.Series,
+                            msg => { LogAuto(msg); return Task.CompletedTask; },
+                            ct);
 
-                            // Se o firmware homologado não estiver salvo no celular, tenta baixar via conexão móvel/Wi-Fi do smartphone
-                            if (localFw == null && officialRemote != null)
+                        if (zerou)
+                        {
+                            SetEtapa(1, $"✅ 1. Firmware & Zerar — {versaoExibida} (Zerado em 1 reload)", "#16A34A");
+                            LogAuto("[✓] Roteador reinicializado com sucesso em padrão de fábrica limpo!");
+                        }
+                        else
+                        {
+                            SetEtapa(1, $"⚠️ 1. Firmware & Zerar — {versaoExibida} (Aviso no reload)", "#CA8A04");
+                        }
+                    }
+                }
+            }
+            // =====================================================================
+            // CASO B: PRECISA DE ATUALIZAÇÃO DE FIRMWARE
+            // Executa gravação do firmware + comandos de zerar com ÚNICO RELOAD!
+            // =====================================================================
+            else
+            {
+                LogAuto($"[!] Firmware desatualizado detectado no {detected!.Series}!");
+                LogAuto($"    Versão em execução : {versaoExibida}");
+                LogAuto($"    Versão homologada  : {officialRemote!.FileName}");
+                LogAuto("[*] Executando gravação do firmware e zeramento de configuração no mesmo ciclo (RELOAD ÚNICO)...");
+                SetEtapa(1, "⏳ 1. Firmware & Zerar — Gravando imagem + zerando base...", "#D97706");
+                Progresso(20, "1/7 Gravando Firmware...");
+
+                var ethMgr = AndroidEthernetManager.Instance;
+                bool hasSerial = _connManager.IsConnected || _connManager.HasSupportedSerialConnected();
+                bool hasEthHw = ethMgr.HasEthernetHardwareInterface() || _connManager.HasEthernetOrHubDeviceConnected();
+                bool hasEth = ethMgr.IsEthernetConnected();
+                bool isHubSimultaneous = ethMgr.IsHubUsbSimultaneousActive(hasSerial) || (hasSerial && hasEthHw);
+
+                var localFw = _firmwareRepo.GetLocalFirmware(detected.Series);
+                if (localFw == null && officialRemote != null)
+                {
+                    try
+                    {
+                        LogAuto($"[*] Baixando firmware homologado ({officialRemote.FileName}) para o smartphone...");
+                        var prog = new Progress<FirmwareDownloadProgress>(p =>
+                        {
+                            Progresso(25, $"Baixando no celular: {p.Percentage:F0}%");
+                        });
+                        await _firmwareRepo.DownloadFirmwareAsync(officialRemote, prog, ct);
+                        localFw = _firmwareRepo.GetLocalFirmware(detected.Series);
+                    }
+                    catch (Exception exDl)
+                    {
+                        LogAuto($"[AVISO] Download no smartphone indisponível: {exDl.Message}");
+                    }
+                }
+
+                bool transferiuLocalmente = false;
+
+                // CENÁRIO 1: HUB USB COM SERIAL E ETHERNET SIMULTANEAMENTE
+                if (isHubSimultaneous || (hasSerial && (hasEthHw || hasEth)))
+                {
+                    LogAuto("\n>>> [MODO HUB USB DETECTADO] Serial e Ethernet operando simultaneamente via HUB USB.");
+                    if (localFw != null && File.Exists(localFw.LocalFilePath))
+                    {
+                        if (!hasEth || string.IsNullOrWhiteSpace(ethMgr.GetEthernetIpAddress()))
+                        {
+                            var conectouCabo = await MainThread.InvokeOnMainThreadAsync(() =>
+                                DisplayAlert("🔌 Conectar Cabo de Rede no HUB",
+                                    $"O HUB USB com Serial e Ethernet foi detectado!\n\n" +
+                                    $"Firmware homologado: {localFw.FileName}\n\n" +
+                                    "Por favor, conecte o cabo de rede RJ45 do HUB à porta LAN do roteador (ex: GE0/0 ou GE0/1) para iniciar a transferência de alta velocidade.\n\n" +
+                                    "O cabo serial permanecerá conectado.",
+                                    "CONECTEI O CABO", "PULAR ATUALIZAÇÃO"));
+
+                            if (conectouCabo)
                             {
-                                try
+                                LogAuto("[*] Aguardando enlace Ethernet no HUB USB (até 15s)...");
+                                for (int w = 0; w < 15 && !ct.IsCancellationRequested; w++)
                                 {
-                                    LogAuto($"[*] Baixando firmware homologado ({officialRemote.FileName}) para o celular...");
-                                    var prog = new Progress<FirmwareDownloadProgress>(p =>
-                                    {
-                                        Progresso(40, $"Baixando no celular: {p.Percentage:F0}%");
-                                    });
-                                    await _firmwareRepo.DownloadFirmwareAsync(officialRemote, prog, ct);
-                                    localFw = _firmwareRepo.GetLocalFirmware(detected.Series);
+                                    await Task.Delay(1000, ct);
+                                    if (ethMgr.IsEthernetConnected() && !string.IsNullOrWhiteSpace(ethMgr.GetEthernetIpAddress())) break;
                                 }
-                                catch (Exception exDl)
+                                hasEth = ethMgr.IsEthernetConnected();
+                            }
+                        }
+
+                        if (hasEth)
+                        {
+                            Progresso(28, "1/7 Aplicando Staging via Serial...");
+                            await _connManager.ApplyTemporaryLanStagingAsync(detected.Manufacturer, detected.Series, null, s => { LogAuto(s); return Task.CompletedTask; }, ct);
+
+                            var ethIp = ethMgr.GetEthernetIpAddress() ?? circuit.HostLanIp ?? "192.168.1.2";
+                            LogAuto($"[*] Transferindo firmware via HUB USB (OTG/ETH {ethIp})...");
+                            Progresso(30, "1/7 Gravando Firmware e Zerando...");
+
+                            ShowFirmwareProgress(
+                                "GRAVAÇÃO DE FIRMWARE VIA HUB USB",
+                                localFw.FileName,
+                                "Flash do Roteador",
+                                isForti || detected.Manufacturer == DeviceManufacturer.Hpe ? "HUB OTG+ETH (FTP :2121)" : "HUB OTG+ETH (HTTP :8080)");
+
+                            var ethBoundLocal = ethMgr.BindProcessToEthernet(LogAuto);
+                            try
+                            {
+                                bool successLocal = false;
+                                if (isForti)
                                 {
-                                    LogAuto($"[AVISO] Download celular indisponível: {exDl.Message}");
+                                    successLocal = await _connManager.RestoreFirmwareFortiFtpAsync(
+                                        localFw.LocalFilePath, ethIp, "sparc", "claro123", msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; }, ct);
+                                }
+                                else if (detected.Manufacturer == DeviceManufacturer.Hpe)
+                                {
+                                    successLocal = await _connManager.UpgradeFirmwareHpeFtpAsync(
+                                        localFw.LocalFilePath, ethIp, "sparc", "claro123", msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; }, ct);
+                                }
+                                else
+                                {
+                                    var routerIp = circuit.LanIp ?? "192.168.1.1";
+                                    successLocal = await _connManager.UpgradeFirmwareCiscoHttpAsync(
+                                        localFw.LocalFilePath,
+                                        phoneIp: ethIp,
+                                        routerIp: routerIp,
+                                        telnetUser: "EBT",
+                                        telnetPass: "CQMR",
+                                        routerTempIp: circuit.LanIp ?? "192.168.1.1",
+                                        routerTempMask: circuit.LanSubnetMask ?? "255.255.255.0",
+                                        lanInterface: null,
+                                        expectedMd5: null,
+                                        progress: msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; },
+                                        ct: ct);
+                                }
+
+                                FinishFirmwareProgress(successLocal, successLocal
+                                    ? $"Firmware {localFw.FileName} gravado, base zerada e validado com sucesso!"
+                                    : "Transferência finalizada, mas o roteador não confirmou.");
+
+                                if (successLocal)
+                                {
+                                    transferiuLocalmente = true;
+                                    SetEtapa(1, $"✅ 1. Firmware & Zerar — Atualizado ({localFw.FileName}) e Zerado (1 reload)", "#16A34A");
+                                    LogAuto($"[✓] Firmware {localFw.FileName} instalado e equipamento zerado com sucesso em um ÚNICO reload!");
                                 }
                             }
-
-                            bool transferiuLocalmente = false;
-
-                            // CENÁRIO A: HUB USB COM SERIAL E ETHERNET SIMULTANEAMENTE (NÃO PEDE TROCA DE CABOS!)
-                            if (isHubSimultaneous || (hasSerial && (hasEthHw || hasEth)))
+                            catch (Exception exFw)
                             {
-                                LogAuto("\n>>> [MODO HUB USB DETECTADO] Adaptador Serial e Adaptador Ethernet operando simultaneamente via HUB USB.");
-                                LogAuto("[*] O console serial continuará conectado durante toda a transferência.");
-
-                                if (localFw != null && File.Exists(localFw.LocalFilePath))
-                                {
-                                    if (!hasEth || string.IsNullOrWhiteSpace(ethMgr.GetEthernetIpAddress()))
-                                    {
-                                        var conectouCabo = await MainThread.InvokeOnMainThreadAsync(() =>
-                                            DisplayAlert("🔌 Conectar Cabo de Rede no HUB",
-                                                $"O HUB USB com Serial e Ethernet foi detectado!\n\n" +
-                                                $"Firmware homologado: {localFw.FileName}\n\n" +
-                                                "Por favor, conecte o cabo de rede RJ45 do HUB à porta LAN do roteador (ex: GE0/0 ou GE0/1) para iniciar a transferência de alta velocidade.\n\n" +
-                                                "O cabo serial permanecerá conectado.",
-                                                "CONECTEI O CABO", "PULAR ATUALIZAÇÃO"));
-
-                                        if (conectouCabo)
-                                        {
-                                            bool tentarHubEth = true;
-                                            while (tentarHubEth && !ct.IsCancellationRequested)
-                                            {
-                                                tentarHubEth = false;
-                                                LogAuto("[*] Aguardando enlace Ethernet no HUB USB (até 15s)...");
-                                                for (int w = 0; w < 15 && !ct.IsCancellationRequested; w++)
-                                                {
-                                                    await Task.Delay(1000, ct);
-                                                    if (ethMgr.IsEthernetConnected() && !string.IsNullOrWhiteSpace(ethMgr.GetEthernetIpAddress())) break;
-                                                }
-                                                hasEth = ethMgr.IsEthernetConnected();
-                                                var ipHub = ethMgr.GetEthernetIpAddress();
-                                                if (!hasEth || string.IsNullOrWhiteSpace(ipHub))
-                                                {
-                                                    LogAuto("[ALERTA] Porta LAN do roteador permaneceu DESCONECTADA (sem link no HUB).");
-                                                    var respHub = await MainThread.InvokeOnMainThreadAsync(() =>
-                                                        DisplayAlert("⚠️ Porta LAN Desconectada / Sem Link",
-                                                            "O cabo RJ45 conectado ao HUB USB não estabeleceu enlace elétrico com a porta LAN do roteador.\n\n" +
-                                                            "• Verifique se o cabo está conectado à porta LAN correta (ex: GE0/0 ou GE0/1).\n" +
-                                                            "• Verifique se os LEDs de LINK da porta Ethernet no roteador acenderam.\n" +
-                                                            "• Se o roteador tiver mais de uma porta LAN, experimente conectar na outra porta.\n\n" +
-                                                            "Deseja verificar o cabo de rede e tentar novamente?",
-                                                            "TENTAR NOVAMENTE", "PULAR ATUALIZAÇÃO VIA HUB"));
-                                                    if (respHub)
-                                                    {
-                                                        tentarHubEth = true;
-                                                        continue;
-                                                    }
-                                                    else
-                                                    {
-                                                        LogAuto("[!] Atualização via HUB dispensada: porta LAN do roteador sem link físico.");
-                                                        hasEth = false;
-                                                        break;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    if (hasEth)
-                                    {
-                                        Progresso(40, "2/7 Aplicando Staging via Serial...");
-                                        await _connManager.ApplyTemporaryLanStagingAsync(detected.Manufacturer, detected.Series, null, s => { LogAuto(s); return Task.CompletedTask; }, ct);
-
-                                        var ethIp = ethMgr.GetEthernetIpAddress() ?? circuit.HostLanIp ?? "192.168.1.2";
-                                        LogAuto($"[*] Transferindo firmware via HUB USB (OTG/ETH {ethIp})...");
-                                        Progresso(40, "2/7 Gravando Firmware via OTG/ETH...");
-
-                                        ShowFirmwareProgress(
-                                            "GRAVAÇÃO DE FIRMWARE VIA HUB USB",
-                                            localFw.FileName,
-                                            "Flash do Roteador",
-                                            isForti || detected.Manufacturer == DeviceManufacturer.Hpe ? "HUB OTG+ETH (FTP :2121)" : "HUB OTG+ETH (HTTP :8080)");
-
-                                        var ethBoundLocal = ethMgr.BindProcessToEthernet(LogAuto);
-                                        try
-                                        {
-                                            bool successLocal = false;
-                                            if (isForti)
-                                            {
-                                                successLocal = await _connManager.RestoreFirmwareFortiFtpAsync(
-                                                    localFw.LocalFilePath, ethIp, "sparc", "claro123", msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; }, ct);
-                                            }
-                                            else if (detected.Manufacturer == DeviceManufacturer.Hpe)
-                                            {
-                                                successLocal = await _connManager.UpgradeFirmwareHpeFtpAsync(
-                                                    localFw.LocalFilePath, ethIp, "sparc", "claro123", msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; }, ct);
-                                            }
-                                            else
-                                            {
-                                                var routerIp = circuit.LanIp ?? "192.168.1.1";
-                                                successLocal = await _connManager.UpgradeFirmwareCiscoHttpAsync(
-                                                    localFw.LocalFilePath,
-                                                    phoneIp: ethIp,
-                                                    routerIp: routerIp,
-                                                    telnetUser: "EBT",
-                                                    telnetPass: "CQMR",
-                                                    routerTempIp: circuit.LanIp ?? "192.168.1.1",
-                                                    routerTempMask: circuit.LanSubnetMask ?? "255.255.255.0",
-                                                    lanInterface: null,
-                                                    expectedMd5: null,
-                                                    progress: msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; },
-                                                    ct: ct);
-                                            }
-
-                                            FinishFirmwareProgress(successLocal, successLocal
-                                                ? $"Firmware {localFw.FileName} gravado e validado com sucesso na flash!"
-                                                : "Transferência finalizada, mas o roteador não confirmou.");
-
-                                            if (successLocal)
-                                            {
-                                                transferiuLocalmente = true;
-                                                SetEtapa(2, $"✅ 2. Firmware — Atualizado via HUB USB ({localFw.FileName})", "#16A34A");
-                                                LogAuto($"[✓] Firmware gravado com sucesso no roteador via HUB USB! Versão: {localFw.FileName}");
-                                                // No HUB USB a porta serial nunca foi desconectada; mantém console aberto sem pedir reconexão!
-                                            }
-                                            else
-                                            {
-                                                LogAuto($"[!] Transferência via HUB USB não confirmada. Mantendo versão atual ({versaoExibida}).");
-                                            }
-                                        }
-                                        catch (Exception exFw)
-                                        {
-                                            FinishFirmwareProgress(false, $"Erro na gravação: {exFw.Message}");
-                                            LogAuto($"[!] Falha na gravação do firmware: {exFw.Message}");
-                                        }
-                                        finally
-                                        {
-                                            if (ethBoundLocal) ethMgr.UnbindProcessFromNetwork(LogAuto);
-                                        }
-                                    }
-                                }
+                                FinishFirmwareProgress(false, $"Erro na gravação: {exFw.Message}");
+                                LogAuto($"[!] Falha na gravação do firmware: {exFw.Message}");
                             }
-
-                            // CENÁRIO B: PORTA ÚNICA USB OU DOWNLOAD WAN
-                            if (!transferiuLocalmente)
+                            finally
                             {
-                                // Testa se a WAN do roteador tem internet para download direto
-                                Progresso(38, "2/7 Verificando WAN para Upgrade...");
-                                var wanDiag = await _connManager.CheckWanAndInternetAsync(detected.Series, s => { LogAuto(s); return Task.CompletedTask; }, ct);
-
-                                if (wanDiag.IsPhysicalUp && wanDiag.HasInternet)
-                                {
-                                    LogAuto($"[*] Porta WAN ({wanDiag.InterfaceName}) UP e Internet OK. Disparando download direto do firmware homologado pelo roteador...");
-                                    Progresso(40, "2/7 Gravando Firmware via WAN...");
-                                    var url = RouterDirectFirmwareUpdater.BuildDirectDownloadUrl(detected.Series);
-                                    bool ok = false;
-                                    await _connManager.PauseReadLoopAsync();
-                                    try
-                                    {
-                                        var sessWan = await _connManager.EnsureConsoleSessionAsync(s => { LogAuto(s); return Task.CompletedTask; }, ct);
-                                        ok = await updater.TriggerDownloadOnRouterAsync(sessWan, detected.Series, url, officialRemote.FileName, ct);
-                                    }
-                                    finally
-                                    {
-                                        _connManager.ResumeReadLoop();
-                                    }
-
-                                    if (ok)
-                                    {
-                                        SetEtapa(2, $"✅ 2. Firmware — Atualizado para {officialRemote.FileName}", "#16A34A");
-                                        LogAuto($"[✓] Firmware atualizado com sucesso no roteador via WAN!");
-                                        transferiuLocalmente = true;
-                                    }
-                                    else
-                                    {
-                                        SetEtapa(2, $"⚠️ 2. Firmware — Falha download WAN ({versaoExibida})", "#CA8A04");
-                                        LogAuto($"[!] Falha na transferência direta via WAN.");
-                                    }
-                                }
-
-                                // Se WAN indisponível e celular tem porta única USB EXCLUSIVAMENTE (sem HUB Ethernet):
-                                if (!transferiuLocalmente && localFw != null && File.Exists(localFw.LocalFilePath) && hasSerial && !isHubSimultaneous && !hasEthHw)
-                                {
-                                    LogAuto("\n>>> [ATUALIZAÇÃO EM BANCADA — PORTA ÚNICA USB]");
-                                    LogAuto("[*] WAN indisponível e sem HUB Ethernet detectado. Solicitando troca física temporária de adaptadores.");
-                                    var desejaSwap = await MainThread.InvokeOnMainThreadAsync(() =>
-                                        DisplayAlert("🔄 Troca de Adaptador (Serial ➔ Ethernet)",
-                                            $"Firmware desatualizado detectado ({versaoExibida}).\n" +
-                                            $"A imagem homologada ({localFw.FileName}) está salva no celular.\n\n" +
-                                            "Deseja atualizar via cabo de rede em bancada?\n" +
-                                            "Como o celular possui uma única porta USB (sem HUB), faremos a troca temporária do cabo Serial pelo adaptador Ethernet.\n\n" +
-                                            "O SPARC aplicará configuração de staging (IP 192.168.1.1 + DHCP + Telnet) no roteador antes de você desconectar a serial.",
-                                            "SIM, FAZER TROCA", "DEIXAR PARA A WAN"));
-
-                                    if (desejaSwap)
-                                    {
-                                        Progresso(40, "2/7 Aplicando Staging no Roteador...");
-                                        await _connManager.ApplyTemporaryLanStagingAsync(detected.Manufacturer, detected.Series, null, s => { LogAuto(s); return Task.CompletedTask; }, ct);
-
-                                        await MainThread.InvokeOnMainThreadAsync(() =>
-                                            DisplayAlert("Troca de Adaptador",
-                                                "1. Desconecte o cabo Console Serial da porta USB do celular.\n" +
-                                                "2. Conecte o adaptador Ethernet USB ao celular (ligado à porta LAN do roteador).\n\n" +
-                                                "Toque em OK após conectar o adaptador de rede.", "OK"));
-
-                                        bool tentarSwapEth = true;
-                                        while (tentarSwapEth && !ct.IsCancellationRequested)
-                                        {
-                                            tentarSwapEth = false;
-                                            LogAuto("[*] Aguardando enlace Ethernet no smartphone (até 20s)...");
-                                            for (int w = 0; w < 20 && !ct.IsCancellationRequested; w++)
-                                            {
-                                                await Task.Delay(1000, ct);
-                                                if (ethMgr.IsEthernetConnected() && !string.IsNullOrWhiteSpace(ethMgr.GetEthernetIpAddress())) break;
-                                            }
-
-                                            hasEth = ethMgr.IsEthernetConnected();
-                                            var ipEthAtual = ethMgr.GetEthernetIpAddress();
-
-                                            if (!hasEth || string.IsNullOrWhiteSpace(ipEthAtual))
-                                            {
-                                                var hasHw = ethMgr.HasEthernetHardwareInterface();
-                                                string detalheDiag = !hasHw
-                                                    ? "O adaptador Ethernet USB não foi reconhecido pelo smartphone.\n\n• Verifique se o adaptador OTG/USB-C está bem encaixado na porta do celular."
-                                                    : "⚠️ O adaptador USB foi reconhecido, porém a porta LAN do roteador permaneceu DESCONECTADA (sem link físico / elétrico)!\n\n" +
-                                                      "Causas e Orientações Técnicas:\n" +
-                                                      "• Conecte o cabo RJ45 na porta LAN correta (ex: GE0/0 ou GE0/1 no Cisco / HPE).\n" +
-                                                      "• Verifique se os LEDs de LINK da porta Ethernet no roteador e no adaptador USB acenderam.\n" +
-                                                      "• Verifique se o cabo de rede está íntegro e bem encaixado.\n" +
-                                                      "• Se o roteador possuir mais de uma porta LAN, experimente conectar na outra porta (ex: alternar GE0/0 e GE0/1).";
-
-                                                LogAuto("\n[ALERTA CRÍTICO] Interface Ethernet cabeada permaneceu DESCONECTADA!");
-                                                LogAuto($"[!] {detalheDiag.Replace("\n", " ")}");
-
-                                                var desejaReconferir = await MainThread.InvokeOnMainThreadAsync(() =>
-                                                    DisplayAlert("⚠️ Porta LAN Desconectada / Sem Link Físico",
-                                                        detalheDiag + "\n\nDeseja verificar os cabos e tentar novamente?",
-                                                        "TENTAR NOVAMENTE", "CANCELAR ATUALIZAÇÃO BANCADA"));
-
-                                                if (desejaReconferir)
-                                                {
-                                                    tentarSwapEth = true;
-                                                    LogAuto("[*] Nova tentativa de detecção de enlace Ethernet solicitada pelo técnico...");
-                                                    continue;
-                                                }
-                                                else
-                                                {
-                                                    LogAuto("[!] Atualização em bancada cancelada: LAN do roteador permaneceu desconectada.");
-                                                    hasEth = false;
-                                                    break;
-                                                }
-                                            }
-                                        }
-
-                                        if (!hasEth)
-                                        {
-                                            // Como o técnico desconectou a serial para o swap e a LAN não subiu,
-                                            // DEVE solicitar a reconexão da serial para não quebrar as fases seguintes!
-                                            if (!_connManager.HasSupportedSerialConnected())
-                                            {
-                                                await MainThread.InvokeOnMainThreadAsync(() =>
-                                                    DisplayAlert("🔄 Reconecte o Cabo Serial",
-                                                        "A atualização via cabo de rede não foi concluída pois a LAN permaneceu desconectada.\n\n" +
-                                                        "Para prosseguir com o provisionamento via console:\n" +
-                                                        "1. Desconecte o adaptador Ethernet do celular.\n" +
-                                                        "2. Reconecte o cabo Console Serial USB ao smartphone.\n\n" +
-                                                        "Toque em OK após reconectar o cabo serial.", "OK"));
-
-                                                LogAuto("[*] Reconectando console serial USB para prosseguir com o provisionamento...");
-                                                await _connManager.ConnectUsbAsync(null, 9600, s => LogAuto(s), ct);
-                                            }
-                                        }
-                                        else
-                                        {
-                                            var ethIp = ethMgr.GetEthernetIpAddress() ?? circuit.HostLanIp ?? "192.168.1.2";
-                                            LogAuto($"[*] Transferindo firmware localmente em bancada ({ethIp})...");
-                                            Progresso(40, "2/7 Enviando Firmware via OTG/ETH...");
-
-                                            ShowFirmwareProgress(
-                                                "GRAVAÇÃO DE FIRMWARE EM BANCADA",
-                                                localFw.FileName,
-                                                "Flash do Roteador",
-                                                isForti || detected.Manufacturer == DeviceManufacturer.Hpe ? "OTG + ETH (FTP :2121)" : "OTG + ETH (HTTP :8080)");
-
-                                            var ethBoundLocal = ethMgr.BindProcessToEthernet(LogAuto);
-                                            try
-                                            {
-                                                bool successLocal = false;
-                                                if (isForti)
-                                                {
-                                                    successLocal = await _connManager.RestoreFirmwareFortiFtpAsync(
-                                                        localFw.LocalFilePath, ethIp, "sparc", "claro123", msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; }, ct);
-                                                }
-                                                else if (detected.Manufacturer == DeviceManufacturer.Hpe)
-                                                {
-                                                    successLocal = await _connManager.UpgradeFirmwareHpeFtpAsync(
-                                                        localFw.LocalFilePath, ethIp, "sparc", "claro123", msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; }, ct);
-                                                }
-                                                else
-                                                {
-                                                    var routerIp = circuit.LanIp ?? "192.168.1.1";
-                                                    successLocal = await _connManager.UpgradeFirmwareCiscoHttpAsync(
-                                                        localFw.LocalFilePath,
-                                                        phoneIp: ethIp,
-                                                        routerIp: routerIp,
-                                                        telnetUser: "EBT",
-                                                        telnetPass: "CQMR",
-                                                        routerTempIp: circuit.LanIp ?? "192.168.1.1",
-                                                        routerTempMask: circuit.LanSubnetMask ?? "255.255.255.0",
-                                                        lanInterface: null,
-                                                        expectedMd5: null,
-                                                        progress: msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; },
-                                                        ct: ct);
-                                                }
-
-                                                FinishFirmwareProgress(successLocal, successLocal
-                                                    ? $"Firmware {localFw.FileName} gravado e validado com sucesso na flash!"
-                                                    : "Transferência finalizada, mas o roteador não confirmou.");
-
-                                                if (successLocal)
-                                                {
-                                                    transferiuLocalmente = true;
-                                                    SetEtapa(2, $"✅ 2. Firmware — Atualizado via OTG/ETH ({localFw.FileName})", "#16A34A");
-                                                    LogAuto($"[✓] Firmware gravado com sucesso no roteador via OTG/ETH local! Versão: {localFw.FileName}");
-                                                }
-                                                else
-                                                {
-                                                    LogAuto($"[!] Transferência via OTG/ETH não confirmada. Mantendo versão atual ({versaoExibida}).");
-                                                }
-                                            }
-                                            catch (Exception exFw)
-                                            {
-                                                FinishFirmwareProgress(false, $"Erro na gravação: {exFw.Message}");
-                                                LogAuto($"[!] Falha na gravação do firmware: {exFw.Message}");
-                                            }
-                                            finally
-                                            {
-                                                if (ethBoundLocal) ethMgr.UnbindProcessFromNetwork(LogAuto);
-
-                                                // Sempre garante que a serial seja reconectada após o término do swap
-                                                if (!_connManager.HasSupportedSerialConnected())
-                                                {
-                                                    await MainThread.InvokeOnMainThreadAsync(() =>
-                                                        DisplayAlert("🔄 Reconectar Cabo Serial",
-                                                            "A etapa de transferência via cabo de rede foi finalizada.\n\n" +
-                                                            "Para continuar com o provisionamento da ficha SAIP:\n" +
-                                                            "1. Desconecte o adaptador Ethernet do celular.\n" +
-                                                            "2. Reconecte o cabo Console Serial USB ao smartphone.\n\n" +
-                                                            "Toque em OK após reconectar a serial.", "OK"));
-
-                                                    LogAuto("[*] Reconectando console serial USB...");
-                                                    await _connManager.ConnectUsbAsync(null, 9600, s => LogAuto(s), ct);
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Cenário C: Postergar atualização para quando a WAN estiver UP
-                            if (!transferiuLocalmente)
-                            {
-                                _firmwarePostergado = true;
-                                _postergadoSeries = detected.Series;
-                                _postergadoRemote = officialRemote;
-                                var remoteName = officialRemote?.FileName ?? "versão homologada";
-                                LogAuto($"    ⚠️ O equipamento permanece na versão {versaoExibida}. A atualização para {remoteName} foi postergada para quando o link WAN for conectado.");
-                                SetEtapa(2, $"⚠️ 2. Firmware — {versaoExibida} (Postergado p/ WAN)", "#CA8A04");
+                                if (ethBoundLocal) ethMgr.UnbindProcessFromNetwork(LogAuto);
                             }
                         }
                     }
-                else
+                }
+
+                // CENÁRIO 2: PORTA ÚNICA USB COM SWAP TEMPORÁRIO EM BANCADA
+                if (!transferiuLocalmente && localFw != null && File.Exists(localFw.LocalFilePath) && hasSerial && !isHubSimultaneous && !hasEthHw)
                 {
-                    SetEtapa(2, "✅ 2. Firmware — OK (Validado)", "#16A34A");
+                    LogAuto("\n>>> [ATUALIZAÇÃO EM BANCADA — PORTA ÚNICA USB]");
+                    var desejaSwap = await MainThread.InvokeOnMainThreadAsync(() =>
+                        DisplayAlert("🔄 Troca de Adaptador (Serial ➔ Ethernet)",
+                            $"Firmware desatualizado detectado ({versaoExibida}).\n" +
+                            $"A imagem homologada ({localFw.FileName}) está salva no smartphone.\n\n" +
+                            "Deseja atualizar via cabo de rede em bancada?\n" +
+                            "O SPARC aplicará configuração de staging (IP 192.168.1.1 + DHCP + Telnet) antes da troca.\n\n" +
+                            "O firmware será gravado e a configuração antiga será zerada no MESMO PROCESSO com um único reload.",
+                            "SIM, FAZER TROCA", "DEIXAR PARA A WAN"));
+
+                    if (desejaSwap)
+                    {
+                        Progresso(28, "1/7 Aplicando Staging no Roteador...");
+                        await _connManager.ApplyTemporaryLanStagingAsync(detected.Manufacturer, detected.Series, null, s => { LogAuto(s); return Task.CompletedTask; }, ct);
+
+                        await MainThread.InvokeOnMainThreadAsync(() =>
+                            DisplayAlert("Troca de Adaptador",
+                                "1. Desconecte o cabo Console Serial da porta USB do celular.\n" +
+                                "2. Conecte o adaptador Ethernet USB ao celular (ligado à porta LAN do roteador).\n\n" +
+                                "Toque em OK após conectar o adaptador de rede.", "OK"));
+
+                        LogAuto("[*] Aguardando enlace Ethernet no smartphone (até 20s)...");
+                        for (int w = 0; w < 20 && !ct.IsCancellationRequested; w++)
+                        {
+                            await Task.Delay(1000, ct);
+                            if (ethMgr.IsEthernetConnected() && !string.IsNullOrWhiteSpace(ethMgr.GetEthernetIpAddress())) break;
+                        }
+                        hasEth = ethMgr.IsEthernetConnected();
+
+                        if (hasEth)
+                        {
+                            var ethIp = ethMgr.GetEthernetIpAddress() ?? circuit.HostLanIp ?? "192.168.1.2";
+                            LogAuto($"[*] Transferindo firmware localmente em bancada ({ethIp})...");
+                            Progresso(30, "1/7 Enviando Firmware e Zerando...");
+
+                            ShowFirmwareProgress(
+                                "GRAVAÇÃO DE FIRMWARE EM BANCADA",
+                                localFw.FileName,
+                                "Flash do Roteador",
+                                isForti || detected.Manufacturer == DeviceManufacturer.Hpe ? "OTG + ETH (FTP :2121)" : "OTG + ETH (HTTP :8080)");
+
+                            var ethBoundLocal = ethMgr.BindProcessToEthernet(LogAuto);
+                            try
+                            {
+                                bool successLocal = false;
+                                if (isForti)
+                                {
+                                    successLocal = await _connManager.RestoreFirmwareFortiFtpAsync(
+                                        localFw.LocalFilePath, ethIp, "sparc", "claro123", msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; }, ct);
+                                }
+                                else if (detected.Manufacturer == DeviceManufacturer.Hpe)
+                                {
+                                    successLocal = await _connManager.UpgradeFirmwareHpeFtpAsync(
+                                        localFw.LocalFilePath, ethIp, "sparc", "claro123", msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; }, ct);
+                                }
+                                else
+                                {
+                                    var routerIp = circuit.LanIp ?? "192.168.1.1";
+                                    successLocal = await _connManager.UpgradeFirmwareCiscoHttpAsync(
+                                        localFw.LocalFilePath,
+                                        phoneIp: ethIp,
+                                        routerIp: routerIp,
+                                        telnetUser: "EBT",
+                                        telnetPass: "CQMR",
+                                        routerTempIp: circuit.LanIp ?? "192.168.1.1",
+                                        routerTempMask: circuit.LanSubnetMask ?? "255.255.255.0",
+                                        lanInterface: null,
+                                        expectedMd5: null,
+                                        progress: msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; },
+                                        ct: ct);
+                                }
+
+                                FinishFirmwareProgress(successLocal, successLocal
+                                    ? $"Firmware {localFw.FileName} gravado, base zerada e validado com sucesso!"
+                                    : "Transferência finalizada, mas o roteador não confirmou.");
+
+                                if (successLocal)
+                                {
+                                    transferiuLocalmente = true;
+                                    SetEtapa(1, $"✅ 1. Firmware & Zerar — Atualizado ({localFw.FileName}) e Zerado (1 reload)", "#16A34A");
+                                    LogAuto($"[✓] Firmware {localFw.FileName} gravado e roteador zerado com sucesso em um ÚNICO reload!");
+                                }
+                            }
+                            catch (Exception exFw)
+                            {
+                                FinishFirmwareProgress(false, $"Erro na gravação: {exFw.Message}");
+                                LogAuto($"[!] Falha na gravação do firmware: {exFw.Message}");
+                            }
+                            finally
+                            {
+                                if (ethBoundLocal) ethMgr.UnbindProcessFromNetwork(LogAuto);
+
+                                if (!_connManager.HasSupportedSerialConnected())
+                                {
+                                    await MainThread.InvokeOnMainThreadAsync(() =>
+                                        DisplayAlert("🔄 Reconectar Cabo Serial",
+                                            "A etapa de transferência via cabo de rede foi finalizada.\n\n" +
+                                            "Para continuar com o provisionamento da ficha SAIP:\n" +
+                                            "1. Desconecte o adaptador Ethernet do celular.\n" +
+                                            "2. Reconecte o cabo Console Serial USB ao smartphone.\n\n" +
+                                            "Toque em OK após reconectar a serial.", "OK"));
+
+                                    LogAuto("[*] Reconectando console serial USB...");
+                                    await _connManager.ConnectUsbAsync(null, 9600, s => LogAuto(s), ct);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // CENÁRIO 3: SE NÃO FOI POSSÍVEL ATUALIZAR EM BANCADA, POSTERGA PARA A WAN E ZERA SE NECESSÁRIO
+                if (!transferiuLocalmente)
+                {
+                    _firmwarePostergado = true;
+                    _postergadoSeries = detected.Series;
+                    _postergadoRemote = officialRemote;
+                    var remoteName = officialRemote?.FileName ?? "versão homologada";
+                    LogAuto($"    ⚠️ Equipamento permanece na versão {versaoExibida}. Atualização para {remoteName} postergada para quando o link WAN for conectado.");
+
+                    // Avalia se a base precisa ser zerada mesmo com firmware postergado
+                    var sanitization = await _connManager.DetectSanitizationAsync(ct);
+                    if (!sanitization.IsClean)
+                    {
+                        LogAuto($"[*] Limpando configuração residual antes do provisionamento ({sanitization.Summary})...");
+                        await _connManager.EraseConfigurationAndReloadAsync(
+                            detected.Manufacturer,
+                            detected.Series,
+                            msg => { LogAuto(msg); return Task.CompletedTask; },
+                            ct);
+                        SetEtapa(1, $"⚠️ 1. Firmware & Zerar — {versaoExibida} (Postergado p/ WAN | Base Zerada)", "#CA8A04");
+                    }
+                    else
+                    {
+                        SetEtapa(1, $"⚠️ 1. Firmware & Zerar — {versaoExibida} (Postergado p/ WAN | Base Limpa)", "#CA8A04");
+                    }
                 }
             }
-            else
-            {
-                SetEtapa(2, "✅ 2. Firmware — mantido (opção do operador)", "#16A34A");
-                LogAuto("\n>>> [AUTO 2/7] Atualização de firmware dispensada pelo operador.");
-            }
-            Progresso(45, "2/7 Concluído");
+            Progresso(35, "1/7 Concluído");
 
             // =====================================================================
-            // FASE 3: PROVISIONAR EQUIPAMENTO (WAN, LAN, ROTAS, TELNET)
+            // FASE 2: PROVISIONAR CONFIGURAÇÕES (FICHA SAIP)
             // =====================================================================
-            SetEtapa(3, "⏳ 3. Provisionar Equipamento — em execução", "#D97706");
-            Progresso(50, "3/7 Provisionando Equipamento...");
-            LogAuto("\n>>> [AUTO 3/7] Provisionamento do Circuito (WAN / LAN / Rotas / Telnet)");
+            SetEtapa(2, "⏳ 2. Provisionar Configurações — em execução", "#D97706");
+            Progresso(40, "2/7 Provisionando Configurações...");
+            LogAuto("\n>>> [AUTO 2/7] Provisionamento do Circuito (Ficha SAIP: WAN / LAN / Rotas / Telnet)");
 
             _connManager.IncluirNatLab = ChkNatLab.IsChecked;
             if (_connManager.IncluirNatLab)
@@ -1396,8 +1293,54 @@ public partial class ProvisioningPage : ContentPage
                 return Task.CompletedTask;
             }, ct);
 
-            SetEtapa(3, "✅ 3. Provisionar Equipamento — OK", "#16A34A");
-            Progresso(65, "3/7 Provisionamento Concluído");
+            SetEtapa(2, "✅ 2. Provisionar Configurações — OK", "#16A34A");
+            Progresso(55, "2/7 Provisionamento Concluído");
+
+            // =====================================================================
+            // FASE 3: VERIFICAR STATUS INTERFACES (WAN E LAN NO ROTEADOR)
+            // =====================================================================
+            SetEtapa(3, "⏳ 3. Verificar Status Interfaces — consultando...", "#D97706");
+            Progresso(60, "3/7 Verificando Status das Interfaces...");
+            LogAuto("\n>>> [AUTO 3/7] Auditoria de Status das Interfaces (Físico & Lógico no Roteador)");
+
+            var ifacesResult = await _connManager.VerifyInterfacesStatusAsync(
+                detected.Series,
+                circuit.WanIp,
+                circuit.LanIp,
+                msg => { LogAuto(msg); return Task.CompletedTask; },
+                ct);
+
+            LogAuto($"[*] Diagnóstico Interfaces: {ifacesResult.Summary}");
+            if (ifacesResult.Wan != null)
+            {
+                LogAuto($"  -> WAN ({ifacesResult.Wan.InterfaceName}): IP {ifacesResult.Wan.IpAddress ?? "N/D"} | Admin: {(ifacesResult.Wan.IsAdminUp ? "UP" : "DOWN")} | Link: {(ifacesResult.Wan.IsPhysicalUp ? "UP" : "DOWN")}");
+                if (!ifacesResult.Wan.IsPhysicalUp)
+                {
+                    LogAuto("  [AVISO WAN] Interface WAN sem portadora física (cabo do circuito desconectado ou modem da operadora desligado).");
+                }
+                else
+                {
+                    LogAuto("  [✓ WAN] Interface WAN com enlace de rede conectado e ativo!");
+                }
+            }
+
+            if (ifacesResult.Lan != null)
+            {
+                LogAuto($"  -> LAN ({ifacesResult.Lan.InterfaceName}): IP {ifacesResult.Lan.IpAddress ?? "N/D"} | Admin: {(ifacesResult.Lan.IsAdminUp ? "UP" : "DOWN")} | Link: {(ifacesResult.Lan.IsPhysicalUp ? "UP" : "DOWN")}");
+                if (!ifacesResult.Lan.IsPhysicalUp)
+                {
+                    LogAuto("  [*] Interface LAN aguardando conexão de cabo RJ45 para testes de rede.");
+                }
+                else
+                {
+                    LogAuto("  [✓ LAN] Interface LAN com enlace elétrico ativo!");
+                }
+            }
+
+            string wanResTxt = ifacesResult.Wan != null ? $"WAN: {ifacesResult.Wan.InterfaceName} ({(ifacesResult.Wan.IsPhysicalUp ? "UP/UP" : "UP/DOWN")})" : "WAN N/D";
+            string lanResTxt = ifacesResult.Lan != null ? $"LAN: {ifacesResult.Lan.InterfaceName} ({(ifacesResult.Lan.IsPhysicalUp ? "UP/UP" : "UP/DOWN")})" : "LAN N/D";
+            SetEtapa(3, $"✅ 3. Interfaces — {wanResTxt} | {lanResTxt}", "#16A34A");
+            Progresso(65, "3/7 Interfaces Auditadas");
 
             // =====================================================================
             // TRANSIÇÃO DE ADAPTADOR: CONSOLE USB ➔ ETHERNET OTG (RJ45)

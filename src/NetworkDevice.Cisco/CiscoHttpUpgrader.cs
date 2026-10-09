@@ -167,8 +167,19 @@ public sealed class CiscoHttpUpgrader
         await session.SendCommandAsync("end", TimeSpan.FromSeconds(10), cancellationToken);
         await session.SendCommandAsync("write memory", TimeSpan.FromSeconds(30), cancellationToken);
 
+        // 7b. Zeramento conjunto de configuração no mesmo reload (aproveita o reboot obrigatório de upgrade do SO)
+        await ProgressAsync("[*] Zerando configurações antigas e senhas residuais da NVRAM (write erase) para boot limpo...");
+        try
+        {
+            await session.WriteLineAsync("write erase", cancellationToken);
+            await Task.Delay(400, cancellationToken);
+            await session.WriteLineAsync(string.Empty, cancellationToken);
+            await Task.Delay(800, cancellationToken);
+        }
+        catch { }
+
         // 8. Reload + verificação da versão pós-boot
-        await ProgressAsync("[*] Recarregando o equipamento (reload)...");
+        await ProgressAsync("[*] [RELOAD AUTOMÁTICO CONJUNTO] Reiniciando roteador Cisco (novo firmware + base limpa)...");
         await session.WriteLineAsync("reload", cancellationToken);
         try
         {
@@ -183,7 +194,7 @@ public sealed class CiscoHttpUpgrader
             var tail = reloadRes.Output;
             if (tail.Contains("System configuration has been modified", StringComparison.OrdinalIgnoreCase))
             {
-                await session.WriteLineAsync("yes", cancellationToken); // salva antes do reload
+                await session.WriteLineAsync("no", cancellationToken); // não salva running-config sobre a NVRAM limpa
                 await session.WaitForAsync(
                     new StopCondition[] { new StopCondition.Contains("reload-confirm", "Proceed with reload? [confirm]") },
                     TimeSpan.FromSeconds(15), cancellationToken);

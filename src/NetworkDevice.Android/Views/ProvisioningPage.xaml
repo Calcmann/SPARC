@@ -290,9 +290,9 @@
                         <!-- Checklist das 7 Etapas -->
                         <Border BackgroundColor="#18181B" Stroke="#3F3F46" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="12">
                             <VerticalStackLayout Spacing="8">
-                                <Label x:Name="LblAutoEtapa1" Text="○ 1. Zerar Configuração — aguardando" TextColor="#64748B" FontSize="12.5" />
-                                <Label x:Name="LblAutoEtapa2" Text="○ 2. Atualizar Firmware — aguardando" TextColor="#64748B" FontSize="12.5" />
-                                <Label x:Name="LblAutoEtapa3" Text="○ 3. Provisionar Equipamento — aguardando" TextColor="#64748B" FontSize="12.5" />
+                                <Label x:Name="LblAutoEtapa1" Text="○ 1. Firmware &amp; Zerar Configuração — aguardando" TextColor="#64748B" FontSize="12.5" />
+                                <Label x:Name="LblAutoEtapa2" Text="○ 2. Provisionar Configurações — aguardando" TextColor="#64748B" FontSize="12.5" />
+                                <Label x:Name="LblAutoEtapa3" Text="○ 3. Verificar Status Interfaces — aguardando" TextColor="#64748B" FontSize="12.5" />
                                 <Label x:Name="LblAutoEtapa4" Text="○ 4. Configurar IP de Teste — aguardando" TextColor="#64748B" FontSize="12.5" />
                                 <Label x:Name="LblAutoEtapa5" Text="○ 5. Testar Conectividade (ICMP) — aguardando" TextColor="#64748B" FontSize="12.5" />
                                 <Label x:Name="LblAutoEtapa6" Text="○ 6. Testar Acesso Remoto (Telnet / SSH) — aguardando" TextColor="#64748B" FontSize="12.5" />

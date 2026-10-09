@@ -2129,6 +2129,203 @@ public sealed class DeviceConnectionManager
         }
     }
 
+    /// <summary>
+    /// Avalia o status de higienização do equipamento (limpo em padrão de fábrica vs residual).
+    /// </summary>
+    public async Task<DeviceSanitizationStatus> DetectSanitizationAsync(CancellationToken ct = default)
+    {
+        if (_transport == null || !_transport.IsOpen)
+            throw new InvalidOperationException("Console serial USB não está conectado.");
+
+        await PauseReadLoopAsync();
+        try
+        {
+            _session = await EnsureConsoleSessionAsync(_ => Task.CompletedTask, ct);
+            var detected = LastDetectionResult;
+            if (detected?.Manufacturer == DeviceManufacturer.Fortinet)
+                return await FortiOsSaipConfigurator.DetectSanitizationStatusAsync(_session, ct);
+            if (detected?.Manufacturer == DeviceManufacturer.Hpe)
+                return await HpeSaipConfigurator.DetectSanitizationStatusAsync(_session, ct);
+            return await CiscoSaipConfigurator.DetectSanitizationStatusAsync(_session, ct);
+        }
+        finally
+        {
+            ResumeReadLoop();
+        }
+    }
+
+    /// <summary>
+    /// Zera as configurações antigas/senhas residuais e reinicia o equipamento em um único reload.
+    /// </summary>
+    public async Task<bool> EraseConfigurationAndReloadAsync(
+        DeviceManufacturer manufacturer,
+        DeviceSeries series,
+        Func<string, Task> progress,
+        CancellationToken ct)
+    {
+        if (_transport == null || !_transport.IsOpen)
+            throw new InvalidOperationException("Console serial USB não está conectado.");
+
+        await PauseReadLoopAsync();
+        try
+        {
+            _session = await EnsureConsoleSessionAsync(progress, ct);
+
+            if (manufacturer == DeviceManufacturer.Fortinet)
+            {
+                await progress("[*] Enviando 'execute factoryreset' ao FortiGate...");
+                var conds = new StopCondition[]
+                {
+                    new StopCondition.Contains("FortiResetConfirm", "y/n"),
+                    new StopCondition.Prompt()
+                };
+                var resetRes = await _session.SendExpectAsync("execute factoryreset", conds, TimeSpan.FromSeconds(15), ct);
+                if (resetRes.Output.Contains("y/n", StringComparison.OrdinalIgnoreCase))
+                {
+                    await _session.WriteLineAsync("y", ct);
+                    await progress("[OK] Confirmação 'y' enviada. FortiGate reiniciando de fábrica (aprox. 45s)...");
+                    await Task.Delay(45000, ct);
+                    return true;
+                }
+                return false;
+            }
+            else if (manufacturer == DeviceManufacturer.Hpe)
+            {
+                await progress("[*] Apagando configurações do HPE (reset saved-configuration)...");
+                await _session.WriteLineAsync("reset saved-configuration", ct);
+                await Task.Delay(500, ct);
+                await _session.WriteLineAsync("y", ct);
+                await Task.Delay(1000, ct);
+
+                await progress("[*] Reiniciando roteador HPE Comware (reboot)...");
+                await _session.WriteLineAsync("reboot", ct);
+                await Task.Delay(500, ct);
+                // Confirma 'n' para não salvar a config atual
+                await _session.WriteLineAsync("n", ct);
+                await Task.Delay(500, ct);
+                // Confirma 'y' para prosseguir com o reboot
+                await _session.WriteLineAsync("y", ct);
+
+                await progress("[*] Aguardando boot do Comware (até 5 min)...");
+                var deadline = DateTime.UtcNow.AddMinutes(5);
+                while (DateTime.UtcNow < deadline && !ct.IsCancellationRequested)
+                {
+                    try
+                    {
+                        var res = await _session.WaitForAsync(
+                            new StopCondition[]
+                            {
+                                new StopCondition.Prompt(),
+                                new StopCondition.LineRegex("hpe", new System.Text.RegularExpressions.Regex(@"^[<\[][A-Za-z0-9_\-\.]+[>\]]\s*$")),
+                            },
+                            TimeSpan.FromSeconds(15), ct);
+                        await progress("[OK] HPE Comware reinicializado em padrão de fábrica!");
+                        return true;
+                    }
+                    catch (SessionTimeoutException)
+                    {
+                        await progress("[*] Aguardando boot do Comware...");
+                    }
+                }
+                return false;
+            }
+            else
+            {
+                // Cisco IOS
+                await progress("[*] Apagando configurações da NVRAM (write erase)...");
+                await _session.WriteLineAsync("write erase", ct);
+                await Task.Delay(500, ct);
+                await _session.WriteLineAsync(string.Empty, ct); // Confirma [confirm] com Enter
+                await Task.Delay(1000, ct);
+
+                await progress("[*] Reiniciando roteador Cisco (reload)...");
+                await _session.WriteLineAsync("reload", ct);
+                try
+                {
+                    var reloadRes = await _session.WaitForAsync(
+                        new StopCondition[]
+                        {
+                            new StopCondition.Contains("Proceed with reload? [confirm]", "Proceed with reload? [confirm]"),
+                            new StopCondition.Contains("[confirm]", "[confirm]"),
+                            new StopCondition.Contains("System configuration has been modified", "System configuration has been modified"),
+                            new StopCondition.Prompt()
+                        },
+                        TimeSpan.FromSeconds(15), ct);
+
+                    if (reloadRes.Output.Contains("System configuration has been modified", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await _session.WriteLineAsync("no", ct); // Não salva running-config sobre a NVRAM apagada!
+                        await Task.Delay(500, ct);
+                        try
+                        {
+                            await _session.WaitForAsync(
+                                new StopCondition[] { new StopCondition.Contains("[confirm]", "[confirm]") },
+                                TimeSpan.FromSeconds(10), ct);
+                        }
+                        catch { }
+                    }
+                    await _session.WriteLineAsync(string.Empty, ct); // Confirma [confirm] com Enter
+                }
+                catch { }
+
+                await progress("[*] Aguardando boot do Cisco IOS (até 6 min)...");
+                await EnsureNoSetupDialogAsync(progress, ct);
+                await progress("[OK] Roteador Cisco reinicializado com NVRAM limpa!");
+                return true;
+            }
+        }
+        finally
+        {
+            ResumeReadLoop();
+        }
+    }
+
+    /// <summary>
+    /// Consulta as interfaces físicas e lógicas do roteador e valida os IPs atribuídos e links UP/DOWN.
+    /// </summary>
+    public async Task<InterfacesVerificationResult> VerifyInterfacesStatusAsync(
+        DeviceSeries series,
+        string? expectedWanIp,
+        string? expectedLanIp,
+        Func<string, Task> progress,
+        CancellationToken ct)
+    {
+        if (_transport == null || !_transport.IsOpen)
+            throw new InvalidOperationException("Console serial USB não está conectado.");
+
+        await PauseReadLoopAsync();
+        try
+        {
+            _session = await EnsureConsoleSessionAsync(progress, ct);
+            var (wanIface, lanIface) = InterfaceStatusInspector.ResolveExpectedInterfaces(series);
+            var detected = LastDetectionResult;
+
+            if (detected?.Manufacturer == DeviceManufacturer.Fortinet)
+            {
+                var phys = await _session.SendCommandAsync("get system interface physical", TimeSpan.FromSeconds(10), ct);
+                var ipOut = await _session.SendCommandAsync("diagnose ip address list", TimeSpan.FromSeconds(10), ct);
+                return InterfaceStatusInspector.ParseFortinetInterfaces(phys, ipOut, wanIface, lanIface, expectedWanIp, expectedLanIp);
+            }
+            else if (detected?.Manufacturer == DeviceManufacturer.Hpe)
+            {
+                try { await _session.SendCommandAsync("screen-length disable", TimeSpan.FromSeconds(5), ct); } catch { }
+                var brief = await _session.SendCommandAsync("display ip interface brief", TimeSpan.FromSeconds(15), ct);
+                return InterfaceStatusInspector.ParseHpeBrief(brief, wanIface, lanIface, expectedWanIp, expectedLanIp);
+            }
+            else
+            {
+                // Cisco IOS
+                try { await _session.SendCommandAsync("terminal length 0", TimeSpan.FromSeconds(5), ct); } catch { }
+                var brief = await _session.SendCommandAsync("show ip interface brief", TimeSpan.FromSeconds(15), ct);
+                return InterfaceStatusInspector.ParseCiscoBrief(brief, wanIface, lanIface, expectedWanIp, expectedLanIp);
+            }
+        }
+        finally
+        {
+            ResumeReadLoop();
+        }
+    }
+
     public async Task DisconnectAsync()
     {
         await PauseReadLoopAsync();
