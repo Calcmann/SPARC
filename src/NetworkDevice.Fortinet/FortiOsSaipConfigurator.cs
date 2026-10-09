@@ -157,10 +157,13 @@ public sealed class FortiOsSaipConfigurator
                 $"set hostname \"{hostname}\"",
                 "set timezone 22",
                 "set admintimeout 480",
+                "set remoteauthtimeout 5",
                 "set pre-login-banner enable",
                 "end",
-                "config system replacemsg admin pre_login",
+                "config system replacemsg admin",
+                "edit \"pre_login\"",
                 "set message \"||========================================||\r\n||========== CLARO Brasil S.A. ===========||\r\n||========================================||\r\n\r\nSOMENTE USUARIOS AUTORIZADOS\r\nAUTHORIZED USERS ONLY\r\n\r\nOS ACESSOS SERAO MONITORADOS\r\nACCESSES WILL BE MONITORED\r\n\r\n||========================================||\"",
+                "next",
                 "end",
             });
         }
@@ -200,8 +203,9 @@ public sealed class FortiOsSaipConfigurator
             cmds.AddRange(new[]
             {
                 "config system ntp",
-                "set server-mode disable",
-                "set status enable",
+                "set ntpsync enable",
+                "set type custom",
+                "set syncinterval 60",
                 "config ntpserver",
                 "edit 1",
                 "set server \"200.20.186.75\"",
@@ -210,6 +214,7 @@ public sealed class FortiOsSaipConfigurator
                 "set server \"200.20.186.94\"",
                 "next",
                 "end",
+                "set server-mode disable",
                 "end",
             });
 
@@ -243,7 +248,6 @@ public sealed class FortiOsSaipConfigurator
                 "edit \"TACACS-SERVER-CLARO\"",
                 "set server \"200.255.166.129\"",
                 "set key \"080F636D2A152505052B\"",
-                "set timeout 2",
                 "next",
                 "end",
             });
@@ -251,7 +255,7 @@ public sealed class FortiOsSaipConfigurator
             // QoS (Traffic Shaping na WAN)
             cmds.AddRange(new[]
             {
-                "config firewall traffic-shaper",
+                "config firewall shaper traffic-shaper",
                 "edit \"SHAPE_OUT\"",
                 $"set maximum-bandwidth {bandaKbps}",
                 $"set guaranteed-bandwidth {bandaKbps}",

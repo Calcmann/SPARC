@@ -798,11 +798,15 @@ public sealed class FortiGate40FTests
 
         // Banner Claro
         Assert.Contains("set pre-login-banner enable", joined);
+        Assert.Contains("config system replacemsg admin", joined);
+        Assert.Contains("edit \"pre_login\"", joined);
         Assert.Contains("CLARO Brasil S.A.", joined);
         Assert.Contains("SOMENTE USUARIOS AUTORIZADOS", joined);
 
         // NTP Oficial Claro
         Assert.Contains("config system ntp", joined);
+        Assert.Contains("set ntpsync enable", joined);
+        Assert.Contains("set type custom", joined);
         Assert.Contains("set server \"200.20.186.75\"", joined);
         Assert.Contains("set server \"200.20.186.94\"", joined);
 
@@ -816,9 +820,10 @@ public sealed class FortiGate40FTests
         Assert.Contains("config user tacacs+", joined);
         Assert.Contains("edit \"TACACS-SERVER-CLARO\"", joined);
         Assert.Contains("set server \"200.255.166.129\"", joined);
+        Assert.DoesNotContain("set timeout 2", joined);
 
         // QoS Traffic Shaping
-        Assert.Contains("config firewall traffic-shaper", joined);
+        Assert.Contains("config firewall shaper traffic-shaper", joined);
         Assert.Contains("edit \"SHAPE_OUT\"", joined);
         Assert.Contains("set maximum-bandwidth 100000", joined);
 
