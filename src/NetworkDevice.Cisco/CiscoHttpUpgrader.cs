@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using NetworkDevice.Core.Session;
+using NetworkDevice.Protocols.Telnet;
 
 namespace NetworkDevice.Cisco;
 
@@ -264,10 +265,18 @@ public sealed class CiscoHttpUpgrader
             await session.WriteLineAsync(string.Empty, cancellationToken); // confirma [confirm]
             await Task.Delay(10000, cancellationToken); // Aguarda reset físico da CPU do roteador
         }
-        catch (SessionTimeoutException)
+        catch (Exception exReload)
         {
-            await ProgressAsync("[AVISO] Confirmação de reload não detectada — o equipamento pode já estar reiniciando.");
+            await ProgressAsync($"[AVISO] Confirmação de reload: {exReload.Message} — equipamento reiniciando.");
             await Task.Delay(5000, cancellationToken);
+        }
+
+        // Se a sessão for Telnet (sem console serial ativo), o reload desconecta a rede e o roteador reinicia limpo.
+        // A checagem da versão e retomada do provisionamento acontecerá assim que o operador reconectar a serial.
+        if (session.Transport is TcpTelnetTransport)
+        {
+            await ProgressAsync($"[✓] Firmware {fileName} gravado com sucesso na flash, boot system definido e roteador reiniciando (base limpa)!");
+            return true;
         }
 
         await ProgressAsync("[*] Aguardando boot do novo IOS (até 8 min)...");

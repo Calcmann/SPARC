@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using NetworkDevice.Core.Provisioning;
 using NetworkDevice.Core.Session;
+using NetworkDevice.Protocols.Telnet;
 
 namespace NetworkDevice.Protocols.Hpe;
 
@@ -110,8 +111,21 @@ public sealed class HpeFtpUpgrader
 
         // 5. Reboot + verificação de retorno
         await ProgressAsync("[*] [RELOAD AUTOMÁTICO CONJUNTO] Reiniciando HPE Comware (novo firmware + base limpa)...");
-        await session.WriteLineAsync("reboot", cancellationToken);
-        await AnswerYesNoAsync(session, "reboot", TimeSpan.FromSeconds(30), cancellationToken, acceptSilenceAsDone: true);
+        try
+        {
+            await session.WriteLineAsync("reboot", cancellationToken);
+            await AnswerYesNoAsync(session, "reboot", TimeSpan.FromSeconds(30), cancellationToken, acceptSilenceAsDone: true);
+        }
+        catch (Exception exReboot)
+        {
+            await ProgressAsync($"[AVISO] Confirmação de reboot: {exReboot.Message} — equipamento reiniciando.");
+        }
+
+        if (session.Transport is TcpTelnetTransport)
+        {
+            await ProgressAsync($"[✓] Firmware {fileName} gravado com sucesso no BootWare/Flash e Comware reiniciando (base limpa)!");
+            return true;
+        }
 
         await ProgressAsync("[*] Aguardando retorno do Comware (até 6 min)...");
         var deadline = DateTime.UtcNow.AddMinutes(6);

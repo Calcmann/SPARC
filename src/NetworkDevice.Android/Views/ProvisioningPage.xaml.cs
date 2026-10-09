@@ -1131,24 +1131,24 @@ public partial class ProvisioningPage : ContentPage
                                 if (isForti)
                                 {
                                     successLocal = await _connManager.RestoreFirmwareFortiFtpAsync(
-                                        localFw.LocalFilePath, ethIp, "sparc", "claro123", msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; }, ct);
+                                        localFw.LocalFilePath, ethIp, "sparc", "claro123", msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; }, ct, routerIp: "192.168.1.1");
                                 }
                                 else if (detected.Manufacturer == DeviceManufacturer.Hpe)
                                 {
                                     successLocal = await _connManager.UpgradeFirmwareHpeFtpAsync(
-                                        localFw.LocalFilePath, ethIp, "sparc", "claro123", msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; }, ct);
+                                        localFw.LocalFilePath, ethIp, "sparc", "claro123", msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; }, ct, routerIp: "192.168.1.1");
                                 }
                                 else
                                 {
-                                    var routerIp = circuit.LanIp ?? "192.168.1.1";
+                                    var routerIp = "192.168.1.1";
                                     successLocal = await _connManager.UpgradeFirmwareCiscoHttpAsync(
                                         localFw.LocalFilePath,
                                         phoneIp: ethIp,
                                         routerIp: routerIp,
                                         telnetUser: "EBT",
                                         telnetPass: "CQMR",
-                                        routerTempIp: circuit.LanIp ?? "192.168.1.1",
-                                        routerTempMask: circuit.LanSubnetMask ?? "255.255.255.0",
+                                        routerTempIp: null,
+                                        routerTempMask: null,
                                         lanInterface: null,
                                         expectedMd5: null,
                                         progress: msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; },
@@ -1237,79 +1237,99 @@ public partial class ProvisioningPage : ContentPage
                                 localFw.FileName,
                                 ct);
 
-                            if (conectouEth && ethMgr.IsEthernetConnected())
+                            if (conectouEth)
                             {
-                                var ethIp = ethMgr.GetEthernetIpAddress() ?? circuit.HostLanIp ?? "192.168.1.2";
-                                LogAuto($"[*] Transferindo firmware localmente em bancada ({ethIp})...");
-                                Progresso(30, "1/7 Enviando Firmware e Zerando...");
-
-                                ShowFirmwareProgress(
-                                    "GRAVAÇÃO DE FIRMWARE EM BANCADA",
-                                    localFw.FileName,
-                                    "Flash do Roteador",
-                                    isForti || detected.Manufacturer == DeviceManufacturer.Hpe ? "OTG + ETH (FTP :2121)" : "OTG + ETH (HTTP :8080)");
-
-                                var ethBoundLocal = ethMgr.BindProcessToEthernet(LogAuto);
-                                try
+                                LogAuto("[*] Aguardando enlace e IP Ethernet do roteador via DHCP (até 15s)...");
+                                for (int w = 0; w < 15 && !ct.IsCancellationRequested; w++)
                                 {
-                                    bool successLocal = false;
-                                    if (isForti)
-                                    {
-                                        successLocal = await _connManager.RestoreFirmwareFortiFtpAsync(
-                                            localFw.LocalFilePath, ethIp, "sparc", "claro123", msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; }, ct);
-                                    }
-                                    else if (detected.Manufacturer == DeviceManufacturer.Hpe)
-                                    {
-                                        successLocal = await _connManager.UpgradeFirmwareHpeFtpAsync(
-                                            localFw.LocalFilePath, ethIp, "sparc", "claro123", msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; }, ct);
-                                    }
-                                    else
-                                    {
-                                        var routerIp = circuit.LanIp ?? "192.168.1.1";
-                                        successLocal = await _connManager.UpgradeFirmwareCiscoHttpAsync(
-                                            localFw.LocalFilePath,
-                                            phoneIp: ethIp,
-                                            routerIp: routerIp,
-                                            telnetUser: "EBT",
-                                            telnetPass: "CQMR",
-                                            routerTempIp: circuit.LanIp ?? "192.168.1.1",
-                                            routerTempMask: circuit.LanSubnetMask ?? "255.255.255.0",
-                                            lanInterface: null,
-                                            expectedMd5: null,
-                                            progress: msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; },
-                                            ct: ct);
-                                    }
+                                    await Task.Delay(1000, ct);
+                                    if (ethMgr.IsEthernetConnected() && !string.IsNullOrWhiteSpace(ethMgr.GetEthernetIpAddress()))
+                                        break;
+                                }
 
-                                    FinishFirmwareProgress(successLocal, successLocal
-                                        ? $"Firmware {localFw.FileName} gravado, base zerada e validado com sucesso!"
-                                        : "Transferência finalizada, mas o roteador não confirmou.");
+                                if (ethMgr.IsEthernetConnected() || !string.IsNullOrWhiteSpace(ethMgr.GetEthernetIpAddress()))
+                                {
+                                    var ethIp = ethMgr.GetEthernetIpAddress() ?? circuit.HostLanIp ?? "192.168.1.2";
+                                    LogAuto($"[*] Transferindo firmware localmente em bancada ({ethIp})...");
+                                    Progresso(30, "1/7 Enviando Firmware e Zerando...");
 
-                                    if (successLocal)
+                                    ShowFirmwareProgress(
+                                        "GRAVAÇÃO DE FIRMWARE EM BANCADA",
+                                        localFw.FileName,
+                                        "Flash do Roteador",
+                                        isForti || detected.Manufacturer == DeviceManufacturer.Hpe ? "OTG + ETH (FTP :2121)" : "OTG + ETH (HTTP :8080)");
+
+                                    var ethBoundLocal = ethMgr.BindProcessToEthernet(LogAuto);
+                                    try
                                     {
-                                        transferiuLocalmente = true;
-                                        SetEtapa(1, $"✅ 1. Firmware & Zerar — Atualizado ({localFw.FileName}) e Zerado (1 reload)", "#16A34A");
-                                        LogAuto($"[✓] Firmware {localFw.FileName} gravado e roteador zerado com sucesso em um ÚNICO reload!");
+                                        bool successLocal = false;
+                                        if (isForti)
+                                        {
+                                            successLocal = await _connManager.RestoreFirmwareFortiFtpAsync(
+                                                localFw.LocalFilePath, ethIp, "sparc", "claro123", msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; }, ct, routerIp: "192.168.1.1");
+                                        }
+                                        else if (detected.Manufacturer == DeviceManufacturer.Hpe)
+                                        {
+                                            successLocal = await _connManager.UpgradeFirmwareHpeFtpAsync(
+                                                localFw.LocalFilePath, ethIp, "sparc", "claro123", msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; }, ct, routerIp: "192.168.1.1");
+                                        }
+                                        else
+                                        {
+                                            var routerIp = "192.168.1.1";
+                                            successLocal = await _connManager.UpgradeFirmwareCiscoHttpAsync(
+                                                localFw.LocalFilePath,
+                                                phoneIp: ethIp,
+                                                routerIp: routerIp,
+                                                telnetUser: "EBT",
+                                                telnetPass: "CQMR",
+                                                routerTempIp: null,
+                                                routerTempMask: null,
+                                                lanInterface: null,
+                                                expectedMd5: null,
+                                                progress: msg => { LogAuto(msg); AppendFirmwareProgressLog(msg); return Task.CompletedTask; },
+                                                ct: ct);
+                                        }
+
+                                        FinishFirmwareProgress(successLocal, successLocal
+                                            ? $"Firmware {localFw.FileName} gravado, base zerada e validado com sucesso!"
+                                            : "Transferência finalizada, mas o roteador não confirmou.");
+
+                                        if (successLocal)
+                                        {
+                                            transferiuLocalmente = true;
+                                            SetEtapa(1, $"✅ 1. Firmware & Zerar — Atualizado ({localFw.FileName}) e Zerado (1 reload)", "#16A34A");
+                                            LogAuto($"[✓] Firmware {localFw.FileName} gravado e roteador zerado com sucesso em um ÚNICO reload!");
+                                        }
+                                    }
+                                    catch (Exception exFw)
+                                    {
+                                        FinishFirmwareProgress(false, $"Erro na gravação: {exFw.Message}");
+                                        LogAuto($"[!] Falha na gravação do firmware: {exFw.Message}");
+                                    }
+                                    finally
+                                    {
+                                        if (ethBoundLocal) ethMgr.UnbindProcessFromNetwork(LogAuto);
+
+                                        // Reconexão da serial com auto-detecção no Quadro Azul!
+                                        if (!_connManager.HasSupportedSerialConnected())
+                                        {
+                                            LogAuto("[*] Transferência finalizada. Aguardando reconexão do cabo Console Serial no assistente...");
+                                            await SolicitarTrocaAdaptadorAsync(
+                                                ContextoTrocaAdaptador.FirmwareBancadaParaSerial,
+                                                circuit,
+                                                null,
+                                                ct);
+                                        }
+
+                                        if (transferiuLocalmente && _connManager.HasSupportedSerialConnected())
+                                        {
+                                            await _connManager.WaitForDeviceBootAsync(detected.Manufacturer, detected.Series, msg => { LogAuto(msg); return Task.CompletedTask; }, ct);
+                                        }
                                     }
                                 }
-                                catch (Exception exFw)
+                                else
                                 {
-                                    FinishFirmwareProgress(false, $"Erro na gravação: {exFw.Message}");
-                                    LogAuto($"[!] Falha na gravação do firmware: {exFw.Message}");
-                                }
-                                finally
-                                {
-                                    if (ethBoundLocal) ethMgr.UnbindProcessFromNetwork(LogAuto);
-
-                                    // Reconexão da serial com auto-detecção no Quadro Azul!
-                                    if (!_connManager.HasSupportedSerialConnected())
-                                    {
-                                        LogAuto("[*] Transferência finalizada. Aguardando reconexão do cabo Console Serial no assistente...");
-                                        await SolicitarTrocaAdaptadorAsync(
-                                            ContextoTrocaAdaptador.FirmwareBancadaParaSerial,
-                                            circuit,
-                                            null,
-                                            ct);
-                                    }
+                                    LogAuto("[!] Adaptador Ethernet conectado, mas não obteve IP na rede.");
                                 }
                             }
                             else

@@ -1,0 +1,1041 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPARC × Panteon — Apresentação Executiva e Comparativo Estratégico</title>
+  <style>
+    :root {
+      --claro-red: #DA291C;
+      --claro-wine: #881337;
+      --claro-wine-dark: #580c23;
+      --claro-bg: #F8FAFC;
+      --claro-white: #FFFFFF;
+      --claro-ink: #0F172A;
+      --claro-muted: #64748B;
+      --claro-line: #E2E8F0;
+      --claro-green: #16A34A;
+      --claro-green-bg: #DCFCE7;
+      --claro-amber: #D97706;
+      --claro-amber-bg: #FEF3C7;
+      --claro-blue: #0284C7;
+      --claro-blue-bg: #E0F2FE;
+      --claro-pink: #FAE8EB;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+      background: #0B132B;
+      color: var(--claro-ink);
+      overflow-x: hidden;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Controles de Navegação no Topo */
+    .toolbar {
+      position: fixed;
+      top: 12px;
+      z-index: 1000;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 999px;
+      padding: 6px 16px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      color: #fff;
+      font-size: 13px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+
+    .toolbar button {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #fff;
+      padding: 4px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 12px;
+      transition: all 0.2s ease;
+    }
+
+    .toolbar button:hover {
+      background: var(--claro-red);
+      border-color: var(--claro-red);
+    }
+
+    .slide-counter {
+      font-weight: bold;
+      color: #38BDF8;
+      letter-spacing: 0.5px;
+    }
+
+    /* Container de Apresentação (Proporção 16:9 Widescreen) */
+    .deck-container {
+      width: 100%;
+      max-width: 1333px;
+      height: 750px;
+      position: relative;
+      background: var(--claro-bg);
+      border-radius: 8px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.3s ease, visibility 0.3s ease;
+      display: flex;
+      flex-direction: column;
+      background: var(--claro-bg);
+      overflow: hidden;
+    }
+
+    .slide.active {
+      opacity: 1;
+      visibility: visible;
+      z-index: 10;
+    }
+
+    /* Header Corporativo Claro */
+    .slide-header {
+      background: var(--claro-wine);
+      padding: 14px 40px 12px 40px;
+      position: relative;
+      border-bottom: 4px solid var(--claro-red);
+      flex-shrink: 0;
+    }
+
+    .slide-kicker {
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      color: var(--claro-pink);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .slide-kicker .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--claro-red);
+      display: inline-block;
+    }
+
+    .slide-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: #FFFFFF;
+      letter-spacing: -0.3px;
+    }
+
+    /* Conteúdo do Slide */
+    .slide-body {
+      padding: 24px 40px 16px 40px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      overflow: hidden;
+    }
+
+    /* Footer Corporativo Claro */
+    .slide-footer {
+      background: #F1F5F9;
+      padding: 8px 40px;
+      font-size: 11px;
+      color: var(--claro-muted);
+      border-top: 1px solid var(--claro-line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    /* Estilos de Cards e Componentes */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      height: 100%;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--claro-white);
+      border: 1px solid var(--claro-line);
+      border-radius: 8px;
+      padding: 16px 20px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      position: relative;
+    }
+
+    .card.accent-red {
+      border-top: 4px solid var(--claro-red);
+    }
+
+    .card.accent-green {
+      border-top: 4px solid var(--claro-green);
+    }
+
+    .card.accent-blue {
+      border-top: 4px solid var(--claro-blue);
+    }
+
+    .card.accent-wine {
+      border-top: 4px solid var(--claro-wine);
+    }
+
+    .card-header-bar {
+      margin: -16px -20px 12px -20px;
+      padding: 10px 16px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+      border-radius: 7px 7px 0 0;
+      text-align: center;
+    }
+
+    .card-header-wine { background: var(--claro-wine); }
+    .card-header-blue { background: var(--claro-blue); }
+    .card-header-green { background: var(--claro-green); }
+    .card-header-red { background: #991B1B; }
+
+    .kpi-box {
+      background: var(--claro-white);
+      border: 1px solid var(--claro-line);
+      border-radius: 8px;
+      padding: 14px 16px;
+      text-align: center;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+    }
+
+    .kpi-val {
+      font-size: 36px;
+      font-weight: 800;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+
+    .kpi-lbl {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--claro-ink);
+      margin-bottom: 4px;
+    }
+
+    .kpi-sub {
+      font-size: 11px;
+      color: var(--claro-muted);
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+
+    .pill-green { background: var(--claro-green-bg); color: var(--claro-green); }
+    .pill-blue  { background: var(--claro-blue-bg);  color: var(--claro-blue); }
+    .pill-amber { background: var(--claro-amber-bg); color: var(--claro-amber); }
+    .pill-pink  { background: var(--claro-pink);     color: var(--claro-wine); }
+
+    .list-items {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      font-size: 12.5px;
+      line-height: 1.45;
+    }
+
+    .list-items strong {
+      color: var(--claro-ink);
+    }
+
+    /* Slide Capa Especial (Estilo Wine Escuro) */
+    .slide-cover {
+      background: var(--claro-wine) !important;
+      color: #fff;
+      padding: 40px 60px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      border-left: 12px solid var(--claro-red);
+    }
+
+    .slide-cover h1 {
+      font-size: 52px;
+      font-weight: 800;
+      letter-spacing: -1px;
+      margin-bottom: 6px;
+      line-height: 1.1;
+    }
+
+    .slide-cover h2 {
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--claro-pink);
+      margin-bottom: 24px;
+    }
+
+    .cover-box {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      padding: 20px 24px;
+      max-width: 900px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .cover-box ul {
+      list-style: none;
+      margin-top: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .cover-box li {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .cover-box li span.chk {
+      color: #FCA5A5;
+      font-weight: bold;
+    }
+
+    /* Tabela da Matriz Estratégica */
+    .matrix-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      background: #fff;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+    }
+
+    .matrix-table th {
+      padding: 10px 14px;
+      font-weight: 700;
+      color: #fff;
+      text-align: left;
+    }
+
+    .matrix-table td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--claro-line);
+      vertical-align: middle;
+      line-height: 1.4;
+    }
+
+    .matrix-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .matrix-table tr:nth-child(even) {
+      background: #F8FAFC;
+    }
+
+    /* Barra de Destaque Inferior */
+    .banner-highlight {
+      background: var(--claro-green-bg);
+      border: 1px solid var(--claro-green);
+      border-radius: 8px;
+      padding: 12px 18px;
+      font-size: 12.5px;
+      color: #064E3B;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* Impressão / PDF */
+    @media print {
+      body {
+        background: none;
+        padding: 0;
+      }
+      .toolbar {
+        display: none !important;
+      }
+      .deck-container {
+        box-shadow: none;
+        border-radius: 0;
+        width: 100%;
+        height: auto;
+      }
+      .slide {
+        position: relative;
+        opacity: 1 !important;
+        visibility: visible !important;
+        page-break-after: always;
+        height: 100vh;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Barra de Controle do Apresentador -->
+  <div class="toolbar">
+    <button onclick="prevSlide()">◀ Anterior</button>
+    <span class="slide-counter" id="counter">Slide 1 / 11</span>
+    <button onclick="nextSlide()">Próximo ▶</button>
+    <button onclick="toggleFullscreen()">⛶ Tela Cheia</button>
+    <button onclick="window.print()">🖨️ Salvar PDF</button>
+  </div>
+
+  <!-- Container dos Slides -->
+  <div class="deck-container">
+
+    <!-- ============================================================== -->
+    <!-- SLIDE 1: CAPA EXECUTIVA SPARC -->
+    <!-- ============================================================== -->
+    <div class="slide slide-cover active" id="slide-1">
+      <div style="margin-bottom: 8px;">
+        <span class="pill pill-pink" style="font-size: 12px; padding: 4px 14px;">🔴 CLARO S.A. — ATIVAÇÃO SC</span>
+      </div>
+      <h1>SPARC</h1>
+      <h2>Sistema de Provisionamento e Ativação de Roteadores Claro</h2>
+      
+      <div class="cover-box">
+        <p><strong>Plataforma autônoma para apoio técnico em processos de Ativações Empresariais B2B de campo</strong>, focada em eficiência operacional, custo marginal zero, alta adaptabilidade e escalabilidade.</p>
+        <ul>
+          <li><span class="chk">✔</span> <strong>Recuperação de roteadores:</strong> Restauração ágil de senhas, configs prévias e firmwares corrompidos.</li>
+          <li><span class="chk">✔</span> <strong>Upgrades online e locais de firmwares:</strong> Streaming TFTP/HTTP nativo integrado sem softwares externos.</li>
+          <li><span class="chk">✔</span> <strong>Parametrização automatizada:</strong> Importação direta dos dados técnicos do SAIP (PDF/TXT) com zero erro manual.</li>
+          <li><span class="chk">✔</span> <strong>Homologação técnica de serviços:</strong> Auditoria automatizada de conectividade com emissão de laudo formal.</li>
+        </ul>
+        <p style="margin-top: 14px; color: var(--claro-pink); font-size: 13px;">
+          <strong>Foco Estratégico:</strong> Suprir lacunas técnicas, sinergia com o projeto <strong>Visita Única</strong> e flexibilização contínua da necessidade de capacitação em campo.
+        </p>
+      </div>
+
+      <div style="margin-top: 28px; font-size: 12px; color: var(--claro-pink);">
+        Instalação Empresarial - Ativação | Regional Santa Catarina | <strong>george.calcmann@claro.com.br</strong>
+      </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- SLIDE 2: CONTEXTO OPERACIONAL -->
+    <!-- ============================================================== -->
+    <div class="slide" id="slide-2">
+      <div class="slide-header">
+        <div class="slide-kicker"><span class="dot"></span> CLARO S.A. — ATIVAÇÃO SC · SPARC BETA</div>
+        <div class="slide-title">Contexto Operacional: Transformando a Ativação de Circuitos B2B</div>
+      </div>
+      <div class="slide-body">
+        <div class="grid-2">
+          <!-- Card Esquerdo -->
+          <div class="card">
+            <div class="card-header-bar card-header-red">❌ Processo Manual Anterior</div>
+            <div class="list-items">
+              <div><strong>• Diálogo Técnico Complexo:</strong> Fricção e tempo elevado na comunicação entre o suporte CLARO e o técnico de campo.</div>
+              <div><strong>• Tempo Médio Elevado:</strong> Procedimentos manuais de atualização e testes consumiam ~50 minutos por roteador.</div>
+              <div><strong>• Fricção com Senhas Desconhecidas:</strong> Necessidade de resets forçados via comandos manuais complexos no bootloader.</div>
+              <div><strong>• Dispersão de Ferramentas:</strong> Dependência de múltiplos softwares soltos (PuTTY, TFTPD32, calculadoras de IP, scripts).</div>
+              <div><strong>• Risco de Erro Humano:</strong> Digitação manual de máscaras de rede, IPs de WAN/LAN, rotas e configuração de acesso.</div>
+              <div><strong>• Validação Manual:</strong> Ajustes manuais na placa do Windows, testes manuais de banda e validação empírica.</div>
+            </div>
+          </div>
+          <!-- Card Direito -->
+          <div class="card" style="border: 1.5px solid var(--claro-green);">
+            <div class="card-header-bar card-header-green">⚡ Solução com a Esteira SPARC</div>
+            <div class="list-items">
+              <div><strong>• Intermediação Ágil:</strong> Automação guiada que simplifica a interface analista-técnico e resume ações de apoio.</div>
+              <div><strong>• Agilidade Comprovada:</strong> Provisionamento completo em bancada ou campo em <strong>menos de 10 minutos</strong>.</div>
+              <div><strong>• Recuperação Automatizada:</strong> Desbloqueio de roteadores reutilizados, limpeza de configs e recuperação de firmwares.</div>
+              <div><strong>• 100% Integrado (TFTP/HTTP):</strong> Streaming nativo embutido no SPARC, sem necessidade de softwares paralelos.</div>
+              <div><strong>• Importação Direta do SAIP:</strong> Captura parâmetros técnicos de arquivos PDF/TXT sem margem para erro de digitação.</div>
+              <div><strong>• Auditoria e Testes Automáticos:</strong> Ajusta a placa de rede do técnico, testa ICMP, Telnet/SSH e homologa banda.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span>SPARC — Sistema de Provisionamento e Ativação de Roteadores Claro</span>
+        <span>george.calcmann@claro.com.br</span>
+      </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- SLIDE 3: MÉTRICAS E IMPACTO OPERACIONAL -->
+    <!-- ============================================================== -->
+    <div class="slide" id="slide-3">
+      <div class="slide-header">
+        <div class="slide-kicker"><span class="dot"></span> CLARO S.A. — ATIVAÇÃO SC · SPARC BETA</div>
+        <div class="slide-title">Impacto Operacional e Métricas de Produtividade</div>
+      </div>
+      <div class="slide-body">
+        <div class="grid-4">
+          <div class="kpi-box" style="border-top: 4px solid var(--claro-red);">
+            <div class="kpi-val" style="color: var(--claro-red);">-88%</div>
+            <div class="kpi-lbl">Tempo de Ativação</div>
+            <div class="kpi-sub">De ~50 min para &lt; 10 min por roteador</div>
+          </div>
+          <div class="kpi-box" style="border-top: 4px solid var(--claro-green);">
+            <div class="kpi-val" style="color: var(--claro-green);">100%</div>
+            <div class="kpi-lbl">Aderência aos Padrões</div>
+            <div class="kpi-sub">Zero falhas de digitação em IPs e Rotas</div>
+          </div>
+          <div class="kpi-box" style="border-top: 4px solid var(--claro-blue);">
+            <div class="kpi-val" style="color: var(--claro-blue);">1 App</div>
+            <div class="kpi-lbl">Solução Portátil</div>
+            <div class="kpi-sub">Substitui PuTTY, TFTPD32 e calculadoras</div>
+          </div>
+          <div class="kpi-box" style="border-top: 4px solid var(--claro-wine);">
+            <div class="kpi-val" style="color: var(--claro-wine);">2</div>
+            <div class="kpi-lbl">Plataformas Nativas</div>
+            <div class="kpi-sub">Windows Single-File + Android Mobile</div>
+          </div>
+        </div>
+
+        <div class="card accent-wine" style="margin-top: 10px; flex: 1;">
+          <div style="font-size: 14px; font-weight: 700; color: var(--claro-wine); margin-bottom: 6px;">
+            💡 Benefícios Estratégicos para a Operação Claro S.A.:
+          </div>
+          <div class="list-items" style="font-size: 13px;">
+            <div>
+              <strong>• Escalabilidade de Ativação (Modo Bancada):</strong> Possibilidade de trabalho em laboratório regional, onde um único técnico prepara dezenas de roteadores diariamente com alto padrão de qualidade, entregando os equipamentos pré-configurados para as equipes de campo, ou realizando o processo completo in loco conforme a necessidade.
+            </div>
+            <div>
+              <strong>• Facilidade de Uso e Mitigação de Treinamento:</strong> Interface visual intuitiva com indicação em tempo real de progresso e status, permitindo que operadores executem procedimentos de alta complexidade com segurança e rapidez.
+            </div>
+            <div>
+              <strong>• Maximização do Projeto Visita Única:</strong> Padronização técnica rigorosa que elimina retrabalho, reduz cancelamentos de ativação e garante conformidade na entrega inicial.
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span>SPARC — Sistema de Provisionamento e Ativação de Roteadores Claro</span>
+        <span>george.calcmann@claro.com.br</span>
+      </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- SLIDE 4: ROADMAP DE EVOLUÇÃO -->
+    <!-- ============================================================== -->
+    <div class="slide" id="slide-4">
+      <div class="slide-header">
+        <div class="slide-kicker"><span class="dot"></span> CLARO S.A. — ATIVAÇÃO SC · SPARC BETA</div>
+        <div class="slide-title">Roadmap de Evolução: Da Ativação Local à Integração Corporativa</div>
+      </div>
+      <div class="slide-body">
+        <div class="grid-2">
+          <!-- Andamento -->
+          <div class="card">
+            <div class="card-header-bar card-header-blue">🚀 Roadmap de Evolução — Entregas em Andamento</div>
+            <div class="list-items">
+              <div>
+                <strong style="color: var(--claro-blue);">📱 SPARC Móvel Android (75% concluído):</strong> Em processo de refinamento operacional. Permite atuação completa com smartphone corporativo via cabo OTG.
+              </div>
+              <div>
+                <strong style="color: var(--claro-blue);">☁️ Repositório Online Homologado:</strong> Elimina a gestão manual de arquivos pelos usuários. Totalmente funcional e em fase de homologação.
+              </div>
+              <div>
+                <strong style="color: var(--claro-blue);">🧪 Aferições Avançadas & Certidões (80% concluído):</strong> Certidões de entrega sem necessidade de aparelhos dedicados caros (JDSU e afins), com loop lógico e testes via LAN com um clique.
+              </div>
+              <div>
+                <strong style="color: var(--claro-blue);">🔧 Funções de Assistência e Manutenção (70% concluído):</strong> Rotinas para equipamentos ativos, atualizações periódicas e recuperação de roteadores de bancada.
+              </div>
+            </div>
+          </div>
+          <!-- Projeção -->
+          <div class="card">
+            <div class="card-header-bar card-header-wine">🎯 Roadmap de Evolução — Projeção & Integrações</div>
+            <div class="list-items">
+              <div>
+                <strong style="color: var(--claro-wine);">🔗 Integração Sistêmica Claro:</strong> A partir de uma única variável (OS), o sistema identifica dados necessários para provisionamento definitivo, gera progresso e atualizações em tempo real.
+              </div>
+              <div>
+                <strong style="color: var(--claro-wine);">🔐 Acesso a Credenciais Protegido:</strong> Consulta automatizada e segura a bancos de senhas corporativos, sem necessidade de divulgação ao operador.
+              </div>
+              <div>
+                <strong style="color: var(--claro-wine);">🌐 Expansão de Equipamentos de Rede:</strong> Inclusão de suporte automatizado para switches e dispositivos de acesso de múltiplos fabricantes homologados.
+              </div>
+              <div>
+                <strong style="color: var(--claro-wine);">🏢 Adoção Institucional em Escala:</strong> Empacotamento para distribuição institucional entre as demais regionais Claro sob governança centralizada.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span>SPARC — Sistema de Provisionamento e Ativação de Roteadores Claro</span>
+        <span>george.calcmann@claro.com.br</span>
+      </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- SLIDE 5: TRANSIÇÃO COMPARATIVA SPARC X PANTEON -->
+    <!-- ============================================================== -->
+    <div class="slide slide-cover" id="slide-5">
+      <div style="margin-bottom: 8px;">
+        <span class="pill pill-pink" style="font-size: 12px; padding: 4px 14px;">🔴 CLARO S.A. — ATIVAÇÃO SC</span>
+      </div>
+      <h1>SPARC × Panteon</h1>
+      <h2>Decisão Estratégica: Eficiência Operacional, Modularidade e Racionalização de Custos</h2>
+      
+      <div class="cover-box">
+        <p style="font-size: 15px; font-weight: 700;">Como simplificar a operação de campo, economizar recursos contratuais e blindar a entrega contra falhas?</p>
+        <ul style="margin-top: 16px;">
+          <li>
+            <span class="chk">✔</span>
+            <div><strong>Racionalização de Custos Contratuais:</strong> Roteador sai preparado da base Claro, permitindo rever a necessidade e o valor de remuneração de configuração nas ordens de serviço terceirizadas.</div>
+          </li>
+          <li>
+            <span class="chk">✔</span>
+            <div><strong>Triagem Preventiva de Hardware:</strong> Equipamento testado previamente na base Claro; falhas físicas de portas e boot são identificadas e substituídas antes do deslocamento ao cliente.</div>
+          </li>
+          <li>
+            <span class="chk">✔</span>
+            <div><strong>Operação Híbrida e Resiliente (Modo Offline e Online):</strong> Soluções de mercado dependem de link ativo em campo; o SPARC entrega pronto em bancada (100% offline) e também suporta ativação online pelo link se desejado.</div>
+          </li>
+          <li>
+            <span class="chk">✔</span>
+            <div><strong>Eficiência em Licenciamento e Infraestrutura:</strong> Ativo desenvolvido internamente na Claro, sem custos recorrentes de licenças de terceiros e sem necessidade de alocação de servidores dedicados de grande porte.</div>
+          </li>
+        </ul>
+      </div>
+
+      <div style="margin-top: 28px; font-size: 12px; color: var(--claro-pink);">
+        Instalação Empresarial - Ativação | Regional Santa Catarina | <strong>george.calcmann@claro.com.br</strong>
+      </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- SLIDE 6: MODELO MODULAR (FULL VS TESTER) -->
+    <!-- ============================================================== -->
+    <div class="slide" id="slide-6">
+      <div class="slide-header">
+        <div class="slide-kicker"><span class="dot"></span> CLARO S.A. — ATIVAÇÃO SC · SPARC × PANTEON</div>
+        <div class="slide-title">Modularidade Operacional: O Modelo SPARC Full × SPARC Tester</div>
+      </div>
+      <div class="slide-body">
+        <div class="grid-2">
+          <!-- Base Claro -->
+          <div class="card" style="border: 1.5px solid var(--claro-wine);">
+            <div class="card-header-bar card-header-wine">1. BASE CLARO: SPARC Full (Técnicos Próprios)</div>
+            <div class="list-items">
+              <div><strong>Quem opera:</strong> Técnicos da Assistência Técnica interna da Claro.</div>
+              <div><strong>Onde:</strong> Bancada / Laboratório na base regional (100% offline).</div>
+              <div><strong>Triagem de Hardware:</strong> Testa portas, boot e placa. Se houver falha, substitui o equipamento na base antes de ir para a rua.</div>
+              <div><strong>O que faz:</strong> Lê fichas técnicas (SAIP) automaticamente, aplica firmware homologado e grava configuração completa.</div>
+              <div><strong>Tempo:</strong> Menos de 10 minutos por lote de roteadores.</div>
+              <div><strong style="color: var(--claro-green);">Resultado:</strong> Roteador sai 100% pronto, testado e etiquetado ('Plug & Play').</div>
+            </div>
+          </div>
+          <!-- Parceiros Campo -->
+          <div class="card" style="border: 1.5px solid var(--claro-blue);">
+            <div class="card-header-bar card-header-blue">2. CAMPO: SPARC Tester (Técnicos Parceiros)</div>
+            <div class="list-items">
+              <div><strong>Quem opera:</strong> Empresas parceiras responsáveis pela fixação e instalação do acesso.</div>
+              <div><strong>O que muda:</strong> Desonera o terceiro da responsabilidade de configurar o roteador.</div>
+              <div><strong>O que é o SPARC Tester:</strong> Aplicativo simplificado e orientado à entrega para celular ou notebook.</div>
+              <div><strong>O que ele faz:</strong> Checa porta de rede, valida link quando o circuito sobe, afere velocidade com Speedtest e gera laudo PDF.</div>
+              <div><strong style="color: var(--claro-green);">Versatilidade Híbrida:</strong> Permite também ativar online pelo link do cliente exatamente como o modelo tradicional, se desejado.</div>
+              <div><strong style="color: var(--claro-green);">Impacto:</strong> Zero visita perdida por equipamento defeituoso e zero erro de configuração.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="banner-highlight">
+          <div style="font-size: 20px;">💰</div>
+          <div>
+            <strong>Vantagem Financeira Estratégica:</strong> Como o parceiro NÃO precisa mais configurar o roteador no cliente, a Claro ganha respaldo direto para <u>renegociar e abater o item contratual de configuração de CPE por OS</u>. Além disso, a substituição prévia na base elimina custos de visitas improdutivas por hardware defeituoso!
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span>SPARC — Sistema de Provisionamento e Ativação de Roteadores Claro</span>
+        <span>george.calcmann@claro.com.br</span>
+      </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- SLIDE 7: IMPACTO FINANCEIRO DIRETO -->
+    <!-- ============================================================== -->
+    <div class="slide" id="slide-7">
+      <div class="slide-header">
+        <div class="slide-kicker"><span class="dot"></span> CLARO S.A. — ATIVAÇÃO SC · SPARC × PANTEON</div>
+        <div class="slide-title">Impacto Financeiro Direto: Onde o SPARC Gera Otimização para a Claro</div>
+      </div>
+      <div class="slide-body">
+        <div class="grid-2">
+          <div class="card accent-green">
+            <div style="font-size: 15px; font-weight: 700; color: var(--claro-wine);">1. Otimização Contratual de Parceiros</div>
+            <div style="font-size: 12.5px; line-height: 1.45; color: var(--claro-ink);">
+              Readequação do item de "configuração de CPE" nas ordens de serviço executadas por parceiras externas, simplificando o escopo de atuação em campo.
+            </div>
+            <div style="margin-top: auto;">
+              <span class="pill pill-green" style="width: 100%;">✔ Economia por OS em escala nacional</span>
+            </div>
+          </div>
+
+          <div class="card accent-green">
+            <div style="font-size: 15px; font-weight: 700; color: var(--claro-wine);">2. Custo Marginal Zero com Licenças</div>
+            <div style="font-size: 12.5px; line-height: 1.45; color: var(--claro-ink);">
+              Soluções de fornecedores externos envolvem taxas periódicas de licenciamento de software. O SPARC é um ativo proprietário da Claro.
+            </div>
+            <div style="margin-top: auto;">
+              <span class="pill pill-green" style="width: 100%;">✔ 100% de previsibilidade sem custos de licença</span>
+            </div>
+          </div>
+
+          <div class="card accent-green">
+            <div style="font-size: 15px; font-weight: 700; color: var(--claro-wine);">3. Eficiência em Infraestrutura & Servidores</div>
+            <div style="font-size: 12.5px; line-height: 1.45; color: var(--claro-ink);">
+              Modelos centralizados demandam expansão de clusters de servidores dedicados. O SPARC adota Edge Computing e roda localmente nos dispositivos já existentes.
+            </div>
+            <div style="margin-top: auto;">
+              <span class="pill pill-green" style="width: 100%;">✔ Evita Capex e Opex de infraestrutura dedicada</span>
+            </div>
+          </div>
+
+          <div class="card accent-green">
+            <div style="font-size: 15px; font-weight: 700; color: var(--claro-wine);">4. Mitigação de Visitas Improdutivas</div>
+            <div style="font-size: 12.5px; line-height: 1.45; color: var(--claro-ink);">
+              Com a pré-triagem de hardware na base Claro, elimina-se o retrabalho decorrente de falha física do equipamento ou atrasos na comutação do link.
+            </div>
+            <div style="margin-top: auto;">
+              <span class="pill pill-green" style="width: 100%;">✔ Queda expressiva de cancelamentos e revisitas</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span>SPARC — Sistema de Provisionamento e Ativação de Roteadores Claro</span>
+        <span>george.calcmann@claro.com.br</span>
+      </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- SLIDE 8: SPARC HOJE (FERRAMENTA PRÁTICA) -->
+    <!-- ============================================================== -->
+    <div class="slide" id="slide-8">
+      <div class="slide-header">
+        <div class="slide-kicker"><span class="dot"></span> CLARO S.A. — ATIVAÇÃO SC · SPARC × PANTEON</div>
+        <div class="slide-title">SPARC Hoje: A Ferramenta Prática que Já Transforma o Campo</div>
+      </div>
+      <div class="slide-body">
+        <div class="grid-4" style="flex-shrink: 0;">
+          <div class="kpi-box" style="border: 1px solid var(--claro-pink);">
+            <div class="kpi-val" style="color: var(--claro-red);">-88%</div>
+            <div class="kpi-lbl">Tempo de Ativação</div>
+            <div class="kpi-sub">De ~50 min para &lt; 10 min</div>
+          </div>
+          <div class="kpi-box" style="border: 1px solid var(--claro-pink);">
+            <div class="kpi-val" style="color: var(--claro-red);">100%</div>
+            <div class="kpi-lbl">Leitura Automática</div>
+            <div class="kpi-sub">Zero digitação manual do SAIP</div>
+          </div>
+          <div class="kpi-box" style="border: 1px solid var(--claro-pink);">
+            <div class="kpi-val" style="color: var(--claro-red);">100%</div>
+            <div class="kpi-lbl">Operação Offline</div>
+            <div class="kpi-sub">Bancada sem depender de link</div>
+          </div>
+          <div class="kpi-box" style="border: 1px solid var(--claro-pink);">
+            <div class="kpi-val" style="color: var(--claro-red);">2</div>
+            <div class="kpi-lbl">Plataformas Nativas</div>
+            <div class="kpi-sub">Windows (.exe) + Android (.apk)</div>
+          </div>
+        </div>
+
+        <div class="grid-3" style="flex: 1;">
+          <div class="card">
+            <strong style="color: var(--claro-wine); font-size: 13.5px;">📄 Leitor Inteligente do SAIP</strong>
+            <div style="font-size: 11.5px; color: var(--claro-ink);">Extrai parâmetros diretamente de PDFs/TXTs da Claro. Sem digitação e sem margem para erro humano.</div>
+          </div>
+          <div class="card">
+            <strong style="color: var(--claro-wine); font-size: 13.5px;">🧰 Bancada & Triagem de Hardware</strong>
+            <div style="font-size: 11.5px; color: var(--claro-ink);">Testa portas, memória e boot na base Claro. Substitui roteador com defeito antes de ir ao cliente.</div>
+          </div>
+          <div class="card">
+            <strong style="color: var(--claro-wine); font-size: 13.5px;">📦 Repositório Offline Embarcado</strong>
+            <div style="font-size: 11.5px; color: var(--claro-ink);">Mantém firmwares homologados acessíveis localmente para gravação imediata sem depender de internet.</div>
+          </div>
+          <div class="card">
+            <strong style="color: var(--claro-wine); font-size: 13.5px;">🧪 Testes e Certidão em PDF</strong>
+            <div style="font-size: 11.5px; color: var(--claro-ink);">Valida internet (Speedtest) e circuito (Y.1564), gerando laudo formal na hora para anexar à OS.</div>
+          </div>
+          <div class="card">
+            <strong style="color: var(--claro-wine); font-size: 13.5px;">🔌 Conexão Serial + Cabo de Rede</strong>
+            <div style="font-size: 11.5px; color: var(--claro-ink);">Trabalha com cabo console e porta Ethernet simultaneamente pelo celular ou notebook.</div>
+          </div>
+          <div class="card">
+            <strong style="color: var(--claro-wine); font-size: 13.5px;">🛡️ Gestão e Controle Seguro</strong>
+            <div style="font-size: 11.5px; color: var(--claro-ink);">Ativação com proteção individual vinculada ao dispositivo do técnico, controle online de versões.</div>
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span>SPARC — Sistema de Provisionamento e Ativação de Roteadores Claro</span>
+        <span>george.calcmann@claro.com.br</span>
+      </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- SLIDE 9: MATRIZ ESTRATÉGICA SPARC VS FORNECEDOR EXTERNO -->
+    <!-- ============================================================== -->
+    <div class="slide" id="slide-9">
+      <div class="slide-header">
+        <div class="slide-kicker"><span class="dot"></span> CLARO S.A. — ATIVAÇÃO SC · SPARC × PANTEON</div>
+        <div class="slide-title">Matriz Estratégica: Inovação Interna (SPARC) vs. Solução Externa de Mercado</div>
+      </div>
+      <div class="slide-body">
+        <table class="matrix-table">
+          <thead>
+            <tr>
+              <th style="background: var(--claro-wine); width: 18%;">Dimensão</th>
+              <th style="background: var(--claro-green); width: 34%;">SPARC (Interno Claro)</th>
+              <th style="background: #334155; width: 30%;">Solução Externa (ex: Panteon)</th>
+              <th style="background: var(--claro-blue); width: 18%;">Impacto no Negócio</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong style="color: var(--claro-wine);">Resiliência & Conectividade</strong></td>
+              <td>Arquitetura híbrida e flexível: funciona 100% offline em bancada (Plug & Play) e online pelo link em campo. Evolução contínua sob demanda.</td>
+              <td style="color: var(--claro-muted);">Modelo tradicional focado na visita em campo; depende de link ativo no cliente e fila de suporte externa.</td>
+              <td><strong style="color: var(--claro-green);">Zero paralisação por oscilação de rede externa</strong></td>
+            </tr>
+            <tr>
+              <td><strong style="color: var(--claro-wine);">Flexibilidade Orçamentária</strong></td>
+              <td>Ativo proprietário da Claro com custo marginal zero de licença de software e aproveitamento de ativos existentes (Edge Computing).</td>
+              <td style="color: var(--claro-muted);">Modelo convencional de licenciamento por usuário/período e necessidade de servidores dedicados adicionais.</td>
+              <td><strong style="color: var(--claro-green);">Previsibilidade e redução de TCO</strong></td>
+            </tr>
+            <tr>
+              <td><strong style="color: var(--claro-wine);">Estrutura Contratual</strong></td>
+              <td>Equipamento sai testado e pronto da base; desonera a complexidade técnica do terceiro e viabiliza redução do valor de OS.</td>
+              <td style="color: var(--claro-muted);">Mantém a complexidade de configuração na ponta, conservando o modelo de custo contratual de terceiros.</td>
+              <td><strong style="color: var(--claro-green);">Redução direta do custo unitário por OS</strong></td>
+            </tr>
+            <tr>
+              <td><strong style="color: var(--claro-wine);">Domínio Tecnológico</strong></td>
+              <td>Capital intelectual retido 100% dentro da Claro. Triagem preventiva de hardware e evolução alinhada à cultura interna.</td>
+              <td style="color: var(--claro-muted);">Dependência de roadmap e ciclos de desenvolvimento de fornecedor externo para atendimento de demandas locais.</td>
+              <td><strong style="color: var(--claro-green);">Soberania técnica e controle de processos</strong></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="slide-footer">
+        <span>SPARC — Sistema de Provisionamento e Ativação de Roteadores Claro</span>
+        <span>george.calcmann@claro.com.br</span>
+      </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- SLIDE 10: TRANSPARÊNCIA E CONVERGÊNCIA -->
+    <!-- ============================================================== -->
+    <div class="slide" id="slide-10">
+      <div class="slide-header">
+        <div class="slide-kicker"><span class="dot"></span> CLARO S.A. — ATIVAÇÃO SC · SPARC × PANTEON</div>
+        <div class="slide-title">Transparência Total: Plano de Convergência e Alinhamento Corporativo</div>
+      </div>
+      <div class="slide-body">
+        <table class="matrix-table">
+          <thead>
+            <tr>
+              <th style="background: var(--claro-wine); width: 22%;">Item</th>
+              <th style="background: var(--claro-wine); width: 34%;">Situação Atual</th>
+              <th style="background: var(--claro-wine); width: 32%;">Plano de Fechamento</th>
+              <th style="background: var(--claro-wine); width: 12%; text-align: center;">Prazo / Esforço</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong style="color: var(--claro-wine);">Script Completo da GER CPE</strong></td>
+              <td>Hoje o SPARC aplica o script base de conectividade e acesso remoto seguro, com motor de automação 100% homologado.</td>
+              <td>Receber da GER CPE o layout padrão unificado. O motor de automação e templates do SPARC já está pronto.</td>
+              <td style="text-align: center;"><span class="pill pill-green">Rápido (dias)</span></td>
+            </tr>
+            <tr>
+              <td><strong style="color: var(--claro-wine);">Acesso à API Corporativa</strong></td>
+              <td>Hoje o SPARC extrai parâmetros diretamente da ficha técnica oficial SAIP (PDF/TXT) com zero intervenção manual.</td>
+              <td>Disponibilizar para o SPARC a mesma credencial de API corporativa já compartilhada com soluções externas.</td>
+              <td style="text-align: center;"><span class="pill pill-amber">Médio</span></td>
+            </tr>
+            <tr>
+              <td><strong style="color: var(--claro-wine);">Governança e Oficialização</strong></td>
+              <td>Hoje o SPARC opera como projeto inovador da Regional SC em versão beta perfeitamente estável.</td>
+              <td>Homologar no repositório institucional Claro, com revisão de Segurança da Informação e 2º mantenedor formal.</td>
+              <td style="text-align: center;"><span class="pill pill-amber">Médio</span></td>
+            </tr>
+            <tr>
+              <td><strong style="color: var(--claro-wine);">Perfil Modular 'SPARC Tester'</strong></td>
+              <td>Hoje a versão atual contempla todas as ferramentas avançadas de bancada, engenharia e diagnóstico.</td>
+              <td>Disponibilizar o perfil restrito e simplificado para distribuição segura e padronizada às parceiras terceirizadas.</td>
+              <td style="text-align: center;"><span class="pill pill-blue">Em curso</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="slide-footer">
+        <span>SPARC — Sistema de Provisionamento e Ativação de Roteadores Claro</span>
+        <span>george.calcmann@claro.com.br</span>
+      </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- SLIDE 11: PLANO DE AÇÃO E ENCAMINHAMENTO -->
+    <!-- ============================================================== -->
+    <div class="slide" id="slide-11">
+      <div class="slide-header">
+        <div class="slide-kicker"><span class="dot"></span> CLARO S.A. — ATIVAÇÃO SC · SPARC × PANTEON</div>
+        <div class="slide-title">Plano de Ação: Proposta de Encaminhamento para a Liderança</div>
+      </div>
+      <div class="slide-body">
+        <div class="grid-2" style="height: auto;">
+          <!-- 4 Passos -->
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div class="card" style="display: flex; flex-direction: row; gap: 14px; align-items: center; padding: 10px 14px;">
+              <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--claro-red); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px; flex-shrink: 0;">1</div>
+              <div style="font-size: 12px;">
+                <strong style="color: var(--claro-wine); font-size: 13px;">Aprovar o Modelo Modular (Full + Tester):</strong> Implementar triagem de hardware e preparo prévio na Assistência Técnica da Regional SC e iniciar piloto do SPARC Tester com parceiros.
+              </div>
+            </div>
+
+            <div class="card" style="display: flex; flex-direction: row; gap: 14px; align-items: center; padding: 10px 14px;">
+              <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--claro-red); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px; flex-shrink: 0;">2</div>
+              <div style="font-size: 12px;">
+                <strong style="color: var(--claro-wine); font-size: 13px;">Intermediar Insumos Técnicos com a GER CPE:</strong> Obter o layout do script unificado e a concessão da API corporativa já disponibilizada a soluções de mercado.
+              </div>
+            </div>
+
+            <div class="card" style="display: flex; flex-direction: row; gap: 14px; align-items: center; padding: 10px 14px;">
+              <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--claro-red); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px; flex-shrink: 0;">3</div>
+              <div style="font-size: 12px;">
+                <strong style="color: var(--claro-wine); font-size: 13px;">Revisão e Estudo de Contratos Terceirizados:</strong> Iniciar alinhamento com Suprimentos e Gestão de Contratos para estudo de readequação do item de configuração de roteador por OS.
+              </div>
+            </div>
+
+            <div class="card" style="display: flex; flex-direction: row; gap: 14px; align-items: center; padding: 10px 14px;">
+              <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--claro-red); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px; flex-shrink: 0;">4</div>
+              <div style="font-size: 12px;">
+                <strong style="color: var(--claro-wine); font-size: 13px;">Oficialização Corporativa e Governança:</strong> Integrar aos canais oficiais da Claro com homologação de Segurança da Informação e expansão para as demais regionais.
+              </div>
+            </div>
+          </div>
+
+          <!-- Ganhos Consolidados -->
+          <div class="card" style="background: var(--claro-wine); color: #fff; justify-content: space-between;">
+            <div style="font-size: 16px; font-weight: 700; color: var(--claro-pink);">Ganhos Imediatos para a Claro</div>
+            <div class="list-items" style="font-size: 12.5px;">
+              <div><strong>✔ Economia Contratual:</strong> Readequação de valor por OS em contratos de prestação de serviços.</div>
+              <div><strong>✔ Zero Equipamento com Falha:</strong> Triagem prévia na base substitui hardware antes do campo.</div>
+              <div><strong>✔ Resiliência Operacional:</strong> Opera 100% offline em bancada ou online pelo link do cliente.</div>
+              <div><strong>✔ Custo Marginal Zero:</strong> Ativo próprio da Claro sem taxas de licenciamento de software.</div>
+            </div>
+            <div style="background: rgba(255, 255, 255, 0.1); padding: 8px 12px; border-radius: 6px; font-size: 11.5px; line-height: 1.4;">
+              <strong>Soberania Técnica:</strong> Decisão estratégica baseada em eficiência real de custos e autonomia operacional.
+            </div>
+          </div>
+        </div>
+
+        <div style="background: var(--claro-red); border-radius: 8px; padding: 12px 20px; color: #fff; text-align: center; font-size: 13px; line-height: 1.45;">
+          <strong>Decisão Estratégica Baseada em Valor:</strong> O SPARC atende integralmente às necessidades de ativação e entrega diferenciais exclusivos: preparo 100% offline em bancada, triagem prévia de hardware, custo marginal zero de licenças e redução direta de custos em contratos de terceiros.
+        </div>
+      </div>
+      <div class="slide-footer">
+        <span>SPARC — Sistema de Provisionamento e Ativação de Roteadores Claro</span>
+        <span>george.calcmann@claro.com.br</span>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    let currentSlide = 1;
+    const totalSlides = 11;
+
+    function showSlide(index) {
+      if (index < 1 || index > totalSlides) return;
+      document.querySelectorAll('.slide').forEach(el => el.classList.remove('active'));
+      document.getElementById('slide-' + index).classList.add('active');
+      currentSlide = index;
+      document.getElementById('counter').innerText = `Slide ${currentSlide} / ${totalSlides}`;
+    }
+
+    function nextSlide() {
+      if (currentSlide < totalSlides) {
+        showSlide(currentSlide + 1);
+      }
+    }
+
+    function prevSlide() {
+      if (currentSlide > 1) {
+        showSlide(currentSlide - 1);
+      }
+    }
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        }
+      }
+    }
+
+    // Navegação via Teclado (Setas Esquerda e Direita, Barra de Espaço)
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+        nextSlide();
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        prevSlide();
+      } else if (e.key === 'f' || e.key === 'F') {
+        toggleFullscreen();
+      }
+    });
+  </script>
+</body>
+</html>

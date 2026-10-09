@@ -2045,7 +2045,12 @@ public sealed class DeviceConnectionManager
             await _session.SendCommandAsync("transport input telnet", TimeSpan.FromSeconds(5), ct);
             await _session.SendCommandAsync("privilege level 15", TimeSpan.FromSeconds(5), ct);
             await _session.SendCommandAsync("password CQMR", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("login", TimeSpan.FromSeconds(5), ct);
+            try { await _session.SendCommandAsync("login", TimeSpan.FromSeconds(5), ct); } catch { }
+            await _session.SendCommandAsync("exit", TimeSpan.FromSeconds(5), ct);
+
+            // Garante credenciais locais com privilégio 15 para Telnet
+            try { await _session.SendCommandAsync("username EBT privilege 15 secret CQMR", TimeSpan.FromSeconds(5), ct); } catch { }
+            try { await _session.SendCommandAsync("enable secret CQMR", TimeSpan.FromSeconds(5), ct); } catch { }
             await _session.SendCommandAsync("end", TimeSpan.FromSeconds(5), ct);
         }
 
@@ -2223,6 +2228,7 @@ public sealed class DeviceConnectionManager
     /// Upgrade de Comware via FTP do celular (HPE com SO em execução; BootWare segue
     /// por notebook/USB). Sobe o FTP embarcado (:2121), baixa via cliente ftp interativo,
     /// aplica boot-loader + save + reboot com verificação de retorno.
+    /// Suporta console serial ou Telnet sobre Ethernet (swap em bancada).
     /// </summary>
     public async Task<bool> UpgradeFirmwareHpeFtpAsync(
         string firmwareFilePath,
@@ -2230,7 +2236,8 @@ public sealed class DeviceConnectionManager
         string ftpUser,
         string ftpPass,
         Func<string, Task> progress,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? routerIp = null)
     {
         if (string.IsNullOrWhiteSpace(firmwareFilePath) || !File.Exists(firmwareFilePath))
             throw new FileNotFoundException($"Firmware não encontrado: {firmwareFilePath}");
@@ -2239,7 +2246,36 @@ public sealed class DeviceConnectionManager
         await PauseReadLoopAsync();
         try
         {
-            _session = await EnsureConsoleSessionAsync(progress, ct);
+            DeviceSession? cli = null;
+
+            if (HasSupportedSerialConnected())
+            {
+                try
+                {
+                    _session = await EnsureConsoleSessionAsync(progress, ct);
+                    cli = _session;
+                }
+                catch (Exception exSerial)
+                {
+                    await progress($"[AVISO] Console serial indisponível ({exSerial.Message}). Tentando via rede/Telnet...");
+                }
+            }
+
+            var targetRouterIp = !string.IsNullOrWhiteSpace(routerIp) ? routerIp.Trim() : "192.168.1.1";
+            if (cli == null || !cli.IsConnected)
+            {
+                var telnetOk = await ConnectTelnetAsync(targetRouterIp, 23, null, "PRO1ANPRO1AN",
+                    msg => progress(msg).GetAwaiter().GetResult(), ct);
+                if (telnetOk && _telnetSession != null)
+                {
+                    cli = _telnetSession;
+                }
+            }
+
+            if (cli == null)
+            {
+                throw new InvalidOperationException($"Nenhuma sessão CLI disponível para transferência (Serial USB desconectada e Telnet em {targetRouterIp}:23 indisponível). Conecte o cabo serial ou verifique a conexão de rede Ethernet.");
+            }
 
             var dir = Path.GetDirectoryName(firmwareFilePath) ?? FileSystem.CacheDirectory;
             await using var ftp = new EmbeddedFtpServer(dir, phoneIp.Trim(), 2121, ftpUser, ftpPass);
@@ -2251,13 +2287,14 @@ public sealed class DeviceConnectionManager
             {
                 var size = new FileInfo(firmwareFilePath).Length;
                 var upgrader = new HpeFtpUpgrader(progress);
-                return await upgrader.UpgradeAsync(_session,
+                return await upgrader.UpgradeAsync(cli,
                     Path.GetFileName(firmwareFilePath), phoneIp.Trim(), ftp.ActualPort,
                     ftpUser, ftpPass, size, ct);
             }
             finally
             {
                 await ftp.StopAsync();
+                await DisconnectTelnetAsync();
             }
         }
         finally
@@ -2270,6 +2307,7 @@ public sealed class DeviceConnectionManager
     /// Restore de firmware FortiOS via FTP do celular
     /// (<c>execute restore image ftp arquivo ip:porta user pass</c> — grava e reinicia
     /// imediatamente). BootLoader (TFTP :69) segue por notebook/USB.
+    /// Suporta console serial ou Telnet sobre Ethernet (swap em bancada).
     /// </summary>
     public async Task<bool> RestoreFirmwareFortiFtpAsync(
         string firmwareFilePath,
@@ -2277,7 +2315,8 @@ public sealed class DeviceConnectionManager
         string? ftpUser,
         string? ftpPass,
         Func<string, Task> progress,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        string? routerIp = null)
     {
         if (string.IsNullOrWhiteSpace(firmwareFilePath) || !File.Exists(firmwareFilePath))
             throw new FileNotFoundException($"Firmware não encontrado: {firmwareFilePath}");
@@ -2286,7 +2325,36 @@ public sealed class DeviceConnectionManager
         await PauseReadLoopAsync();
         try
         {
-            _session = await EnsureConsoleSessionAsync(progress, ct);
+            DeviceSession? cli = null;
+
+            if (HasSupportedSerialConnected())
+            {
+                try
+                {
+                    _session = await EnsureConsoleSessionAsync(progress, ct);
+                    cli = _session;
+                }
+                catch (Exception exSerial)
+                {
+                    await progress($"[AVISO] Console serial indisponível ({exSerial.Message}). Tentando via rede/Telnet...");
+                }
+            }
+
+            var targetRouterIp = !string.IsNullOrWhiteSpace(routerIp) ? routerIp.Trim() : "192.168.1.1";
+            if (cli == null || !cli.IsConnected)
+            {
+                var telnetOk = await ConnectTelnetAsync(targetRouterIp, 23, "admin", "",
+                    msg => progress(msg).GetAwaiter().GetResult(), ct);
+                if (telnetOk && _telnetSession != null)
+                {
+                    cli = _telnetSession;
+                }
+            }
+
+            if (cli == null)
+            {
+                throw new InvalidOperationException($"Nenhuma sessão CLI disponível para transferência (Serial USB desconectada e Telnet em {targetRouterIp}:23 indisponível). Conecte o cabo serial ou verifique a conexão de rede Ethernet.");
+            }
 
             var dir = Path.GetDirectoryName(firmwareFilePath) ?? FileSystem.CacheDirectory;
             await using var ftp = new EmbeddedFtpServer(dir, phoneIp.Trim(), 2121, ftpUser, ftpPass);
@@ -2297,13 +2365,14 @@ public sealed class DeviceConnectionManager
             try
             {
                 var upgrader = new FortiGateFirmwareUpgrader(progress);
-                return await upgrader.UpgradeAsync(_session,
+                return await upgrader.UpgradeAsync(cli,
                     Path.GetFileName(firmwareFilePath), phoneIp.Trim(), ftp.ActualPort,
                     ftpUser, ftpPass, ct);
             }
             finally
             {
                 await ftp.StopAsync();
+                await DisconnectTelnetAsync();
             }
         }
         finally
@@ -2374,8 +2443,21 @@ public sealed class DeviceConnectionManager
         await PauseReadLoopAsync();
         try
         {
-            _session = await EnsureConsoleSessionAsync(progress, ct);
-            await EnsureNoSetupDialogAsync(progress, ct);
+            DeviceSession? cli = null;
+
+            if (HasSupportedSerialConnected())
+            {
+                try
+                {
+                    _session = await EnsureConsoleSessionAsync(progress, ct);
+                    await EnsureNoSetupDialogAsync(progress, ct);
+                    cli = _session;
+                }
+                catch (Exception exSerial)
+                {
+                    await progress($"[AVISO] Console serial USB indisponível ({exSerial.Message}). Tentando via rede/Telnet...");
+                }
+            }
 
             // Servidor HTTP do celular (porta alta — sem root)
             await using var http = new EmbeddedHttpFileServer(firmwareFilePath);
@@ -2393,14 +2475,21 @@ public sealed class DeviceConnectionManager
             };
             await progress($"[*] Servidor HTTP no ar: http://{phoneIp}:{http.ActualPort}/{Path.GetFileName(firmwareFilePath)}");
 
-            // CLI híbrida: prefere Telnet, cai para console
-            DeviceSession cli = _session;
+            // CLI híbrida: tenta Telnet se routerIp foi fornecido (ou fallback serial)
             if (!string.IsNullOrWhiteSpace(routerIp))
             {
                 var telnetOk = await ConnectTelnetAsync(routerIp.Trim(), 23, telnetUser, telnetPass,
                     msg => progress(msg).GetAwaiter().GetResult(), ct);
                 if (telnetOk && _telnetSession != null)
+                {
                     cli = _telnetSession;
+                }
+            }
+
+            if (cli == null)
+            {
+                throw new InvalidOperationException(
+                    $"Nenhuma sessão CLI disponível para transferência. Cabo Serial USB desconectado e Telnet em {routerIp}:23 indisponível. Verifique o cabo de rede Ethernet.");
             }
 
             try

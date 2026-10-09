@@ -646,25 +646,25 @@ public partial class FirmwarePage : ContentPage
             {
                 AppendLog($"[*] Iniciando transferência HPE via FTP embarcado (:2121) a partir de {phoneIp}...");
                 success = await _connManager.UpgradeFirmwareHpeFtpAsync(
-                    _selectedLocalFirmwarePath, phoneIp, "sparc", "claro123", logger, cts.Token);
+                    _selectedLocalFirmwarePath, phoneIp, "sparc", "claro123", logger, cts.Token, routerIp: "192.168.1.1");
             }
             else if (isForti)
             {
                 AppendLog($"[*] Iniciando restauração FortiOS via FTP embarcado (:2121) a partir de {phoneIp}...");
                 success = await _connManager.RestoreFirmwareFortiFtpAsync(
-                    _selectedLocalFirmwarePath, phoneIp, "sparc", "claro123", logger, cts.Token);
+                    _selectedLocalFirmwarePath, phoneIp, "sparc", "claro123", logger, cts.Token, routerIp: "192.168.1.1");
             }
             else
             {
                 // Cisco IOS
-                var routerIp = _connManager.LoadedCircuit?.LanIp ?? "192.168.1.1";
+                var routerIp = "192.168.1.1";
                 AppendLog($"[*] Iniciando transferência Cisco via HTTP embarcado (:8080) a partir de {phoneIp}...");
                 success = await _connManager.UpgradeFirmwareCiscoHttpAsync(
                     _selectedLocalFirmwarePath,
                     phoneIp: phoneIp,
                     routerIp: routerIp,
                     telnetUser: "EBT",
-                    telnetPass: "PRO1AN",
+                    telnetPass: "CQMR",
                     routerTempIp: null,
                     routerTempMask: null,
                     lanInterface: null,

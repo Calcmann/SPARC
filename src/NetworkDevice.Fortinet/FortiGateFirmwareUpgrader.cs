@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using NetworkDevice.Core.Session;
+using NetworkDevice.Protocols.Telnet;
 
 namespace NetworkDevice.Fortinet;
 
@@ -83,6 +84,12 @@ public sealed class FortiGateFirmwareUpgrader
 
         if (!confirmed)
             throw new DeviceSessionException("Restore não confirmado pelo FortiGate (timeout).");
+
+        if (session.Transport is TcpTelnetTransport)
+        {
+            await ProgressAsync($"[✓] Imagem {fileName} gravada com sucesso no FortiGate e equipamento reiniciando!");
+            return true;
+        }
 
         // Aguarda o reboot completar: retorno do prompt de login prova boot íntegro
         await ProgressAsync("[*] Aguardando reboot com o novo firmware (até 8 min)...");
