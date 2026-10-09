@@ -307,42 +307,85 @@ public sealed class FirmwareRepositoryService
 
         try
         {
-            var apiUrl = $"https://api.github.com/repos/{RemoteRepoOwner}/{RemoteRepoName}/releases";
-            using var request = CreateGitHubRequest(HttpMethod.Get, apiUrl);
+            // 1. Tenta consulta direta pela Release da tag homologada
+            long? targetReleaseId = null;
+            JsonDocument? docAssets = null;
 
-            using var response = await HttpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
-            if (response.IsSuccessStatusCode)
+            var tagUrl = $"https://api.github.com/repos/{RemoteRepoOwner}/{RemoteRepoName}/releases/tags/{ReleaseTag}";
+            using var reqTag = CreateGitHubRequest(HttpMethod.Get, tagUrl);
+            using var respTag = await HttpClient.SendAsync(reqTag, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+
+            if (respTag.IsSuccessStatusCode)
             {
-                var json = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-                using var doc = JsonDocument.Parse(json);
-
-                if (doc.RootElement.ValueKind == JsonValueKind.Array && doc.RootElement.GetArrayLength() > 0)
+                var jsonTag = await respTag.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                using var docTag = JsonDocument.Parse(jsonTag);
+                if (docTag.RootElement.TryGetProperty("id", out var idProp))
                 {
-                    // Localiza a Release homologada (preferencialmente tag 'homologados' ou a release mais recente com assets)
-                    JsonElement targetRelease = default;
-                    bool foundRelease = false;
+                    targetReleaseId = idProp.GetInt64();
+                }
+            }
 
-                    foreach (var rel in doc.RootElement.EnumerateArray())
+            // Se obteve o ID da release, busca os assets diretamente com per_page=100 para evitar truncamento de 30 itens
+            if (targetReleaseId.HasValue)
+            {
+                var assetsUrl = $"https://api.github.com/repos/{RemoteRepoOwner}/{RemoteRepoName}/releases/{targetReleaseId.Value}/assets?per_page=100";
+                using var reqAssets = CreateGitHubRequest(HttpMethod.Get, assetsUrl);
+                using var respAssets = await HttpClient.SendAsync(reqAssets, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+                if (respAssets.IsSuccessStatusCode)
+                {
+                    var jsonAssets = await respAssets.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                    docAssets = JsonDocument.Parse(jsonAssets);
+                }
+            }
+
+            // Fallback: se não conseguiu pela tag direta, consulta a lista geral de releases
+            if (docAssets == null)
+            {
+                var apiUrl = $"https://api.github.com/repos/{RemoteRepoOwner}/{RemoteRepoName}/releases";
+                using var request = CreateGitHubRequest(HttpMethod.Get, apiUrl);
+                using var response = await HttpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+                if (response.IsSuccessStatusCode)
+                {
+                    var json = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                    using var doc = JsonDocument.Parse(json);
+                    if (doc.RootElement.ValueKind == JsonValueKind.Array && doc.RootElement.GetArrayLength() > 0)
                     {
-                        var tag = rel.TryGetProperty("tag_name", out var tg) ? tg.GetString() : null;
-                        if (string.Equals(tag, ReleaseTag, StringComparison.OrdinalIgnoreCase))
+                        JsonElement targetRelease = default;
+                        bool foundRelease = false;
+
+                        foreach (var rel in doc.RootElement.EnumerateArray())
                         {
-                            targetRelease = rel;
-                            foundRelease = true;
-                            break;
+                            var tag = rel.TryGetProperty("tag_name", out var tg) ? tg.GetString() : null;
+                            if (string.Equals(tag, ReleaseTag, StringComparison.OrdinalIgnoreCase))
+                            {
+                                targetRelease = rel;
+                                foundRelease = true;
+                                break;
+                            }
+                        }
+
+                        if (!foundRelease) targetRelease = doc.RootElement[0];
+
+                        if (targetRelease.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
+                        {
+                            docAssets = JsonDocument.Parse(assets.GetRawText());
                         }
                     }
+                }
+            }
 
-                    if (!foundRelease)
+            if (docAssets != null)
+            {
+                using (docAssets)
+                {
+                    var processedSeries = new HashSet<DeviceSeries>();
+                    var assetsArray = docAssets.RootElement.ValueKind == JsonValueKind.Array
+                        ? docAssets.RootElement
+                        : default;
+
+                    if (assetsArray.ValueKind == JsonValueKind.Array)
                     {
-                        targetRelease = doc.RootElement[0];
-                    }
-
-                    if (targetRelease.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array)
-                    {
-                        var processedSeries = new HashSet<DeviceSeries>();
-
-                        foreach (var asset in assets.EnumerateArray())
+                        foreach (var asset in assetsArray.EnumerateArray())
                         {
                             var name = asset.TryGetProperty("name", out var nm) ? nm.GetString() : null;
                             if (string.IsNullOrWhiteSpace(name) || name.StartsWith(".")) continue;
@@ -361,8 +404,6 @@ public sealed class FirmwareRepositoryService
                             var assetApiUrl = asset.TryGetProperty("url", out var u) ? u.GetString() : null;
                             var browserDownloadUrl = asset.TryGetProperty("browser_download_url", out var dl) ? dl.GetString() : null;
 
-                            // Em repositórios privados com Token, a API do GitHub requer o asset.url para download com header Accept: application/octet-stream.
-                            // Em repositórios públicos ou sem token, usa o browser_download_url.
                             var downloadUrl = (!string.IsNullOrWhiteSpace(GitHubToken) && !string.IsNullOrWhiteSpace(assetApiUrl))
                                 ? assetApiUrl
                                 : (browserDownloadUrl ?? assetApiUrl);

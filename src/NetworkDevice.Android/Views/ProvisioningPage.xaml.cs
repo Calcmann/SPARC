@@ -85,7 +85,7 @@ public partial class ProvisioningPage : ContentPage
 
             TxtRepoFirmwareSummary.Text = offlineCount == seriesList.Length
                 ? $"✅ Todas as {offlineCount} imagens estão salvas no celular (100% offline)"
-                : $"📦 {offlineCount} de {seriesList.Length} imagens homologadas salvas no celular";
+                : $"📦 Cache Offline: {offlineCount} de {seriesList.Length} imagens baixadas no celular (8 na nuvem)";
         }
         catch
         {

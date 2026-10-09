@@ -16,8 +16,8 @@
 		<ApplicationId>br.com.sparc.mobile</ApplicationId>
 
 		<!-- Versions -->
-		<ApplicationDisplayVersion>0.8.79</ApplicationDisplayVersion>
-		<ApplicationVersion>49</ApplicationVersion>
+		<ApplicationDisplayVersion>0.8.80</ApplicationDisplayVersion>
+		<ApplicationVersion>50</ApplicationVersion>
 
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">24.0</SupportedOSPlatformVersion>
 		<EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>

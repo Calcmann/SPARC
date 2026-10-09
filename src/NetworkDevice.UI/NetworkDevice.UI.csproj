@@ -10,8 +10,8 @@
     <RootNamespace>NetworkDevice.UI</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\sparc.ico</ApplicationIcon>
-    <Version>0.8.79</Version>
-    <InformationalVersion>Release v0.8.79 Beta</InformationalVersion>
+    <Version>0.8.80</Version>
+    <InformationalVersion>Release v0.8.80 Beta</InformationalVersion>
   </PropertyGroup>
 
   <ItemGroup>
