@@ -101,10 +101,21 @@ public sealed class FortiGateFirmwareUpgrader
                 var res = await session.WaitForAsync(
                     new StopCondition[]
                     {
+                        new StopCondition.LineRegex("disclaimer", NetworkDevice.Core.Detection.DeviceDetector.FortiDisclaimerRegex),
                         new StopCondition.LineRegex("login", new Regex(@"(?i)(?:FortiGate|FGT)[A-Za-z0-9_\-]*\s+login\s*[:?]")),
                         new StopCondition.Prompt(),
                     },
                     TimeSpan.FromSeconds(15), cancellationToken);
+
+                if ((res.Matched is StopCondition.LineRegex lr && lr.Name == "disclaimer") || NetworkDevice.Core.Detection.DeviceDetector.IsDisclaimerPrompt(res.Output))
+                {
+                    await ProgressAsync("[>] Termo de aviso prévio / PRE WARNING detectado. Aceitando com 'a' e continuando CLI...");
+                    await session.Transport.WriteAsync(System.Text.Encoding.ASCII.GetBytes("a\r\n"), cancellationToken);
+                    await Task.Delay(400, cancellationToken);
+                    await session.Transport.WriteAsync(System.Text.Encoding.ASCII.GetBytes("\r\n"), cancellationToken);
+                    continue;
+                }
+
                 await ProgressAsync("[OK] FortiGate reiniciado com o novo firmware (login disponível). Valide 'get system status'.");
                 return true;
             }

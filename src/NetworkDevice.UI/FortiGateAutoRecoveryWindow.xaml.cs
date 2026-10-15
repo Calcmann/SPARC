@@ -448,6 +448,18 @@ public partial class FortiGateAutoRecoveryWindow : Window
                         continue;
                     }
 
+                    // 3b. Termo de aviso prévio pós-boot / pós-recuperação (PRE WARNING: ... Press 'a' to accept)
+                    if (NetworkDevice.Core.Detection.DeviceDetector.IsDisclaimerPrompt(current))
+                    {
+                        AppendLog("\n[>] Termo de aviso prévio / PRE WARNING detectado. Aceitando com 'a' e continuando CLI...");
+                        accumulator.Clear();
+                        await Task.Delay(150, ct);
+                        await SendSerialAsync("a\r");
+                        await Task.Delay(350, ct);
+                        await SendSerialAsync("\r");
+                        continue;
+                    }
+
                     // 4. Detecção de Prompt de Login (FortiGate-40F login:)
                     if (!loginSent && Regex.IsMatch(current, @"(?i)(?:FortiGate|FGT)[A-Za-z0-9_\-]*\s+login\s*[:?]"))
                     {

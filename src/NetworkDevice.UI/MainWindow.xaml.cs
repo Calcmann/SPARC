@@ -1136,9 +1136,25 @@ public partial class MainWindow : Window
                                             current.Contains("FOS", StringComparison.OrdinalIgnoreCase) ||
                                             current.Contains("Verifying password", StringComparison.OrdinalIgnoreCase) ||
                                             current.Contains("CTRL+D", StringComparison.OrdinalIgnoreCase) ||
+                                            NetworkDevice.Core.Detection.DeviceDetector.IsDisclaimerPrompt(current) ||
                                             Regex.IsMatch(current, @"(?i)(?:FortiGate|FGT|FG)[A-Za-z0-9_\-]*\s+login\s*[:?]")))
                     {
                         isFortiConsole = true;
+                    }
+
+                    // Se FortiOS exibir tela de aviso/termo de uso ((Press 'a' to accept):): envia 'a'
+                    if (NetworkDevice.Core.Detection.DeviceDetector.IsDisclaimerPrompt(current))
+                    {
+                        isFortiConsole = true;
+                        rxAccumulator.Clear();
+                        deadline = DateTime.UtcNow.AddSeconds(12);
+                        EscreverLinha("[>] Termo de uso / PRE WARNING FortiGate detectado. Enviando 'a' para aceitar termo...");
+                        await Task.Delay(150, ct);
+                        await transport.WriteAsync(Encoding.ASCII.GetBytes("a\r\n"), ct);
+                        await Task.Delay(350, ct);
+                        await transport.WriteAsync(Encoding.ASCII.GetBytes("\r\n"), ct);
+                        nextProbe = DateTime.UtcNow.AddSeconds(3);
+                        continue;
                     }
 
                     // Se estiver em modo BIOS / sem firmware do FortiGate (FOS boot failed / System halted / CTRL+D)
@@ -1596,7 +1612,8 @@ public partial class MainWindow : Window
             var isRommon = detection.BootState == BootState.Rommon;
             var isBootware = detection.BootState == BootState.Bootware;
             _isRommonOrBootwareDetected = detection.OperatingState == DeviceOperatingState.BootFailure;
-            var isPasswordLocked = !_isRommonOrBootwareDetected && (detection.OperatingState == DeviceOperatingState.PasswordProtected || (isForti && !fortiAuthenticated));
+            var isDisclaimer = DeviceDetector.IsDisclaimerPrompt(prompt) || DeviceDetector.IsDisclaimerPrompt(fullLogAccumulator.ToString());
+            var isPasswordLocked = !_isRommonOrBootwareDetected && !isDisclaimer && (detection.OperatingState == DeviceOperatingState.PasswordProtected || (isForti && !fortiAuthenticated && !isDisclaimer));
             var isCisco = !isForti && (
                 detection.Manufacturer == DeviceManufacturer.Cisco ||
                 prompt.Contains("User Access Verification", StringComparison.OrdinalIgnoreCase) ||
@@ -4681,7 +4698,9 @@ public partial class MainWindow : Window
             SetEtapa(6, (telnetR.IsSuccess ? "✅" : "❌") + $" 6. {accessTitle} — " + (telnetR.IsSuccess ? "OK" : "falha"), telnetR.IsSuccess ? "#16A34A" : "#EF4444"); Progresso(94, "6/7 OK");
 
             BandwidthTestResult bandR;
-            if (icmpR != null && (!icmpR.IsWanOk || !icmpR.IsWebOk))
+            var isNatLabAuto = ChkNatLab?.IsChecked == true;
+            var internetOk = isNatLabAuto ? (icmpR != null && (icmpR.IsWanOk || icmpR.IsWebOk)) : (icmpR != null && icmpR.IsWanOk && icmpR.IsWebOk);
+            if (icmpR != null && !internetOk)
             {
                 SetEtapa(7, "⏭ 7. Testar Banda — descartado (WAN offline)", "#64748B");
                 Progresso(100, "Concluído!");
@@ -6418,6 +6437,7 @@ public partial class MainWindow : Window
             EscreverLinha($"[*] Equipamento identificado como HPE / HP MSR / Comware (Prompt detectado: '{promptStr}').");
             AtualizarProgresso(50, "Fase C: Configurando HPE...", $"WAN GE0 ({_loadedSaipCircuit.WanIp}), LAN GE1 ({_loadedSaipCircuit.LanIp})...");
             var hpeConfig = new HpeSaipConfigurator(EscreverLinhaAsync);
+            hpeConfig.IncluirNatLab = ChkNatLab?.IsChecked == true;
             await hpeConfig.ApplyConfigAsync(session, _loadedSaipCircuit, "GigabitEthernet0/0", "GigabitEthernet0/1", ct);
 
             // Valida automaticamente via 'display ip interface brief' se o técnico conectou o cabo na porta LAN (GE1 / GigabitEthernet0/1)
@@ -7879,10 +7899,37 @@ public partial class MainWindow : Window
         // 5b. TESTE ICMP WAN (Gateway da Operadora Claro)
         // -------------------------------------------------------------
         AtualizarProgresso(78, "Fase 5b: Testando ICMP WAN...", $"Disparando pacotes ICMP para Gateway WAN ({wanTarget})...");
-        EscreverLinha($"\n[*] [5b] TESTE ICMP WAN -> {wanTarget} (Gateway WAN Claro)...");
+        var isNatLab = ChkNatLab?.IsChecked == true;
         var wanRes = await service.TestPingAsync(wanTarget, count: 4, timeoutMs: 2000, sourceIpAddress: sourceIp, cancellationToken: ct);
         if (wanRes.IsSuccess)
+        {
             EscreverLinha($"[OK 5b WAN] Conectividade de enlace WAN confirmada: RTT Médio {wanRes.AvgRttMs:F1}ms, 0% perda.");
+        }
+        else if (isNatLab)
+        {
+            EscreverLinha($"[*] [5b] Modo NAT LAB (Bancada 4G): testando gateway dinâmico entregue pelo modem...");
+            var modemGateways = new[] { "192.168.10.1", "192.168.0.1", "192.168.1.1", "192.168.8.1", "192.168.15.1", "10.0.0.1" };
+            ConnectivityTestResult? modemOk = null;
+            foreach (var gw in modemGateways)
+            {
+                var testGw = await service.TestPingAsync(gw, count: 2, timeoutMs: 1000, sourceIpAddress: sourceIp, cancellationToken: ct);
+                if (testGw.IsSuccess)
+                {
+                    modemOk = testGw;
+                    break;
+                }
+            }
+            if (modemOk != null && modemOk.IsSuccess)
+            {
+                wanRes = modemOk;
+                EscreverLinha($"[OK 5b WAN] Conectividade de enlace WAN (Modem 4G: {modemOk.Target}) confirmada: RTT Médio {modemOk.AvgRttMs:F1}ms, 0% perda.");
+            }
+            else
+            {
+                EscreverLinha($"[AVISO 5b WAN] Gateway WAN ({wanTarget}) sem resposta no modo bancada.");
+                wanRes = await TratarWanDownAsync(service, wanTarget, sourceIp, wanRes, ct);
+            }
+        }
         else
         {
             EscreverLinha($"[AVISO 5b WAN] Gateway WAN ({wanTarget}) sem resposta (Link físico ou rota pendente na operadora).");

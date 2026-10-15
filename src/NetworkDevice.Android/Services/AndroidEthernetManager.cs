@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Threading.Tasks;
+using UsbSerialForAndroid.Net.Helper;
 #pragma warning disable CA1422
 
 namespace NetworkDevice.Android.Services;
@@ -59,24 +60,37 @@ public sealed class AndroidEthernetManager
             catch { }
         }
 
-        // Fallback rigoroso: Somente interfaces físicas cabeada ("eth" ou "usb"), excluindo estritamente modems celulares e WiFi
+        // Fallback rigoroso: Somente interfaces físicas cabeadas reais ("eth" ou "usbnet"), excluindo estritamente modems celulares, WiFi e gadget USB interno (usb0)
         try
         {
             return NetworkInterface.GetAllNetworkInterfaces()
-                .Any(ni => (ni.Name.StartsWith("eth", StringComparison.OrdinalIgnoreCase) ||
-                            ni.Name.StartsWith("usb", StringComparison.OrdinalIgnoreCase)) &&
-                           !ni.Name.StartsWith("rmnet", StringComparison.OrdinalIgnoreCase) &&
-                           !ni.Name.StartsWith("ccmni", StringComparison.OrdinalIgnoreCase) &&
-                           !ni.Name.StartsWith("wlan", StringComparison.OrdinalIgnoreCase) &&
-                           !ni.Name.StartsWith("dummy", StringComparison.OrdinalIgnoreCase) &&
-                           !ni.Name.StartsWith("tun", StringComparison.OrdinalIgnoreCase) &&
-                           !ni.Name.StartsWith("p2p", StringComparison.OrdinalIgnoreCase) &&
-                           ni.OperationalStatus == OperationalStatus.Up);
+                .Any(ni => IsRealEthernetInterface(ni) && ni.OperationalStatus == OperationalStatus.Up);
         }
         catch
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// Identifica se uma NetworkInterface representa uma placa de rede Ethernet física real (ex: eth0, usbnet0),
+    /// excluindo terminantemente interfaces de modem celular (rmnet, ccmni), Wi-Fi (wlan), túneis (tun, sit, p2p)
+    /// e a interface interna do gadget/tethering USB do Android (usb0, rndis).
+    /// </summary>
+    public static bool IsRealEthernetInterface(NetworkInterface ni)
+    {
+        if (ni == null || string.IsNullOrWhiteSpace(ni.Name)) return false;
+        var name = ni.Name.ToLowerInvariant();
+
+        if (name.StartsWith("rmnet") || name.StartsWith("ccmni") || name.StartsWith("wlan") ||
+            name.StartsWith("dummy") || name.StartsWith("tun") || name.StartsWith("p2p") ||
+            name.StartsWith("sit") || name.StartsWith("ip6tnl") || name.StartsWith("lo") ||
+            name.Equals("usb0") || name.StartsWith("rndis") || name.StartsWith("swlan"))
+        {
+            return false;
+        }
+
+        return name.StartsWith("eth") || name.StartsWith("usbnet");
     }
 
     /// <summary>
@@ -88,15 +102,10 @@ public sealed class AndroidEthernetManager
         // 1. Consulta dispositivos USB diretamente (Adaptadores USB Ethernet ou HUBs multiporta)
         try
         {
-            var usbDevices = DeviceConnectionManager.Instance.ScanUsbDevices();
-            if (usbDevices.Count > 0)
+            var rawUsbDevices = UsbManagerHelper.GetAllUsbDevices()?.ToList();
+            if (rawUsbDevices != null && rawUsbDevices.Count > 0)
             {
-                if (usbDevices.Any(DeviceConnectionManager.IsNetworkOrHubDevice))
-                {
-                    return true;
-                }
-                // Se houver mais de 1 dispositivo USB conectado no smartphone, obrigatoriamente está usando um HUB USB
-                if (usbDevices.Count > 1)
+                if (rawUsbDevices.Any(DeviceConnectionManager.IsNetworkOrHubDevice))
                 {
                     return true;
                 }
@@ -125,15 +134,7 @@ public sealed class AndroidEthernetManager
         // 3. NetworkInterface
         try
         {
-            return NetworkInterface.GetAllNetworkInterfaces()
-                .Any(ni => (ni.Name.StartsWith("eth", StringComparison.OrdinalIgnoreCase) ||
-                            ni.Name.StartsWith("usb", StringComparison.OrdinalIgnoreCase)) &&
-                           !ni.Name.StartsWith("rmnet", StringComparison.OrdinalIgnoreCase) &&
-                           !ni.Name.StartsWith("ccmni", StringComparison.OrdinalIgnoreCase) &&
-                           !ni.Name.StartsWith("wlan", StringComparison.OrdinalIgnoreCase) &&
-                           !ni.Name.StartsWith("dummy", StringComparison.OrdinalIgnoreCase) &&
-                           !ni.Name.StartsWith("tun", StringComparison.OrdinalIgnoreCase) &&
-                           !ni.Name.StartsWith("p2p", StringComparison.OrdinalIgnoreCase));
+            return NetworkInterface.GetAllNetworkInterfaces().Any(IsRealEthernetInterface);
         }
         catch
         {
@@ -147,24 +148,12 @@ public sealed class AndroidEthernetManager
     /// </summary>
     public bool IsHubUsbSimultaneousActive(bool isSerialConnected)
     {
-        // Se a serial está conectada ou identificada
+        // Se a serial não está conectada, não há simultaneidade
         if (!isSerialConnected && !DeviceConnectionManager.Instance.HasSupportedSerialConnected())
             return false;
 
-        // Se há interface Ethernet física detectada (enlace ativo ou adaptador plugado no USB)
-        if (IsEthernetConnected() || HasEthernetHardwareInterface())
-            return true;
-
-        // Se há múltiplos dispositivos USB conectados (HUB USB com serial + rede)
-        try
-        {
-            var usbDevices = DeviceConnectionManager.Instance.ScanUsbDevices();
-            if (usbDevices.Count > 1)
-                return true;
-        }
-        catch { }
-
-        return false;
+        // Há simultaneidade apenas se tanto a serial quanto o enlace Ethernet já estão simultaneamente conectados e operacionais
+        return IsEthernetConnected();
     }
 
     /// <summary>
@@ -173,26 +162,116 @@ public sealed class AndroidEthernetManager
     /// </summary>
     public string? GetEthernetIpAddress()
     {
+        // 1. Via ConnectivityManager (API nativa Android para Ethernet)
+        if (_connectivityManager != null)
+        {
+            try
+            {
+                var networks = _connectivityManager.GetAllNetworks();
+                foreach (var net in networks)
+                {
+                    var caps = _connectivityManager.GetNetworkCapabilities(net);
+                    if (caps != null && caps.HasTransport(TransportType.Ethernet))
+                    {
+                        var linkProps = _connectivityManager.GetLinkProperties(net);
+                        if (linkProps != null)
+                        {
+                            foreach (var linkAddress in linkProps.LinkAddresses)
+                            {
+                                var addr = linkAddress.Address;
+                                if (addr is Java.Net.Inet4Address && !addr.IsLoopbackAddress)
+                                {
+                                    var ipStr = addr.HostAddress;
+                                    if (!string.IsNullOrWhiteSpace(ipStr))
+                                        return ipStr;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+
+        // 2. Fallback via NetworkInterface (filtrando estritamente interfaces reais)
         try
         {
             var ethInterfaces = NetworkInterface.GetAllNetworkInterfaces()
-                .Where(ni => (ni.Name.StartsWith("eth", StringComparison.OrdinalIgnoreCase) ||
-                              ni.Name.StartsWith("usb", StringComparison.OrdinalIgnoreCase)) &&
-                             !ni.Name.StartsWith("rmnet", StringComparison.OrdinalIgnoreCase) &&
-                             !ni.Name.StartsWith("ccmni", StringComparison.OrdinalIgnoreCase) &&
-                             !ni.Name.StartsWith("wlan", StringComparison.OrdinalIgnoreCase) &&
-                             !ni.Name.StartsWith("dummy", StringComparison.OrdinalIgnoreCase))
+                .Where(IsRealEthernetInterface)
                 .ToList();
 
             foreach (var ni in ethInterfaces)
             {
                 var ip = ni.GetIPProperties().UnicastAddresses
                     .FirstOrDefault(a => a.Address.AddressFamily == AddressFamily.InterNetwork &&
-                                        !System.Net.IPAddress.IsLoopback(a.Address))?
+                                         !System.Net.IPAddress.IsLoopback(a.Address))?
                     .Address.ToString();
 
                 if (!string.IsNullOrWhiteSpace(ip))
                     return ip;
+            }
+        }
+        catch { }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Retorna o IPv4 do gateway (roteador) configurado na interface Ethernet cabeada.
+    /// Útil para preencher automaticamente o IP do roteador na bancada.
+    /// </summary>
+    public string? GetEthernetGatewayAddress()
+    {
+        // 1. Via ConnectivityManager (API nativa Android LinkProperties.Routes)
+        if (_connectivityManager != null)
+        {
+            try
+            {
+                var networks = _connectivityManager.GetAllNetworks();
+                foreach (var net in networks)
+                {
+                    var caps = _connectivityManager.GetNetworkCapabilities(net);
+                    if (caps != null && caps.HasTransport(TransportType.Ethernet))
+                    {
+                        var linkProps = _connectivityManager.GetLinkProperties(net);
+                        if (linkProps != null)
+                        {
+                            foreach (var route in linkProps.Routes)
+                            {
+                                var gw = route.Gateway;
+                                if (gw is Java.Net.Inet4Address && !gw.IsAnyLocalAddress && !gw.IsLoopbackAddress)
+                                {
+                                    var gwStr = gw.HostAddress;
+                                    if (!string.IsNullOrWhiteSpace(gwStr))
+                                        return gwStr;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch { }
+        }
+
+        // 2. Fallback via NetworkInterface (filtrando estritamente interfaces reais)
+        try
+        {
+            var ethInterfaces = NetworkInterface.GetAllNetworkInterfaces()
+                .Where(IsRealEthernetInterface)
+                .ToList();
+
+            foreach (var ni in ethInterfaces)
+            {
+#pragma warning disable CA1416 // IPInterfaceProperties.GatewayAddresses is guarded by try-catch on Android
+                var gw = ni.GetIPProperties().GatewayAddresses
+                    .FirstOrDefault(g => g.Address.AddressFamily == AddressFamily.InterNetwork &&
+                                         !System.Net.IPAddress.IsLoopback(g.Address) &&
+                                         !g.Address.Equals(System.Net.IPAddress.Any))?
+                    .Address.ToString();
+#pragma warning restore CA1416
+
+                if (!string.IsNullOrWhiteSpace(gw))
+                    return gw;
             }
         }
         catch { }

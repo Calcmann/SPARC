@@ -38,6 +38,8 @@ public sealed class HpeSaipConfigurator
 
     private readonly Func<string, Task>? _progress;
 
+    public bool IncluirNatLab { get; set; }
+
     public HpeSaipConfigurator(Func<string, Task>? progress = null)
     {
         _progress = progress;
@@ -264,7 +266,8 @@ public sealed class HpeSaipConfigurator
         string wanInterface = "GigabitEthernet0/0",
         string lanInterface = "GigabitEthernet0/1",
         bool isComware5 = false,
-        bool incluirBldClaro = true)
+        bool incluirBldClaro = true,
+        bool incluirNatLab = false)
     {
         var hostname = SanitizeHostname(circuit.DesignacaoIp ?? circuit.NumeroOts, "ROUTER-CPE");
         var wanDesc = SanitizeDescription(circuit.DesignacaoIp ?? circuit.NumeroOts ?? "LINK");
@@ -280,7 +283,7 @@ public sealed class HpeSaipConfigurator
             $"interface {wanInterface}",
             "port link-mode route",
             $"description WAN_EBT_{wanDesc}",
-            $"ip address {circuit.WanIp} {circuit.WanSubnetMask}",
+            incluirNatLab ? "ip address dhcp-alloc" : $"ip address {circuit.WanIp} {circuit.WanSubnetMask}",
             "undo shutdown",
             "quit",
 
@@ -291,10 +294,13 @@ public sealed class HpeSaipConfigurator
             $"ip address {circuit.LanIp} {circuit.LanSubnetMask}",
             "undo shutdown",
             "quit",
-
-            // 3. Rota Default Canônica (Única sintaxe)
-            $"ip route-static 0.0.0.0 0.0.0.0 {circuit.WanGateway}",
         };
+
+        // 3. Rota Default Canônica (apenas se não estiver em modo NAT Lab com DHCP)
+        if (!incluirNatLab)
+        {
+            cmds.Add($"ip route-static 0.0.0.0 0.0.0.0 {circuit.WanGateway}");
+        }
 
         if (incluirBldClaro)
         {
@@ -597,7 +603,15 @@ public sealed class HpeSaipConfigurator
         }
 
         await session.SendCommandAsync($"description WAN_EBT_{wanDesc}", TimeSpan.FromSeconds(5), cancellationToken);
-        await session.SendCommandAsync($"ip address {circuit.WanIp} {circuit.WanSubnetMask}", TimeSpan.FromSeconds(5), cancellationToken);
+        if (IncluirNatLab)
+        {
+            await session.SendCommandAsync("ip address dhcp-alloc", TimeSpan.FromSeconds(5), cancellationToken);
+            await ProgressAsync("[*] [HPE LAB] WAN em modo DHCP dinâmico (dhcp-alloc) habilitada para modem 4G.");
+        }
+        else
+        {
+            await session.SendCommandAsync($"ip address {circuit.WanIp} {circuit.WanSubnetMask}", TimeSpan.FromSeconds(5), cancellationToken);
+        }
         await session.SendCommandAsync("undo shutdown", TimeSpan.FromSeconds(5), cancellationToken);
         await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
         await ProgressAsync("[OK] WAN configurada");
@@ -623,10 +637,39 @@ public sealed class HpeSaipConfigurator
         await Task.Delay(6000, cancellationToken);
         await ProgressAsync("[OK] LAN configurada");
 
-        // 6. Rota Default Canônica
-        await EnsureSystemViewAsync(session, _progress, cancellationToken);
-        await session.SendCommandAsync($"ip route-static 0.0.0.0 0.0.0.0 {circuit.WanGateway}", TimeSpan.FromSeconds(5), cancellationToken);
-        await ProgressAsync("[OK] Rota default configurada");
+        // 6. Rota Default Canônica (ou NAT Outbound em bancada)
+        if (!IncluirNatLab)
+        {
+            await EnsureSystemViewAsync(session, _progress, cancellationToken);
+            await session.SendCommandAsync($"ip route-static 0.0.0.0 0.0.0.0 {circuit.WanGateway}", TimeSpan.FromSeconds(5), cancellationToken);
+            await ProgressAsync("[OK] Rota default configurada");
+        }
+        else
+        {
+            await EnsureSystemViewAsync(session, _progress, cancellationToken);
+            var lanNet = string.IsNullOrWhiteSpace(circuit.LanBlockNetwork) ? circuit.LanIp : circuit.LanBlockNetwork;
+            var wildcard = "0.0.0.255";
+            if (circuit.LanCidr > 0)
+            {
+                var maskInt = 0xffffffff << (32 - circuit.LanCidr);
+                var wildInt = ~maskInt;
+                wildcard = $"{(wildInt >> 24) & 0xff}.{(wildInt >> 16) & 0xff}.{(wildInt >> 8) & 0xff}.{wildInt & 0xff}";
+            }
+            try
+            {
+                await session.SendCommandAsync("acl basic 2000", TimeSpan.FromSeconds(5), cancellationToken);
+                await session.SendCommandAsync($"rule 0 permit source {lanNet} {wildcard}", TimeSpan.FromSeconds(5), cancellationToken);
+                await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
+                await session.SendCommandAsync($"interface {wanInterface}", TimeSpan.FromSeconds(5), cancellationToken);
+                await session.SendCommandAsync("nat outbound 2000", TimeSpan.FromSeconds(5), cancellationToken);
+                await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
+                await ProgressAsync("[OK] [HPE LAB] NAT outbound overload (ACL 2000) configurado para modem 4G.");
+            }
+            catch (Exception ex)
+            {
+                await ProgressAsync($"[AVISO] Falha ao configurar NAT Comware: {ex.Message}");
+            }
+        }
 
         // 7. Usuário EBT (sintaxe específica por versão do Comware)
         await EnsureSystemViewAsync(session, _progress, cancellationToken);

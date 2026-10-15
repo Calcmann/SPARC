@@ -70,6 +70,22 @@ public sealed class DeviceDetector : IDeviceDetector
         @"(?i)(?:\bFortiGate(?:-|\s*)40F\b|\bFGT-?40F\b|\bFGT40F\b|\bFG-?40F\b|\bFG40F\b|\bFortiOS\b.*\b40F\b)",
         RegexOptions.Compiled);
 
+    public static readonly Regex FortiDisclaimerRegex = new(
+        @"(?i)(?:\(Press\s+['""]?a['""]?\s+to\s+accept.*?\)|Press\s+['""]?a['""]?\s+to\s+accept|PRE\s+WARNING:.*?(?:\(Press|Press)\s+['""]?a['""]?)",
+        RegexOptions.Compiled | RegexOptions.Singleline);
+
+    public static bool IsDisclaimerPrompt(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        return FortiDisclaimerRegex.IsMatch(text) ||
+               text.Contains("Press 'a' to accept", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("press 'a' to accept", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("Press \"a\" to accept", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("Press a to accept", StringComparison.OrdinalIgnoreCase) ||
+               (text.Contains("PRE WARNING", StringComparison.OrdinalIgnoreCase) && text.Contains("accept", StringComparison.OrdinalIgnoreCase)) ||
+               Regex.IsMatch(text, @"(?i)press\s+['""]?a['""]?\s+to\s+accept");
+    }
+
     public async Task<DeviceDetectionResult> DetectAsync(ITransport transport, CancellationToken ct = default)
     {
         if (!transport.IsOpen)
@@ -95,6 +111,18 @@ public sealed class DeviceDetector : IDeviceDetector
                 rxAccumulator.Append(chunk);
 
                 var current = rxAccumulator.ToString();
+
+                // Termo de uso / PRE WARNING FortiGate ((Press 'a' to accept):): aceita imediatamente
+                if (IsDisclaimerPrompt(current))
+                {
+                    rxAccumulator.Clear();
+                    await transport.WriteAsync(Encoding.UTF8.GetBytes("a\r\n"), ct);
+                    await Task.Delay(350, ct);
+                    await transport.WriteAsync(Encoding.UTF8.GetBytes("\r\n"), ct);
+                    silenceDeadline = DateTime.UtcNow.AddSeconds(2.5);
+                    continue;
+                }
+
                 if (current.Contains("Press ENTER to get started", StringComparison.OrdinalIgnoreCase) ||
                     current.Contains("Press RETURN to get started", StringComparison.OrdinalIgnoreCase) ||
                     current.Contains("Line con0 is available", StringComparison.OrdinalIgnoreCase))
@@ -196,12 +224,14 @@ public sealed class DeviceDetector : IDeviceDetector
         // 2. Detecção de Senha / Bloqueio / Prompt Aberto (PasswordProtected / OpenPrompt)
         var lines = rawPrompt.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
         var lastLine = lines.LastOrDefault()?.Trim() ?? rawPrompt;
+        var isDisclaimer = IsDisclaimerPrompt(rawPrompt) || IsDisclaimerPrompt(lastLine);
 
-        // Se a última linha de saída do console for um prompt de autenticação, tem precedência absoluta
-        var isAuthAtEnd = PasswordPromptRegex.IsMatch(lastLine)
+        // Se a última linha de saída do console for um prompt de autenticação, tem precedência absoluta (exceto disclaimer 'Press a to accept')
+        var isAuthAtEnd = (PasswordPromptRegex.IsMatch(lastLine)
                        || UserAuthPromptRegex.IsMatch(lastLine)
                        || PasswordOnlyPromptRegex.IsMatch(lastLine)
-                       || lastLine.EndsWith(":", StringComparison.Ordinal);
+                       || lastLine.EndsWith(":", StringComparison.Ordinal))
+                       && !isDisclaimer;
 
         // Procura a última linha que corresponda a um prompt HPE/Cisco/Fortinet em todo o buffer,
         // apenas se o console não estiver parado pedindo credenciais no final.
@@ -213,9 +243,9 @@ public sealed class DeviceDetector : IDeviceDetector
             && (HpePromptRegex.IsMatch(promptLine) || CiscoPromptRegex.IsMatch(promptLine) || FortiPromptRegex.IsMatch(promptLine))
             && !PasswordPromptRegex.IsMatch(promptLine);
 
-        var isUserAuth = !isOpenPrompt && (UserAuthPromptRegex.IsMatch(rawPrompt) || rawPrompt.Contains("Login incorrect", StringComparison.OrdinalIgnoreCase) || rawPrompt.Contains("Login failed", StringComparison.OrdinalIgnoreCase));
-        var isPasswordOnly = !isOpenPrompt && !isUserAuth && PasswordOnlyPromptRegex.IsMatch(rawPrompt);
-        var isPasswordLocked = !isOpenPrompt && (isUserAuth || isPasswordOnly || isAuthAtEnd || PasswordPromptRegex.IsMatch(rawPrompt) || rawPrompt.Contains("Verifying password", StringComparison.OrdinalIgnoreCase));
+        var isUserAuth = !isOpenPrompt && !isDisclaimer && (UserAuthPromptRegex.IsMatch(rawPrompt) || rawPrompt.Contains("Login incorrect", StringComparison.OrdinalIgnoreCase) || rawPrompt.Contains("Login failed", StringComparison.OrdinalIgnoreCase));
+        var isPasswordOnly = !isOpenPrompt && !isDisclaimer && !isUserAuth && PasswordOnlyPromptRegex.IsMatch(rawPrompt);
+        var isPasswordLocked = !isOpenPrompt && !isDisclaimer && (isUserAuth || isPasswordOnly || isAuthAtEnd || PasswordPromptRegex.IsMatch(rawPrompt) || rawPrompt.Contains("Verifying password", StringComparison.OrdinalIgnoreCase));
 
         var isComwareReady = isOpenPrompt
                           || rawPrompt.Contains("Press ENTER to get started", StringComparison.OrdinalIgnoreCase)
@@ -264,6 +294,7 @@ public sealed class DeviceDetector : IDeviceDetector
 
         // Bloco Fortinet (aditivo — assinaturas exclusivas FortiOS/FGT/Fortinet; não colidem com HPE/Cisco).
         var isFortinet = isFortiBios
+            || isDisclaimer
             || FortiGate40FModelRegex.IsMatch(rawPrompt)
             || rawPrompt.Contains("FortiGate", StringComparison.OrdinalIgnoreCase)
             || rawPrompt.Contains("Fortinet", StringComparison.OrdinalIgnoreCase)
@@ -365,6 +396,14 @@ public sealed class DeviceDetector : IDeviceDetector
             accessState = AccessState.RommonOrBootware;
             bootState = isBootware ? BootState.Bootware : (isRommon ? BootState.Rommon : BootState.Bootware);
             fwState = FirmwareState.CorruptedOrMissing;
+        }
+        else if (isDisclaimer)
+        {
+            // Fortinet em tela de aviso prévio / termo de uso (Press 'a' to accept) — aceitação de termo, não bloqueio por senha
+            opState = DeviceOperatingState.Ready;
+            accessState = AccessState.Open;
+            bootState = BootState.Normal;
+            fwState = FirmwareState.Ready;
         }
         else if (isUserAuth || (isFortinet && isPasswordLocked))
         {

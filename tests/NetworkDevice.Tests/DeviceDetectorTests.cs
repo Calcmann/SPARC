@@ -155,6 +155,75 @@ HPE MSR931 uptime is 0 week, 0 day, 16 hours, 0 minute
     }
 
     [Fact]
+    public void ClassifyPrompt_DetectFortiGateDisclaimerBanner_AsReadyAndNotPasswordLocked()
+    {
+        var prompt = @"PRE WARNING:
+This is a private computer system. Unauthorized access or use
+is prohibited and subject to prosecution and/or disciplinary
+action. Any use of this system constitutes consent to
+monitoring at all times and users are not entitled to any
+expectation of privacy. If monitoring reveals possible evidence
+of violation of criminal statutes, this evidence and any other
+related information, including identification information about
+the user, may be provided to law enforcement officials.
+If monitoring reveals violations of security regulations or
+unauthorized use, employees who violate security regulations or
+make unauthorized use of this system are subject to appropriate
+disciplinary action.
+(Press 'a' to accept): ";
+
+        var result = _detector.ClassifyPrompt(prompt);
+
+        Assert.Equal(DeviceManufacturer.Fortinet, result.Manufacturer);
+        Assert.Equal(DeviceSeries.FortiGate40F, result.Series);
+        Assert.Equal(DeviceOperatingState.Ready, result.OperatingState);
+        Assert.Equal(AccessState.Open, result.AccessState);
+        Assert.False(result.RequiresPasswordOnly);
+        Assert.False(result.RequiresUserAndPassword);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_DetectFortiGateDisclaimerWithHistoricalLogin_AsReadyAndNotPasswordLocked()
+    {
+        var prompt = @"FortiOS v7.0.0
+Previous login: Wed Oct 14 16:00:00
+PRE WARNING:
+This is a private computer system. Unauthorized access or use
+is prohibited and subject to prosecution and/or disciplinary
+action. Any use of this system constitutes consent to
+monitoring at all times and users are not entitled to any
+expectation of privacy. If monitoring reveals possible evidence
+of violation of criminal statutes, this evidence and any other
+related information, including identification information about
+the user, may be provided to law enforcement officials.
+If monitoring reveals violations of security regulations or
+unauthorized use, employees who violate security regulations or
+make unauthorized use of this system are subject to appropriate
+disciplinary action.
+(Press 'a' to accept):";
+
+        var result = _detector.ClassifyPrompt(prompt);
+
+        Assert.Equal(DeviceManufacturer.Fortinet, result.Manufacturer);
+        Assert.Equal(DeviceSeries.FortiGate40F, result.Series);
+        Assert.Equal(DeviceOperatingState.Ready, result.OperatingState);
+        Assert.Equal(AccessState.Open, result.AccessState);
+        Assert.False(result.RequiresPasswordOnly);
+        Assert.False(result.RequiresUserAndPassword);
+    }
+
+    [Theory]
+    [InlineData("(Press 'a' to accept):")]
+    [InlineData("(Press 'a' to accept): ")]
+    [InlineData("Press 'a' to accept")]
+    [InlineData("(Press 'a' to accept, 'd' to decline):")]
+    [InlineData("PRE WARNING:\r\nSome text\r\n(Press 'a' to accept):")]
+    public void DeviceDetector_IsDisclaimerPrompt_MatchesAllVariants(string input)
+    {
+        Assert.True(DeviceDetector.IsDisclaimerPrompt(input));
+    }
+
+    [Fact]
     public void ClassifyPrompt_DetectFortiGateFG40FLogin_AsPasswordProtected()
     {
         var prompt = "FG40FTK21000000 login: ";

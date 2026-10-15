@@ -95,6 +95,19 @@ public sealed class CiscoHttpUpgrader
 
         var isRunningTarget = CiscoIOSFirmwareVersionInspector.IsSameVersion(showVer, fileName, out var curVer, out _);
         var isFileOnFlash = dirFlash.Contains(fileName, StringComparison.OrdinalIgnoreCase);
+
+        // Se o arquivo já existe na flash, valida se o tamanho confere (evita aceitar arquivos incompletos/truncados de tentativas anteriores)
+        if (isFileOnFlash && fileSizeBytes > 0)
+        {
+            var existingSize = CiscoIOSFlashParser.ParseFileSize(dirFlash, fileName);
+            if (existingSize > 0 && existingSize < (fileSizeBytes * 0.95))
+            {
+                await ProgressAsync($"[!] Arquivo {fileName} encontrado na Flash porém incompleto ({existingSize / (1024.0 * 1024.0):F1} MB vs {fileSizeBytes / (1024.0 * 1024.0):F1} MB esperados). Excluindo para regravação limpa...");
+                await DeleteFileFromFlashAsync(session, fileName, fsPrefix, cancellationToken);
+                isFileOnFlash = false;
+            }
+        }
+
         var isBootConfigured = showBoot.Contains(fileName, StringComparison.OrdinalIgnoreCase);
         await ProgressAsync($"[*] Versão atual: {curVer.DisplayString} | Arquivo na flash: {(isFileOnFlash ? "SIM" : "NÃO")} | Boot configurado: {(isBootConfigured ? "SIM" : "NÃO")}");
 
@@ -136,15 +149,23 @@ public sealed class CiscoHttpUpgrader
         // 4. IP temporário no roteador (caso zerado) + teste de alcance ao celular
         if (!string.IsNullOrWhiteSpace(routerTempIp))
         {
-            lanInterface ??= await DetectLanInterfaceAsync(session, cancellationToken);
-            var mask = string.IsNullOrWhiteSpace(routerTempMask) ? "255.255.255.0" : routerTempMask.Trim();
-            await ProgressAsync($"[*] Aplicando IP temporário {routerTempIp}/{mask} em {lanInterface}...");
-            await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(10), cancellationToken);
-            await session.SendCommandAsync($"interface {lanInterface}", TimeSpan.FromSeconds(10), cancellationToken);
-            await session.SendCommandAsync($"ip address {routerTempIp.Trim()} {mask}", TimeSpan.FromSeconds(10), cancellationToken);
-            await session.SendCommandAsync("no shutdown", TimeSpan.FromSeconds(10), cancellationToken);
-            await session.SendCommandAsync("end", TimeSpan.FromSeconds(10), cancellationToken);
-            await Task.Delay(1500, cancellationToken);
+            var brief = await CiscoSaipConfigurator.SendShowAsync(session, "show ip interface brief", TimeSpan.FromSeconds(15), cancellationToken);
+            if (!brief.Contains(routerTempIp.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                lanInterface ??= await DetectLanInterfaceAsync(session, cancellationToken);
+                var mask = string.IsNullOrWhiteSpace(routerTempMask) ? "255.255.255.0" : routerTempMask.Trim();
+                await ProgressAsync($"[*] Aplicando IP temporário {routerTempIp}/{mask} em {lanInterface}...");
+                await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(15), cancellationToken);
+                await session.SendCommandAsync($"interface {lanInterface}", TimeSpan.FromSeconds(10), cancellationToken);
+                await session.SendCommandAsync($"ip address {routerTempIp.Trim()} {mask}", TimeSpan.FromSeconds(10), cancellationToken);
+                await session.SendCommandAsync("no shutdown", TimeSpan.FromSeconds(10), cancellationToken);
+                await session.SendCommandAsync("end", TimeSpan.FromSeconds(10), cancellationToken);
+                await Task.Delay(1500, cancellationToken);
+            }
+            else
+            {
+                await ProgressAsync($"[*] IP temporário {routerTempIp} já configurado e ativo no roteador.");
+            }
         }
 
         try
@@ -217,31 +238,38 @@ public sealed class CiscoHttpUpgrader
             }
         }
 
-        // 7. Boot system + register + save
-        await ProgressAsync($"[*] Configurando boot system para 'flash:{fileName}'...");
-        await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(10), cancellationToken);
-        await session.SendCommandAsync("no boot system", TimeSpan.FromSeconds(10), cancellationToken);
-        await session.SendCommandAsync($"boot system flash:{fileName}", TimeSpan.FromSeconds(10), cancellationToken);
-        if (fsPrefix.StartsWith("usbflash", StringComparison.OrdinalIgnoreCase))
+        // 7a. Configuração exclusiva de boot para o novo firmware homologado
+        await ProgressAsync($"[*] Configurando boot system exclusivo para 'flash:{fileName}'...");
+        try
         {
-            await session.SendCommandAsync($"boot system {fsPrefix}{fileName}", TimeSpan.FromSeconds(10), cancellationToken);
+            await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(10), cancellationToken);
+            await session.SendCommandAsync("no boot system", TimeSpan.FromSeconds(10), cancellationToken);
+            await session.SendCommandAsync($"boot system flash:{fileName}", TimeSpan.FromSeconds(10), cancellationToken);
+            if (fsPrefix.StartsWith("usbflash", StringComparison.OrdinalIgnoreCase))
+            {
+                await session.SendCommandAsync($"boot system {fsPrefix}{fileName}", TimeSpan.FromSeconds(10), cancellationToken);
+            }
+            await session.SendCommandAsync("config-register 0x2102", TimeSpan.FromSeconds(10), cancellationToken);
+            await session.SendCommandAsync("end", TimeSpan.FromSeconds(10), cancellationToken);
         }
-        await session.SendCommandAsync("config-register 0x2102", TimeSpan.FromSeconds(10), cancellationToken);
-        await session.SendCommandAsync("end", TimeSpan.FromSeconds(10), cancellationToken);
-        await session.SendCommandAsync("write memory", TimeSpan.FromSeconds(30), cancellationToken);
+        catch (Exception exBoot)
+        {
+            await ProgressAsync($"[AVISO] Configuração de boot system: {exBoot.Message}");
+        }
 
-        // 7b. Zeramento conjunto de configuração no mesmo reload (aproveita o reboot obrigatório de upgrade do SO)
-        await ProgressAsync("[*] Zerando configurações antigas e senhas residuais da NVRAM (write erase) para boot limpo...");
+        // 7b. Zeramento da NVRAM para garantir que o roteador reinicie 100% limpo em padrão de fábrica
+        // ATENÇÃO: NÃO executar 'write memory' após o 'write erase', para não sobrescrever a NVRAM limpa com a running-config suja!
+        await ProgressAsync("[*] Zerando configurações antigas e senhas residuais da NVRAM (write erase)...");
         try
         {
             await session.WriteLineAsync("write erase", cancellationToken);
-            await Task.Delay(400, cancellationToken);
-            await session.WriteLineAsync(string.Empty, cancellationToken);
-            await Task.Delay(800, cancellationToken);
+            await Task.Delay(500, cancellationToken);
+            await session.WriteLineAsync(string.Empty, cancellationToken); // Confirma [confirm] com Enter
+            await Task.Delay(1000, cancellationToken);
         }
         catch { }
 
-        // 8. Reload + verificação da versão pós-boot
+        // 8. Reload único conjunto (novo firmware + base limpa em um só boot)
         await ProgressAsync("[*] [RELOAD AUTOMÁTICO CONJUNTO] Reiniciando roteador Cisco (novo firmware + base limpa)...");
         await session.WriteLineAsync("reload", cancellationToken);
         try
@@ -259,7 +287,11 @@ public sealed class CiscoHttpUpgrader
             {
                 await session.WriteLineAsync("no", cancellationToken); // não salva running-config sobre a NVRAM limpa
                 await session.WaitForAsync(
-                    new StopCondition[] { new StopCondition.Contains("reload-confirm", "Proceed with reload? [confirm]") },
+                    new StopCondition[]
+                    {
+                        new StopCondition.Contains("Proceed with reload? [confirm]", "Proceed with reload? [confirm]"),
+                        new StopCondition.Contains("[confirm]", "[confirm]")
+                    },
                     TimeSpan.FromSeconds(15), cancellationToken);
             }
             await session.WriteLineAsync(string.Empty, cancellationToken); // confirma [confirm]
@@ -311,56 +343,107 @@ public sealed class CiscoHttpUpgrader
         await session.WriteLineAsync(copyCmd, ct);
         var full = new System.Text.StringBuilder();
 
-        // 5a. Confirms iniciais (Destination filename / [confirm])
-        try
+        var copyConds = new StopCondition[]
         {
-            var confirm = await session.WaitForAsync(
-                new StopCondition[]
-                {
-                    new StopCondition.LineRegex("confirm", PromptConfirmRegex),
-                    new StopCondition.LineRegex("prompt", PromptLineRegex),
-                    new StopCondition.Contains("error", "%Error"),
-                    new StopCondition.Contains("invalid", "% Invalid"),
-                },
-                TimeSpan.FromSeconds(20), ct);
-            full.Append(confirm.Output);
-            if (confirm.Matched is StopCondition.LineRegex lr && lr.Name == "confirm")
-                await session.WriteLineAsync(string.Empty, ct);
-            else if (confirm.Matched is StopCondition.LineRegex p && p.Name == "prompt")
-            {
-                // Retornou direto ao prompt: cópia recusada de imediato ou erro já impresso
-                CheckCopyErrors(full.ToString(), fileName);
-                return;
-            }
-        }
-        catch (SessionTimeoutException) { /* sem confirms: segue monitorando */ }
+            new StopCondition.LineRegex("confirm", PromptConfirmRegex),
+            new StopCondition.LineRegex("prompt", PromptLineRegex),
+            new StopCondition.Contains("accessing", "Accessing http:"),
+            new StopCondition.Contains("loading", "Loading "),
+            new StopCondition.Contains("ok", "[OK"),
+            new StopCondition.Contains("bytes_copied", "bytes copied"),
+            new StopCondition.Contains("error", "%Error"),
+            new StopCondition.Contains("error_sp", "% Error"),
+            new StopCondition.Contains("invalid", "% Invalid"),
+            new StopCondition.Contains("timedout", "Timed out"),
+            new StopCondition.Contains("refused", "Connection refused"),
+            new StopCondition.Contains("unreachable", "unreachable"),
+            new StopCondition.Contains("unknownhost", "Unknown host")
+        };
 
-        // 5b. Monitora transferência até o prompt (timeout dimensionado pelo tamanho)
-        var minutes = 5 + (fileSizeBytes > 0 ? fileSizeBytes / (20L * 1024 * 1024) : 2);
-        var copyDeadline = DateTime.UtcNow.AddMinutes(Math.Min(minutes, 20));
-        while (DateTime.UtcNow < copyDeadline && !ct.IsCancellationRequested)
+        // 5a. Responde a eventuais confirmações sequenciais do Cisco IOS (Destination filename, overwrite, erase flash, etc.)
+        var confirmDeadline = DateTime.UtcNow.AddSeconds(45);
+        bool transferStarted = false;
+        while (DateTime.UtcNow < confirmDeadline && !ct.IsCancellationRequested)
         {
             try
             {
-                var exp = await session.WaitForAsync(
-                    new StopCondition[]
-                    {
-                        new StopCondition.LineRegex("prompt", PromptLineRegex),
-                        new StopCondition.Contains("error", "%Error"),
-                        new StopCondition.Contains("invalid", "% Invalid"),
-                        new StopCondition.Contains("timedout", "Timed out"),
-                        new StopCondition.Contains("refused", "Connection refused"),
-                        new StopCondition.Contains("unreachable", "unreachable"),
-                        new StopCondition.Contains("unknownhost", "Unknown host"),
-                    },
-                    TimeSpan.FromSeconds(5), ct);
+                var exp = await session.WaitForAsync(copyConds, TimeSpan.FromSeconds(5), ct);
                 full.Append(exp.Output);
 
-                if (exp.Matched is StopCondition.LineRegex lr && lr.Name == "prompt")
-                    break;
+                if (exp.Matched is StopCondition.LineRegex lrConf && lrConf.Name == "confirm")
+                {
+                    var lastLine = exp.Output.Trim().Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? "confirmação";
+                    await ProgressAsync($"[*] Confirmação solicitada pelo Cisco ({lastLine.Trim()}) — confirmando com ENTER...");
+                    await session.WriteLineAsync(string.Empty, ct);
+                    await Task.Delay(300, ct);
+                    continue;
+                }
 
-                if (exp.Matched is StopCondition.Contains)
+                if (exp.Matched is StopCondition.Contains cStart && (cStart.Text == "Accessing http:" || cStart.Text == "Loading "))
+                {
+                    transferStarted = true;
+                    await ProgressAsync("[*] Transferência HTTP iniciada e recebendo dados no Cisco IOS...");
+                    break;
+                }
+
+                if (exp.Matched is StopCondition.Contains cErr && (cErr.Text == "%Error" || cErr.Text == "% Error" || cErr.Text == "% Invalid" || cErr.Text == "Timed out" || cErr.Text == "Connection refused" || cErr.Text == "unreachable" || cErr.Text == "Unknown host"))
+                {
+                    throw new DeviceSessionException($"Falha ao iniciar cópia HTTP no Cisco: {exp.Output.Trim()}");
+                }
+
+                if (exp.Matched is StopCondition.LineRegex lrPrompt && lrPrompt.Name == "prompt")
+                {
+                    CheckCopyErrors(full.ToString(), fileName);
+                    break;
+                }
+            }
+            catch (SessionTimeoutException)
+            {
+                if (transferStarted)
+                    break;
+            }
+        }
+
+        // 5b. Monitora transferência do arquivo até a conclusão total (timeout dimensionado pelo tamanho)
+        var minutes = 5 + (fileSizeBytes > 0 ? fileSizeBytes / (20L * 1024 * 1024) : 2);
+        var copyDeadline = DateTime.UtcNow.AddMinutes(Math.Min(minutes, 20));
+        bool isCopying = true;
+        while (isCopying && DateTime.UtcNow < copyDeadline && !ct.IsCancellationRequested)
+        {
+            try
+            {
+                var exp = await session.WaitForAsync(copyConds, TimeSpan.FromSeconds(5), ct);
+                full.Append(exp.Output);
+
+                // Confirmação tardia inesperada
+                if (exp.Matched is StopCondition.LineRegex lrConf && lrConf.Name == "confirm")
+                {
+                    await session.WriteLineAsync(string.Empty, ct);
+                    continue;
+                }
+
+                if (exp.Matched is StopCondition.Contains cOk && (cOk.Text == "[OK" || cOk.Text == "bytes copied"))
+                {
+                    await ProgressAsync("[OK] Cisco acusou recebimento e gravação completa do arquivo via HTTP!");
+                    try
+                    {
+                        var pExp = await session.WaitForAsync(new StopCondition[] { new StopCondition.LineRegex("prompt", PromptLineRegex) }, TimeSpan.FromSeconds(15), ct);
+                        full.Append(pExp.Output);
+                    }
+                    catch (SessionTimeoutException) { }
+                    isCopying = false;
+                    break;
+                }
+
+                if (exp.Matched is StopCondition.LineRegex lr && lr.Name == "prompt")
+                {
+                    break;
+                }
+
+                if (exp.Matched is StopCondition.Contains cErr && (cErr.Text == "%Error" || cErr.Text == "% Error" || cErr.Text == "% Invalid" || cErr.Text == "Timed out" || cErr.Text == "Connection refused" || cErr.Text == "unreachable" || cErr.Text == "Unknown host"))
+                {
                     throw new DeviceSessionException($"Falha na cópia HTTP de {fileName}: {exp.Output.Trim()}");
+                }
             }
             catch (SessionTimeoutException)
             {
@@ -471,6 +554,11 @@ public sealed class CiscoHttpUpgrader
         try
         {
             var brief = await CiscoSaipConfigurator.SendShowAsync(session, "show ip interface brief", TimeSpan.FromSeconds(15), ct);
+            var physicallyConnected = CiscoSaipConfigurator.DetectConnectedPhysicalInterface(brief);
+            if (!string.IsNullOrWhiteSpace(physicallyConnected))
+            {
+                return physicallyConnected;
+            }
             var (_, lan) = CiscoSaipConfigurator.DetectInterfaces(brief);
             return lan;
         }

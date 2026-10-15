@@ -51,7 +51,11 @@ public static class SaipParser
         RegexOptions.Compiled);
 
     private static readonly Regex RegexBandaKbps = new(
-        @"(?im)^\s*Banda\s*[:\t]?\s*([0-9]+(?:[.,][0-9]+)?)",
+        @"(?i)(?:^|\b|\s)Banda\s*[:\t]?\s*([0-9]+(?:[.,][0-9]+)?)",
+        RegexOptions.Compiled);
+
+    private static readonly Regex RegexVlanCliente = new(
+        @"(?i)Vlan\s*Cliente\s*[:\t]?\s*(\d+)",
         RegexOptions.Compiled);
 
     /// <summary>
@@ -114,7 +118,7 @@ public static class SaipParser
 
         // 0. Detecção de Produto / Tipo de Serviço
         var prodMatch = RegexProduto.Match(text);
-        string? produto = prodMatch.Success ? CleanField(prodMatch.Groups[1].Value) : null;
+        string? produto = prodMatch.Success ? CleanProduto(prodMatch.Groups[1].Value) : null;
         bool isIpVpn = produto != null && (
             produto.Contains("IP VPN", StringComparison.OrdinalIgnoreCase) ||
             produto.Contains("IPVPN", StringComparison.OrdinalIgnoreCase) ||
@@ -228,6 +232,13 @@ public static class SaipParser
             bandaMbps = Math.Round(kbps / 1000.0, 2);
         }
 
+        string? vlanCliente = null;
+        var vlanMatch = RegexVlanCliente.Match(text);
+        if (vlanMatch.Success)
+        {
+            vlanCliente = vlanMatch.Groups[1].Value.Trim();
+        }
+
         return new SaipCircuitData
         {
             Produto = produto,
@@ -239,6 +250,7 @@ public static class SaipParser
             DescriptionRoteador = descRoteador,
             PeRouter = peRouter,
             PeLoopbackIp = peLoopback,
+            VlanCliente = vlanCliente,
             WanIp = wanIp,
             WanCidr = wanCidr,
             WanSubnetMask = wanMask,
@@ -304,6 +316,31 @@ public static class SaipParser
             @"(?i)\s*DESIGNA[ÇC][ÃA]O.*",
             @"(?i)\s*ESTA[ÇC][ÃA]O.*",
             @"(?i)\s*N[ÚU]MERO\s*OTS.*"
+        };
+
+        foreach (var pattern in cutPatterns)
+        {
+            cleaned = Regex.Replace(cleaned, pattern, string.Empty);
+        }
+
+        cleaned = cleaned.Trim().TrimEnd('-', ',', ';', ':', '/', '\\', '.');
+        return string.IsNullOrWhiteSpace(cleaned) ? null : cleaned;
+    }
+
+    public static string? CleanProduto(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var cleaned = CleanField(value);
+        if (string.IsNullOrWhiteSpace(cleaned))
+            return null;
+
+        var cutPatterns = new[]
+        {
+            @"(?i)\s*RAZ[ÃA]O\s*SOCIAL.*",
+            @"(?i)\s*CONTA[\s\-_]*CORRENTE.*",
+            @"(?i)\s*CNPJ.*"
         };
 
         foreach (var pattern in cutPatterns)

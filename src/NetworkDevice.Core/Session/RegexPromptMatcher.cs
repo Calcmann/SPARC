@@ -43,7 +43,9 @@ public sealed class RegexPromptMatcher : IPromptMatcher
             trimmed.StartsWith("[port", StringComparison.OrdinalIgnoreCase) ||
             trimmed.StartsWith("[internal", StringComparison.OrdinalIgnoreCase) ||
             trimmed.StartsWith("[onboard", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.Equals("[a]", StringComparison.OrdinalIgnoreCase))
+            trimmed.Equals("[a]", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("Press 'a' to accept", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("press 'a' to accept", StringComparison.OrdinalIgnoreCase))
             return null;
 
         var m = _regex.Match(trimmed);

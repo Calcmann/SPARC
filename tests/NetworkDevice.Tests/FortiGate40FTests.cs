@@ -110,6 +110,16 @@ public sealed class FortiGate40FTests
     }
 
     [Fact]
+    public void GenerateCommands_ComUsarDhcpWan_ConfiguraModeDhcpEOmitStaticRoute()
+    {
+        var cmds = FortiOsSaipConfigurator.GenerateCommands(CircuitoExemplo(), usarDhcpWan: true);
+        var joined = string.Join("\n", cmds);
+        Assert.Contains("set mode dhcp", joined);
+        Assert.Contains("set defaultgateway enable", joined);
+        Assert.DoesNotContain("config router static", joined);
+    }
+
+    [Fact]
     public void Configurator_IncluirNatLab_PropriedadeFunciona()
     {
         var configurator = new FortiOsSaipConfigurator();

@@ -277,6 +277,8 @@ Banda	20000
         };
         var cmds = CiscoSaipConfigurator.GenerateCommands(data, "GigabitEthernet0/4", "GigabitEthernet0/5", incluirNatLab: true);
 
+        Assert.Contains(" ip address dhcp", cmds);
+        Assert.DoesNotContain("ip route 0.0.0.0 0.0.0.0 192.168.10.1", cmds);
         Assert.Contains(" ip nat outside", cmds);
         Assert.Contains(" ip nat inside", cmds);
         Assert.Contains("access-list 1 permit 10.10.10.0 0.0.0.7", cmds);

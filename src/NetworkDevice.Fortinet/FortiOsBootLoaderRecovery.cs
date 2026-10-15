@@ -722,10 +722,22 @@ public sealed class FortiOsBootLoaderRecovery
                     return false;
                 }
 
-                // Detecção de login FortiOS
-                if (FortiOsLoginRegex.IsMatch(current) || current.Contains("login:", StringComparison.OrdinalIgnoreCase))
+                // Detecção de diálogo de aviso prévio pós-recuperação (PRE WARNING: ... Press 'a' to accept)
+                if (NetworkDevice.Core.Detection.DeviceDetector.IsDisclaimerPrompt(current))
                 {
-                    await log("[OK] Prompt de login do FortiOS detectado!");
+                    await log("\n[>] Diálogo de aviso prévio pós-recuperação FortiGate detectado (PRE WARNING). Aceitando com 'a' e continuando CLI...");
+                    accumulator.Clear();
+                    await session.Transport.WriteAsync(Encoding.ASCII.GetBytes("a\r\n"), ct);
+                    await Task.Delay(400, ct);
+                    await session.Transport.WriteAsync(Encoding.ASCII.GetBytes("\r\n"), ct);
+                    continue;
+                }
+
+                // Detecção de login FortiOS ou prompt CLI pós-aceite (# / $)
+                if (FortiOsLoginRegex.IsMatch(current) || current.Contains("login:", StringComparison.OrdinalIgnoreCase) ||
+                    Regex.IsMatch(current, @"(?i)(?:FortiGate|FGT|FG)[A-Za-z0-9_\-]*\s*(?:\([^()\r\n]*\))?\s*[#$]\s*$"))
+                {
+                    await log("[OK] Prompt/Login do FortiOS pós-recuperação detectado!");
                     return true;
                 }
             }

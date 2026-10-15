@@ -152,6 +152,29 @@ public static class IpCalculator
     }
 
     /// <summary>
+    /// Calcula o endereço de rede (Network IP) a partir de um IP e máscara decimal pontilhada (ex: 200.250.163.41 e 255.255.255.248 -> 200.250.163.40).
+    /// </summary>
+    public static string CalculateNetworkAddressFromMask(string ipOrNetwork, string maskString)
+    {
+        var normalizedIp = NormalizeIp(ipOrNetwork);
+        var normalizedMask = NormalizeIp(maskString);
+        if (IPAddress.TryParse(normalizedIp, out var ip) && IPAddress.TryParse(normalizedMask, out var mask))
+        {
+            var ipBytes = ip.GetAddressBytes();
+            var maskBytes = mask.GetAddressBytes();
+            if (ipBytes.Length == maskBytes.Length)
+            {
+                var netBytes = new byte[ipBytes.Length];
+                for (int i = 0; i < ipBytes.Length; i++)
+                    netBytes[i] = (byte)(ipBytes[i] & maskBytes[i]);
+                return new IPAddress(netBytes).ToString();
+            }
+        }
+        return normalizedIp;
+    }
+
+
+    /// <summary>
     /// Calcula o gateway IPv6 WAN da operadora (PE) a partir do IP do usuário (ex: /126).
     /// </summary>
     public static string CalculateWanIpv6Gateway(string userWanIpv6, int prefix = 126)

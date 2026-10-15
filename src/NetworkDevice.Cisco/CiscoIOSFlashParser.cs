@@ -90,6 +90,30 @@ public static class CiscoIOSFlashParser
     }
 
     /// <summary>
+    /// Extrai o tamanho em bytes de um arquivo específico na listagem da Flash ('dir flash:').
+    /// Retorna -1 se o arquivo não for encontrado ou não for possível identificar o tamanho.
+    /// </summary>
+    public static long ParseFileSize(string dirOutput, string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(dirOutput) || string.IsNullOrWhiteSpace(fileName)) return -1;
+        var clean = Path.GetFileName(fileName).Trim();
+        var lines = dirOutput.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        var sizeRegex = new Regex(@"(?i)\b(\d{4,})\s+.*?\b" + Regex.Escape(clean) + @"\b", RegexOptions.Compiled);
+        foreach (var line in lines)
+        {
+            if (line.Contains(clean, StringComparison.OrdinalIgnoreCase))
+            {
+                var match = sizeRegex.Match(line);
+                if (match.Success && long.TryParse(match.Groups[1].Value, out var sz))
+                {
+                    return sz;
+                }
+            }
+        }
+        return -1;
+    }
+
+    /// <summary>
     /// Detecta o prefixo canônico do filesystem da Flash (ex.: 'flash:', 'usbflash0:', 'flash0:') a partir do 'show version' ou 'dir'.
     /// </summary>
     public static string DetectFlashFilesystemPrefix(string output)

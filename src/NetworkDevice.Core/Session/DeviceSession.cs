@@ -215,6 +215,11 @@ public sealed class DeviceSession : IAsyncDisposable
                     await _transport.WriteAsync(Text("\r\n"), cancellationToken);
                     await Task.Delay(400, cancellationToken);
                 }
+                else if (stage.Kind == LoginStageKind.FortiDisclaimerAccept)
+                {
+                    await _transport.WriteAsync(Text("a\r\n"), cancellationToken);
+                    await Task.Delay(350, cancellationToken);
+                }
                 else if (stage.Kind == LoginStageKind.PressEnter)
                 {
                     await _transport.WriteAsync(Text("\r\n"), cancellationToken);
@@ -620,6 +625,8 @@ public sealed class DeviceSession : IAsyncDisposable
             return LoginStageKind.PressEnter;
         if (Regex.IsMatch(lastLine, @"(?i)\[Y/N\]\s*[:?]?\s*$"))
             return LoginStageKind.InteractiveYesNo;
+        if (Regex.IsMatch(lastLine, @"(?i)(?:press\s+['""]?a['""]?\s+to\s+accept|\(press\s+['""]?a['""]?\s+to\s+accept.*?\)|pre\s+warning\s*:.*accept)"))
+            return LoginStageKind.FortiDisclaimerAccept;
         // HPE 954 BootWare menu / contagem regressiva / senha / mensagens de boot sem firmware
         if (Regex.IsMatch(lastLine, @"(?i)(?:Press\s+Ctrl\+[BD]\s+to\s+enter|Press\s+Ctrl\+B\s+to\s+access|Press\s+Ctrl\+B\s+to\s+stop)"))
             return LoginStageKind.BootWareCountdown;
@@ -728,7 +735,8 @@ public sealed class DeviceSession : IAsyncDisposable
         PressEnter,
         BootWareMenu,
         BootWareCountdown,
-        BootWarePassword
+        BootWarePassword,
+        FortiDisclaimerAccept
     }
 
     public sealed record ExpectResult(string Output, StopCondition? Matched);

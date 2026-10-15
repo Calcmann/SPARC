@@ -224,6 +224,18 @@ public sealed class FortiGatePasswordRecovery
                 continue;
             }
 
+            // 4b. Termo de uso / aviso prévio ((Press 'a' to accept):)
+            if (current.Contains("Press 'a' to accept", StringComparison.OrdinalIgnoreCase) ||
+                current.Contains("press 'a' to accept", StringComparison.OrdinalIgnoreCase))
+            {
+                await ProgressAsync("[>] Termo de uso / PRE WARNING do FortiGate detectado. Enviando 'a' para aceitar...");
+                accumulator.Clear();
+                await Task.Delay(100, cancellationToken);
+                await WriteAsync(transport, "a\r\n", cancellationToken);
+                await Task.Delay(350, cancellationToken);
+                continue;
+            }
+
             // 5. Prompt de login pós-boot — valida reset com 'admin'
             if (!loginSent && LoginPromptRegex.IsMatch(current))
             {

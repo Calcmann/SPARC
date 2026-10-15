@@ -104,6 +104,14 @@ return
     }
 
     [Fact]
+    public void GenerateCommands_ComNatLab_ConfiguraDhcpAllocEOmitStaticRoute()
+    {
+        var cmds = HpeSaipConfigurator.GenerateCommands(SampleCircuit, "GigabitEthernet0/0", "GigabitEthernet0/1", incluirNatLab: true);
+        Assert.Contains("ip address dhcp-alloc", cmds);
+        Assert.DoesNotContain(cmds, c => c.StartsWith("ip route-static 0.0.0.0 0.0.0.0"));
+    }
+
+    [Fact]
     public void GenerateCommands_ProducesComware5Syntax_WhenIsComware5True()
     {
         var cmds = HpeSaipConfigurator.GenerateCommands(SampleCircuit, "GigabitEthernet0/0", "GigabitEthernet0/1", isComware5: true);

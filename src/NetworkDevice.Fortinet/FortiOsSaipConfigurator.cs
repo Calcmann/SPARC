@@ -111,6 +111,15 @@ public sealed class FortiOsSaipConfigurator
             var output = await session.SendCommandAsync(string.Empty, TimeSpan.FromSeconds(5), cancellationToken);
             var prompt = (session.CurrentPrompt ?? output?.Trim().Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.Trim() ?? string.Empty).Trim();
 
+            // Termo de uso / PRE WARNING FortiOS: aceita com 'a'
+            if (prompt.Contains("Press 'a' to accept", StringComparison.OrdinalIgnoreCase) ||
+                output?.Contains("Press 'a' to accept", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                await session.SendCommandAsync("a", TimeSpan.FromSeconds(5), cancellationToken);
+                await Task.Delay(250, cancellationToken);
+                continue;
+            }
+
             // Bloco de configuração FortiOS: hostname (bloco) # — ex: 'FGT40F (interface) #'
             if (Regex.IsMatch(prompt, @"\([^()\r\n]+\)\s*[#$]\s*$"))
             {
@@ -137,7 +146,8 @@ public sealed class FortiOsSaipConfigurator
         string adminPassword = "CQMR",
         bool incluirPolicyNat = true,
         bool incluirAdmin = false,
-        bool incluirBldClaro = true)
+        bool incluirBldClaro = true,
+        bool usarDhcpWan = false)
     {
         ArgumentNullException.ThrowIfNull(circuit);
 
@@ -172,12 +182,35 @@ public sealed class FortiOsSaipConfigurator
         {
             "config system interface",
             $"edit \"{wanInterface}\"",
-            "set mode static",
-            $"set ip {circuit.WanIp} {circuit.WanSubnetMask}",
-            $"set alias \"{wanAlias}\"",
-            "set role wan",
-            "set allowaccess ping ssh",
-            "next",
+        });
+
+        if (usarDhcpWan)
+        {
+            cmds.AddRange(new[]
+            {
+                "set mode dhcp",
+                "set defaultgateway enable",
+                $"set alias \"{wanAlias}\"",
+                "set role wan",
+                "set allowaccess ping ssh",
+                "next",
+            });
+        }
+        else
+        {
+            cmds.AddRange(new[]
+            {
+                "set mode static",
+                $"set ip {circuit.WanIp} {circuit.WanSubnetMask}",
+                $"set alias \"{wanAlias}\"",
+                "set role wan",
+                "set allowaccess ping ssh",
+                "next",
+            });
+        }
+
+        cmds.AddRange(new[]
+        {
             $"edit \"{lanInterface}\"",
             "set mode static",
             $"set ip {circuit.LanIp} {circuit.LanSubnetMask}",
@@ -186,16 +219,22 @@ public sealed class FortiOsSaipConfigurator
             "set allowaccess ping telnet ssh https http",
             "next",
             "end",
-
-            "config router static",
-            "edit 1",
-            "set dst 0.0.0.0/0",
-            $"set gateway {circuit.WanGateway}",
-            $"set device \"{wanInterface}\"",
-            "set status enable",
-            "next",
-            "end",
         });
+
+        if (!usarDhcpWan)
+        {
+            cmds.AddRange(new[]
+            {
+                "config router static",
+                "edit 1",
+                "set dst 0.0.0.0/0",
+                $"set gateway {circuit.WanGateway}",
+                $"set device \"{wanInterface}\"",
+                "set status enable",
+                "next",
+                "end",
+            });
+        }
 
         if (incluirBldClaro)
         {
@@ -423,7 +462,7 @@ public sealed class FortiOsSaipConfigurator
         }
 
         if (aplicarNat)
-            await ProgressAsync("[*] Opção secreta NAT (LAB) ATIVA: política de firewall com NAT ('set nat enable') habilitada para modem 4G.");
+            await ProgressAsync("[*] Opção secreta NAT (LAB) ATIVA: WAN em DHCP dinâmico + política com NAT ('set nat enable') habilitadas para modem 4G.");
         else
             await ProgressAsync("[*] Provisionamento corporativo padrão Claro: NAT de laboratório desativado (modo roteamento direto).");
 
@@ -460,7 +499,7 @@ public sealed class FortiOsSaipConfigurator
         await CleanupPreviousConfigAsync(session, wanInterface, lanInterface, cancellationToken);
 
         // 4. Envia bloco FortiOS linha a linha (cadência 200ms, como nos perfis existentes).
-        var commands = GenerateCommands(circuit, wanInterface, lanInterface, adminUser, adminPassword, aplicarNat);
+        var commands = GenerateCommands(circuit, wanInterface, lanInterface, adminUser, adminPassword, aplicarNat, usarDhcpWan: aplicarNat);
         await ProgressAsync("[*] Aplicando comandos FortiOS (cadência: 200ms por linha)...");
         foreach (var cmd in commands)
         {

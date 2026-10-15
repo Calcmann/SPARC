@@ -80,7 +80,13 @@
                         <!-- IP da interface Ethernet do celular -->
                         <Grid ColumnDefinitions="Auto, *" ColumnSpacing="8">
                             <Label Grid.Column="0" Text="IP Celular (ETH):" TextColor="#94A3B8" FontSize="11" VerticalOptions="Center" />
-                            <Entry Grid.Column="1" x:Name="PhoneEthIpEntry" Placeholder="Ex: 192.168.1.2 ou 200.182.245.18" TextColor="White" BackgroundColor="#1E293B" FontSize="11" />
+                            <Entry Grid.Column="1" x:Name="PhoneEthIpEntry" Placeholder="Ex: 192.168.1.2 ou 200.250.163.42" TextColor="White" BackgroundColor="#1E293B" FontSize="11" />
+                        </Grid>
+
+                        <!-- IP do Roteador (LAN/Bancada) -->
+                        <Grid ColumnDefinitions="Auto, *" ColumnSpacing="8">
+                            <Label Grid.Column="0" Text="IP Roteador (LAN):" TextColor="#94A3B8" FontSize="11" VerticalOptions="Center" />
+                            <Entry Grid.Column="1" x:Name="RouterEthIpEntry" Placeholder="Ex: 192.168.1.1 ou 200.250.163.41" TextColor="White" BackgroundColor="#1E293B" FontSize="11" />
                         </Grid>
 
                         <Button x:Name="SendLocalFwBtn" Text="⚡ ENVIAR FIRMWARE VIA OTG + ETHERNET" Clicked="OnSendLocalFirmwareClicked" BackgroundColor="#0284C7" TextColor="White" CornerRadius="8" FontAttributes="Bold" HeightRequest="44" FontSize="12" />

@@ -25,6 +25,19 @@ public class TftpAndHostNetworkTests
     }
 
     [Fact]
+    public void CalculateNetworkAddressFromMask_CalculatesCorrectNetwork()
+    {
+        // 200.250.163.41 & 255.255.255.248 -> 200.250.163.40
+        var net1 = IpCalculator.CalculateNetworkAddressFromMask("200.250.163.41", "255.255.255.248");
+        Assert.Equal("200.250.163.40", net1);
+
+        // 192.168.1.1 & 255.255.255.0 -> 192.168.1.0
+        var net2 = IpCalculator.CalculateNetworkAddressFromMask("192.168.1.1", "255.255.255.0");
+        Assert.Equal("192.168.1.0", net2);
+    }
+
+
+    [Fact]
     public void GetEthernetAdapters_Returns_List()
     {
         var adapters = HostNetworkManager.GetEthernetAdapters();

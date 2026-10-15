@@ -67,11 +67,11 @@ public sealed class AndroidUsbSerialTransport : ITransport
                 throw new NotSupportedException($"Driver serial USB não suportado para VID: 0x{_device.VendorId:X4}, PID: 0x{_device.ProductId:X4}.");
             }
 
-            _driver.ReadTimeout = 500;
+            _driver.ReadTimeout = 250;
             _driver.WriteTimeout = 1000;
             await _driver.OpenAsync(_baudRate, 8, StopBits.One, Parity.None);
             try { _driver.SetDtrEnabled(true); } catch { }
-            try { _driver.SetRtsEnabled(true); } catch { }
+            try { _driver.SetRtsEnabled(false); } catch { }
             _isOpen = true;
         }
         finally
@@ -128,9 +128,9 @@ public sealed class AndroidUsbSerialTransport : ITransport
             if (!_isOpen || _driver == null)
                 return 0;
 
-            // Timeout defensivo de 200ms para polling serial não travar caso nada chegue
+            // Timeout de segurança de 800ms caso o driver nativo trave na leitura
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(200);
+            timeoutCts.CancelAfter(800);
 
             var temp = System.Buffers.ArrayPool<byte>.Shared.Rent(buffer.Length);
             try

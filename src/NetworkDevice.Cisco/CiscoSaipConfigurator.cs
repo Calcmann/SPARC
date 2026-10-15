@@ -73,6 +73,53 @@ public sealed class CiscoSaipConfigurator
     }
 
     /// <summary>
+    /// Identifica qual interface possui enlace físico ativo ('up/up') a partir do 'show ip interface brief'.
+    /// Útil para detectar automaticamente em qual porta RJ45 o operador conectou o cabo Ethernet de bancada (GE0/0 vs GE0/1).
+    /// </summary>
+    public static string? DetectConnectedPhysicalInterface(string showIpIntBriefOutput)
+    {
+        if (string.IsNullOrWhiteSpace(showIpIntBriefOutput)) return null;
+
+        var lines = showIpIntBriefOutput.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        string? candidateUp = null;
+
+        foreach (var rawLine in lines)
+        {
+            var line = rawLine.Trim();
+            if (line.StartsWith("Interface", StringComparison.OrdinalIgnoreCase)) continue;
+
+            var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 5 &&
+                (parts[0].StartsWith("Gi", StringComparison.OrdinalIgnoreCase) ||
+                 parts[0].StartsWith("Fa", StringComparison.OrdinalIgnoreCase) ||
+                 parts[0].StartsWith("Eth", StringComparison.OrdinalIgnoreCase) ||
+                 parts[0].StartsWith("Vlan", StringComparison.OrdinalIgnoreCase)))
+            {
+                var iface = parts[0];
+                var proto = parts[^1];
+                var status = parts[^2];
+
+                // Status 'up' e Protocol 'up' = enlace físico 100% ativo e sincronizado
+                if (status.Equals("up", StringComparison.OrdinalIgnoreCase) && proto.Equals("up", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Prioriza interface LAN (ex: GE0/1 ou Vlan1) caso ambas estejam UP, mas se apenas GE0/0 estiver UP, assume ela
+                    if (iface.EndsWith("1") || iface.EndsWith("5") || iface.StartsWith("Vlan", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return iface;
+                    }
+                    candidateUp ??= iface;
+                }
+                else if (status.Equals("up", StringComparison.OrdinalIgnoreCase))
+                {
+                    candidateUp ??= iface;
+                }
+            }
+        }
+
+        return candidateUp;
+    }
+
+    /// <summary>
     public const string BannerMotd =
         "banner motd #\r\n" +
         "||========================================||\r\n" +
@@ -262,7 +309,14 @@ public sealed class CiscoSaipConfigurator
         cmds.Add($"interface {wanInterface}");
         cmds.Add($" description {wanDesc}");
         cmds.Add($" bandwidth {bandaKbps}");
-        cmds.Add($" ip address {circuit.WanIp} {circuit.WanSubnetMask}");
+        if (incluirNatLab)
+        {
+            cmds.Add(" ip address dhcp");
+        }
+        else
+        {
+            cmds.Add($" ip address {circuit.WanIp} {circuit.WanSubnetMask}");
+        }
         cmds.Add(" duplex auto");
         cmds.Add(" speed auto");
         if (!string.IsNullOrWhiteSpace(circuit.WanIpv6) && circuit.WanIpv6Prefix.HasValue)
@@ -296,7 +350,10 @@ public sealed class CiscoSaipConfigurator
         cmds.Add("ip forward-protocol nd");
         cmds.Add("no ip http server");
         cmds.Add("no ip http secure-server");
-        cmds.Add($"ip route 0.0.0.0 0.0.0.0 {circuit.WanGateway}");
+        if (!incluirNatLab)
+        {
+            cmds.Add($"ip route 0.0.0.0 0.0.0.0 {circuit.WanGateway}");
+        }
         if (!string.IsNullOrWhiteSpace(circuit.WanIpv6Gateway))
         {
             cmds.Add($"ipv6 route ::/0 {circuit.WanIpv6Gateway}");
@@ -566,7 +623,7 @@ public sealed class CiscoSaipConfigurator
         // 5. Lista de comandos a serem aplicados com cadência otimizada e segura de 200ms
         var commands = GenerateCommands(circuit, wanInterface, lanInterface, IncluirNatLab, BootImage);
         if (IncluirNatLab)
-            await ProgressAsync("[*] Opção secreta NAT (LAB) ATIVA: inside/outside + overload serão aplicados.");
+            await ProgressAsync("[*] Opção secreta NAT (LAB) ATIVA: WAN em DHCP dinâmico + NAT overload habilitados para testes em bancada com modem 4G.");
 
         await ProgressAsync("[*] Aplicando comandos no roteador (cadência: 200ms por comando)...");
         foreach (var cmd in commands)

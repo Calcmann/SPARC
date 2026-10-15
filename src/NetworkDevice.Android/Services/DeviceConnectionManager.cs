@@ -587,6 +587,14 @@ public sealed class DeviceConnectionManager
                 result = await _detector.DetectAsync(_transport, ct);
             }
 
+            // Se for aviso prévio / termo de uso do FortiGate ((Press 'a' to accept):), responde 'a' e re-detecta
+            if (DeviceDetector.IsDisclaimerPrompt(result.RawPrompt))
+            {
+                OnProbeProgress?.Invoke("[*] Termo de uso FortiGate (PRE WARNING) detectado — respondendo 'a'...");
+                await AnswerFortiDisclaimerAsync(ct);
+                result = await _detector.DetectAsync(_transport, ct);
+            }
+
             // Se o equipamento responder com proteção de senha no Padrão 1, tenta autenticar com credenciais padrão Claro/SPARC
             if (result.OperatingState == DeviceOperatingState.PasswordProtected)
             {
@@ -641,6 +649,14 @@ public sealed class DeviceConnectionManager
             await Task.Delay(300, ct);
 
             var resultFortinet = await _detector.DetectAsync(_transport, ct);
+
+            // Se for aviso prévio / termo de uso do FortiGate ((Press 'a' to accept):), responde 'a' e re-detecta
+            if (DeviceDetector.IsDisclaimerPrompt(resultFortinet.RawPrompt))
+            {
+                OnProbeProgress?.Invoke("[*] Termo de uso FortiGate (PRE WARNING) detectado — respondendo 'a'...");
+                await AnswerFortiDisclaimerAsync(ct);
+                resultFortinet = await _detector.DetectAsync(_transport, ct);
+            }
 
             if (resultFortinet.OperatingState == DeviceOperatingState.PasswordProtected)
             {
@@ -719,6 +735,31 @@ public sealed class DeviceConnectionManager
         try
         {
             for (var i = 0; i < 20; i++)
+            {
+                if (await _transport.ReadAsync(buf, ct) <= 0)
+                    break;
+            }
+        }
+        catch { }
+    }
+
+    /// <summary>
+    /// Responde ao termo de uso/aviso prévio do FortiGate: 'a' -> ENTER e drena os ecos.
+    /// </summary>
+    private async Task AnswerFortiDisclaimerAsync(CancellationToken ct)
+    {
+        if (_transport == null || !_transport.IsOpen)
+            return;
+
+        await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes("a\r\n"), ct);
+        await Task.Delay(400, ct);
+        await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes("\r\n"), ct);
+        await Task.Delay(300, ct);
+
+        var buf = new byte[4096];
+        try
+        {
+            for (var i = 0; i < 10; i++)
             {
                 if (await _transport.ReadAsync(buf, ct) <= 0)
                     break;
@@ -1015,7 +1056,7 @@ public sealed class DeviceConnectionManager
             }
             else if (detected.Manufacturer == DeviceManufacturer.Hpe)
             {
-                var configurator = new HpeSaipConfigurator(progressCallback);
+                var configurator = new HpeSaipConfigurator(progressCallback) { IncluirNatLab = IncluirNatLab };
                 await configurator.ApplyConfigAsync(_session, circuit, "GigabitEthernet0/0", "GigabitEthernet0/1", ct);
             }
             else if (detected.Manufacturer == DeviceManufacturer.Fortinet)
@@ -1081,8 +1122,12 @@ public sealed class DeviceConnectionManager
         if (!IsCiscoSetupDialog(text))
         {
             var p = (_session.CurrentPrompt ?? string.Empty).Trim();
-            if (p.EndsWith(">") || p.EndsWith("#") || p.StartsWith("<") || p.StartsWith("["))
+            var pr = probe.Trim();
+            if (p.EndsWith(">") || p.EndsWith("#") || p.StartsWith("<") || p.StartsWith("[") ||
+                pr.EndsWith(">") || pr.EndsWith("#") || pr.StartsWith("<") || pr.StartsWith("["))
+            {
                 return;
+            }
         }
 
         if (IsCiscoSetupDialog(text))
@@ -1146,6 +1191,11 @@ public sealed class DeviceConnectionManager
         Func<string, Task> progress,
         CancellationToken ct)
     {
+        if ((_transport == null || !_transport.IsOpen) && HasSupportedSerialConnected())
+        {
+            await EnsureConsoleSessionAsync(progress, ct);
+        }
+
         if (_transport == null || !_transport.IsOpen)
             throw new InvalidOperationException("Console serial USB não está conectado.");
 
@@ -1375,6 +1425,7 @@ public sealed class DeviceConnectionManager
                     var res = await session.WaitForAsync(
                         new StopCondition[]
                         {
+                            new StopCondition.LineRegex("disclaimer", DeviceDetector.FortiDisclaimerRegex),
                             new StopCondition.Contains("login", "login:"),
                             new StopCondition.Contains("password", "Password:"),
                             new StopCondition.LineRegex("forti-prompt", new System.Text.RegularExpressions.Regex(@"^[A-Za-z0-9_\-\.]+\s*[#$]\s*$")),
@@ -1383,6 +1434,15 @@ public sealed class DeviceConnectionManager
                         TimeSpan.FromSeconds(2), ct);
 
                     if (elapsed < 15) continue;
+
+                    if ((res.Matched is StopCondition.LineRegex lr && lr.Name == "disclaimer") || DeviceDetector.IsDisclaimerPrompt(res.Output))
+                    {
+                        await progress("[*] Termo de uso / PRE WARNING detectado — aceitando com 'a' e continuando CLI...");
+                        await session.SendRawAsync("a\r\n", ct);
+                        await Task.Delay(400, ct);
+                        await session.SendRawAsync("\r\n", ct);
+                        continue;
+                    }
 
                     if (res.Output.Contains("login:", StringComparison.OrdinalIgnoreCase))
                     {
@@ -1522,6 +1582,16 @@ public sealed class DeviceConnectionManager
                     await Task.Delay(80, ct);
                     await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes("\r\n"), ct);
                     await Task.Delay(150, ct);
+                    continue;
+                }
+
+                // Se FortiOS exibir tela de termo de uso / aviso prévio ((Press 'a' to accept):)
+                if (DeviceDetector.IsDisclaimerPrompt(current))
+                {
+                    rxAccumulator.Clear();
+                    await Task.Delay(80, ct);
+                    await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes("a\r\n"), ct);
+                    await Task.Delay(300, ct);
                     continue;
                 }
 
@@ -1871,10 +1941,21 @@ public sealed class DeviceConnectionManager
     /// </summary>
     public async Task<DeviceSession> EnsureConsoleSessionAsync(Func<string, Task>? progress = null, CancellationToken ct = default)
     {
+        Func<string, Task> prog = progress ?? (_ => Task.CompletedTask);
+
+        // Se o transporte serial foi desconectado/fechado mas o hardware ainda está plugado, tenta reabrir proativamente
+        if ((_transport == null || !_transport.IsOpen) && HasSupportedSerialConnected())
+        {
+            try
+            {
+                await prog("[*] Reabrindo comunicação serial USB...");
+                await ConnectUsbAsync(null, 9600, s => prog(s).GetAwaiter().GetResult(), ct);
+            }
+            catch { }
+        }
+
         if (_transport == null || !_transport.IsOpen || !HasSupportedSerialConnected())
             throw new InvalidOperationException("Console serial USB não está conectado.");
-
-        Func<string, Task> prog = progress ?? (_ => Task.CompletedTask);
 
         if (_session == null || !_session.IsConnected)
         {
@@ -1927,134 +2008,219 @@ public sealed class DeviceConnectionManager
     /// Aplica temporariamente IP e DHCP na LAN do roteador e habilita Telnet para permitir o swap
     /// do adaptador Serial USB pelo adaptador Ethernet no celular durante o upgrade de firmware em bancada.
     /// </summary>
-    public async Task ApplyTemporaryLanStagingAsync(DeviceManufacturer mfr, DeviceSeries series, string? lanIface, Func<string, Task> progress, CancellationToken ct = default)
+    public async Task ApplyTemporaryLanStagingAsync(
+        DeviceManufacturer mfr,
+        DeviceSeries series,
+        string? lanIface,
+        Func<string, Task> progress,
+        CancellationToken ct = default,
+        string stagingRouterIp = "192.168.1.1",
+        string stagingMask = "255.255.255.0",
+        string? stagingPhoneIp = null)
     {
-        _session = await EnsureConsoleSessionAsync(progress, ct);
-        await EnsureNoSetupDialogAsync(progress, ct);
-
-        await progress("[*] Aplicando configuração de staging temporário no roteador (IP 192.168.1.1 + DHCP + Telnet)...");
-
-        if (mfr == DeviceManufacturer.Fortinet)
+        await PauseReadLoopAsync();
+        try
         {
-            var iface = !string.IsNullOrWhiteSpace(lanIface) ? lanIface : "internal";
-            await _session.SendCommandAsync("config system interface", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync($"edit {iface}", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("set ip 192.168.1.1 255.255.255.0", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("set allowaccess ping telnet http https", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("next", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("end", TimeSpan.FromSeconds(5), ct);
+            _session = await EnsureConsoleSessionAsync(progress, ct);
+            await EnsureNoSetupDialogAsync(progress, ct);
 
-            await _session.SendCommandAsync("config system dhcp server", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("edit 99", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync($"set interface {iface}", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("set default-gateway 192.168.1.1", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("set netmask 255.255.255.0", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("config ip-range", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("edit 1", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("set start-ip 192.168.1.10", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("set end-ip 192.168.1.30", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("next", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("end", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("next", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("end", TimeSpan.FromSeconds(5), ct);
-        }
-        else if (mfr == DeviceManufacturer.Hpe)
-        {
-            var iface = !string.IsNullOrWhiteSpace(lanIface) ? lanIface : "GigabitEthernet0/1";
-            await _session.SendCommandAsync("system-view", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync($"interface {iface}", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("ip address 192.168.1.1 255.255.255.0", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("undo shutdown", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("quit", TimeSpan.FromSeconds(5), ct);
+            await progress($"[*] Aplicando configuração de staging temporário no roteador (IP {stagingRouterIp}/{stagingMask} + DHCP + Telnet)...");
 
-            // Garante link ativo na GigabitEthernet0/0 caso o técnico conecte na outra porta
-            try
+            var stagingNetwork = NetworkDevice.Core.Provisioning.IpCalculator.CalculateNetworkAddressFromMask(stagingRouterIp, stagingMask);
+
+            if (mfr == DeviceManufacturer.Fortinet)
             {
-                await _session.SendCommandAsync("interface GigabitEthernet0/0", TimeSpan.FromSeconds(3), ct);
-                await _session.SendCommandAsync("undo shutdown", TimeSpan.FromSeconds(3), ct);
-                await _session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), ct);
+                var iface = !string.IsNullOrWhiteSpace(lanIface) ? lanIface : "internal";
+                await _session.SendCommandAsync("config system interface", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync($"edit {iface}", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync($"set ip {stagingRouterIp} {stagingMask}", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync("set allowaccess ping telnet http https", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync("next", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync("end", TimeSpan.FromSeconds(10), ct);
+
+                await _session.SendCommandAsync("config system dhcp server", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync("edit 99", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync($"set interface {iface}", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync($"set default-gateway {stagingRouterIp}", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync($"set netmask {stagingMask}", TimeSpan.FromSeconds(10), ct);
+                if (!string.IsNullOrWhiteSpace(stagingPhoneIp))
+                {
+                    await _session.SendCommandAsync("config ip-range", TimeSpan.FromSeconds(10), ct);
+                    await _session.SendCommandAsync("edit 1", TimeSpan.FromSeconds(10), ct);
+                    await _session.SendCommandAsync($"set start-ip {stagingPhoneIp}", TimeSpan.FromSeconds(10), ct);
+                    await _session.SendCommandAsync($"set end-ip {stagingPhoneIp}", TimeSpan.FromSeconds(10), ct);
+                    await _session.SendCommandAsync("next", TimeSpan.FromSeconds(10), ct);
+                    await _session.SendCommandAsync("end", TimeSpan.FromSeconds(10), ct);
+                }
+                else
+                {
+                    await _session.SendCommandAsync("config ip-range", TimeSpan.FromSeconds(10), ct);
+                    await _session.SendCommandAsync("edit 1", TimeSpan.FromSeconds(10), ct);
+                    await _session.SendCommandAsync("set start-ip 192.168.1.10", TimeSpan.FromSeconds(10), ct);
+                    await _session.SendCommandAsync("set end-ip 192.168.1.30", TimeSpan.FromSeconds(10), ct);
+                    await _session.SendCommandAsync("next", TimeSpan.FromSeconds(10), ct);
+                    await _session.SendCommandAsync("end", TimeSpan.FromSeconds(10), ct);
+                }
+                await _session.SendCommandAsync("next", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync("end", TimeSpan.FromSeconds(10), ct);
             }
-            catch { }
-
-            await _session.SendCommandAsync("dhcp enable", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("dhcp server ip-pool SPARC_STAGING", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("network 192.168.1.0 mask 255.255.255.0", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("gateway-list 192.168.1.1", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("quit", TimeSpan.FromSeconds(5), ct);
-
-            await _session.SendCommandAsync("telnet server enable", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("user-interface vty 0 4", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("authentication-mode password", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("set authentication password simple PRO1ANPRO1AN", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("user-role level-15", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("return", TimeSpan.FromSeconds(5), ct);
-        }
-        else // Cisco
-        {
-            var iface = !string.IsNullOrWhiteSpace(lanIface)
-                ? lanIface
-                : (series == DeviceSeries.Isr841 ? "Vlan1" : (series == DeviceSeries.Isr921 ? "Vlan1" : "GigabitEthernet0/0"));
-
-            // Garante que o console saia de qualquer submodo com 'end' antes de entrar em config terminal
-            try { await _session.SendCommandAsync("end", TimeSpan.FromSeconds(3), ct); } catch { }
-
-            await _session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync($"interface {iface}", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("ip address 192.168.1.1 255.255.255.0", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("no shutdown", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("exit", TimeSpan.FromSeconds(5), ct);
-
-            // Garante link ativo na GigabitEthernet0/1 para modelos modulares (ex: Cisco 1905, 1921, 1941, 2901)
-            if (series == DeviceSeries.Series1900 || series == DeviceSeries.Series2900 || series == DeviceSeries.Unknown)
+            else if (mfr == DeviceManufacturer.Hpe)
             {
+                var iface = !string.IsNullOrWhiteSpace(lanIface) ? lanIface : "GigabitEthernet0/1";
+                await _session.SendCommandAsync("system-view", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync($"interface {iface}", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync($"ip address {stagingRouterIp} {stagingMask}", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync("undo shutdown", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync("quit", TimeSpan.FromSeconds(10), ct);
+
+                // Garante link ativo na GigabitEthernet0/0 caso o técnico conecte na outra porta
                 try
                 {
-                    await _session.SendCommandAsync("interface GigabitEthernet0/1", TimeSpan.FromSeconds(3), ct);
-                    await _session.SendCommandAsync("no shutdown", TimeSpan.FromSeconds(3), ct);
-                    await _session.SendCommandAsync("exit", TimeSpan.FromSeconds(3), ct);
+                    await _session.SendCommandAsync("interface GigabitEthernet0/0", TimeSpan.FromSeconds(5), ct);
+                    await _session.SendCommandAsync("undo shutdown", TimeSpan.FromSeconds(5), ct);
+                    await _session.SendCommandAsync("quit", TimeSpan.FromSeconds(5), ct);
                 }
                 catch { }
+
+                await _session.SendCommandAsync("dhcp enable", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync("dhcp server ip-pool SPARC_STAGING", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync($"network {stagingNetwork} mask {stagingMask}", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync($"gateway-list {stagingRouterIp}", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync("quit", TimeSpan.FromSeconds(10), ct);
+
+                await _session.SendCommandAsync("telnet server enable", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync("user-interface vty 0 4", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync("authentication-mode password", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync("set authentication password simple PRO1ANPRO1AN", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync("user-role level-15", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync("return", TimeSpan.FromSeconds(10), ct);
             }
-            // Para switches integrados (ISR 841 / 921), garante 'no shutdown' nas portas físicas da switch LAN
-            else if (series == DeviceSeries.Isr841 || series == DeviceSeries.Isr921)
+            else // Cisco
             {
-                try
+                // Garante que o console saia de qualquer submodo com 'end' apenas se estiver em submodo
+                var curPrompt = _session.CurrentPrompt?.Trim() ?? string.Empty;
+                if (curPrompt.Contains("(config", StringComparison.OrdinalIgnoreCase))
                 {
-                    await _session.SendCommandAsync("interface range GigabitEthernet 0 - 3", TimeSpan.FromSeconds(3), ct);
-                    await _session.SendCommandAsync("no shutdown", TimeSpan.FromSeconds(3), ct);
-                    await _session.SendCommandAsync("exit", TimeSpan.FromSeconds(3), ct);
+                    try { await _session.SendCommandAsync("end", TimeSpan.FromSeconds(10), ct); } catch { }
                 }
-                catch
+
+                // OBRIGATÓRIO: Entra em modo privilegiado (#) para permitir execução de 'configure terminal'
+                var candidates = new List<string>();
+                if (!string.IsNullOrWhiteSpace(LastResolvedEnableSecret)) candidates.Add(LastResolvedEnableSecret);
+                if (!candidates.Contains("CQMR")) candidates.Add("CQMR");
+                if (!candidates.Contains("PRO1AN")) candidates.Add("PRO1AN");
+                if (!candidates.Contains("cisco")) candidates.Add("cisco");
+                await CiscoSaipConfigurator.EnsurePrivilegedExecAsync(_session, candidates, ct);
+                try { await _session.SendCommandAsync("terminal length 0", TimeSpan.FromSeconds(10), ct); } catch { }
+
+                // 1. Garante 'no shutdown' em ambas as portas para ISR modulares ou portas switch no 841/921
+                await _session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(15), ct);
+                if (series == DeviceSeries.Series1900 || series == DeviceSeries.Series2900 || series == DeviceSeries.Unknown)
                 {
+                    try { await _session.SendCommandAsync("interface GigabitEthernet0/0", TimeSpan.FromSeconds(10), ct); await _session.SendCommandAsync("no shutdown", TimeSpan.FromSeconds(10), ct); await _session.SendCommandAsync("exit", TimeSpan.FromSeconds(10), ct); } catch { }
+                    try { await _session.SendCommandAsync("interface GigabitEthernet0/1", TimeSpan.FromSeconds(10), ct); await _session.SendCommandAsync("no shutdown", TimeSpan.FromSeconds(10), ct); await _session.SendCommandAsync("exit", TimeSpan.FromSeconds(10), ct); } catch { }
+                }
+                else if (series == DeviceSeries.Isr841 || series == DeviceSeries.Isr921)
+                {
+                    try { await _session.SendCommandAsync("interface range GigabitEthernet 0 - 3", TimeSpan.FromSeconds(10), ct); await _session.SendCommandAsync("no shutdown", TimeSpan.FromSeconds(10), ct); await _session.SendCommandAsync("exit", TimeSpan.FromSeconds(10), ct); } catch { }
+                }
+                await _session.SendCommandAsync("end", TimeSpan.FromSeconds(10), ct);
+                await Task.Delay(2000, ct); // Aguarda enlace físico estabilizar
+
+                // 2. Identifica qual porta está fisicamente conectada (status UP / line protocol UP)
+                var iface = !string.IsNullOrWhiteSpace(lanIface) ? lanIface : string.Empty;
+                if (string.IsNullOrWhiteSpace(iface))
+                {
+                    var brief = await CiscoSaipConfigurator.SendShowAsync(_session, "show ip interface brief", TimeSpan.FromSeconds(15), ct);
+                    var connectedPort = CiscoSaipConfigurator.DetectConnectedPhysicalInterface(brief);
+                    if (!string.IsNullOrWhiteSpace(connectedPort))
+                    {
+                        iface = connectedPort;
+                        await progress($"[*] Cabo Ethernet físico detectado na porta: '{iface}'");
+                    }
+                    else
+                    {
+                        var (_, detLan) = CiscoSaipConfigurator.DetectInterfaces(brief);
+                        iface = !string.IsNullOrWhiteSpace(detLan) ? detLan : ((series == DeviceSeries.Isr841 || series == DeviceSeries.Isr921) ? "Vlan1" : "GigabitEthernet0/1");
+                    }
+                }
+                await progress($"[*] Interface LAN selecionada para staging: '{iface}'");
+
+                // 3. Aplica IP de bancada na porta selecionada e limpa IP de portas concorrentes para evitar sobreposição
+                await _session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(15), ct);
+                if (series == DeviceSeries.Series1900 || series == DeviceSeries.Series2900 || series == DeviceSeries.Unknown)
+                {
+                    var otherPort = iface.Contains("0/0", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet0/1" : "GigabitEthernet0/0";
                     try
                     {
-                        await _session.SendCommandAsync("interface range FastEthernet 0 - 3", TimeSpan.FromSeconds(3), ct);
-                        await _session.SendCommandAsync("no shutdown", TimeSpan.FromSeconds(3), ct);
-                        await _session.SendCommandAsync("exit", TimeSpan.FromSeconds(3), ct);
+                        await _session.SendCommandAsync($"interface {otherPort}", TimeSpan.FromSeconds(10), ct);
+                        await _session.SendCommandAsync("no ip address", TimeSpan.FromSeconds(10), ct);
+                        await _session.SendCommandAsync("exit", TimeSpan.FromSeconds(10), ct);
                     }
                     catch { }
                 }
+
+                await _session.SendCommandAsync($"interface {iface}", TimeSpan.FromSeconds(15), ct);
+                await _session.SendCommandAsync($"ip address {stagingRouterIp} {stagingMask}", TimeSpan.FromSeconds(15), ct);
+                await _session.SendCommandAsync("no shutdown", TimeSpan.FromSeconds(10), ct);
+                try { await _session.SendCommandAsync("spanning-tree portfast", TimeSpan.FromSeconds(10), ct); } catch { }
+                await _session.SendCommandAsync("exit", TimeSpan.FromSeconds(10), ct);
+
+                // 4. OBRIGATÓRIO: Habilita DHCP Server e configura pool para o smartphone
+                await _session.SendCommandAsync("service dhcp", TimeSpan.FromSeconds(10), ct);
+                if (stagingRouterIp == "192.168.1.1" && stagingMask == "255.255.255.0")
+                {
+                    try { await _session.SendCommandAsync("ip dhcp excluded-address 192.168.1.1 192.168.1.9", TimeSpan.FromSeconds(10), ct); } catch { }
+                }
+                else
+                {
+                    try { await _session.SendCommandAsync($"ip dhcp excluded-address {stagingRouterIp}", TimeSpan.FromSeconds(10), ct); } catch { }
+                }
+                await _session.SendCommandAsync("ip dhcp pool SPARC_STAGING", TimeSpan.FromSeconds(15), ct);
+                await _session.SendCommandAsync($"network {stagingNetwork} {stagingMask}", TimeSpan.FromSeconds(15), ct);
+                await _session.SendCommandAsync($"default-router {stagingRouterIp}", TimeSpan.FromSeconds(15), ct);
+                await _session.SendCommandAsync("dns-server 1.1.1.1", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync("lease 0 2", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync("exit", TimeSpan.FromSeconds(10), ct);
+
+                // 5. Configura HTTP Client para usar a interface de staging
+                try { await _session.SendCommandAsync($"ip http client source-interface {iface}", TimeSpan.FromSeconds(10), ct); } catch { }
+
+                // 6. Configura Telnet
+                await _session.SendCommandAsync("line vty 0 4", TimeSpan.FromSeconds(15), ct);
+                await _session.SendCommandAsync("transport input telnet", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync("privilege level 15", TimeSpan.FromSeconds(10), ct);
+                await _session.SendCommandAsync("password CQMR", TimeSpan.FromSeconds(10), ct);
+                try { await _session.SendCommandAsync("login", TimeSpan.FromSeconds(10), ct); } catch { }
+                await _session.SendCommandAsync("exit", TimeSpan.FromSeconds(10), ct);
+
+                // Garante credenciais locais com privilégio 15 para Telnet
+                try { await _session.SendCommandAsync("username EBT privilege 15 secret CQMR", TimeSpan.FromSeconds(10), ct); } catch { }
+                try { await _session.SendCommandAsync("enable secret CQMR", TimeSpan.FromSeconds(10), ct); } catch { }
+                await _session.SendCommandAsync("end", TimeSpan.FromSeconds(15), ct);
+
+                // 7. Validação pós-staging: confirma que o IP está ativo na interface do Cisco IOS
+                try
+                {
+                    var verifyInt = await CiscoSaipConfigurator.SendShowAsync(_session, $"show ip interface brief | include {stagingRouterIp}", TimeSpan.FromSeconds(10), ct);
+                    if (verifyInt.Contains(stagingRouterIp, StringComparison.OrdinalIgnoreCase))
+                    {
+                        await progress($"[✓] IP {stagingRouterIp} confirmado no Cisco IOS ({iface}): {verifyInt.Trim()}");
+                    }
+                    else
+                    {
+                        await progress($"[AVISO] Verificação pós-staging: IP {stagingRouterIp} não listado em 'show ip int brief'.");
+                    }
+                }
+                catch { }
             }
 
-            await _session.SendCommandAsync("ip dhcp pool SPARC_STAGING", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("network 192.168.1.0 255.255.255.0", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("default-router 192.168.1.1", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("exit", TimeSpan.FromSeconds(5), ct);
-
-            await _session.SendCommandAsync("line vty 0 4", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("transport input telnet", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("privilege level 15", TimeSpan.FromSeconds(5), ct);
-            await _session.SendCommandAsync("password CQMR", TimeSpan.FromSeconds(5), ct);
-            try { await _session.SendCommandAsync("login", TimeSpan.FromSeconds(5), ct); } catch { }
-            await _session.SendCommandAsync("exit", TimeSpan.FromSeconds(5), ct);
-
-            // Garante credenciais locais com privilégio 15 para Telnet
-            try { await _session.SendCommandAsync("username EBT privilege 15 secret CQMR", TimeSpan.FromSeconds(5), ct); } catch { }
-            try { await _session.SendCommandAsync("enable secret CQMR", TimeSpan.FromSeconds(5), ct); } catch { }
-            await _session.SendCommandAsync("end", TimeSpan.FromSeconds(5), ct);
+            await progress($"[✓] Staging temporário aplicado com sucesso (IP {stagingRouterIp} / DHCP / Telnet ativo)!");
         }
-
-        await progress("[✓] Staging temporário aplicado com sucesso (IP 192.168.1.1 / DHCP / Telnet ativo)!");
+        finally
+        {
+            ResumeReadLoop();
+        }
     }
 
     /// <summary>
@@ -2475,11 +2641,11 @@ public sealed class DeviceConnectionManager
             };
             await progress($"[*] Servidor HTTP no ar: http://{phoneIp}:{http.ActualPort}/{Path.GetFileName(firmwareFilePath)}");
 
-            // CLI híbrida: tenta Telnet se routerIp foi fornecido (ou fallback serial)
-            if (!string.IsNullOrWhiteSpace(routerIp))
+            // CLI híbrida: se o console serial não estiver disponível, tenta Telnet na porta Ethernet
+            if (cli == null && !string.IsNullOrWhiteSpace(routerIp))
             {
                 var telnetOk = await ConnectTelnetAsync(routerIp.Trim(), 23, telnetUser, telnetPass,
-                    msg => progress(msg).GetAwaiter().GetResult(), ct);
+                    msg => { try { progress(msg); } catch { } }, ct);
                 if (telnetOk && _telnetSession != null)
                 {
                     cli = _telnetSession;

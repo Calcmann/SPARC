@@ -28,6 +28,67 @@ public partial class FirmwarePage : ContentPage
         base.OnAppearing();
         UpdateDeviceDisplay();
         CheckEthernetStatus();
+        AutoSelectDownloadFirmwareIfAvailable();
+    }
+
+    private void AutoSelectDownloadFirmwareIfAvailable()
+    {
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(_selectedLocalFirmwarePath) && File.Exists(_selectedLocalFirmwarePath))
+                return;
+
+            var candidatesDirs = new List<string> { "/sdcard/Download", "/storage/emulated/0/Download" };
+#if ANDROID
+            try
+            {
+                var extFiles = global::Android.App.Application.Context.GetExternalFilesDir(null)?.AbsolutePath;
+                if (!string.IsNullOrWhiteSpace(extFiles)) candidatesDirs.Add(extFiles);
+            }
+            catch { }
+#endif
+
+            var files = new List<string>();
+            foreach (var dir in candidatesDirs.Distinct())
+            {
+                if (Directory.Exists(dir))
+                {
+                    try
+                    {
+                        var found = Directory.GetFiles(dir, "*.*")
+                            .Where(f => f.EndsWith(".bin", StringComparison.OrdinalIgnoreCase) ||
+                                        f.EndsWith(".ipe", StringComparison.OrdinalIgnoreCase) ||
+                                        f.EndsWith(".out", StringComparison.OrdinalIgnoreCase));
+                        files.AddRange(found);
+                    }
+                    catch { }
+                }
+            }
+
+            if (files.Count == 0) return;
+
+            var series = _connManager.ConnectedDeviceSeries;
+            string? bestFile = null;
+            if (series != DeviceSeries.Unknown)
+            {
+                bestFile = files.FirstOrDefault(f => FirmwareHomologationChecker.IsVersaoHomologada(series, Path.GetFileName(f), _firmwareRepo, out _));
+            }
+            bestFile ??= files.FirstOrDefault(f => series != DeviceSeries.Unknown && Path.GetFileName(f).Contains(series.ToString(), StringComparison.OrdinalIgnoreCase));
+            bestFile ??= files.FirstOrDefault(f => Path.GetFileName(f).StartsWith("c1900", StringComparison.OrdinalIgnoreCase) || Path.GetFileName(f).StartsWith("C800", StringComparison.OrdinalIgnoreCase));
+            bestFile ??= files.FirstOrDefault();
+
+            if (bestFile != null && File.Exists(bestFile))
+            {
+                _selectedLocalFirmwarePath = bestFile;
+                _connManager.CustomBootImage = Path.GetFileName(bestFile);
+                var fi = new FileInfo(bestFile);
+                var sizeMb = fi.Length / (1024.0 * 1024.0);
+                SelectedLocalFwLabel.Text = $"{fi.Name} ({sizeMb:F1} MB)";
+                SelectedLocalFwLabel.TextColor = Color.FromArgb("#4ADE80");
+                AppendLog($"[*] Firmware detectado automaticamente: {fi.Name} ({sizeMb:F1} MB)");
+            }
+        }
+        catch { }
     }
 
     private void UpdateDeviceDisplay()
@@ -486,6 +547,7 @@ public partial class FirmwarePage : ContentPage
         var ethManager = AndroidEthernetManager.Instance;
         var hasEth = ethManager.IsEthernetConnected();
         var ethIp = ethManager.GetEthernetIpAddress();
+        var gatewayIp = ethManager.GetEthernetGatewayAddress();
 
         if (hasEth)
         {
@@ -494,6 +556,23 @@ public partial class FirmwarePage : ContentPage
             if (!string.IsNullOrWhiteSpace(ethIp) && string.IsNullOrWhiteSpace(PhoneEthIpEntry.Text))
             {
                 PhoneEthIpEntry.Text = ethIp;
+            }
+
+            if (!string.IsNullOrWhiteSpace(gatewayIp) && string.IsNullOrWhiteSpace(RouterEthIpEntry.Text))
+            {
+                RouterEthIpEntry.Text = gatewayIp;
+            }
+            else if (string.IsNullOrWhiteSpace(RouterEthIpEntry.Text) && !string.IsNullOrWhiteSpace(ethIp))
+            {
+                var lastDot = ethIp.LastIndexOf('.');
+                if (lastDot > 0 && int.TryParse(ethIp.Substring(lastDot + 1), out var octet) && octet > 1)
+                {
+                    RouterEthIpEntry.Text = $"{ethIp.Substring(0, lastDot)}.{octet - 1}";
+                }
+                else if (lastDot > 0)
+                {
+                    RouterEthIpEntry.Text = $"{ethIp.Substring(0, lastDot)}.1";
+                }
             }
         }
         else
@@ -567,10 +646,21 @@ public partial class FirmwarePage : ContentPage
 
     private async void OnSendLocalFirmwareClicked(object? sender, EventArgs e)
     {
-        if (!_connManager.IsConnected)
+        var routerIp = RouterEthIpEntry?.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(routerIp))
         {
-            await DisplayAlert("Aviso", "Conecte o console serial USB na aba Ativação primeiro.", "OK");
+            routerIp = AndroidEthernetManager.Instance.GetEthernetGatewayAddress();
+        }
+
+        if (!_connManager.IsConnected && string.IsNullOrWhiteSpace(routerIp))
+        {
+            await DisplayAlert("Aviso", "Conecte o console serial USB na aba Ativação ou informe o IP do roteador (LAN) para Telnet.", "OK");
             return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_selectedLocalFirmwarePath) || !System.IO.File.Exists(_selectedLocalFirmwarePath))
+        {
+            AutoSelectDownloadFirmwareIfAvailable();
         }
 
         if (string.IsNullOrWhiteSpace(_selectedLocalFirmwarePath) || !System.IO.File.Exists(_selectedLocalFirmwarePath))
@@ -579,7 +669,52 @@ public partial class FirmwarePage : ContentPage
             return;
         }
 
+        var detected = _connManager.LastDetectionResult;
+        var series = detected?.Series ?? DeviceSeries.Unknown;
+        var isForti = detected?.Manufacturer == DeviceManufacturer.Fortinet;
+        var isHpe = detected?.Manufacturer == DeviceManufacturer.Hpe;
+
         var phoneIp = PhoneEthIpEntry.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(phoneIp))
+        {
+            phoneIp = AndroidEthernetManager.Instance.GetEthernetIpAddress();
+        }
+
+        // Se a interface Ethernet ainda não tiver IP e a serial estiver conectada, aplica o staging de bancada
+        // com DHCP na LAN do roteador para que o Android receba o IP automaticamente
+        if (string.IsNullOrWhiteSpace(phoneIp) && _connManager.HasSupportedSerialConnected())
+        {
+            AppendLog("[*] Preparando interface LAN e pool DHCP no roteador para bancada...");
+            try
+            {
+                using var ctsStaging = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+                await _connManager.ApplyTemporaryLanStagingAsync(
+                    detected?.Manufacturer ?? DeviceManufacturer.Cisco,
+                    series,
+                    null,
+                    msg => { MainThread.BeginInvokeOnMainThread(() => AppendLog(msg)); return Task.CompletedTask; },
+                    ctsStaging.Token);
+
+                // Aguarda até 15 segundos para o Android obter o lease DHCP
+                AppendLog("[*] Aguardando IP Ethernet via DHCP no celular (até 15s)...");
+                for (int i = 1; i <= 15; i++)
+                {
+                    await Task.Delay(1000);
+                    phoneIp = AndroidEthernetManager.Instance.GetEthernetIpAddress();
+                    if (!string.IsNullOrWhiteSpace(phoneIp))
+                    {
+                        AppendLog($"[✓] IP Ethernet atribuído via DHCP: {phoneIp} (em {i}s)!");
+                        break;
+                    }
+                    if (i % 3 == 0) AppendLog($"[*] Aguardando DHCP do roteador ({i}/15s)...");
+                }
+            }
+            catch (Exception exStaging)
+            {
+                AppendLog($"[AVISO] Preparação de LAN staging: {exStaging.Message}");
+            }
+        }
+
         if (string.IsNullOrWhiteSpace(phoneIp))
         {
             phoneIp = AndroidEthernetManager.Instance.GetEthernetIpAddress();
@@ -587,27 +722,25 @@ public partial class FirmwarePage : ContentPage
 
         if (string.IsNullOrWhiteSpace(phoneIp))
         {
-            var configure = await DisplayAlert("IP Ethernet Ausente",
-                "A interface Ethernet do celular não possui um IP atribuído.\n\n" +
-                "Em bancada com IP estático, configure o IP na interface Ethernet do Android (ou digite o IP do celular no campo acima).\n\nDeseja abrir as configurações de rede do Android?",
-                "ABRIR CONFIGURAÇÕES", "CANCELAR");
-
-            if (configure)
-            {
-                await AndroidEthernetManager.Instance.OpenEthernetSettingsAsync();
-            }
-            return;
+            phoneIp = "192.168.1.10";
+            PhoneEthIpEntry.Text = phoneIp;
+            AppendLog($"[AVISO] Interface Ethernet sem IP via DHCP. IP assumido: {phoneIp}");
         }
 
-        var detected = _connManager.LastDetectionResult;
-        var series = detected?.Series ?? DeviceSeries.Unknown;
-        var isForti = detected?.Manufacturer == DeviceManufacturer.Fortinet;
-        var isHpe = detected?.Manufacturer == DeviceManufacturer.Hpe;
+        if (string.IsNullOrWhiteSpace(routerIp))
+        {
+            routerIp = "192.168.1.1";
+        }
+        if (RouterEthIpEntry != null && string.IsNullOrWhiteSpace(RouterEthIpEntry.Text))
+        {
+            RouterEthIpEntry.Text = routerIp;
+        }
 
         var confirm = await DisplayAlert("Transferência Local OTG + ETH",
             $"Deseja iniciar a transferência direta do firmware via cabo de rede?\n\n" +
             $"• Arquivo: {System.IO.Path.GetFileName(_selectedLocalFirmwarePath)}\n" +
             $"• IP Celular na LAN: {phoneIp}\n" +
+            $"• IP Roteador (LAN): {routerIp}\n" +
             $"• Roteador: {detected?.Manufacturer} {series}\n\n" +
             $"O tráfego será vinculado estritamente à interface Ethernet OTG.",
             "SIM, ENVIAR AGORA", "CANCELAR");
@@ -644,29 +777,28 @@ public partial class FirmwarePage : ContentPage
             bool success = false;
             if (isHpe)
             {
-                AppendLog($"[*] Iniciando transferência HPE via FTP embarcado (:2121) a partir de {phoneIp}...");
+                AppendLog($"[*] Iniciando transferência HPE via FTP embarcado (:2121) a partir de {phoneIp} para roteador {routerIp}...");
                 success = await _connManager.UpgradeFirmwareHpeFtpAsync(
-                    _selectedLocalFirmwarePath, phoneIp, "sparc", "claro123", logger, cts.Token, routerIp: "192.168.1.1");
+                    _selectedLocalFirmwarePath, phoneIp, "sparc", "claro123", logger, cts.Token, routerIp: routerIp);
             }
             else if (isForti)
             {
-                AppendLog($"[*] Iniciando restauração FortiOS via FTP embarcado (:2121) a partir de {phoneIp}...");
+                AppendLog($"[*] Iniciando restauração FortiOS via FTP embarcado (:2121) a partir de {phoneIp} para roteador {routerIp}...");
                 success = await _connManager.RestoreFirmwareFortiFtpAsync(
-                    _selectedLocalFirmwarePath, phoneIp, "sparc", "claro123", logger, cts.Token, routerIp: "192.168.1.1");
+                    _selectedLocalFirmwarePath, phoneIp, "sparc", "claro123", logger, cts.Token, routerIp: routerIp);
             }
             else
             {
                 // Cisco IOS
-                var routerIp = "192.168.1.1";
-                AppendLog($"[*] Iniciando transferência Cisco via HTTP embarcado (:8080) a partir de {phoneIp}...");
+                AppendLog($"[*] Iniciando transferência Cisco via HTTP embarcado (:8080) a partir de {phoneIp} para roteador {routerIp}...");
                 success = await _connManager.UpgradeFirmwareCiscoHttpAsync(
                     _selectedLocalFirmwarePath,
                     phoneIp: phoneIp,
                     routerIp: routerIp,
                     telnetUser: "EBT",
                     telnetPass: "CQMR",
-                    routerTempIp: null,
-                    routerTempMask: null,
+                    routerTempIp: routerIp,
+                    routerTempMask: "255.255.255.0",
                     lanInterface: null,
                     expectedMd5: null,
                     progress: logger,
@@ -794,6 +926,12 @@ public partial class FirmwarePage : ContentPage
             if (string.IsNullOrWhiteSpace(ipInput)) return;
             phoneIp = ipInput.Trim();
             PhoneEthIpEntry.Text = phoneIp;
+        }
+
+        var routerGateway = ethManager.GetEthernetGatewayAddress();
+        if (!string.IsNullOrWhiteSpace(routerGateway) && string.IsNullOrWhiteSpace(RouterEthIpEntry.Text))
+        {
+            RouterEthIpEntry.Text = routerGateway;
         }
 
         // 4. Executa a transferência local
