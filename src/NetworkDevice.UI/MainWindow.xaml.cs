@@ -3757,6 +3757,10 @@ public partial class MainWindow : Window
             }
 
             _selectedIosBinPath = dlg.FileName;
+            if (RbFirmwareLocal != null)
+            {
+                RbFirmwareLocal.IsChecked = true;
+            }
             var fi = new System.IO.FileInfo(dlg.FileName);
             var sizeMb = (fi.Length / (1024.0 * 1024.0)).ToString("N1");
             TxtFirmwareAutoInfo.Text = $"{System.IO.Path.GetFileName(dlg.FileName)} ({sizeMb} MB)";
@@ -3853,6 +3857,14 @@ public partial class MainWindow : Window
                 if (TxtFirmwareAutoInfo != null) TxtFirmwareAutoInfo.Text = info;
                 if (TxtIosImageInfo != null) TxtIosImageInfo.Text = info;
             }
+        }
+        else if (RbFirmwareLocal?.IsChecked == true && !string.IsNullOrEmpty(_selectedIosBinPath) && File.Exists(_selectedIosBinPath))
+        {
+            var fi = new FileInfo(_selectedIosBinPath);
+            var sizeMb = (fi.Length / (1024.0 * 1024.0)).ToString("N1");
+            var info = $"{Path.GetFileName(_selectedIosBinPath)} ({sizeMb} MB)";
+            if (TxtFirmwareAutoInfo != null) TxtFirmwareAutoInfo.Text = info;
+            if (TxtIosImageInfo != null) TxtIosImageInfo.Text = info;
         }
 
         AtualizarBotaoProsseguir();

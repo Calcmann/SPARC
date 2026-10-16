@@ -848,6 +848,72 @@ public sealed class FortiGate40FTests
         Assert.Contains("config router static6", joined);
         Assert.Contains("set gateway 2001:db8:1::1", joined);
     }
+
+    [Fact]
+    public void DetectConnectedPhysicalInterface_DetectaLan1_QuandoUp()
+    {
+        var output = """
+            ==[wan]
+                    mode: static
+                    status: down
+                    speed: 0
+            ==[lan1]
+                    mode: static
+                    status: up
+                    speed: 1000
+            ==[lan2]
+                    mode: static
+                    status: down
+                    speed: 0
+            """;
+        var iface = FortiOsSaipConfigurator.DetectConnectedPhysicalInterface(output);
+        Assert.Equal("lan1", iface);
+    }
+
+    [Fact]
+    public void DetectConnectedPhysicalInterface_DetectaLan2_QuandoUp()
+    {
+        var output = """
+            ==[wan]
+                    mode: static
+                    status: down
+                    speed: 0
+            ==[lan1]
+                    mode: static
+                    status: down
+                    speed: 0
+            ==[lan2]
+                    mode: static
+                    status: up
+                    speed: 1000
+            """;
+        var iface = FortiOsSaipConfigurator.DetectConnectedPhysicalInterface(output);
+        Assert.Equal("lan2", iface);
+    }
+
+    [Fact]
+    public void DetectConnectedPhysicalInterface_DetectaWan_QuandoApenasWanUp()
+    {
+        var output = """
+            ==[wan]
+                    mode: static
+                    status: up
+                    speed: 1000
+            ==[lan1]
+                    mode: static
+                    status: down
+                    speed: 0
+            """;
+        var iface = FortiOsSaipConfigurator.DetectConnectedPhysicalInterface(output);
+        Assert.Equal("wan", iface);
+    }
+
+    [Fact]
+    public void DetectConnectedPhysicalInterface_RetornaNull_QuandoVazio()
+    {
+        var iface = FortiOsSaipConfigurator.DetectConnectedPhysicalInterface("");
+        Assert.Null(iface);
+    }
 }
 
 

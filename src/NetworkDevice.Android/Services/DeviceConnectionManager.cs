@@ -768,6 +768,46 @@ public sealed class DeviceConnectionManager
         catch { }
     }
 
+    /// <summary>
+    /// Detecta o diálogo de autoconfiguração do HPE Comware pós-reload
+    /// ("Automatic configuration is running, press Ctrl+C to abort" ou "terminate automatic configuration? [Y/N]").
+    /// </summary>
+    internal static bool IsHpeAutoConfigDialog(string? raw) =>
+        !string.IsNullOrWhiteSpace(raw) &&
+        (raw.Contains("Automatic configuration is running", StringComparison.OrdinalIgnoreCase) ||
+         raw.Contains("terminate automatic configuration", StringComparison.OrdinalIgnoreCase) ||
+         raw.Contains("stop automatic configuration", StringComparison.OrdinalIgnoreCase) ||
+         raw.Contains("Auto-Configuration", StringComparison.OrdinalIgnoreCase) ||
+         (raw.Contains("Automatic configuration", StringComparison.OrdinalIgnoreCase) &&
+          (raw.Contains("[Y/N]", StringComparison.OrdinalIgnoreCase) || raw.Contains("Ctrl+C", StringComparison.OrdinalIgnoreCase))));
+
+    /// <summary>
+    /// Responde e interrompe a autoconfiguração do HPE Comware: CTRL+C -> 'Y' -> ENTER e drena os ecos.
+    /// </summary>
+    private async Task AnswerHpeAutoConfigDialogAsync(CancellationToken ct)
+    {
+        if (_transport == null || !_transport.IsOpen)
+            return;
+
+        await _transport.WriteAsync(new byte[] { 0x03 }, ct); // CTRL+C
+        await Task.Delay(400, ct);
+        await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes("Y\r\n"), ct);
+        await Task.Delay(400, ct);
+        await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes("\r\n"), ct);
+        await Task.Delay(400, ct);
+
+        var buf = new byte[4096];
+        try
+        {
+            for (var i = 0; i < 15; i++)
+            {
+                if (await _transport.ReadAsync(buf, ct) <= 0)
+                    break;
+            }
+        }
+        catch { }
+    }
+
     private async Task<DeviceDetectionResult> EnrichCiscoModelIfPossibleAsync(DeviceDetectionResult initialResult, CancellationToken ct)
     {
         if (initialResult.Manufacturer != DeviceManufacturer.Cisco || _transport == null)
@@ -1119,7 +1159,7 @@ public sealed class DeviceConnectionManager
         }
 
         var text = (_session.CurrentPrompt ?? string.Empty) + "\n" + probe;
-        if (!IsCiscoSetupDialog(text))
+        if (!IsCiscoSetupDialog(text) && !IsHpeAutoConfigDialog(text) && !text.Contains("Press 'a' to accept", StringComparison.OrdinalIgnoreCase))
         {
             var p = (_session.CurrentPrompt ?? string.Empty).Trim();
             var pr = probe.Trim();
@@ -1127,6 +1167,42 @@ public sealed class DeviceConnectionManager
                 pr.EndsWith(">") || pr.EndsWith("#") || pr.StartsWith("<") || pr.StartsWith("["))
             {
                 return;
+            }
+        }
+
+        if (IsHpeAutoConfigDialog(text))
+        {
+            await progress("[*] Diálogo de Auto-Configuração HPE Comware detectado na console — cancelando (CTRL+C / Y)...");
+            try
+            {
+                await _session.SendRawAsync("\x03", ct);
+                await Task.Delay(400, ct);
+                await _session.SendRawAsync("Y\r\n", ct);
+                await Task.Delay(400, ct);
+                await _session.SendRawAsync("\r\n", ct);
+                await progress("[✓] Auto-configuração HPE cancelada com sucesso!");
+                return;
+            }
+            catch (Exception exHpe)
+            {
+                await progress($"[AVISO] Tentativa direta de cancelar diálogo HPE: {exHpe.Message}");
+            }
+        }
+
+        if (text.Contains("Press 'a' to accept", StringComparison.OrdinalIgnoreCase))
+        {
+            await progress("[*] Termo de uso FortiOS detectado na console — aceitando ('a')...");
+            try
+            {
+                await _session.SendRawAsync("a\r\n", ct);
+                await Task.Delay(300, ct);
+                await _session.SendRawAsync("\r\n", ct);
+                await progress("[✓] Termo FortiOS aceito com sucesso!");
+                return;
+            }
+            catch (Exception exForti)
+            {
+                await progress($"[AVISO] Tentativa de aceitar termo FortiOS: {exForti.Message}");
             }
         }
 
@@ -1321,6 +1397,18 @@ public sealed class DeviceConnectionManager
                 {
                     lastEnter = DateTime.UtcNow;
                     await session.SendRawAsync("\r\n", ct);
+                }
+
+                var currentAccum = lineAccum.ToString();
+                if (IsHpeAutoConfigDialog(currentAccum))
+                {
+                    await progress("  │ [BOOT] Detectada Auto-configuração HPE — cancelando com CTRL+C e confirmando encerramento (Y)...");
+                    await session.SendRawAsync("\x03", ct);
+                    await Task.Delay(300, ct);
+                    await session.SendRawAsync("Y\r\n", ct);
+                    await Task.Delay(300, ct);
+                    await session.SendRawAsync("\r\n", ct);
+                    lineAccum.Clear();
                 }
 
                 try
@@ -2030,7 +2118,27 @@ public sealed class DeviceConnectionManager
 
             if (mfr == DeviceManufacturer.Fortinet)
             {
-                var iface = !string.IsNullOrWhiteSpace(lanIface) ? lanIface : "internal";
+                var iface = !string.IsNullOrWhiteSpace(lanIface) ? lanIface : string.Empty;
+                if (string.IsNullOrWhiteSpace(iface))
+                {
+                    try
+                    {
+                        var sysIntOut = await _session.SendCommandAsync("get system interface physical", TimeSpan.FromSeconds(8), ct);
+                        var activePort = FortiOsSaipConfigurator.DetectConnectedPhysicalInterface(sysIntOut);
+                        if (!string.IsNullOrWhiteSpace(activePort))
+                        {
+                            await progress($"[*] Cabo Ethernet físico detectado no FortiGate: '{activePort}'");
+                        }
+                        var (_, detLan) = FortiOsSaipConfigurator.DetectInterfaces(sysIntOut);
+                        iface = !string.IsNullOrWhiteSpace(detLan) ? detLan : "lan";
+                    }
+                    catch
+                    {
+                        iface = "lan";
+                    }
+                }
+                await progress($"[*] Interface LAN selecionada para staging FortiGate: '{iface}'");
+
                 await _session.SendCommandAsync("config system interface", TimeSpan.FromSeconds(10), ct);
                 await _session.SendCommandAsync($"edit {iface}", TimeSpan.FromSeconds(10), ct);
                 await _session.SendCommandAsync($"set ip {stagingRouterIp} {stagingMask}", TimeSpan.FromSeconds(10), ct);
@@ -2066,7 +2174,31 @@ public sealed class DeviceConnectionManager
             }
             else if (mfr == DeviceManufacturer.Hpe)
             {
-                var iface = !string.IsNullOrWhiteSpace(lanIface) ? lanIface : "GigabitEthernet0/1";
+                var iface = !string.IsNullOrWhiteSpace(lanIface) ? lanIface : string.Empty;
+                if (string.IsNullOrWhiteSpace(iface))
+                {
+                    try
+                    {
+                        var brief = await _session.SendCommandAsync("display ip interface brief", TimeSpan.FromSeconds(8), ct);
+                        var connectedPort = HpeSaipConfigurator.DetectConnectedPhysicalInterface(brief);
+                        if (!string.IsNullOrWhiteSpace(connectedPort))
+                        {
+                            iface = connectedPort;
+                            await progress($"[*] Cabo Ethernet físico detectado na porta HPE: '{iface}'");
+                        }
+                        else
+                        {
+                            var (_, detLan) = HpeSaipConfigurator.DetectInterfaces(brief);
+                            iface = !string.IsNullOrWhiteSpace(detLan) ? detLan : "GigabitEthernet0/1";
+                        }
+                    }
+                    catch
+                    {
+                        iface = "GigabitEthernet0/1";
+                    }
+                }
+                await progress($"[*] Interface LAN selecionada para staging HPE: '{iface}'");
+
                 await _session.SendCommandAsync("system-view", TimeSpan.FromSeconds(10), ct);
                 await _session.SendCommandAsync($"interface {iface}", TimeSpan.FromSeconds(10), ct);
                 await _session.SendCommandAsync($"ip address {stagingRouterIp} {stagingMask}", TimeSpan.FromSeconds(10), ct);
@@ -2254,7 +2386,7 @@ public sealed class DeviceConnectionManager
     /// serial preservado para reload/ROMMON/Break). Credenciais VTY (ex: EBT/PRO1AN).
     /// </summary>
     public async Task<bool> ConnectTelnetAsync(string routerIp, int port, string? username, string? password,
-        Action<string>? log = null, CancellationToken ct = default)
+        Action<string>? log = null, CancellationToken ct = default, string? localIpAddress = null)
     {
         await DisconnectTelnetAsync();
 
@@ -2266,7 +2398,7 @@ public sealed class DeviceConnectionManager
 
         foreach (var pwd in candidatePasswords)
         {
-            var transport = new TcpTelnetTransport(routerIp, port, connectTimeout: TimeSpan.FromSeconds(6));
+            var transport = new TcpTelnetTransport(routerIp, port, connectTimeout: TimeSpan.FromSeconds(8), localIpAddress: localIpAddress);
             try
             {
                 await transport.OpenAsync(ct);
@@ -2275,7 +2407,7 @@ public sealed class DeviceConnectionManager
                     PromptMatcher = RegexPromptMatcher.Universal(),
                     Username = username,
                     Password = pwd,
-                    ConnectTimeout = TimeSpan.FromSeconds(8),
+                    ConnectTimeout = TimeSpan.FromSeconds(10),
                     CommandTimeout = TimeSpan.FromSeconds(20),
                     LeaveOpen = true
                 });
@@ -2331,7 +2463,7 @@ public sealed class DeviceConnectionManager
     /// reativando o ReadLoop para que a aba Terminal e os scripts operem sobre a interface de rede Ethernet.
     /// </summary>
     public async Task<bool> SwitchToTelnetSessionAsync(string routerIp, int port, string? username, string? password,
-        Action<string>? log = null, CancellationToken ct = default)
+        Action<string>? log = null, CancellationToken ct = default, string? localIpAddress = null)
     {
         var candidatePasswords = new List<string>();
         if (!string.IsNullOrWhiteSpace(password)) candidatePasswords.Add(password);
@@ -2341,7 +2473,7 @@ public sealed class DeviceConnectionManager
 
         foreach (var pwd in candidatePasswords)
         {
-            var transport = new TcpTelnetTransport(routerIp, port, connectTimeout: TimeSpan.FromSeconds(6));
+            var transport = new TcpTelnetTransport(routerIp, port, connectTimeout: TimeSpan.FromSeconds(8), localIpAddress: localIpAddress);
             try
             {
                 await transport.OpenAsync(ct);
@@ -2350,7 +2482,7 @@ public sealed class DeviceConnectionManager
                     PromptMatcher = RegexPromptMatcher.Universal(),
                     Username = username,
                     Password = pwd,
-                    ConnectTimeout = TimeSpan.FromSeconds(8),
+                    ConnectTimeout = TimeSpan.FromSeconds(10),
                     CommandTimeout = TimeSpan.FromSeconds(15),
                     LeaveOpen = true
                 });

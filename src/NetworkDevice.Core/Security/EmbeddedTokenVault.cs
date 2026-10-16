@@ -12,9 +12,19 @@ namespace NetworkDevice.Core.Security;
 public static class EmbeddedTokenVault
 {
     // Carga criptografada injetada durante o build pelo Build-Beta.ps1
-    // Formato: %%BETA_ENCRYPTED_TOKEN_B64%%
-    internal static string EncryptedPayloadBase64 = "%%BETA_ENCRYPTED_TOKEN_B64%%";
-    internal static string BuildSalt = "%%BETA_BUILD_SALT%%";
+    private static string _encryptedPayloadBase64 = "%%BETA_ENCRYPTED_TOKEN_B64%%";
+    internal static string EncryptedPayloadBase64
+    {
+        get => _encryptedPayloadBase64;
+        set { _encryptedPayloadBase64 = value; _decryptedCachedToken = null; }
+    }
+
+    private static string _buildSalt = "%%BETA_BUILD_SALT%%";
+    internal static string BuildSalt
+    {
+        get => _buildSalt;
+        set { _buildSalt = value; _decryptedCachedToken = null; }
+    }
 
     // Carga padrão criptografada de fábrica (garante funcionamento nativo no Android/MAUI e compilações diretas)
     private const string DefaultFactoryPayloadBase64 = "BV91omA1Ktu1Gcej8g+fJgCD26hav2QmSuSdb0IZexMCoouL/p5SkJGQ8cl4kdNJ";

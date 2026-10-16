@@ -122,8 +122,7 @@ public sealed class CiscoIOSUpgrader
         }
 
         var isRunningTarget = CiscoIOSFirmwareVersionInspector.IsSameVersion(showVer, binFileName, out var curVer, out var tgtVer);
-        var isFileOnFlash = dirFlash.Contains(binFileName, StringComparison.OrdinalIgnoreCase) ||
-                           dirFlash.Contains(Path.GetFileNameWithoutExtension(binFileName), StringComparison.OrdinalIgnoreCase);
+        var isFileOnFlash = dirFlash.Contains(binFileName, StringComparison.OrdinalIgnoreCase);
         var isBootConfigured = IsBootSystemConfigured(showBoot, binFileName);
 
         // CASO A: O roteador JÁ está executando a imagem alvo
@@ -1087,10 +1086,8 @@ public sealed class CiscoIOSUpgrader
             return false;
 
         var cleanBin = Path.GetFileName(binFileName).Trim();
-        var cleanBase = Path.GetFileNameWithoutExtension(cleanBin).Trim();
 
-        return bootOutput.Contains(cleanBin, StringComparison.OrdinalIgnoreCase) ||
-               bootOutput.Contains(cleanBase, StringComparison.OrdinalIgnoreCase);
+        return bootOutput.Contains(cleanBin, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

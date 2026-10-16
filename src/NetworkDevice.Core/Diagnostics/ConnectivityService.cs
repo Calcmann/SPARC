@@ -113,7 +113,7 @@ public class ConnectivityService
         // No Android / Linux, o kernel bloqueia SOCK_RAW para apps normais do .NET (System.Net.NetworkInformation.Ping).
         // Usar o utilitário nativo como DEFAULT primário garante respostas ICMP em tempo real e sem erros de permissão de socket.
         await LogAsync($"[*] Iniciando teste de conectividade ICMP para {cleanTarget} ({count} pacotes, timeout {timeoutMs}ms)...");
-        var nativeResult = await RunCliPingFallbackAsync(cleanTarget, count, timeoutMs, null, cancellationToken);
+        var nativeResult = await RunCliPingFallbackAsync(cleanTarget, count, timeoutMs, sourceIpAddress, cancellationToken);
         if (nativeResult != null)
         {
             return nativeResult;
@@ -240,31 +240,45 @@ public class ConnectivityService
             }
             else
             {
-                // Android / Linux: se sourceIpAddress não foi informado, descobre automaticamente a interface física Ethernet ativa
-                if (string.IsNullOrWhiteSpace(sourceIpAddress))
+                // Android / Linux: descobre a interface física de rede ativa (ex: eth0, usb0)
+                string? bindInterface = null;
+                try
                 {
-                    try
+                    var interfaces = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces();
+
+                    // Se sourceIpAddress foi informado, verifica se é o próprio nome da interface (ex: eth0) ou o IP vinculado
+                    if (!string.IsNullOrWhiteSpace(sourceIpAddress))
                     {
-                        var ethIf = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
-                            .FirstOrDefault(ni => (ni.Name.StartsWith("eth", StringComparison.OrdinalIgnoreCase) ||
-                                                  ni.Name.StartsWith("usb", StringComparison.OrdinalIgnoreCase)) &&
-                                                  ni.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up);
-                        if (ethIf != null)
+                        var trimmed = sourceIpAddress.Trim();
+                        var match = interfaces.FirstOrDefault(ni =>
+                            string.Equals(ni.Name, trimmed, StringComparison.OrdinalIgnoreCase) ||
+                            ni.GetIPProperties().UnicastAddresses.Any(u => string.Equals(u.Address.ToString(), trimmed, StringComparison.OrdinalIgnoreCase)));
+                        if (match != null)
                         {
-                            var ethIp = ethIf.GetIPProperties().UnicastAddresses
-                                .FirstOrDefault(a => a.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork &&
-                                                    !System.Net.IPAddress.IsLoopback(a.Address))?
-                                .Address.ToString();
-                            sourceIpAddress = ethIp ?? ethIf.Name;
+                            bindInterface = match.Name;
                         }
                     }
-                    catch { }
-                }
 
-                // Android / Linux: executa o utilitário nativo do sistema com permissão de rede e amarração à interface
+                    // Se não encontrou pelo sourceIpAddress, busca qualquer interface ethernet/usb física UP
+                    if (string.IsNullOrWhiteSpace(bindInterface))
+                    {
+                        var ethIf = interfaces.FirstOrDefault(ni =>
+                            (ni.Name.StartsWith("eth", StringComparison.OrdinalIgnoreCase) ||
+                             ni.Name.StartsWith("usb", StringComparison.OrdinalIgnoreCase)) &&
+                            ni.OperationalStatus == System.Net.NetworkInformation.OperationalStatus.Up);
+                        if (ethIf != null)
+                        {
+                            bindInterface = ethIf.Name;
+                        }
+                    }
+                }
+                catch { }
+
+                // No Android/Linux, ping -I DEVE receber o NOME da interface (ex: eth0), pois passar o IP não ativa
+                // a regra de política SO_BINDTODEVICE no kernel, causando descarte de rota via Wi-Fi/wlan.
                 fileName = System.IO.File.Exists("/system/bin/ping") ? "/system/bin/ping" : "ping";
                 var timeoutSec = Math.Max(1, timeoutMs / 1000);
-                var srcArg = !string.IsNullOrWhiteSpace(sourceIpAddress) ? $"-I {sourceIpAddress.Trim()} " : "";
+                var srcArg = !string.IsNullOrWhiteSpace(bindInterface) ? $"-I {bindInterface} " : "";
                 arguments = $"{srcArg}-c {count} -W {timeoutSec} {target}";
             }
 
@@ -762,6 +776,15 @@ public class ConnectivityService
                 try
                 {
                     client = new TcpClient(new System.Net.IPEndPoint(srcIp, 0));
+                    if (!System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+                    {
+                        try
+                        {
+                            var ifaceBytes = System.Text.Encoding.ASCII.GetBytes("eth0\0");
+                            client.Client.SetSocketOption(SocketOptionLevel.Socket, (SocketOptionName)25, ifaceBytes);
+                        }
+                        catch { }
+                    }
                     await client.ConnectAsync(hostOrIp, port, cts.Token);
                     sw.Stop();
                     client.Dispose();

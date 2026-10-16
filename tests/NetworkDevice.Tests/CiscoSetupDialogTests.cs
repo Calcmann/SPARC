@@ -60,4 +60,14 @@ public sealed class CiscoSetupDialogTests
         // ENTER (string vazia) aceita o default [yes]; jamais "N"
         Assert.DoesNotContain(transport.Commands, c => c.Equals("N", StringComparison.OrdinalIgnoreCase));
     }
+
+    [Theory]
+    [InlineData("Automatic configuration is running, press Ctrl+C to abort.")]
+    [InlineData("Are you sure to terminate automatic configuration? [Y/N]:")]
+    [InlineData("Do you want to stop automatic configuration? [Y/N]")]
+    public void ComwareAutoconfig_PatternIsDetected(string line)
+    {
+        var isMatch = System.Text.RegularExpressions.Regex.IsMatch(line, @"(?i)(?:Automatic configuration is running|terminate automatic configuration|stop automatic configuration|auto-configuration|autoinstall).*?");
+        Assert.True(isMatch);
+    }
 }

@@ -237,4 +237,49 @@ System image file is flash0:c1900-universalk9-mz.SPA.157-3.M9.bin
 
         Assert.True(isCompliant);
     }
+
+    [Fact]
+    public void Cisco841_VersaoAvulsa_NaoDeveDarFalsoPositivoDeMesmaVersao()
+    {
+        const string showVersion841 = @"
+Cisco IOS Software, C800 Software (C800-UNIVERSALK9-M), Version 15.5(3)M4, RELEASE SOFTWARE (fc1)
+Technical Support: http://www.cisco.com/techsupport
+Copyright (c) 1986-2016 by Cisco Systems, Inc.
+Compiled Thu 01-Dec-16 03:00 by prod_rel_team
+
+ROM: System Bootstrap, Version 15.4(1r)T, RELEASE SOFTWARE (fc1)
+
+router uptime is 1 hour, 20 minutes
+System returned to ROM by reload
+System image file is ""flash:c800m-universalk9-mz.SPA.155-3.M4.bin""
+Last reload type: Normal Reload
+
+Cisco C841M-4X-JIS (revision 1.0) with 508928K/15360K bytes of memory.
+Processor board ID FHK212370T1
+";
+        // Imagens avulsas ou de projeto especial NÃO podem dar falso positivo
+        Assert.False(CiscoIOSFirmwareVersionInspector.IsSameVersion(showVersion841, "c841.bin", out _, out _));
+        Assert.False(CiscoIOSFirmwareVersionInspector.IsSameVersion(showVersion841, "c800m.bin", out _, out _));
+        Assert.False(CiscoIOSFirmwareVersionInspector.IsSameVersion(showVersion841, "c841m.bin", out _, out _));
+        Assert.False(CiscoIOSFirmwareVersionInspector.IsSameVersion(showVersion841, "c841-advipservices.bin", out _, out _));
+        Assert.False(CiscoIOSFirmwareVersionInspector.IsSameVersion(showVersion841, "c800m-universalk9-mz.SPA.157-3.M9.bin", out _, out _));
+        Assert.False(CiscoIOSFirmwareVersionInspector.IsSameVersion(showVersion841, "c800m-universalk9-mz.SPA.159-3.M12.bin", out _, out _));
+    }
+
+    [Fact]
+    public void Cisco841_VersaoIdenticaExata_RetornaTrue()
+    {
+        const string showVersion841 = @"
+Cisco IOS Software, C800 Software (C800-UNIVERSALK9-M), Version 15.5(3)M4, RELEASE SOFTWARE (fc1)
+System image file is ""flash:c800m-universalk9-mz.SPA.155-3.M4.bin""
+Cisco C841M-4X-JIS (revision 1.0) with 508928K/15360K bytes of memory.
+";
+        Assert.True(CiscoIOSFirmwareVersionInspector.IsSameVersion(
+            showVersion841,
+            "c800m-universalk9-mz.SPA.155-3.M4.bin",
+            out var curVer,
+            out var tgtVer));
+        Assert.Equal("15.5(3)M4", curVer.CanonicalVersion);
+        Assert.Equal("15.5(3)M4", tgtVer.CanonicalVersion);
+    }
 }

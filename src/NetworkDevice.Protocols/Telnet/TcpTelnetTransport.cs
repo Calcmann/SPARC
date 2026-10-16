@@ -24,6 +24,7 @@ public sealed class TcpTelnetTransport : ITransport
     private readonly int _port;
     private readonly TimeSpan _connectTimeout;
     private readonly TimeSpan _readTimeout;
+    private readonly string? _localIpAddress;
     private TcpClient? _client;
     private readonly SemaphoreSlim _ioLock = new(1, 1);
     private bool _disposed;
@@ -32,12 +33,14 @@ public sealed class TcpTelnetTransport : ITransport
     private readonly Queue<byte> _pending = new();
 
     public TcpTelnetTransport(string host, int port = 23,
-        TimeSpan? connectTimeout = null, TimeSpan? readTimeout = null)
+        TimeSpan? connectTimeout = null, TimeSpan? readTimeout = null,
+        string? localIpAddress = null)
     {
         _host = host?.Trim() ?? throw new ArgumentNullException(nameof(host));
         _port = port;
         _connectTimeout = connectTimeout ?? TimeSpan.FromSeconds(10);
         _readTimeout = readTimeout ?? TimeSpan.FromMilliseconds(200);
+        _localIpAddress = string.IsNullOrWhiteSpace(localIpAddress) ? null : localIpAddress.Trim();
     }
 
     public string Host => _host;
@@ -57,7 +60,33 @@ public sealed class TcpTelnetTransport : ITransport
             if (IsOpen)
                 return;
 
-            var client = new TcpClient { NoDelay = true };
+            TcpClient client;
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(_localIpAddress) && System.Net.IPAddress.TryParse(_localIpAddress, out var localIp))
+                {
+                    client = new TcpClient(new System.Net.IPEndPoint(localIp, 0)) { NoDelay = true };
+                }
+                else
+                {
+                    client = new TcpClient { NoDelay = true };
+                }
+            }
+            catch
+            {
+                client = new TcpClient { NoDelay = true };
+            }
+
+            if (!System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows))
+            {
+                try
+                {
+                    var ifaceBytes = System.Text.Encoding.ASCII.GetBytes("eth0\0");
+                    client.Client.SetSocketOption(SocketOptionLevel.Socket, (SocketOptionName)25, ifaceBytes);
+                }
+                catch { }
+            }
+
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeoutCts.CancelAfter(_connectTimeout);
             try

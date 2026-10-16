@@ -220,8 +220,7 @@ public sealed class RouterDirectFirmwareUpdater
             if (imgMatch.Success)
             {
                 var runningFile = Path.GetFileName(imgMatch.Groups["fileName"].Value.Trim());
-                if (runningFile.Equals(targetFileName, StringComparison.OrdinalIgnoreCase) ||
-                    Path.GetFileNameWithoutExtension(runningFile).Equals(Path.GetFileNameWithoutExtension(targetFileName), StringComparison.OrdinalIgnoreCase))
+                if (runningFile.Equals(targetFileName, StringComparison.OrdinalIgnoreCase))
                 {
                     return true;
                 }

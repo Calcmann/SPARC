@@ -193,4 +193,43 @@ public class CiscoSaipConfigModeTests
             Assert.DoesNotContain(cmds, c => c.StartsWith("boot system usbflash0:"));
         }
     }
+
+    [Fact]
+    public void GenerateCommands_GaranteAclBloqueioTelnetComRedeCalculadaEHostLan()
+    {
+        var circuit = new SaipCircuitData
+        {
+            ClienteRazaoSocial = "CLIENTE TESTE LTDA",
+            DesignacaoIp = "SP-TESTE-001",
+            NumeroOts = "OTS123",
+            WanIp = "10.200.0.2",
+            WanSubnetMask = "255.255.255.252",
+            WanGateway = "10.200.0.1",
+            WanCidr = 30,
+            LanIp = "200.250.163.41",
+            LanSubnetMask = "255.255.255.248",
+            LanCidr = 29,
+            LanBlockNetwork = null // Simula quando Ficha SAIP não traz o bloco pré-calculado
+        };
+
+        var cmds = CiscoSaipConfigurator.GenerateCommands(circuit, "GigabitEthernet 0/0", "GigabitEthernet 0/1");
+
+        // Deve calcular o endereço base da rede 200.250.163.40 / 0.0.0.7 e liberar o host do roteador
+        Assert.Contains(cmds, c => c.Contains("permit ip 200.250.163.40 0.0.0.7 any"));
+        Assert.Contains(cmds, c => c.Contains("permit ip host 200.250.163.41 any"));
+    }
+
+    [Fact]
+    public async Task RemoverDhcpTemporarioAsync_EnviaComandosCorretosEGravaNvram()
+    {
+        var (transport, fake) = BuildTransport("Router#\r\n");
+        await using var session = await ConnectDrainedAsync(transport);
+
+        await CiscoSaipConfigurator.RemoverDhcpTemporarioAsync(session, SampleCircuit());
+
+        Assert.Contains(fake.Commands, c => c == "no ip dhcp pool SPARC_LAN");
+        Assert.Contains(fake.Commands, c => c == "no ip dhcp excluded-address 192.168.10.1");
+        Assert.Contains(fake.Commands, c => c == "write memory");
+    }
 }
+

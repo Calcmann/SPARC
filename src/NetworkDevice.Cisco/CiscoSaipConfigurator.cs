@@ -383,11 +383,15 @@ public sealed class CiscoSaipConfigurator
         cmds.Add(" permit ip 200.255.156.192 0.0.0.63 any");
         if (!string.IsNullOrWhiteSpace(circuit.LanIp))
         {
-            var lanNet = string.IsNullOrWhiteSpace(circuit.LanBlockNetwork) ? circuit.LanIp : circuit.LanBlockNetwork;
+            var lanNet = !string.IsNullOrWhiteSpace(circuit.LanBlockNetwork)
+                ? circuit.LanBlockNetwork
+                : IpCalculator.CalculateNetworkAddress(circuit.LanIp, circuit.LanCidr);
             var wildcard = WildcardFromMask(circuit.LanSubnetMask, circuit.LanCidr);
             cmds.Add(" remark IP REDE LAN / BANCADA HOMOLOGACAO");
             cmds.Add($" permit ip {lanNet} {wildcard} any");
             cmds.Add($" permit ip any {lanNet} {wildcard}");
+            cmds.Add($" permit ip host {circuit.LanIp} any");
+            cmds.Add($" permit ip any host {circuit.LanIp}");
         }
         cmds.Add(" exit");
 
@@ -790,11 +794,16 @@ public sealed class CiscoSaipConfigurator
         try
         {
             await EnsurePrivilegedExecAsync(session, cancellationToken);
-            await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(10), cancellationToken);
+            var prompt = (session.CurrentPrompt ?? string.Empty).Trim();
+            if (!prompt.Contains("(config", StringComparison.OrdinalIgnoreCase))
+            {
+                await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(15), cancellationToken);
+            }
             await session.SendCommandAsync("no ip dhcp pool SPARC_LAN", TimeSpan.FromSeconds(10), cancellationToken);
             await session.SendCommandAsync($"no ip dhcp excluded-address {circuit.LanIp}", TimeSpan.FromSeconds(10), cancellationToken);
-            await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
-            await session.SendCommandAsync("write memory", TimeSpan.FromSeconds(30), cancellationToken);
+            await session.SendCommandAsync("end", TimeSpan.FromSeconds(10), cancellationToken);
+            await Task.Delay(500, cancellationToken);
+            await session.SendCommandAsync("write memory", TimeSpan.FromSeconds(45), cancellationToken);
             logger?.Invoke("[✓] Servidor DHCP temporário removido da LAN do roteador e NVRAM regravada 100% estática!");
         }
         catch (Exception ex)

@@ -173,11 +173,10 @@ public static class CiscoIOSFirmwareVersionInspector
 
         var targetCleanBin = Path.GetFileName(targetBinFileNameOrPath).Trim();
 
-        // 1. Comparação direta pelo nome do arquivo de imagem do sistema em execução
+        // 1. Comparação direta pelo nome exato do arquivo de imagem do sistema em execução
         if (!string.IsNullOrWhiteSpace(currentVersion.RunningImageFileName))
         {
-            if (currentVersion.RunningImageFileName.Equals(targetCleanBin, StringComparison.OrdinalIgnoreCase) ||
-                currentVersion.RunningImageFileName.Equals(Path.GetFileNameWithoutExtension(targetCleanBin), StringComparison.OrdinalIgnoreCase))
+            if (currentVersion.RunningImageFileName.Equals(targetCleanBin, StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
@@ -198,10 +197,9 @@ public static class CiscoIOSFirmwareVersionInspector
             }
         }
 
-        // 3. Verificação de nome exato presente no show version
+        // 3. Verificação de arquivo exato com extensão referenciado no show version
         if (showVerOutput != null && (
             showVerOutput.Contains(targetCleanBin, StringComparison.OrdinalIgnoreCase) ||
-            showVerOutput.Contains(Path.GetFileNameWithoutExtension(targetCleanBin), StringComparison.OrdinalIgnoreCase) ||
             showVerOutput.Contains($":{targetCleanBin}", StringComparison.OrdinalIgnoreCase) ||
             showVerOutput.Contains($"/{targetCleanBin}", StringComparison.OrdinalIgnoreCase) ||
             showVerOutput.Contains($"\"{targetCleanBin}\"", StringComparison.OrdinalIgnoreCase)))

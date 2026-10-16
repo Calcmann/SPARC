@@ -96,6 +96,45 @@ public sealed class FortiOsSaipConfigurator
     }
 
     /// <summary>
+    /// Identifica qual interface física possui enlace ativo ('status: up' ou 'carrier: ON') no FortiGate.
+    /// Útil para detectar automaticamente em qual porta RJ45 o operador conectou o cabo Ethernet de bancada (ex: lan1, lan2, lan3, port1, wan).
+    /// </summary>
+    public static string? DetectConnectedPhysicalInterface(string output)
+    {
+        if (string.IsNullOrWhiteSpace(output)) return null;
+
+        // Lista de portas LAN prioritárias no FortiGate 40F / FGT
+        var lanCandidates = new[] { "lan1", "lan2", "lan3", "port1", "port2", "port3", "internal1", "internal2", "internal3", "internal", "lan" };
+        foreach (var iface in lanCandidates)
+        {
+            if (IsPhysicalInterfaceUp(output, iface) || IsNetlinkInterfaceUp(output, iface))
+                return iface;
+        }
+
+        // Se nenhuma LAN estiver UP, verifica WAN ou portas genéricas
+        var otherCandidates = new[] { "wan", "wan1", "wan2", "port4", "port5" };
+        foreach (var iface in otherCandidates)
+        {
+            if (IsPhysicalInterfaceUp(output, iface) || IsNetlinkInterfaceUp(output, iface))
+                return iface;
+        }
+
+        // Varredura genérica para outros blocos ==[name]
+        var matches = Regex.Matches(output, @"(?i)==\s*\[\s*(?<name>[A-Za-z0-9_\-\.]+)\s*\](?<content>[\s\S]*?)(?:==\s*\[|\z)");
+        foreach (Match m in matches)
+        {
+            var name = m.Groups["name"].Value;
+            var content = m.Groups["content"].Value;
+            if (Regex.IsMatch(content, @"(?i)\bstatus:\s*up\b") || Regex.IsMatch(content, @"(?i)\bspeed:\s*[1-9]\d*"))
+            {
+                return name;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Normaliza o terminal para o shell raiz do FortiOS (ex: 'FGT40F #'), saindo de
     /// qualquer bloco de configuração ('FGT40F (interface) #', '(admin) #', '(static) #',
     /// '(policy) #'...) com 'end'. Sem isso, um console parado dentro de um bloco
@@ -530,7 +569,66 @@ public sealed class FortiOsSaipConfigurator
         }
         catch { }
 
+        // 5. Ativação do pool DHCP temporário (ID 999) na LAN FortiGate para validação automática do Android / PC
+        try
+        {
+            await ProgressAsync("[*] Habilitando servidor DHCP temporário na LAN FortiGate (ID 999) para validação automática...");
+            var hostLan = !string.IsNullOrWhiteSpace(circuit.HostLanIp)
+                ? circuit.HostLanIp
+                : IpCalculator.CalculateHostLanIp(circuit.LanIp, circuit.LanCidr);
+
+            var dhcpCmds = new[]
+            {
+                "config system dhcp server",
+                "edit 999",
+                $"set default-gateway {circuit.LanIp}",
+                $"set netmask {circuit.LanSubnetMask}",
+                $"set interface \"{lanInterface}\"",
+                "config ip-range",
+                "edit 1",
+                $"set start-ip {hostLan}",
+                $"set end-ip {hostLan}",
+                "next",
+                "end",
+                "set dns-service default",
+                "next",
+                "end"
+            };
+
+            foreach (var cmd in dhcpCmds)
+            {
+                await session.SendCommandAsync(cmd, TimeSpan.FromSeconds(5), cancellationToken);
+                await Task.Delay(100, cancellationToken);
+            }
+            await EnsureRootShellAsync(session, cancellationToken);
+            await ProgressAsync("[✓] Servidor DHCP temporário ativo na LAN FortiGate (ID 999). Será removido ao final dos testes.");
+        }
+        catch (Exception ex)
+        {
+            await ProgressAsync($"[AVISO] Falha ao ativar DHCP temporário FortiGate: {ex.Message}. Teste seguirá.");
+        }
+
         await ProgressAsync("[OK] PROVISIONAMENTO FORTIGATE 40F CONCLUIDO (persistencia automatica via 'end').");
+    }
+
+    /// <summary>
+    /// Remove o servidor DHCP temporário (ID 999) do FortiGate e restaura a configuração 100% estática.
+    /// </summary>
+    public static async Task RemoverDhcpTemporarioAsync(DeviceSession session, SaipCircuitData circuit, Action<string>? logger = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await EnsureRootShellAsync(session, cancellationToken);
+            await session.SendCommandAsync("config system dhcp server", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("delete 999", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
+            await EnsureRootShellAsync(session, cancellationToken);
+            logger?.Invoke("[✓] Servidor DHCP temporário removido da LAN FortiGate (ID 999) e configuração mantida 100% estática!");
+        }
+        catch (Exception ex)
+        {
+            logger?.Invoke($"[AVISO] Não foi possível remover o DHCP temporário automaticamente no FortiGate: {ex.Message}");
+        }
     }
 
     internal static bool IsFortiError(string output)
@@ -891,7 +989,7 @@ public sealed class FortiOsSaipConfigurator
         return false;
     }
 
-    private static bool IsPhysicalInterfaceUp(string output, string ifName)
+    internal static bool IsPhysicalInterfaceUp(string output, string ifName)
     {
         if (string.IsNullOrWhiteSpace(output)) return false;
         // Localiza o bloco ==[ifName] até o próximo ==[ ou fim da string
@@ -899,14 +997,17 @@ public sealed class FortiOsSaipConfigurator
         if (match.Success)
         {
             var content = match.Groups["content"].Value;
+            if (Regex.IsMatch(content, @"(?i)\bstatus:\s*down\b"))
+                return false;
+
             var isUp = Regex.IsMatch(content, @"(?i)\bstatus:\s*up\b");
-            var hasSpeed = Regex.IsMatch(content, @"(?i)\bspeed:\s*\d+");
+            var hasSpeed = Regex.IsMatch(content, @"(?i)\bspeed:\s*[1-9]\d*");
             return isUp || hasSpeed;
         }
         return false;
     }
 
-    private static bool IsNetlinkInterfaceUp(string diagNet, string ifName)
+    internal static bool IsNetlinkInterfaceUp(string diagNet, string ifName)
     {
         if (string.IsNullOrWhiteSpace(diagNet)) return false;
         // Localiza o bloco if=ifName até o próximo if= ou fim da string

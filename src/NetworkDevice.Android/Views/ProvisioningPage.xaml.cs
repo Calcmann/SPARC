@@ -1212,30 +1212,52 @@ public partial class ProvisioningPage : ContentPage
 
             string versaoExibida = detected?.Series.ToString() ?? "Desconhecido";
 
+            // Se o operador selecionou manualmente um firmware avulso (ex: projeto especial),
+            // a auditoria e o alvo do provisionamento devem focar estritamente nessa imagem indicada!
+            var temFirmwareManual = !string.IsNullOrWhiteSpace(_selectedManualFirmwarePath) && File.Exists(_selectedManualFirmwarePath);
+            string? targetFirmwareFileName = temFirmwareManual
+                ? Path.GetFileName(_selectedManualFirmwarePath)
+                : null;
+
             if (detected != null && atualizarFw)
             {
-                // 1. Consulta versão homologada central (timeout 5s para não prender offline)
-                try
-                {
-                    using var ctsFw = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                    ctsFw.CancelAfter(TimeSpan.FromSeconds(5));
-                    officialRemote = await _firmwareRepo.QueryRemoteForSeriesAsync(detected.Series, ctsFw.Token);
-                }
-                catch (Exception ex)
-                {
-                    LogAuto($"  [*] Repositório online indisponível ({ex.Message}). Usando catálogo oficial de engenharia.");
-                }
-
-                if (officialRemote == null && !string.IsNullOrWhiteSpace(officialCanonicalName))
+                if (temFirmwareManual)
                 {
                     officialRemote = new RemoteFirmwareInfo(
                         detected.Series,
                         Path.GetFileName(_firmwareRepo.GetLocalFolderForSeries(detected.Series)),
-                        officialCanonicalName,
+                        targetFirmwareFileName!,
                         string.Empty,
-                        0L,
+                        new FileInfo(_selectedManualFirmwarePath!).Length,
                         null,
                         null);
+                    LogAuto($"[*] Imagem avulsa indicada para o {detected.Series}: {targetFirmwareFileName}");
+                }
+                else
+                {
+                    // 1. Consulta versão homologada central (timeout 5s para não prender offline)
+                    try
+                    {
+                        using var ctsFw = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                        ctsFw.CancelAfter(TimeSpan.FromSeconds(5));
+                        officialRemote = await _firmwareRepo.QueryRemoteForSeriesAsync(detected.Series, ctsFw.Token);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogAuto($"  [*] Repositório online indisponível ({ex.Message}). Usando catálogo oficial de engenharia.");
+                    }
+
+                    if (officialRemote == null && !string.IsNullOrWhiteSpace(officialCanonicalName))
+                    {
+                        officialRemote = new RemoteFirmwareInfo(
+                            detected.Series,
+                            Path.GetFileName(_firmwareRepo.GetLocalFolderForSeries(detected.Series)),
+                            officialCanonicalName,
+                            string.Empty,
+                            0L,
+                            null,
+                            null);
+                    }
                 }
 
                 // 2. Audita versão em execução no equipamento com loop serial isolado
@@ -1378,16 +1400,16 @@ public partial class ProvisioningPage : ContentPage
             {
                 var targetName = officialRemote?.FileName ?? officialCanonicalName ?? "Homologado";
                 SetEtapa(2, $"✅ 2. Firmware — mantido (mesma versão: {versaoExibida})", "#16A34A");
-                LogAuto($"[✓] Firmware já em conformidade com a versão homologada ({targetName}). Nenhuma atualização necessária.");
+                LogAuto($"[✓] Firmware já em conformidade com a imagem selecionada/homologada ({targetName}). Nenhuma atualização necessária.");
                 Progresso(40, "2/7 OK");
             }
             else
             {
                 // ATUALIZAÇÃO NECESSÁRIA!
                 var targetName = officialRemote?.FileName ?? officialCanonicalName ?? $"{detected?.Series}.bin";
-                LogAuto($"[!] Firmware desatualizado detectado no {detected!.Series}!");
+                LogAuto($"[!] Atualização de firmware necessária no {detected!.Series}!");
                 LogAuto($"    Versão em execução : {versaoExibida}");
-                LogAuto($"    Versão homologada  : {targetName}");
+                LogAuto($"    Versão alvo        : {targetName}");
                 SetEtapa(2, "⏳ 2. Atualizar Firmware — preparando transferência...", "#D97706");
                 Progresso(25, "2/7 Preparando Firmware...");
 
@@ -1917,16 +1939,20 @@ public partial class ProvisioningPage : ContentPage
                 LogAuto($"[*] Servidores DNS     : 1.1.1.1, 8.8.8.8");
 
                 // Detecção e Isolamento de Rede via OTG + Ethernet
-                var hasEth = ethManager.IsEthernetConnected();
+                var hasEth = ethManager.IsEthernetConnected() || ethManager.HasEthernetHardwareInterface();
                 var ethIp = ethManager.GetEthernetIpAddress();
 
                 if (hasEth && string.IsNullOrWhiteSpace(ethIp))
                 {
                     LogAuto("[*] Adaptador Ethernet detectado. Aguardando concessão de IP via DHCP pelo roteador...");
-                    for (int w = 0; w < 6 && string.IsNullOrWhiteSpace(ethIp) && !ct.IsCancellationRequested; w++)
+                    for (int w = 1; w <= 80 && string.IsNullOrWhiteSpace(ethIp) && !ct.IsCancellationRequested; w++)
                     {
                         await Task.Delay(500, ct);
                         ethIp = ethManager.GetEthernetIpAddress();
+                        if (w % 8 == 0 && string.IsNullOrWhiteSpace(ethIp))
+                        {
+                            LogAuto($"[*] Aguardando DHCP do roteador na interface Ethernet ({w * 500 / 1000}s/40s)...");
+                        }
                     }
                 }
 
@@ -1935,11 +1961,11 @@ public partial class ProvisioningPage : ContentPage
                     LogAuto($"[✓] Adaptador Ethernet OTG cabeado operacional!");
                     if (!string.IsNullOrWhiteSpace(ethIp))
                     {
-                        LogAuto($"[✓] IP da interface Ethernet no Android: {ethIp}");
+                        LogAuto($"[✓] IP da interface Ethernet no Android (via DHCP): {ethIp}");
                     }
                     else
                     {
-                        LogAuto($"[!] Interface Ethernet sem IP estático detectado. IP requerido no Android: {hostIp} | Máscara: {lanMask}.");
+                        LogAuto($"[!] Interface Ethernet sem IP DHCP detectado após 40s. IP nominal requerido: {hostIp} | Máscara: {lanMask}.");
                     }
                 }
                 else
@@ -1950,7 +1976,10 @@ public partial class ProvisioningPage : ContentPage
                 // Amarra o processo do aplicativo exclusivamente à interface Ethernet
                 ethBound = ethManager.BindProcessToEthernet(LogAuto);
 
-                SetEtapa(4, $"✅ 4. IP de Teste — OK (Host: {hostIp})", "#16A34A");
+                var ipOk = !string.IsNullOrWhiteSpace(ethIp);
+                var ipLabel = ipOk ? $"✅ 4. IP de Teste — OK (Host: {ethIp})" : $"⚠️ 4. IP de Teste — Pendente (Nominal: {hostIp})";
+                var ipColor = ipOk ? "#16A34A" : "#FBBF24";
+                SetEtapa(4, ipLabel, ipColor);
                 Progresso(75, "4/7 IP de Teste Definido");
 
                 // =====================================================================
@@ -1960,7 +1989,8 @@ public partial class ProvisioningPage : ContentPage
                 Progresso(80, "5/7 Testando Conectividade ICMP...");
                 LogAuto("\n>>> [AUTO 5/7] Teste ICMP Triplo (5a LAN, 5b WAN, 5c WEB)");
 
-                _lastIcmpResult = await ExecutarTesteIcmpTriploAsync(circuit, ethIp ?? hostIp, ct);
+                var effectiveSourceIp = !string.IsNullOrWhiteSpace(ethIp) ? ethIp : null;
+                _lastIcmpResult = await ExecutarTesteIcmpTriploAsync(circuit, effectiveSourceIp, ct);
                 icmpLan = _lastIcmpResult.IsLanOk ? "OK" : "❌";
                 icmpWan = _lastIcmpResult.IsWanOk ? "OK" : "❌";
                 icmpWeb = _lastIcmpResult.IsWebOk ? "OK" : "❌";
@@ -1983,7 +2013,7 @@ public partial class ProvisioningPage : ContentPage
                 {
                     // No FortiOS Telnet vem desabilitado: testa SSH :22 ou HTTPS :443
                     var srv = new ConnectivityService(msg => { LogAuto(msg); return Task.CompletedTask; });
-                    var (sshOk, sshLat, _) = await srv.TestTcpPortAsync(telnetTarget, 22, timeoutMs: 4000, cancellationToken: ct);
+                    var (sshOk, sshLat, _) = await srv.TestTcpPortAsync(telnetTarget, 22, timeoutMs: 4000, sourceIpAddress: effectiveSourceIp, cancellationToken: ct);
                     if (sshOk)
                     {
                         _lastTelnetResult = new ConnectivityService.TelnetTestResult(telnetTarget, 22, true, sshLat, "SSH Ativo", "OK", null);
@@ -1992,7 +2022,7 @@ public partial class ProvisioningPage : ContentPage
                     }
                     else
                     {
-                        var (httpsOk, httpsLat, _) = await srv.TestTcpPortAsync(telnetTarget, 443, timeoutMs: 4000, cancellationToken: ct);
+                        var (httpsOk, httpsLat, _) = await srv.TestTcpPortAsync(telnetTarget, 443, timeoutMs: 4000, sourceIpAddress: effectiveSourceIp, cancellationToken: ct);
                         _lastTelnetResult = new ConnectivityService.TelnetTestResult(telnetTarget, 443, httpsOk, httpsLat, httpsOk ? "HTTPS Ativo" : "Falha", "OK", null);
                         SetEtapa(6, httpsOk ? "✅ 6. Acesso Remoto (HTTPS) — OK" : "⚠️ 6. Acesso Remoto — sem resposta", httpsOk ? "#16A34A" : "#FBBF24");
                     }
@@ -2004,7 +2034,7 @@ public partial class ProvisioningPage : ContentPage
                         // Cisco/HPE/Huawei/Datacom: Estabelece sessão Telnet e migra Terminal para Telnet
                         var isHpeDev = _connManager.LastDetectionResult?.Manufacturer == DeviceManufacturer.Hpe;
                         var defaultTelnetPass = isHpeDev ? "PRO1ANPRO1AN" : "CQMR";
-                        var telnetOk = await _connManager.SwitchToTelnetSessionAsync(telnetTarget, 23, "EBT", defaultTelnetPass, LogAuto, ct);
+                        var telnetOk = await _connManager.SwitchToTelnetSessionAsync(telnetTarget, 23, "EBT", defaultTelnetPass, LogAuto, ct, localIpAddress: ethIp);
                         _lastTelnetResult = new ConnectivityService.TelnetTestResult(telnetTarget, 23, telnetOk, 10, telnetOk ? "Telnet Conectado" : "Falha", "OK", null);
                         SetEtapa(6, telnetOk ? $"✅ 6. Telnet (TCP 23 EBT/{defaultTelnetPass}) — OK (Migrado)" : "⚠️ 6. Telnet — sem resposta (Cabo LAN ou IP pendente)", telnetOk ? "#16A34A" : "#FBBF24");
                     }
@@ -2085,10 +2115,33 @@ public partial class ProvisioningPage : ContentPage
 
             // Remoção do pool DHCP temporário: restaura a configuração 100% estática do roteador
             var sessaoAtiva = _connManager.TelnetSession ?? _connManager.CurrentSession;
-            if (!isForti && sessaoAtiva != null)
+            if (sessaoAtiva != null)
             {
-                LogAuto("\n[*] Removendo servidor DHCP temporário da LAN e garantindo configuração 100% estática na NVRAM...");
-                await CiscoSaipConfigurator.RemoverDhcpTemporarioAsync(sessaoAtiva, circuit, LogAuto, CancellationToken.None);
+                var isHpe = detected?.Manufacturer == DeviceManufacturer.Hpe ||
+                            (ModelPicker.SelectedItem?.ToString()?.Contains("HPE", StringComparison.OrdinalIgnoreCase) == true) ||
+                            (ModelPicker.SelectedItem?.ToString()?.Contains("MSR", StringComparison.OrdinalIgnoreCase) == true);
+
+                LogAuto("\n[*] Removendo servidor DHCP temporário da LAN e garantindo configuração 100% estática na NVRAM/Flash...");
+                await _connManager.PauseReadLoopAsync();
+                try
+                {
+                    if (isForti)
+                    {
+                        await NetworkDevice.Fortinet.FortiOsSaipConfigurator.RemoverDhcpTemporarioAsync(sessaoAtiva, circuit, LogAuto, CancellationToken.None);
+                    }
+                    else if (isHpe)
+                    {
+                        await HpeSaipConfigurator.RemoverDhcpTemporarioAsync(sessaoAtiva, circuit, LogAuto, CancellationToken.None);
+                    }
+                    else
+                    {
+                        await CiscoSaipConfigurator.RemoverDhcpTemporarioAsync(sessaoAtiva, circuit, LogAuto, CancellationToken.None);
+                    }
+                }
+                finally
+                {
+                    _connManager.ResumeReadLoop();
+                }
             }
 
             // Se a atualização de firmware foi postergada na Fase 2 e a WAN agora está online (ICMP WAN ou WEB OK)
@@ -2193,10 +2246,10 @@ public partial class ProvisioningPage : ContentPage
         if (!lanRes.IsSuccess)
         {
             AppendLog($"[*] Verificando conectividade alternativa TCP na LAN ({lanTarget}:23 / :22)...");
-            var (tcpOk, tcpLat, _) = await srv.TestTcpPortAsync(lanTarget, 23, timeoutMs: 2500, cancellationToken: ct);
+            var (tcpOk, tcpLat, _) = await srv.TestTcpPortAsync(lanTarget, 23, timeoutMs: 2500, sourceIpAddress: sourceIp, cancellationToken: ct);
             if (!tcpOk)
             {
-                var (sshOk, sshLat, _) = await srv.TestTcpPortAsync(lanTarget, 22, timeoutMs: 2500, cancellationToken: ct);
+                var (sshOk, sshLat, _) = await srv.TestTcpPortAsync(lanTarget, 22, timeoutMs: 2500, sourceIpAddress: sourceIp, cancellationToken: ct);
                 if (sshOk) { tcpOk = true; tcpLat = sshLat; }
             }
             if (tcpOk)

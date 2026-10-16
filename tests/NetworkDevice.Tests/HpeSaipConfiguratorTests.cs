@@ -278,4 +278,28 @@ GE0/1                10.0.0.1             UP       UP
         Assert.Contains("ipv6 address 2001:db8:2::1/64", joined);
         Assert.Contains("ipv6 route-static :: 0 2001:db8:1::1", joined);
     }
+
+    [Fact]
+    public void DetectConnectedPhysicalInterface_DetectaPortaUpUp()
+    {
+        var output = @"
+Interface            Link:   Protocol:   IP Address
+GE0/0                DOWN    DOWN        --
+GE0/1                UP      UP          192.168.1.1
+";
+        var iface = HpeSaipConfigurator.DetectConnectedPhysicalInterface(output);
+        Assert.Equal("GigabitEthernet0/1", iface);
+    }
+
+    [Fact]
+    public void DetectConnectedPhysicalInterface_RetornaNull_QuandoNenhumaUp()
+    {
+        var output = @"
+Interface            Link:   Protocol:   IP Address
+GE0/0                DOWN    DOWN        --
+GE0/1                DOWN    DOWN        --
+";
+        var iface = HpeSaipConfigurator.DetectConnectedPhysicalInterface(output);
+        Assert.Null(iface);
+    }
 }

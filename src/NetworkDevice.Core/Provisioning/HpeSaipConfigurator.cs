@@ -255,6 +255,56 @@ public sealed class HpeSaipConfigurator
     }
 
     /// <summary>
+    /// Identifica qual interface possui enlace físico ativo ('UP/UP') a partir do 'display ip interface brief'.
+    /// Útil para detectar automaticamente em qual porta RJ45 o operador conectou o cabo Ethernet de bancada (GE0/1 vs GE0/0).
+    /// </summary>
+    public static string? DetectConnectedPhysicalInterface(string displayBriefOutput)
+    {
+        if (string.IsNullOrWhiteSpace(displayBriefOutput)) return null;
+
+        var lines = displayBriefOutput.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+        string? candidateUp = null;
+
+        foreach (var rawLine in lines)
+        {
+            var line = rawLine.Trim();
+            if (line.StartsWith("Interface", StringComparison.OrdinalIgnoreCase) ||
+                line.StartsWith("Brief", StringComparison.OrdinalIgnoreCase) ||
+                line.StartsWith("Link:", StringComparison.OrdinalIgnoreCase) ||
+                line.StartsWith("Protocol:", StringComparison.OrdinalIgnoreCase)) continue;
+
+            var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 3 &&
+                (parts[0].StartsWith("Gi", StringComparison.OrdinalIgnoreCase) ||
+                 parts[0].StartsWith("GE", StringComparison.OrdinalIgnoreCase) ||
+                 parts[0].StartsWith("Ten", StringComparison.OrdinalIgnoreCase) ||
+                 parts[0].StartsWith("Vlan", StringComparison.OrdinalIgnoreCase) ||
+                 parts[0].StartsWith("Eth", StringComparison.OrdinalIgnoreCase)))
+            {
+                var iface = parts[0];
+                var link = parts[1];
+                var proto = parts[2];
+
+                if (link.Equals("UP", StringComparison.OrdinalIgnoreCase) && proto.Equals("UP", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Prioriza interface LAN caso ambas estejam UP
+                    if (iface.EndsWith("1") || iface.EndsWith("0/1") || iface.StartsWith("Vlan", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return NormalizeInterfaceName(iface);
+                    }
+                    candidateUp ??= NormalizeInterfaceName(iface);
+                }
+                else if (link.Equals("UP", StringComparison.OrdinalIgnoreCase))
+                {
+                    candidateUp ??= NormalizeInterfaceName(iface);
+                }
+            }
+        }
+
+        return candidateUp;
+    }
+
+    /// <summary>
     /// Gera os comandos de CLI HPE Comware para provisionamento da Ficha SAIP.
     /// </summary>
     /// <param name="circuit">Dados do circuito SAIP.</param>
@@ -801,7 +851,67 @@ public sealed class HpeSaipConfigurator
             await ProgressAsync("[OK] Provisionamento HPE concluído com sucesso!");
         }
 
+        // 12. Ativação do pool DHCP temporário na RAM (HPE Comware) para os testes automáticos do Android / PC
+        try
+        {
+            await ProgressAsync("[*] Habilitando servidor DHCP temporário na LAN HPE Comware para validação automática...");
+            var lanNet = string.IsNullOrWhiteSpace(circuit.LanBlockNetwork)
+                ? IpCalculator.CalculateNetworkAddress(circuit.LanIp, circuit.LanCidr)
+                : circuit.LanBlockNetwork;
+
+            await EnsureSystemViewAsync(session, _progress, cancellationToken);
+            await session.SendCommandAsync("dhcp enable", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("dhcp server ip-pool SPARC_LAN", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync($"gateway-list {circuit.LanIp}", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync($"network {lanNet} mask {circuit.LanSubnetMask}", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync($"forbidden-ip {circuit.LanIp}", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("dns-list 1.1.1.1 8.8.8.8", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("expired day 0 hour 2", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
+            await session.SendCommandAsync("return", TimeSpan.FromSeconds(3), cancellationToken);
+
+            await ProgressAsync("[✓] Servidor DHCP temporário ativo na RAM (HPE Comware). Será removido ao final dos testes.");
+        }
+        catch (Exception ex)
+        {
+            await ProgressAsync($"[AVISO] Falha ao ativar DHCP temporário HPE: {ex.Message}. Teste seguirá.");
+        }
+
         return report;
+    }
+
+    /// <summary>
+    /// Remove o servidor DHCP temporário da memória do roteador HPE Comware e regrava a configuração 100% estática.
+    /// </summary>
+    public static async Task RemoverDhcpTemporarioAsync(DeviceSession session, SaipCircuitData circuit, Action<string>? logger = null, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await EnsureSystemViewAsync(session, logger != null ? msg => { logger(msg); return Task.CompletedTask; } : null, cancellationToken);
+            await session.SendCommandAsync("undo dhcp server ip-pool SPARC_LAN", TimeSpan.FromSeconds(10), cancellationToken);
+            await session.SendCommandAsync("undo dhcp enable", TimeSpan.FromSeconds(10), cancellationToken);
+            await session.SendCommandAsync("return", TimeSpan.FromSeconds(5), cancellationToken);
+            await EnsureUserViewAsync(session, logger != null ? msg => { logger(msg); return Task.CompletedTask; } : null, cancellationToken);
+            await Task.Delay(500, cancellationToken);
+            var saveResp = await session.SendExpectAsync("save safely force",
+                new StopCondition[] {
+                    new StopCondition.Contains("[Y/N]:", "[Y/N]:"),
+                    new StopCondition.Contains("[Y/N]", "[Y/N]"),
+                    new StopCondition.Prompt()
+                },
+                TimeSpan.FromSeconds(25), cancellationToken);
+
+            if (saveResp.Output.Contains("[Y/N]", StringComparison.OrdinalIgnoreCase))
+            {
+                await session.WriteLineAsync("Y", cancellationToken);
+                await session.WaitForAsync(new StopCondition[] { new StopCondition.Prompt() }, TimeSpan.FromSeconds(15), cancellationToken);
+            }
+            logger?.Invoke("[✓] Servidor DHCP temporário removido da LAN HPE Comware e configuração regravada 100% estática!");
+        }
+        catch (Exception ex)
+        {
+            logger?.Invoke($"[AVISO] Não foi possível remover o DHCP temporário automaticamente no HPE: {ex.Message}");
+        }
     }
 
     private static bool IsError(string output)
