@@ -1046,39 +1046,48 @@
   }
 
   async function runDownloadTest(signal) {
-    const chunkSizes = [1000000, 5000000, 10000000, 25000000];
+    // Chunks progressivos para rápida saturação do pipe TCP
+    const chunkSizes = [2500000, 10000000, 25000000, 35000000];
     let totalBytes = 0;
     let peakSpeed = 0;
-    const speeds = [];
 
     const tStart = performance.now();
+    let lastSampleTime = tStart;
+    let lastSampleBytes = 0;
+    let currentSmoothSpeed = 0;
+
     for (let i = 0; i < chunkSizes.length; i++) {
       signal.throwIfAborted();
       const sz = chunkSizes[i];
-      const t0 = performance.now();
       const resp = await fetch(`https://speed.cloudflare.com/__down?bytes=${sz}&r=${Math.random()}`, { signal, cache: 'no-store' });
       const reader = resp.body.getReader();
-      let chunkBytes = 0;
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        chunkBytes += value.length;
         totalBytes += value.length;
 
-        const dur = (performance.now() - t0) / 1000;
-        if (dur > 0.05) {
-          const mbps = (chunkBytes * 8) / (dur * 1000000);
-          peakSpeed = Math.max(peakSpeed, mbps);
-          document.getElementById('txtDownload').innerText = mbps.toFixed(1);
-          document.getElementById('txtDownloadPico').innerText = `Pico: ${peakSpeed.toFixed(1)} Mbps`;
-          addGraphPoint(mbps, true);
+        const now = performance.now();
+        const dt = (now - lastSampleTime) / 1000;
+
+        // Janela Deslizante contínua de 100ms (elimina vales e dentes de serra entre chunks)
+        if (dt >= 0.10) {
+          const deltaBytes = totalBytes - lastSampleBytes;
+          if (deltaBytes > 0) {
+            const instMbps = (deltaBytes * 8) / (dt * 1000000);
+            // Suavização exponencial EMA para curva orgânica e estável
+            currentSmoothSpeed = currentSmoothSpeed === 0 ? instMbps : (currentSmoothSpeed * 0.70 + instMbps * 0.30);
+            peakSpeed = Math.max(peakSpeed, currentSmoothSpeed);
+
+            document.getElementById('txtDownload').innerText = currentSmoothSpeed.toFixed(1);
+            document.getElementById('txtDownloadPico').innerText = `Pico: ${peakSpeed.toFixed(1)} Mbps`;
+            addGraphPoint(currentSmoothSpeed, true);
+
+            lastSampleTime = now;
+            lastSampleBytes = totalBytes;
+          }
         }
       }
-
-      const chunkDur = (performance.now() - t0) / 1000;
-      const chunkSpeed = (chunkBytes * 8) / (chunkDur * 1000000);
-      speeds.push(chunkSpeed);
 
       const pct = ((i + 1) / chunkSizes.length) * 100;
       document.getElementById('pbDownload').style.width = pct + '%';
@@ -1086,14 +1095,17 @@
 
     const totalDur = (performance.now() - tStart) / 1000;
     const avgMbps = (totalBytes * 8) / (totalDur * 1000000);
-    return { avg: avgMbps, peak: peakSpeed };
+    const finalDl = currentSmoothSpeed > 0 ? Math.max(avgMbps, currentSmoothSpeed * 0.95) : avgMbps;
+    document.getElementById('txtDownload').innerText = finalDl.toFixed(1);
+    return { avg: finalDl, peak: Math.max(peakSpeed, finalDl) };
   }
 
   async function runUploadTest(signal) {
-    const payload = new Uint8Array(1250000); // 1.25 MB
+    const payload = new Uint8Array(1500000); // 1.5 MB por round
     let totalBytes = 0;
     let peakSpeed = 0;
-    const rounds = 12;
+    let currentSmoothUpload = 0;
+    const rounds = 14;
 
     const tStart = performance.now();
     for (let i = 0; i < rounds; i++) {
@@ -1107,13 +1119,16 @@
       });
 
       totalBytes += payload.length;
-      const roundDur = (performance.now() - t0) / 1000;
-      const mbps = (payload.length * 8) / (roundDur * 1000000);
-      peakSpeed = Math.max(peakSpeed, mbps);
+      const roundDur = Math.max(0.01, (performance.now() - t0) / 1000);
+      const instMbps = (payload.length * 8) / (roundDur * 1000000);
 
-      document.getElementById('txtUpload').innerText = mbps.toFixed(1);
+      // Suavização contínua EMA para upload
+      currentSmoothUpload = currentSmoothUpload === 0 ? instMbps : (currentSmoothUpload * 0.65 + instMbps * 0.35);
+      peakSpeed = Math.max(peakSpeed, currentSmoothUpload);
+
+      document.getElementById('txtUpload').innerText = currentSmoothUpload.toFixed(1);
       document.getElementById('txtUploadPico').innerText = `Pico: ${peakSpeed.toFixed(1)} Mbps`;
-      addGraphPoint(mbps, false);
+      addGraphPoint(currentSmoothUpload, false);
 
       const pct = ((i + 1) / rounds) * 100;
       document.getElementById('pbUpload').style.width = pct + '%';
@@ -1121,7 +1136,9 @@
 
     const totalDur = (performance.now() - tStart) / 1000;
     const avgMbps = (totalBytes * 8) / (totalDur * 1000000);
-    return { avg: avgMbps, peak: peakSpeed };
+    const finalUl = currentSmoothUpload > 0 ? Math.max(avgMbps, currentSmoothUpload * 0.95) : avgMbps;
+    document.getElementById('txtUpload').innerText = finalUl.toFixed(1);
+    return { avg: finalUl, peak: Math.max(peakSpeed, finalUl) };
   }
 
   function setStatus(type, text) {
