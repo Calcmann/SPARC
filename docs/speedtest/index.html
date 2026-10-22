@@ -943,20 +943,47 @@
     }
   }
 
+  function resetTestParameters() {
+    // 1. Zera KPIs de Download
+    document.getElementById('txtDownload').innerText = '0.0';
+    document.getElementById('txtDownloadPico').innerText = 'Pico: 0.0 Mbps';
+    document.getElementById('pbDownload').style.width = '0%';
+
+    // 2. Zera KPIs de Upload
+    document.getElementById('txtUpload').innerText = '0.0';
+    document.getElementById('txtUploadPico').innerText = 'Pico: 0.0 Mbps';
+    document.getElementById('pbUpload').style.width = '0%';
+
+    // 3. Zera Latência e Jitter
+    document.getElementById('txtLatency').innerText = '0';
+    document.getElementById('txtJitter').innerText = 'Jitter: 0.0 ms • Perda: 0%';
+    document.getElementById('txtFiberFloor').innerText = 'Piso Fibra: calculando...';
+
+    // 4. Zera Bufferbloat
+    const elBloatGrade = document.getElementById('txtBufferbloatGrade');
+    elBloatGrade.innerText = '—';
+    elBloatGrade.style.color = 'var(--text-muted)';
+    document.getElementById('txtBufferbloatDesc').innerText = 'Aguardando início...';
+    document.getElementById('txtBufferbloatDelta').innerText = 'Sob carga contínua';
+
+    // 5. Zera Gráfico Canvas
+    dlPoints.length = 0;
+    ulPoints.length = 0;
+    maxGraphSpeed = 50;
+    redrawCanvas();
+    document.getElementById('chartOverlay').style.display = 'none';
+  }
+
   async function startTest() {
     if (isRunning) return;
     isRunning = true;
     abortController = new AbortController();
 
+    // Zera completamente todos os parâmetros e KPIs do teste anterior
+    resetTestParameters();
+
     setButtonsState(true, false);
-
     setStatus('running', 'EXECUTANDO TESTE...');
-    document.getElementById('chartOverlay').style.display = 'none';
-
-    dlPoints.length = 0;
-    ulPoints.length = 0;
-    maxGraphSpeed = 50;
-    redrawCanvas();
 
     try {
       // 0. SONDAGEM DE MENOR ESFORÇO
