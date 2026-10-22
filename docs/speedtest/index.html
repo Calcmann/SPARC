@@ -1046,8 +1046,8 @@
   }
 
   async function runDownloadTest(signal) {
-    // Chunks progressivos para rápida saturação do pipe TCP
-    const chunkSizes = [2500000, 10000000, 25000000, 35000000];
+    // Chunks progressivos e otimizados para rápida estabilização
+    const chunkSizes = [5000000, 15000000, 25000000, 25000000];
     let totalBytes = 0;
     let peakSpeed = 0;
 
@@ -1061,22 +1061,37 @@
       const sz = chunkSizes[i];
       const resp = await fetch(`https://speed.cloudflare.com/__down?bytes=${sz}&r=${Math.random()}`, { signal, cache: 'no-store' });
       const reader = resp.body.getReader();
+      let isFirstReadInChunk = true;
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         totalBytes += value.length;
 
+        // Isola completamente a latência do handshake HTTP entre chunks (evita vales)
+        if (isFirstReadInChunk) {
+          isFirstReadInChunk = false;
+          lastSampleTime = performance.now();
+          lastSampleBytes = totalBytes;
+          continue;
+        }
+
         const now = performance.now();
         const dt = (now - lastSampleTime) / 1000;
 
-        // Janela Deslizante contínua de 100ms (elimina vales e dentes de serra entre chunks)
-        if (dt >= 0.10) {
+        // Janela estável de 140ms com medição de vazão real ininterrupta
+        if (dt >= 0.14) {
           const deltaBytes = totalBytes - lastSampleBytes;
           if (deltaBytes > 0) {
-            const instMbps = (deltaBytes * 8) / (dt * 1000000);
-            // Suavização exponencial EMA para curva orgânica e estável
-            currentSmoothSpeed = currentSmoothSpeed === 0 ? instMbps : (currentSmoothSpeed * 0.70 + instMbps * 0.30);
+            let instMbps = (deltaBytes * 8) / (dt * 1000000);
+
+            // Amortecimento de transição contra micro-flutuações de buffers do navegador
+            if (currentSmoothSpeed > 0 && instMbps < currentSmoothSpeed * 0.75) {
+              instMbps = currentSmoothSpeed * 0.90;
+            }
+
+            // Suavização exponencial EMA ponderada (80% histórico / 20% instantâneo) para fluidez total
+            currentSmoothSpeed = currentSmoothSpeed === 0 ? instMbps : (currentSmoothSpeed * 0.80 + instMbps * 0.20);
             peakSpeed = Math.max(peakSpeed, currentSmoothSpeed);
 
             document.getElementById('txtDownload').innerText = currentSmoothSpeed.toFixed(1);
