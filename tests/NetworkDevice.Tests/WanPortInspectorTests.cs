@@ -138,4 +138,114 @@ public sealed class WanPortInspectorTests
         Assert.True(enc);
         Assert.True(down);
     }
+
+    [Fact]
+    public void Cisco_AvaliarPortas_SemInversao_WanDown()
+    {
+        var info = WanPortInspector.ObterRoteadorPortasInfo("921")!;
+        Assert.NotNull(info);
+
+        const string brief = """
+            Interface                  IP-Address      OK? Method Status                Protocol
+            GigabitEthernet0           unassigned      YES unset  up                    up
+            GigabitEthernet1           unassigned      YES unset  down                  down
+            GigabitEthernet2           unassigned      YES unset  down                  down
+            GigabitEthernet3           unassigned      YES unset  down                  down
+            GigabitEthernet4           201.90.204.22   YES manual down                  down
+            Vlan1                      192.168.1.1     YES manual up                    up
+            """;
+
+        var res = WanPortInspector.AvaliarPortasCisco(brief, info, sourceIp: "192.168.1.2");
+        Assert.True(res.LanUp);
+        Assert.False(res.WanUp);
+        Assert.False(res.PossivelInversaoCabos);
+    }
+
+    [Fact]
+    public void Cisco_AvaliarPortas_DetectaInversao_WanUpLanDown()
+    {
+        var info = WanPortInspector.ObterRoteadorPortasInfo("921")!;
+        Assert.NotNull(info);
+
+        const string brief = """
+            Interface                  IP-Address      OK? Method Status                Protocol
+            GigabitEthernet0           unassigned      YES unset  down                  down
+            GigabitEthernet1           unassigned      YES unset  down                  down
+            GigabitEthernet2           unassigned      YES unset  down                  down
+            GigabitEthernet3           unassigned      YES unset  down                  down
+            GigabitEthernet4           201.90.204.22   YES manual up                    up
+            Vlan1                      192.168.1.1     YES manual down                  down
+            """;
+
+        var res = WanPortInspector.AvaliarPortasCisco(brief, info, sourceIp: "192.168.1.2");
+        Assert.False(res.LanUp);
+        Assert.True(res.WanUp);
+        Assert.True(res.PossivelInversaoCabos);
+        Assert.Contains("INVERSÃO", res.MensagemDiagnostico);
+    }
+
+    [Fact]
+    public void Cisco_AvaliarPortas_DetectaInversao_ArpNaWan()
+    {
+        var info = WanPortInspector.ObterRoteadorPortasInfo("c841")!;
+        Assert.NotNull(info);
+
+        const string brief = """
+            Interface                  IP-Address      OK? Method Status                Protocol
+            GigabitEthernet0/0         unassigned      YES unset  down                  down
+            GigabitEthernet0/4         201.90.204.22   YES manual up                    up
+            Vlan1                      192.168.1.1     YES manual up                    up
+            """;
+
+        const string arp = """
+            Protocol  Address          Age (min)  Hardware Addr   Type   Interface
+            Internet  192.168.1.2             0   0050.56c0.0008  ARPA   GigabitEthernet0/4
+            Internet  201.90.204.21           1   0010.7bb2.c001  ARPA   GigabitEthernet0/4
+            """;
+
+        var res = WanPortInspector.AvaliarPortasCisco(brief, info, arpOutput: arp, sourceIp: "192.168.1.2");
+        Assert.True(res.PossivelInversaoCabos);
+        Assert.NotNull(res.DetalhesArp);
+        Assert.Contains("192.168.1.2", res.MensagemDiagnostico);
+    }
+
+    [Fact]
+    public void Hpe_AvaliarPortas_DetectaInversao_WanUpLanDown()
+    {
+        var info = WanPortInspector.ObterRoteadorPortasInfo("msr954")!;
+        Assert.NotNull(info);
+
+        const string brief = """
+            Interface            Link Protocol Main IP
+            GE0/0                UP   UP       201.90.204.22
+            GE0/1                DOWN DOWN     --
+            """;
+
+        var res = WanPortInspector.AvaliarPortasHpe(brief, info);
+        Assert.True(res.WanUp);
+        Assert.False(res.LanUp);
+        Assert.True(res.PossivelInversaoCabos);
+    }
+
+    [Fact]
+    public void Forti_AvaliarPortas_DetectaInversao_ArpNaWan()
+    {
+        var info = WanPortInspector.ObterRoteadorPortasInfo("forti")!;
+        Assert.NotNull(info);
+
+        const string physical = """
+            ==[wan]
+                    status: up
+            ==[internal]
+                    status: down
+            """;
+
+        const string arp = """
+            192.168.1.50 0 00:0c:29:41:88:99 wan
+            """;
+
+        var res = WanPortInspector.AvaliarPortasForti(physical, info, arpOutput: arp, sourceIp: "192.168.1.50");
+        Assert.True(res.PossivelInversaoCabos);
+        Assert.Contains("INVERSÃO", res.MensagemDiagnostico);
+    }
 }

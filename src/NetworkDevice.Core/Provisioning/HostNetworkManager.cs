@@ -237,23 +237,24 @@ public static class HostNetworkManager
         string? gateway = null,
         CancellationToken cancellationToken = default,
         IReadOnlyList<string>? dnsServers = null,
-        bool isRestore = false)
+        bool isRestore = false,
+        int? gatewayMetric = null)
     {
         try { EnsureSnapshot(adapterName); } catch { }
         if (!isRestore)
         {
             lock (_snapLock) { _lastApplied[adapterName] = (ipAddress, subnetMask); }
         }
-        NetLog($"SetStaticIp adapter='{adapterName}' ip={ipAddress} mask={subnetMask} gw={gateway ?? "-"} restore={isRestore}");
+        NetLog($"SetStaticIp adapter='{adapterName}' ip={ipAddress} mask={subnetMask} gw={gateway ?? "-"} metric={gatewayMetric?.ToString() ?? (isRestore ? "1" : "500")} restore={isRestore}");
 
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             return (true, $"[Aviso] Configuração automática de IP via netsh suportada no Windows. IP: {ipAddress}, Máscara: {subnetMask}, Gateway: {gateway}, DNS: 1.1.1.1 e 8.8.8.8");
         }
 
-        // Em bancada/provisionamento, o gateway não deve roubar a rota padrão de internet (Wi-Fi/LAN de acesso).
-        // Usamos métrica 500 para que a internet continue ativa na máquina do técnico.
-        var gwMetric = isRestore ? "1" : "500";
+        // Em bancada/provisionamento, o gateway não deve roubar a rota padrão de internet (Wi-Fi/LAN de acesso) - métrica padrão 500.
+        // Em testes de link direto sem CPE, o técnico pode definir métrica prioritária (ex: 1) para o tráfego sair pelo circuito.
+        var gwMetric = gatewayMetric?.ToString() ?? (isRestore ? "1" : "500");
         var gatewayArg = string.IsNullOrWhiteSpace(gateway) ? "" : $" {gateway} {gwMetric}";
         var cmdIp = $"interface ip set address name=\"{adapterName}\" static {ipAddress} {subnetMask}{gatewayArg}";
 
@@ -321,6 +322,7 @@ public static class HostNetworkManager
 
     private static readonly HashSet<string> _snapshotted = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, (string ip, string mask)> _lastApplied = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> _appliedHostRoutes = new(StringComparer.OrdinalIgnoreCase);
     private static readonly object _snapLock = new();
 
     /// <summary>Log persistente do fluxo de rede (fatos, não adivinhação).</summary>
@@ -569,6 +571,7 @@ public static class HostNetworkManager
             return (true, $"[REDE] Placa '{snap.AdapterName}' já está na configuração original ({snap.Descrever()}) — nada a fazer.", snap.AdapterName, false);
         }
 
+        await RemoveAllAppliedHostRoutesAsync(cancellationToken);
         var (ok, outMsg) = await RestoreSnapshotAsync(snap, cancellationToken);
         NetLog($"Restore: snapshot aplicado em '{snap.AdapterName}' ok={ok}: {outMsg}");
         return (ok, (ok ? "[REDE] Placa restaurada para a configuração anterior: " : "[REDE][FALHA] ") + outMsg, snap.AdapterName, snap.DhcpEnabled);
@@ -593,10 +596,97 @@ public static class HostNetworkManager
     public static async Task EnsureTftpFirewallRuleAsync(CancellationToken ct = default)
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return;
-        var args = "advfirewall firewall add rule name=\"SPARC TFTP 69\" dir=in action=allow protocol=UDP localport=69 profile=any";
-        await RunNetshAsync(args, ct);
-        var icmpArgs = "advfirewall firewall add rule name=\"SPARC ICMP Echo\" dir=in action=allow protocol=icmpv4:8,any profile=any";
-        await RunNetshAsync(icmpArgs, ct);
+
+        // Regra UDP 69
+        var checkRule = await RunNetshAsync("advfirewall firewall show rule name=\"SPARC TFTP 69\"", ct);
+        if (!checkRule.success || !checkRule.output.Contains("SPARC TFTP 69", StringComparison.OrdinalIgnoreCase))
+        {
+            var args = "advfirewall firewall add rule name=\"SPARC TFTP 69\" dir=in action=allow protocol=UDP localport=69 profile=any";
+            await RunNetshAsync(args, ct);
+        }
+
+        // Regra ICMP Echo
+        var checkIcmp = await RunNetshAsync("advfirewall firewall show rule name=\"SPARC ICMP Echo\"", ct);
+        if (!checkIcmp.success || !checkIcmp.output.Contains("SPARC ICMP Echo", StringComparison.OrdinalIgnoreCase))
+        {
+            var icmpArgs = "advfirewall firewall add rule name=\"SPARC ICMP Echo\" dir=in action=allow protocol=icmpv4:8,any profile=any";
+            await RunNetshAsync(icmpArgs, ct);
+        }
+
+        // Regra para o próprio executável (garante portas efêmeras do TFTP em Redes Públicas)
+        try
+        {
+            var exePath = Environment.ProcessPath ?? Process.GetCurrentProcess().MainModule?.FileName;
+            if (!string.IsNullOrEmpty(exePath) && File.Exists(exePath))
+            {
+                var checkApp = await RunNetshAsync("advfirewall firewall show rule name=\"SPARC Application\"", ct);
+                if (!checkApp.success || !checkApp.output.Contains("SPARC Application", StringComparison.OrdinalIgnoreCase))
+                {
+                    await RunNetshAsync($"advfirewall firewall add rule name=\"SPARC Application\" dir=in action=allow program=\"{exePath}\" enable=yes profile=any", ct);
+                }
+            }
+        }
+        catch { }
+    }
+
+    /// <summary>
+    /// Garante rota estrita /32 apontando diretamente para o IP do roteador através da interface Ethernet.
+    /// Isso impede que o Windows desvie pacotes UDP/TFTP para interfaces Wi-Fi na mesma sub-rede (ex: 192.168.0.0/24).
+    /// </summary>
+    public static async Task<(bool success, string output)> EnsureHostRouteAsync(
+        string adapterName,
+        string targetIp,
+        string localIp,
+        CancellationToken ct = default)
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return (true, "Não é Windows.");
+        if (!IPAddress.TryParse(targetIp, out _) || !IPAddress.TryParse(localIp, out _))
+            return (false, "IPs inválidos.");
+
+        try
+        {
+            // Remove rota ativa anterior se houver
+            await RunNetshAsync($"interface ip delete route prefix={targetIp}/32 store=active", ct);
+
+            // Adiciona rota /32 com métrica 1 (prioridade máxima absoluta sobre qualquer rota /24 concorrente)
+            var cmd = $"interface ip add route prefix={targetIp}/32 interface=\"{adapterName}\" metric=1 store=active";
+            var res = await RunNetshAsync(cmd, ct);
+            lock (_snapLock) { _appliedHostRoutes.Add(targetIp); }
+            NetLog($"EnsureHostRoute target={targetIp} local={localIp} adapter='{adapterName}' ok={res.success}: {res.output}");
+            return res;
+        }
+        catch (Exception ex)
+        {
+            NetLog($"EnsureHostRoute erro: {ex.Message}");
+            return (false, ex.Message);
+        }
+    }
+
+    public static async Task RemoveHostRouteAsync(string targetIp, CancellationToken ct = default)
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return;
+        try
+        {
+            await RunNetshAsync($"interface ip delete route prefix={targetIp}/32 store=active", ct);
+            lock (_snapLock) { _appliedHostRoutes.Remove(targetIp); }
+            NetLog($"RemoveHostRoute target={targetIp} removido.");
+        }
+        catch { }
+    }
+
+    public static async Task RemoveAllAppliedHostRoutesAsync(CancellationToken ct = default)
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return;
+        string[] targets;
+        lock (_snapLock)
+        {
+            targets = _appliedHostRoutes.ToArray();
+            _appliedHostRoutes.Clear();
+        }
+        foreach (var t in targets)
+        {
+            try { await RunNetshAsync($"interface ip delete route prefix={t}/32 store=active", ct); } catch { }
+        }
     }
 
     public static string? GetCurrentIpForAdapter(string adapterName)

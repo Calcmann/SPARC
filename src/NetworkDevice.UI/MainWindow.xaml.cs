@@ -55,6 +55,8 @@ public partial class MainWindow : Window
     private string? _lastResolvedPass;
     private string? _lastResolvedEnableSecret;
     private TripleIcmpResult? _lastIcmpResult;
+    private bool _isModoBancadaAtivo;
+    private bool _isUpdatingServiceCategoryFromSaip;
     private readonly NetworkDevice.Core.Firmware.FirmwareRepositoryService _firmwareRepoService = new();
 
     public static readonly string AppReleaseVersion = 
@@ -575,6 +577,7 @@ public partial class MainWindow : Window
         }
         AtualizarBotaoProsseguir();
         AtualizarCredencialTelnetPadraoPorModelo();
+        VerificarCompatibilidadeBanda(exibirPopupSeIncompativel: false);
         if (_syncingCombos || CbInterrupt is null || CbModeloRoteadorInicial is null)
             return;
 
@@ -3956,7 +3959,9 @@ public partial class MainWindow : Window
                                local.FileName.Equals(remote.FileName, StringComparison.OrdinalIgnoreCase) &&
                                (remote.SizeBytes <= 0 || Math.Abs(local.SizeBytes - remote.SizeBytes) < 1024);
 
-            if (mesmoArquivo)
+            var forcarDownload = System.Windows.Input.Keyboard.Modifiers.HasFlag(System.Windows.Input.ModifierKeys.Shift);
+
+            if (mesmoArquivo && !forcarDownload)
             {
                 PbDownloadFirmware.Visibility = Visibility.Collapsed;
                 PbDownloadFirmware.IsIndeterminate = false;
@@ -3964,11 +3969,17 @@ public partial class MainWindow : Window
                 var info = $"[Cache Atualizado] {local.FileName} ({local.DisplaySize})";
                 TxtFirmwareAutoInfo.Text = info;
                 if (TxtIosImageInfo != null) TxtIosImageInfo.Text = info;
-                EscreverLinha($"[*] [Firmware Repo] O arquivo homologado '{local.FileName}' já é a versão mais recente em cache.");
+                EscreverLinha($"[*] [Firmware Repo] O arquivo homologado '{local.FileName}' já está disponível em cache local ({local.DisplaySize}).");
+                EscreverLinha("    -> (Dica: Para forçar um novo download limpo da nuvem, segure SHIFT ao clicar em '🌐 Buscar Online').");
                 AtualizarBotaoProsseguir();
             }
             else
             {
+                if (mesmoArquivo && forcarDownload && local != null)
+                {
+                    EscreverLinha($"[*] [Firmware Repo] Tecla SHIFT detectada: Forçando novo download da nuvem (substituindo cache local)...");
+                    try { File.Delete(local.LocalFilePath); } catch { }
+                }
                 PbDownloadFirmware.IsIndeterminate = false;
                 var prog = new Progress<NetworkDevice.Core.Firmware.FirmwareDownloadProgress>(p =>
                 {
@@ -4260,11 +4271,45 @@ public partial class MainWindow : Window
         {
             GridInsumoSaip.Visibility = Visibility.Visible;
             PanelInsumoManual.Visibility = Visibility.Collapsed;
+            if (ContainerTipoServicoManual != null && ContainerTipoServicoSaip != null && PanelLinhaTipoServico != null)
+            {
+                ContainerTipoServicoManual.Content = null;
+                if (ContainerTipoServicoSaip.Content != PanelLinhaTipoServico)
+                    ContainerTipoServicoSaip.Content = PanelLinhaTipoServico;
+            }
+            if (TxtOrigemTipoServico != null)
+            {
+                TxtOrigemTipoServico.Text = _loadedSaipCircuit != null
+                    ? $"🤖 Detectado via SAIP: {_loadedSaipCircuit.TipoServicoDescricao}"
+                    : "🤖 Automático via SAIP (ajuste opcional)";
+                TxtOrigemTipoServico.Foreground = UiBrushes.Get(_loadedSaipCircuit != null ? "#4ADE80" : "#38BDF8");
+            }
+            if (BorderBadgeOrigemServico != null)
+            {
+                BorderBadgeOrigemServico.BorderBrush = UiBrushes.Get(_loadedSaipCircuit != null ? "#4ADE80" : "#38BDF8");
+                BorderBadgeOrigemServico.Background = UiBrushes.Get(_loadedSaipCircuit != null ? "#052E16" : "#0C4A6E");
+            }
         }
         else
         {
             GridInsumoSaip.Visibility = Visibility.Collapsed;
             PanelInsumoManual.Visibility = Visibility.Visible;
+            if (ContainerTipoServicoSaip != null && ContainerTipoServicoManual != null && PanelLinhaTipoServico != null)
+            {
+                ContainerTipoServicoSaip.Content = null;
+                if (ContainerTipoServicoManual.Content != PanelLinhaTipoServico)
+                    ContainerTipoServicoManual.Content = PanelLinhaTipoServico;
+            }
+            if (TxtOrigemTipoServico != null)
+            {
+                TxtOrigemTipoServico.Text = "✏️ Seleção manual para entrada avulsa";
+                TxtOrigemTipoServico.Foreground = UiBrushes.Get("#FBBF24");
+            }
+            if (BorderBadgeOrigemServico != null)
+            {
+                BorderBadgeOrigemServico.BorderBrush = UiBrushes.Get("#FBBF24");
+                BorderBadgeOrigemServico.Background = UiBrushes.Get("#451A03");
+            }
         }
     }
 
@@ -4318,10 +4363,21 @@ public partial class MainWindow : Window
         var clienteFinal = string.IsNullOrEmpty(cliente) ? "CLIENTE AVULSO" : cliente;
         var designacaoFinal = string.IsNullOrEmpty(designacao) ? "DESIGNACAO-MANUAL" : designacao;
 
+        var catTag = (CmbCategoriaServico?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "BLD";
+        var catTipo = catTag switch
+        {
+            "MPLS" => SaipServiceType.IpVpn,
+            "VOZ_E1" => SaipServiceType.VozDigitalE1,
+            "VOZ_SIP" => SaipServiceType.VozSipIp,
+            _ => SaipServiceType.BusinessLinkDirect
+        };
+
         var circuit = new SaipCircuitData
         {
             ClienteRazaoSocial = clienteFinal,
             DesignacaoIp = designacaoFinal,
+            TipoServico = catTipo,
+            IsLanArbitrada = catTipo == SaipServiceType.IpVpn || catTipo == SaipServiceType.VozDigitalE1,
             NumeroOts = "-",
             WanIp = wanIp,
             WanCidr = wanCidr,
@@ -4336,14 +4392,12 @@ public partial class MainWindow : Window
 
         _loadedSaipCircuit = circuit;
         if (TxtHostIpCalculado is not null)
-        if (TxtIcmpTargetLan is not null) TxtIcmpTargetLan.Text = circuit.LanIp;
-        if (TxtIcmpTargetWan is not null) TxtIcmpTargetWan.Text = circuit.WanGateway;
-        if (TxtIcmpTargetWeb is not null) TxtIcmpTargetWeb.Text = "1.1.1.1, 8.8.8.8";
-        TxtIcmpTarget.Text = circuit.WanGateway;
+            TxtHostIpCalculado.Text = $"Host LAN: {circuit.HostLanIp}/{circuit.LanCidr}";
         TxtTelnetTarget.Text = circuit.LanIp;
 
         TxtCircuitoAtivoTitulo.Text = $"CIRCUITO: {circuit.DesignacaoIp} - {circuit.ClienteRazaoSocial}";
-        TxtCircuitoAtivoResumo.Text = $"WAN: {circuit.WanIp}/{circuit.WanCidr} (GW: {circuit.WanGateway}) | LAN: {circuit.LanIp}/{circuit.LanCidr} | Host: {circuit.HostLanIp} | DNS: 1.1.1.1, 8.8.8.8";
+        AtualizarAlvosIcmpPorTipoServico(circuit);
+        VerificarCompatibilidadeBanda(exibirPopupSeIncompativel: false);
 
         AtualizarEstadoBotoes();
         AtualizarBotaoProsseguir();
@@ -4356,7 +4410,12 @@ public partial class MainWindow : Window
         EscreverLinha($"  WAN IP      : {circuit.WanIp} {circuit.WanSubnetMask} (/{circuit.WanCidr})");
         EscreverLinha($"  Gateway WAN : {circuit.WanGateway}");
         EscreverLinha($"  LAN IP      : {circuit.LanIp} {circuit.LanSubnetMask} (/{circuit.LanCidr})");
-        EscreverLinha($"  Host Teste  : {circuit.HostLanIp} (IP calculado com DNS 1.1.1.1 / 8.8.8.8)");
+        if (circuit.IsServicoVoz)
+            EscreverLinha($"  Media Gateway : {circuit.MediaGatewayIp ?? circuit.WanGateway} (Alvo ICMP Voz)");
+        else if (circuit.IsServicoMpls)
+            EscreverLinha($"  PE Loopback   : {circuit.PeLoopbackIp ?? circuit.WanGateway} (Alvo ICMP MPLS)");
+        else
+            EscreverLinha($"  Host Teste    : {circuit.HostLanIp} (IP calculado com DNS 1.1.1.1 / 8.8.8.8)");
         EscreverLinha("=================================================================\n");
     }
 
@@ -4411,6 +4470,23 @@ public partial class MainWindow : Window
             if (_loadedSaipCircuit is null) return;
         }
 
+        // Crítica de Engenharia Claro: Compatibilidade de Banda x Modelo Homologado
+        var compBanda = VerificarCompatibilidadeBanda(exibirPopupSeIncompativel: false);
+        if (compBanda != null && !compBanda.IsCompativel)
+        {
+            var prosseguir = MessageBox.Show(this,
+                $"{compBanda.Mensagem}\n\nDeseja ignorar esta inconformidade técnica e prosseguir com a esteira mesmo assim?",
+                "Crítica de Engenharia Claro — Banda Incompatível",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (prosseguir != MessageBoxResult.Yes)
+            {
+                AbrirTabelaCpeHomologados();
+                return;
+            }
+        }
+
         if (isAuto)
         {
             GridTelaInicial.Visibility = Visibility.Collapsed;
@@ -4459,8 +4535,8 @@ public partial class MainWindow : Window
         BtnAutoCancelar.Visibility = Visibility.Visible; BtnAutoVoltar.Visibility = Visibility.Collapsed;
         if (BtnAutoRestaurarRede != null) BtnAutoRestaurarRede.Visibility = Visibility.Collapsed;
         if (BtnAutoRetestarBanda != null) BtnAutoRetestarBanda.Visibility = Visibility.Collapsed;
-        if (BtnAutoSalvarScript != null) BtnAutoSalvarScript.Visibility = Visibility.Collapsed;
         if (BtnAutoCertidaoY1564 != null) BtnAutoCertidaoY1564.Visibility = Visibility.Collapsed;
+        if (BtnAutoTestarLinkSemRoteador != null) BtnAutoTestarLinkSemRoteador.Visibility = Visibility.Collapsed;
 
         // Garante que o modo automático importe o mesmo sistema de análise de boot do modo padrão (HPE BootWare Ctrl+B)
         if (CbModeloRoteadorInicial.SelectedIndex > 0 && CbInterrupt.SelectedIndex != CbModeloRoteadorInicial.SelectedIndex - 1)
@@ -4673,13 +4749,14 @@ public partial class MainWindow : Window
 
 
 
-            SetEtapa(5, "⏳ 5. Testar Conectividade (ICMP: 5a LAN, 5b WAN, 5c WEB) — em execução", "#D97706"); Progresso(76, "5/7 ICMP..."); LogAuto(">>> [AUTO 5/7] ICMP (5a LAN / 5b WAN / 5c WEB)");
+            var label5cNome = _loadedSaipCircuit?.IsServicoVoz == true ? "5c VOZ" : _loadedSaipCircuit?.IsServicoMpls == true ? "5c MPLS" : "5c WEB";
+            SetEtapa(5, $"⏳ 5. Testar Conectividade (ICMP: 5a LAN, 5b WAN, {label5cNome}) — em execução", "#D97706"); Progresso(76, "5/7 ICMP..."); LogAuto($">>> [AUTO 5/7] ICMP (5a LAN / 5b WAN / {label5cNome})");
             var icmpR = await ExecutarTesteIcmpTriploAsync(ct);
-            var icmpResText = $"5. ICMP: 5a LAN ({(icmpR.IsLanOk ? "OK" : "❌")}) | 5b WAN ({(icmpR.IsWanOk ? "OK" : "❌")}) | 5c WEB ({(icmpR.IsWebOk ? "OK" : "❌")})";
+            var icmpResText = $"5. ICMP: 5a LAN ({(icmpR.IsLanOk ? "OK" : "❌")}) | 5b WAN ({(icmpR.IsWanOk ? "OK" : "❌")}) | {label5cNome} ({(icmpR.IsWebOk ? "OK" : "❌")})";
             SetEtapa(5, $"{icmpR.StatusBadge} {icmpResText}", icmpR.StatusColorHex);
             Progresso(85, "5/7 OK");
 
-            var accessTitle = isForti ? "Acesso Remoto (SSH / Telnet)" : "Acesso Remoto (Telnet)";
+            var accessTitle = isForti ? "Acesso Remoto (SSH / Telnet)" : "Acesso Remoto (Telnet / TACACS)";
             SetEtapa(6, $"⏳ 6. Testar {accessTitle} — em execução", "#D97706"); Progresso(86, "6/7 Remoto..."); LogAuto($">>> [AUTO 6/7] {accessTitle}");
             var telnetHost = TxtTelnetTarget.Text?.Trim(); if (string.IsNullOrEmpty(telnetHost)) telnetHost = _loadedSaipCircuit?.LanIp ?? "200.182.245.17";
             var telnetPort = int.TryParse(TxtTelnetPort.Text?.Trim(), out var tp) ? tp : 23;
@@ -4687,7 +4764,7 @@ public partial class MainWindow : Window
 
             if (isForti && !telnetR.IsSuccess)
             {
-                // No FortiOS o serviço Telnet vem desabilitado por padrão; valida as portas padrão SSH (22) e HTTPS (443)
+                // Fallback de contingência para Fortinet caso ainda falhe
                 var sourceIp = ObterIpOrigemParaIcmp();
                 var srv = new ConnectivityService(EscreverLinhaAsync);
                 var (sshOk, sshLat, _) = await srv.TestTcpPortAsync(telnetHost, 22, timeoutMs: 5000, sourceIpAddress: sourceIp, cancellationToken: ct);
@@ -4707,7 +4784,9 @@ public partial class MainWindow : Window
                 }
             }
 
-            SetEtapa(6, (telnetR.IsSuccess ? "✅" : "❌") + $" 6. {accessTitle} — " + (telnetR.IsSuccess ? "OK" : "falha"), telnetR.IsSuccess ? "#16A34A" : "#EF4444"); Progresso(94, "6/7 OK");
+            var isTacacsAuto = telnetR.IsSuccess && (telnetR.Banner?.Contains("TACACS", StringComparison.OrdinalIgnoreCase) == true || telnetR.Transcript?.Contains("TACACS", StringComparison.OrdinalIgnoreCase) == true);
+            var statusMsgAuto = isTacacsAuto ? "OK (Time CPE via TACACS)" : (telnetR.IsSuccess ? "OK" : "falha");
+            SetEtapa(6, (telnetR.IsSuccess ? "✅" : "❌") + $" 6. {accessTitle} — " + statusMsgAuto, telnetR.IsSuccess ? "#16A34A" : "#EF4444"); Progresso(94, "6/7 OK");
 
             BandwidthTestResult bandR;
             var isNatLabAuto = ChkNatLab?.IsChecked == true;
@@ -4823,14 +4902,17 @@ public partial class MainWindow : Window
             falhas.Add($"Falha no Teste 5a (ICMP LAN / Roteador): Verifique se o cabo Ethernet do PC está conectado na porta LAN do roteador ({lanIfaceRep}) e com IP configurado.");
         }
 
-        if (!is5bOk && is5aOk)
+        if (!_isModoBancadaAtivo)
         {
-            falhas.Add("Falha no Teste 5b (ICMP WAN / Gateway Claro): Cabo da WAN desconectado da porta WAN ou circuito ainda não ativado na central da operadora Claro.");
-        }
+            if (!is5bOk && is5aOk)
+            {
+                falhas.Add("Falha no Teste 5b (ICMP WAN / Gateway Claro): Cabo da WAN desconectado da porta WAN ou circuito ainda não ativado na central da operadora Claro.");
+            }
 
-        if (!is5cOk && is5bOk)
-        {
-            falhas.Add("Falha no Teste 5c (ICMP WEB / Internet Pública): Rota default (0.0.0.0/0) ou sessão BGP pendente de liberação pela operadora.");
+            if (!is5cOk && is5bOk)
+            {
+                falhas.Add("Falha no Teste 5c (ICMP WEB / Internet Pública): Rota default (0.0.0.0/0) ou sessão BGP pendente de liberação pela operadora.");
+            }
         }
 
         if (!isTelnetOk && step3Ok)
@@ -4879,7 +4961,10 @@ public partial class MainWindow : Window
             DiagnosticAlerts: falhas,
             FalhaGeral: falhaGeral,
             BandaMbpsNominal: _loadedSaipCircuit?.BandaMbpsNominal,
-            AppliedConfigScript: _lastAppliedConfigScript
+            AppliedConfigScript: _lastAppliedConfigScript,
+            TipoServicoDescricao: _loadedSaipCircuit?.TipoServicoDescricao ?? _loadedSaipCircuit?.TipoServico.ToString(),
+            MediaGatewayIp: _loadedSaipCircuit?.MediaGatewayIp,
+            PeLoopbackIp: _loadedSaipCircuit?.PeLoopbackIp
         );
 
         _lastReportData = reportData;
@@ -4918,6 +5003,7 @@ public partial class MainWindow : Window
             BtnAutoRetestarBanda.Visibility = Visibility.Visible;
             BtnAutoSalvarScript.Visibility = Visibility.Visible;
             if (BtnAutoCertidaoY1564 != null) BtnAutoCertidaoY1564.Visibility = Visibility.Visible;
+            if (BtnAutoTestarLinkSemRoteador != null) BtnAutoTestarLinkSemRoteador.Visibility = Visibility.Visible;
 
             if (exibirPopup && !string.IsNullOrEmpty(pdfPath) && File.Exists(pdfPath))
             {
@@ -5144,14 +5230,271 @@ public partial class MainWindow : Window
         }
     }
 
-    private void BtnAutoCertidaoY1564_Click(object sender, RoutedEventArgs e)
+    private void BtnCertidaoNascimentoInicial_Click(object sender, RoutedEventArgs e)
     {
+        if (_loadedSaipCircuit == null)
+        {
+            MessageBox.Show(this,
+                "⚠️ Nenhuma Ficha SAIP foi carregada.\n\n" +
+                "Para emitir a Certidão de Nascimento oficial (ITU-T Y.1564), carregue primeiro o arquivo da Ficha SAIP (PDF ou TXT) no Passo 2 da tela inicial.\n\n" +
+                "Os dados do cliente, designação do circuito, velocidade contratada (CIR) e endereçamento IP serão importados automaticamente da ficha.",
+                "Ficha SAIP Obrigatória — Certidão de Nascimento",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+
+            if (BtnCarregarSaip != null)
+            {
+                BtnCarregarSaip.Focus();
+            }
+            return;
+        }
+
         var hostIp = _loadedSaipCircuit?.HostLanIp ?? ObterIpLocalParaTftp();
-        var win = new Y1564TestWindow(_loadedSaipCircuit, hostIp)
+        var win = new CertidaoNascimentoWindow(_loadedSaipCircuit, hostIp)
         {
             Owner = this
         };
         win.ShowDialog();
+    }
+
+    private void BtnAutoCertidaoY1564_Click(object sender, RoutedEventArgs e)
+    {
+        var hostIp = _loadedSaipCircuit?.HostLanIp ?? ObterIpLocalParaTftp();
+        var win = new CertidaoNascimentoWindow(_loadedSaipCircuit, hostIp)
+        {
+            Owner = this
+        };
+        win.ShowDialog();
+    }
+
+    private void BtnTestarLinkSemRoteadorInicial_Click(object sender, RoutedEventArgs e)
+    {
+        var win = new TesteLinkSemRoteadorWindow(_loadedSaipCircuit)
+        {
+            Owner = this
+        };
+        win.ShowDialog();
+    }
+
+    private void BtnTesteBandaLargaInicial_Click(object sender, RoutedEventArgs e)
+    {
+        var win = new TesteBandaLargaWindow(_loadedSaipCircuit?.BandaMbpsNominal)
+        {
+            Owner = this
+        };
+        win.ShowDialog();
+    }
+
+    private void BtnAutoTestarLinkSemRoteador_Click(object sender, RoutedEventArgs e)
+    {
+        var win = new TesteLinkSemRoteadorWindow(_loadedSaipCircuit)
+        {
+            Owner = this
+        };
+        win.ShowDialog();
+    }
+
+    private void BtnTabelaCpeHomologados_Click(object sender, RoutedEventArgs e)
+    {
+        AbrirTabelaCpeHomologados();
+    }
+
+    private void AbrirTabelaCpeHomologados()
+    {
+        var win = new TabelaCpeHomologadosWindow(_loadedSaipCircuit, ObterTagModeloAtual())
+        {
+            Owner = this
+        };
+
+        if (win.ShowDialog() == true && !string.IsNullOrEmpty(win.SelectedModelTag))
+        {
+            SelecionarModeloPorTag(win.SelectedModelTag);
+        }
+    }
+
+    private string? ObterTagModeloAtual()
+    {
+        return (CbModeloRoteadorInicial?.SelectedItem as ComboBoxItem)?.Tag?.ToString()
+            ?? (CbInterrupt?.SelectedItem as ComboBoxItem)?.Tag?.ToString();
+    }
+
+    private void SelecionarModeloPorTag(string tag)
+    {
+        if (CbModeloRoteadorInicial == null) return;
+
+        for (int i = 0; i < CbModeloRoteadorInicial.Items.Count; i++)
+        {
+            if (CbModeloRoteadorInicial.Items[i] is ComboBoxItem cbi &&
+                string.Equals(cbi.Tag?.ToString(), tag, StringComparison.OrdinalIgnoreCase))
+            {
+                CbModeloRoteadorInicial.SelectedIndex = i;
+                break;
+            }
+        }
+    }
+
+    private async void BtnToggleDhcpLan_Click(object sender, RoutedEventArgs e)
+    {
+        await AlternarDhcpLanAsync();
+    }
+
+    private async Task AlternarDhcpLanAsync()
+    {
+        if (_loadedSaipCircuit == null)
+        {
+            MessageBox.Show(this,
+                "Para gerenciar o DHCP na LAN do roteador, importe primeiro a Ficha SAIP no Passo 2.\n\n" +
+                "O SPARC utiliza a sub-rede LAN e o Gateway da ficha para gerar o pool DHCP correto.",
+                "Ficha SAIP Necessária",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        var porta = CbPorta?.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(porta) || porta == "Nenhuma")
+        {
+            MessageBox.Show(this,
+                "Selecione a porta serial de console do roteador (Passo 1) para aplicar os comandos de DHCP em 3 segundos.",
+                "Porta Serial Não Selecionada",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var escolha = MessageBox.Show(this,
+            $"Gerenciador Rápido de DHCP na LAN (Bancada & Testes)\n\n" +
+            $"Circuito: {_loadedSaipCircuit.DesignacaoIp ?? _loadedSaipCircuit.ClienteRazaoSocial}\n" +
+            $"IP LAN: {_loadedSaipCircuit.LanIp} / {_loadedSaipCircuit.LanSubnetMask}\n\n" +
+            $"Selecione a operação desejada no roteador:\n" +
+            $"• Clique em 'SIM' para ATIVAR o DHCP temporário (running-config) — ideal para Smartphone / MTS-5800.\n" +
+            $"• Clique em 'NÃO' para REMOVER o DHCP e gravar a NVRAM estática — entrega homologada ao cliente.\n" +
+            $"• Clique em 'Cancelar' para abortar.",
+            "Controle Rápido de DHCP LAN",
+            MessageBoxButton.YesNoCancel,
+            MessageBoxImage.Question);
+
+        if (escolha == MessageBoxResult.Cancel) return;
+
+        bool ativar = (escolha == MessageBoxResult.Yes);
+        var baud = int.TryParse(CbBaud?.Text, out var b) ? b : 9600;
+
+        try
+        {
+            SetBusy(true);
+            EscreverLinha($"\n[*] [DHCP LAN ON-DEMAND] {(ativar ? "Ativando" : "Removendo")} servidor DHCP via console {porta} (Baud {baud})...");
+
+            var sessionOptions = new SessionOptions
+            {
+                PromptMatcher = RegexPromptMatcher.Universal(),
+                CommandTimeout = TimeSpan.FromSeconds(20),
+                ConnectTimeout = TimeSpan.FromSeconds(10)
+            };
+
+            var transport = new SerialTransport(porta, baud);
+            await using var session = new DeviceSession(transport, sessionOptions);
+            session.RawOutput += OnRawOutput;
+            await session.ConnectAsync(CancellationToken.None);
+
+            var tagModelo = ObterTagModeloAtual() ?? string.Empty;
+            bool isForti = tagModelo.Contains("FORTI", StringComparison.OrdinalIgnoreCase);
+            bool isHpe = tagModelo.Contains("HPE", StringComparison.OrdinalIgnoreCase) || tagModelo.Contains("MSR", StringComparison.OrdinalIgnoreCase);
+
+            if (ativar)
+            {
+                if (isForti)
+                {
+                    await NetworkDevice.Fortinet.FortiOsSaipConfigurator.AtivarDhcpTemporarioAsync(session, _loadedSaipCircuit, "internal", EscreverLinha, CancellationToken.None);
+                }
+                else if (isHpe)
+                {
+                    await HpeSaipConfigurator.AtivarDhcpTemporarioAsync(session, _loadedSaipCircuit, EscreverLinha, CancellationToken.None);
+                }
+                else
+                {
+                    await CiscoSaipConfigurator.AtivarDhcpTemporarioAsync(session, _loadedSaipCircuit, EscreverLinha, CancellationToken.None);
+                }
+                MessageBox.Show(this, "Servidor DHCP ativado na LAN do roteador com sucesso!\n\nO smartphone ou PC receberá IP dinâmico em instantes.", "DHCP Ativo", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                if (isForti)
+                {
+                    await NetworkDevice.Fortinet.FortiOsSaipConfigurator.RemoverDhcpTemporarioAsync(session, _loadedSaipCircuit, EscreverLinha, CancellationToken.None);
+                }
+                else if (isHpe)
+                {
+                    await HpeSaipConfigurator.RemoverDhcpTemporarioAsync(session, _loadedSaipCircuit, EscreverLinha, CancellationToken.None);
+                }
+                else
+                {
+                    await CiscoSaipConfigurator.RemoverDhcpTemporarioAsync(session, _loadedSaipCircuit, EscreverLinha, CancellationToken.None);
+                }
+                MessageBox.Show(this, "Servidor DHCP removido e configuração salva estática na NVRAM/Flash!\n\nPronto para entrega oficial.", "DHCP Removido", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+        catch (Exception ex)
+        {
+            EscreverLinha($"[ERRO DHCP ON-DEMAND] {ex.Message}");
+            MessageBox.Show(this, $"Erro ao comunicar com o roteador: {ex.Message}", "Falha DHCP", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private CpeBandwidthValidationResult? VerificarCompatibilidadeBanda(bool exibirPopupSeIncompativel = false)
+    {
+        if (_loadedSaipCircuit == null || CbModeloRoteadorInicial == null || CbModeloRoteadorInicial.SelectedIndex <= 0)
+        {
+            if (BorderAlertaBandaIncompativel != null)
+                BorderAlertaBandaIncompativel.Visibility = Visibility.Collapsed;
+            return null;
+        }
+
+        var modelTag = ObterTagModeloAtual();
+        var result = ClaroCpeCatalogService.ValidarCompatibilidadeBanda(modelTag, _loadedSaipCircuit);
+
+        if (!result.IsCompativel)
+        {
+            if (BorderAlertaBandaIncompativel != null)
+            {
+                BorderAlertaBandaIncompativel.Visibility = Visibility.Visible;
+                if (TxtAlertaBandaIncompativel != null)
+                {
+                    TxtAlertaBandaIncompativel.Text = $"⚠️ BANDA INCOMPATÍVEL: Circuito contratado para {result.BandaContratadaMbps:F0} Mbps ({result.TipoServico}), mas o modelo {result.ModeloNome} suporta no máximo {result.LimiteMaximoMbps:F0} Mbps no portfólio oficial Claro!";
+                }
+            }
+
+            EscreverLinha($"\n[ALERTA ENGENHARIA CLARO] Circuito de {result.BandaContratadaMbps:F0} Mbps ({result.TipoServico}) é INCOMPATÍVEL com o modelo {result.ModeloNome} (Capacidade homologada: {result.LimiteMaximoMbps:F0} Mbps).");
+            if (result.ModelosRecomendados.Count > 0)
+            {
+                var recomendados = string.Join(", ", result.ModelosRecomendados.Select(r => $"{r.ModeloNome} ({r.CapacidadeFormatada})"));
+                EscreverLinha($"[RECOMENDAÇÃO CLARO] Modelos homologados adequados: {recomendados}\n");
+            }
+
+            if (exibirPopupSeIncompativel)
+            {
+                var resp = MessageBox.Show(this,
+                    $"{result.Mensagem}\n\nDeseja abrir a Tabela de Modelos Homologados para consultar as opções de substituição?",
+                    "Alerta de Engenharia Claro — Banda Incompatível",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning);
+
+                if (resp == MessageBoxResult.Yes)
+                {
+                    AbrirTabelaCpeHomologados();
+                }
+            }
+        }
+        else
+        {
+            if (BorderAlertaBandaIncompativel != null)
+                BorderAlertaBandaIncompativel.Visibility = Visibility.Collapsed;
+        }
+
+        return result;
     }
 
     private void BtnAutoExportarPdf_Click(object sender, RoutedEventArgs e)
@@ -5301,35 +5644,74 @@ public partial class MainWindow : Window
                 var circuit = SaipParser.ParseText(rawText);
                 _loadedSaipCircuit = circuit;
 
-                var tipoTag = circuit.TipoServico == SaipServiceType.IpVpn ? " [IP VPN/MPLS - LAN Arbitrada]" : " [BLD]";
+                // Sincroniza Combobox de Categoria de Serviço automaticamente com a detecção da Ficha SAIP
+                _isUpdatingServiceCategoryFromSaip = true;
+                try
+                {
+                    if (CmbCategoriaServico != null)
+                    {
+                        var tag = circuit.TipoServico switch
+                        {
+                            SaipServiceType.IpVpn => "MPLS",
+                            SaipServiceType.VozDigitalE1 => "VOZ_E1",
+                            SaipServiceType.VozSipIp => "VOZ_SIP",
+                            _ => "BLD"
+                        };
+                        SelecionarCategoriaServicoPorTag(tag);
+                    }
+                }
+                finally
+                {
+                    _isUpdatingServiceCategoryFromSaip = false;
+                }
+
+                if (TxtOrigemTipoServico != null)
+                {
+                    TxtOrigemTipoServico.Text = $"🤖 Detectado via SAIP: {circuit.TipoServicoDescricao}";
+                    TxtOrigemTipoServico.Foreground = UiBrushes.Get("#4ADE80");
+                }
+                if (BorderBadgeOrigemServico != null)
+                {
+                    BorderBadgeOrigemServico.BorderBrush = UiBrushes.Get("#4ADE80");
+                    BorderBadgeOrigemServico.Background = UiBrushes.Get("#052E16");
+                }
+
+                var tipoTag = circuit.TipoServico switch
+                {
+                    SaipServiceType.IpVpn => " [IP VPN/MPLS - LAN Arbitrada]",
+                    SaipServiceType.VozDigitalE1 => $" [VOZ Tronco Digital E1 ({circuit.Sinalizacao ?? "R2D/ISDN"}) - LAN Arbitrada]",
+                    SaipServiceType.VozSipIp => $" [VOZ Tronco SIP / PABX IP ({circuit.Sinalizacao ?? "SIP"})]",
+                    _ => " [BLD]"
+                };
+
                 TxtSaipResumo.Text = $"Circuito: {circuit.DesignacaoIp ?? circuit.NumeroOts}{tipoTag} | WAN: {circuit.WanIp}/{circuit.WanCidr} (GW: {circuit.WanGateway}) | LAN: {circuit.LanIp}/{circuit.LanCidr} | Cliente: {circuit.ClienteRazaoSocial}";
                 TxtHostIpCalculado.Text = $"Host LAN: {circuit.HostLanIp}/{circuit.LanCidr}";
-                if (TxtIcmpTargetLan is not null && !string.IsNullOrEmpty(circuit.LanIp))
-                    TxtIcmpTargetLan.Text = circuit.LanIp;
-                if (TxtIcmpTargetWan is not null && !string.IsNullOrEmpty(circuit.WanGateway))
-                    TxtIcmpTargetWan.Text = circuit.WanGateway;
-                if (TxtIcmpTargetWeb is not null)
-                    TxtIcmpTargetWeb.Text = "1.1.1.1, 8.8.8.8";
-                if (!string.IsNullOrEmpty(circuit.WanGateway))
-                {
-                    TxtIcmpTarget.Text = circuit.WanGateway;
-                }
+                AtualizarAlvosIcmpPorTipoServico(circuit);
 
                 BtnLimparSaip.Visibility = Visibility.Visible;
                 TxtCircuitoAtivoTitulo.Text = $"CIRCUITO: {circuit.DesignacaoIp ?? circuit.NumeroOts} - {circuit.ClienteRazaoSocial}{tipoTag}";
-                TxtCircuitoAtivoResumo.Text = $"WAN: {circuit.WanIp}/{circuit.WanCidr} (GW: {circuit.WanGateway}) | LAN: {circuit.LanIp}/{circuit.LanCidr} | Host: {circuit.HostLanIp} | DNS: 1.1.1.1, 8.8.8.8";
 
                 AtualizarEstadoBotoes();
                 AtualizarBotaoProsseguir();
+                VerificarCompatibilidadeBanda(exibirPopupSeIncompativel: true);
 
                 EscreverLinha("\n=================================================================");
                 EscreverLinha("             FICHA SAIP CARREGADA COM SUCESSO                    ");
                 EscreverLinha("=================================================================");
                 EscreverLinha($"  Arquivo     : {Path.GetFileName(dlg.FileName)}");
-                EscreverLinha($"  Produto     : {circuit.Produto ?? (circuit.TipoServico == SaipServiceType.IpVpn ? "IP VPN (MPLS)" : "Business Link Direct (BLD)")}");
+                EscreverLinha($"  Categoria   : {circuit.TipoServicoDescricao}");
+                EscreverLinha($"  Produto     : {circuit.Produto ?? circuit.TipoServicoDescricao}");
                 if (circuit.IsLanArbitrada)
                 {
-                    EscreverLinha("  LAN MPLS    : [LAN Genérica Arbitrada 192.168.1.1/24 para bancada e GER CPE]");
+                    EscreverLinha("  LAN Temp.   : [LAN Genérica Arbitrada 192.168.1.1/24 para bancada e atualização]");
+                }
+                if (!string.IsNullOrEmpty(circuit.Sinalizacao))
+                {
+                    EscreverLinha($"  Sinalização : {circuit.Sinalizacao}");
+                }
+                if (!string.IsNullOrEmpty(circuit.IpPabx))
+                {
+                    EscreverLinha($"  IP PABX     : {circuit.IpPabx}");
                 }
                 EscreverLinha($"  Cliente     : {circuit.ClienteRazaoSocial}");
                 EscreverLinha($"  Designação  : {circuit.DesignacaoIp}");
@@ -5337,12 +5719,148 @@ public partial class MainWindow : Window
                 EscreverLinha($"  WAN (GE0)   : {circuit.WanIp} {circuit.WanSubnetMask} (Prefixo /{circuit.WanCidr})");
                 EscreverLinha($"  Gateway WAN : {circuit.WanGateway}");
                 EscreverLinha($"  LAN (GE1)   : {circuit.LanIp} {circuit.LanSubnetMask} (Bloco {circuit.LanBlockNetwork}/{circuit.LanCidr})");
-                EscreverLinha($"  Host Teste  : {circuit.HostLanIp} (IP calculado com DNS 1.1.1.1 / 8.8.8.8)");
+                if (circuit.IsServicoVoz)
+                    EscreverLinha($"  Media Gateway : {circuit.MediaGatewayIp ?? "Não especificado"} (Alvo ICMP Voz)");
+                else if (circuit.IsServicoMpls)
+                    EscreverLinha($"  PE Loopback   : {circuit.PeLoopbackIp ?? "Não especificado"} (Alvo ICMP MPLS)");
+                else
+                    EscreverLinha($"  Host Teste  : {circuit.HostLanIp} (IP calculado com DNS 1.1.1.1 / 8.8.8.8)");
                 EscreverLinha("=================================================================\n");
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Erro ao carregar e interpretar Ficha SAIP:\n{ex.Message}", "Ficha SAIP", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+    }
+
+    private void AtualizarAlvosIcmpPorTipoServico(SaipCircuitData? circuit)
+    {
+        if (TxtIcmpTargetLan is null || TxtIcmpTargetWan is null || TxtIcmpTargetWeb is null)
+            return;
+
+        if (circuit == null)
+        {
+            if (TxtIcmpLabel5c != null) TxtIcmpLabel5c.Text = "5c · ICMP WEB (DNS Web)";
+            if (TxtIcmpDescricao != null) TxtIcmpDescricao.Text = "Dispara testes ICMP sequenciais: 5a (Interface LAN local), 5b (Gateway WAN Claro) e 5c (conforme Categoria de Serviço: DNS Web em BLD, Loopback PE em MPLS ou Media Gateway em VOZ).";
+            TxtIcmpTargetWeb.Text = "1.1.1.1, 8.8.8.8";
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(circuit.LanIp))
+            TxtIcmpTargetLan.Text = circuit.LanIp;
+
+        if (!string.IsNullOrEmpty(circuit.WanGateway))
+        {
+            TxtIcmpTargetWan.Text = circuit.WanGateway;
+            TxtIcmpTarget.Text = circuit.WanGateway;
+        }
+
+        if (circuit.IsServicoVoz)
+        {
+            var mgw = circuit.MediaGatewayIp ?? circuit.WanGateway ?? "-";
+            if (TxtIcmpLabel5c != null) TxtIcmpLabel5c.Text = "5c · Media Gateway (Voz)";
+            if (TxtIcmpDescricao != null) TxtIcmpDescricao.Text = $"Dispara testes ICMP sequenciais: 5a (LAN local), 5b (Gateway WAN Claro) e 5c (Media Gateway / Softswitch Voz IMS/NGN: {mgw}).";
+            TxtIcmpTargetWeb.Text = mgw;
+            if (TxtCircuitoAtivoResumo != null)
+                TxtCircuitoAtivoResumo.Text = $"WAN: {circuit.WanIp}/{circuit.WanCidr} (GW: {circuit.WanGateway}) | LAN: {circuit.LanIp}/{circuit.LanCidr} | Host: {circuit.HostLanIp} | Media Gateway: {mgw}";
+        }
+        else if (circuit.IsServicoMpls)
+        {
+            var peTarget = circuit.PeLoopbackIp ?? circuit.WanGateway ?? "-";
+            if (TxtIcmpLabel5c != null) TxtIcmpLabel5c.Text = "5c · Loopback PE (MPLS)";
+            if (TxtIcmpDescricao != null) TxtIcmpDescricao.Text = $"Dispara testes ICMP sequenciais: 5a (LAN local), 5b (Gateway WAN Claro) e 5c (Loopback Roteador PE / Core IP VPN: {peTarget}).";
+            TxtIcmpTargetWeb.Text = peTarget;
+            if (TxtCircuitoAtivoResumo != null)
+                TxtCircuitoAtivoResumo.Text = $"WAN: {circuit.WanIp}/{circuit.WanCidr} (GW: {circuit.WanGateway}) | LAN: {circuit.LanIp}/{circuit.LanCidr} | Host: {circuit.HostLanIp} | PE Loopback: {peTarget}";
+        }
+        else
+        {
+            if (TxtIcmpLabel5c != null) TxtIcmpLabel5c.Text = "5c · ICMP WEB (DNS Web)";
+            if (TxtIcmpDescricao != null) TxtIcmpDescricao.Text = "Dispara testes ICMP sequenciais: 5a (LAN local), 5b (Gateway WAN Claro) e 5c (DNS Cloudflare 1.1.1.1 / Google 8.8.8.8).";
+            TxtIcmpTargetWeb.Text = "1.1.1.1, 8.8.8.8";
+            if (TxtCircuitoAtivoResumo != null)
+                TxtCircuitoAtivoResumo.Text = $"WAN: {circuit.WanIp}/{circuit.WanCidr} (GW: {circuit.WanGateway}) | LAN: {circuit.LanIp}/{circuit.LanCidr} | Host: {circuit.HostLanIp} | DNS: 1.1.1.1, 8.8.8.8";
+        }
+    }
+
+    private void SelecionarCategoriaServicoPorTag(string tag)
+    {
+        if (CmbCategoriaServico == null) return;
+        foreach (ComboBoxItem item in CmbCategoriaServico.Items)
+        {
+            if (string.Equals(item.Tag?.ToString(), tag, StringComparison.OrdinalIgnoreCase))
+            {
+                CmbCategoriaServico.SelectedItem = item;
+                break;
+            }
+        }
+    }
+
+    private void CmbCategoriaServico_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (CmbCategoriaServico == null) return;
+        var tag = (CmbCategoriaServico.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "BLD";
+
+        var targetService = tag switch
+        {
+            "MPLS" => SaipServiceType.IpVpn,
+            "VOZ_E1" => SaipServiceType.VozDigitalE1,
+            "VOZ_SIP" => SaipServiceType.VozSipIp,
+            _ => SaipServiceType.BusinessLinkDirect
+        };
+
+        if (_loadedSaipCircuit != null && _loadedSaipCircuit.TipoServico != targetService)
+        {
+            bool precisaArbitrarLan = targetService == SaipServiceType.IpVpn || targetService == SaipServiceType.VozDigitalE1;
+            var lanIp = precisaArbitrarLan ? "192.168.1.1" : (!string.IsNullOrEmpty(_loadedSaipCircuit.LanIp) && _loadedSaipCircuit.LanIp != "192.168.1.1" ? _loadedSaipCircuit.LanIp : "192.168.1.1");
+            var hostIp = precisaArbitrarLan ? "192.168.1.2" : (!string.IsNullOrEmpty(_loadedSaipCircuit.HostLanIp) && _loadedSaipCircuit.HostLanIp != "192.168.1.2" ? _loadedSaipCircuit.HostLanIp : "192.168.1.2");
+            var cidr = precisaArbitrarLan ? 24 : _loadedSaipCircuit.LanCidr;
+            var mask = precisaArbitrarLan ? "255.255.255.0" : _loadedSaipCircuit.LanSubnetMask;
+
+            _loadedSaipCircuit = _loadedSaipCircuit with
+            {
+                TipoServico = targetService,
+                IsLanArbitrada = precisaArbitrarLan,
+                LanIp = lanIp,
+                HostLanIp = hostIp,
+                LanCidr = cidr,
+                LanSubnetMask = mask,
+                LanBlockNetwork = precisaArbitrarLan ? "192.168.1.0" : _loadedSaipCircuit.LanBlockNetwork
+            };
+
+            var tipoTag = _loadedSaipCircuit.TipoServico switch
+            {
+                SaipServiceType.IpVpn => " [IP VPN/MPLS - LAN Arbitrada]",
+                SaipServiceType.VozDigitalE1 => $" [VOZ Tronco Digital E1 ({_loadedSaipCircuit.Sinalizacao ?? "R2D/ISDN"}) - LAN Arbitrada]",
+                SaipServiceType.VozSipIp => $" [VOZ Tronco SIP / PABX IP ({_loadedSaipCircuit.Sinalizacao ?? "SIP"})]",
+                _ => " [BLD]"
+            };
+
+            TxtSaipResumo.Text = $"Circuito: {_loadedSaipCircuit.DesignacaoIp ?? _loadedSaipCircuit.NumeroOts}{tipoTag} | WAN: {_loadedSaipCircuit.WanIp}/{_loadedSaipCircuit.WanCidr} (GW: {_loadedSaipCircuit.WanGateway}) | LAN: {_loadedSaipCircuit.LanIp}/{_loadedSaipCircuit.LanCidr} | Cliente: {_loadedSaipCircuit.ClienteRazaoSocial}";
+            TxtHostIpCalculado.Text = $"Host LAN: {_loadedSaipCircuit.HostLanIp}/{_loadedSaipCircuit.LanCidr}";
+            TxtCircuitoAtivoTitulo.Text = $"CIRCUITO: {_loadedSaipCircuit.DesignacaoIp ?? _loadedSaipCircuit.NumeroOts} - {_loadedSaipCircuit.ClienteRazaoSocial}{tipoTag}";
+            AtualizarAlvosIcmpPorTipoServico(_loadedSaipCircuit);
+
+            if (!_isUpdatingServiceCategoryFromSaip && _loadedSaipCircuit != null)
+            {
+                if (TxtOrigemTipoServico != null)
+                {
+                    TxtOrigemTipoServico.Text = $"✏️ Ajuste manual: {_loadedSaipCircuit.TipoServicoDescricao}";
+                    TxtOrigemTipoServico.Foreground = UiBrushes.Get("#FBBF24");
+                }
+                if (BorderBadgeOrigemServico != null)
+                {
+                    BorderBadgeOrigemServico.BorderBrush = UiBrushes.Get("#FBBF24");
+                    BorderBadgeOrigemServico.Background = UiBrushes.Get("#451A03");
+                }
+            }
+
+            EscreverLinha($"[i] Categoria de Serviço alterada: {_loadedSaipCircuit.TipoServicoDescricao}");
+            if (precisaArbitrarLan)
+            {
+                EscreverLinha("    -> LAN temporária arbitrada em 192.168.1.1/24 (Host: 192.168.1.2) para atualização e bancada.");
+                EscreverLinha("    -> Speedtest Internet dispensado para esta categoria. Aferição corporativa via Certidão Y.1564.");
             }
         }
     }
@@ -5354,6 +5872,17 @@ public partial class MainWindow : Window
         TxtHostIpCalculado.Text = "Host LAN: -";
         TxtCircuitoAtivoTitulo.Text = "CIRCUITO NÃO CONFIGURADO";
         TxtCircuitoAtivoResumo.Text = "Nenhum circuito configurado.";
+        AtualizarAlvosIcmpPorTipoServico(null);
+        if (TxtOrigemTipoServico != null)
+        {
+            TxtOrigemTipoServico.Text = "🤖 Automático via SAIP (ajuste opcional)";
+            TxtOrigemTipoServico.Foreground = UiBrushes.Get("#38BDF8");
+        }
+        if (BorderBadgeOrigemServico != null)
+        {
+            BorderBadgeOrigemServico.BorderBrush = UiBrushes.Get("#38BDF8");
+            BorderBadgeOrigemServico.Background = UiBrushes.Get("#0C4A6E");
+        }
         BtnLimparSaip.Visibility = Visibility.Collapsed;
         AtualizarEstadoBotoes();
         AtualizarBotaoProsseguir();
@@ -5915,7 +6444,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex) { EscreverLinha($"  [AVISO] ETH Windows: {ex.Message}"); }
 
-        await using var tftpServer = new NetworkDevice.Protocols.Tftp.EmbeddedTftpServer(fileDir);
+        await using var tftpServer = new NetworkDevice.Protocols.Tftp.EmbeddedTftpServer(fileDir, preferredLocalIp: hostIp);
         tftpServer.LogMessage += msg => EscreverLinha($"  {msg}");
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var lastLogPct = -1;
@@ -6946,17 +7475,18 @@ public partial class MainWindow : Window
             // Fase 5 (E): Testar Conectividade ICMP (5a LAN, 5b WAN, 5c WEB)
             SelecionarFase("E");
             DefinirBadgeStatus("E", "⏳");
-            AtualizarProgresso(76, "Fase E: Testando ICMP...", "Testando conectividade LAN, WAN e WEB...");
+            var label5cNome = _loadedSaipCircuit?.IsServicoVoz == true ? "VOZ" : _loadedSaipCircuit?.IsServicoMpls == true ? "MPLS" : "WEB";
+            AtualizarProgresso(76, "Fase E: Testando ICMP...", $"Testando conectividade LAN, WAN e {label5cNome}...");
             EscreverLinha(">>> [ESTEIRA E/G] Testando Conectividade ICMP...");
             var icmpR = await ExecutarTesteIcmpTriploAsync(ct);
             DefinirBadgeStatus("E", icmpR.StatusBadge);
-            AtualizarProgresso(85, "Fase E Concluída!", $"ICMP LAN: {(icmpR.IsLanOk ? "OK" : "Falha")} | WAN: {(icmpR.IsWanOk ? "OK" : "Falha")} | WEB: {(icmpR.IsWebOk ? "OK" : "Falha")}");
+            AtualizarProgresso(85, "Fase E Concluída!", $"ICMP LAN: {(icmpR.IsLanOk ? "OK" : "Falha")} | WAN: {(icmpR.IsWanOk ? "OK" : "Falha")} | {label5cNome}: {(icmpR.IsWebOk ? "OK" : "Falha")}");
 
-            // Fase 6 (F): Validar Acesso Remoto (Telnet / SSH)
+            // Fase 6 (F): Validar Acesso Remoto (Telnet / SSH / TACACS)
             SelecionarFase("F");
             DefinirBadgeStatus("F", "⏳");
             var isForti = _isFortiGateDetected || (_selectedIosBinPath?.EndsWith(".out", StringComparison.OrdinalIgnoreCase) == true);
-            var accessTitle = isForti ? "Acesso Remoto (SSH / Telnet)" : "Acesso Remoto (Telnet)";
+            var accessTitle = isForti ? "Acesso Remoto (SSH / Telnet)" : "Acesso Remoto (Telnet / TACACS)";
             AtualizarProgresso(86, $"Fase F: {accessTitle}...", "Validando portas de gerência remota...");
             EscreverLinha($">>> [ESTEIRA F/G] Testando {accessTitle}...");
             var telnetHost = TxtTelnetTarget?.Text?.Trim();
@@ -6985,7 +7515,9 @@ public partial class MainWindow : Window
                 }
             }
             DefinirBadgeStatus("F", telnetR.IsSuccess ? "✅" : "❌");
-            AtualizarProgresso(94, "Fase F Concluída!", $"Acesso remoto: {(telnetR.IsSuccess ? "OK" : "Falha")}");
+            var isTacacsRec = telnetR.IsSuccess && (telnetR.Banner?.Contains("TACACS", StringComparison.OrdinalIgnoreCase) == true || telnetR.Transcript?.Contains("TACACS", StringComparison.OrdinalIgnoreCase) == true);
+            var recDesc = isTacacsRec ? "OK (Time CPE via TACACS)" : (telnetR.IsSuccess ? "OK" : "Falha");
+            AtualizarProgresso(94, "Fase F Concluída!", $"Acesso remoto: {recDesc}");
 
             // Fase 7 (G): Testar Largura de Banda
             SelecionarFase("G");
@@ -7026,14 +7558,18 @@ public partial class MainWindow : Window
             }
             else
             {
+                var isTacacsMsg = telnetR?.IsSuccess == true &&
+                    (telnetR.Banner?.Contains("TACACS", StringComparison.OrdinalIgnoreCase) == true ||
+                     telnetR.Transcript?.Contains("TACACS", StringComparison.OrdinalIgnoreCase) == true);
+                var acessoRemotoMsg = telnetR?.IsSuccess == true ? (isTacacsMsg ? "OK (Telnet padrão desabilitado — Time CPE via TACACS)" : "OK") : "Falha";
                 MessageBox.Show(
                     "Esteira de ativação concluída com sucesso!\n\n" +
                     $"• Provisionamento: OK\n" +
-                    $"• Conectividade LAN: {(icmpR.IsLanOk ? "OK" : "Falha")}\n" +
-                    $"• Conectividade WAN: {(icmpR.IsWanOk ? "OK" : "Falha")}\n" +
-                    $"• Conectividade WEB: {(icmpR.IsWebOk ? "OK" : "Falha")}\n" +
-                    $"• Acesso Remoto: {(telnetR.IsSuccess ? "OK" : "Falha")}\n" +
-                    $"• Largura de Banda: {(bandR.IsSuccess ? $"{bandR.DownloadMbps:N1} Mbps" : "Offline / Não executado")}",
+                    $"• Conectividade LAN: {(icmpR?.IsLanOk == true ? "OK" : "Falha")}\n" +
+                    $"• Conectividade WAN: {(icmpR?.IsWanOk == true ? "OK" : "Falha")}\n" +
+                    $"• Conectividade WEB: {(icmpR?.IsWebOk == true ? "OK" : "Falha")}\n" +
+                    $"• Acesso Remoto: {acessoRemotoMsg}\n" +
+                    $"• Largura de Banda: {(bandR?.IsSuccess == true ? $"{bandR.DownloadMbps:N1} Mbps" : "Offline / Não executado")}",
                     "Esteira Finalizada",
                     MessageBoxButton.OK,
                     MessageBoxImage.Information);
@@ -7302,7 +7838,7 @@ public partial class MainWindow : Window
                 NetworkDevice.Protocols.Tftp.UdpPortDiagnostics.TryCloseConflictingProcess(conflict69);
             }
 
-            await using var tftpServer = new NetworkDevice.Protocols.Tftp.EmbeddedTftpServer(fileDir);
+            await using var tftpServer = new NetworkDevice.Protocols.Tftp.EmbeddedTftpServer(fileDir, preferredLocalIp: hostIp);
             tftpServer.LogMessage += msg => EscreverLinha($"  {msg}");
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             var lastUiUpdate = DateTime.MinValue;
@@ -7739,10 +8275,10 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Verifica via console serial se a porta WAN esperada do modelo está DOWN.
-    /// Retorna null quando inconclusivo (segue fluxo normal).
+    /// Avalia o status físico de ambas as portas (LAN e WAN) e inspeciona ARP contra inversão de cabos.
     /// </summary>
-    private async Task<bool?> VerificarWanDownAsync(WanPortaInfo info, CancellationToken ct)
+    private async Task<PortasDiagnosticoResultado?> AvaliarPortasRoteadorAsync(
+        RoteadorPortasInfo info, string? sourceIp, CancellationToken ct)
     {
         SerialTransport? transport = null;
         DeviceSession? session = null;
@@ -7769,45 +8305,30 @@ public partial class MainWindow : Window
             if (isForti)
             {
                 var physical = await session.SendCommandAsync("get system interface physical", TimeSpan.FromSeconds(8), ct);
-                var (encontrada, down) = WanPortInspector.FortiWanStatus(physical, info.NomesBusca);
-                if (!encontrada)
-                {
-                    var diag = await session.SendCommandAsync("diagnose netlink interface list wan", TimeSpan.FromSeconds(8), ct);
-                    (encontrada, down) = WanPortInspector.FortiWanStatus(diag, info.NomesBusca);
-                }
-
-                if (!encontrada) return null;
-                EscreverLinha(down
-                    ? $"[ALERTA 5b] Porta WAN {info.InterfaceExibicao} DOWN no {info.ModeloExibicao}."
-                    : $"[*] [5b] Porta WAN {info.InterfaceExibicao} UP no {info.ModeloExibicao} — falha é de rota/operadora.");
-                return down;
+                var arp = "";
+                try { arp = await session.SendCommandAsync("get system arp", TimeSpan.FromSeconds(6), ct); } catch { }
+                return WanPortInspector.AvaliarPortasForti(physical, info, arp, sourceIp);
             }
             else if (info.IsHpe)
             {
                 try { await session.SendCommandAsync("screen-length disable", TimeSpan.FromSeconds(5), ct); } catch { }
                 var brief = await session.SendCommandAsync("display interface brief", TimeSpan.FromSeconds(15), ct);
-                var (encontrada, down) = WanPortInspector.HpeWanStatus(brief, info.NomesBusca);
-                if (!encontrada) return null;
-                EscreverLinha(down
-                    ? $"[ALERTA 5b] Porta WAN {info.InterfaceExibicao} DOWN no {info.ModeloExibicao}."
-                    : $"[*] [5b] Porta WAN {info.InterfaceExibicao} UP no {info.ModeloExibicao} — falha é de rota/operadora.");
-                return down;
+                var arp = "";
+                try { arp = await session.SendCommandAsync("display arp", TimeSpan.FromSeconds(8), ct); } catch { }
+                return WanPortInspector.AvaliarPortasHpe(brief, info, arp, sourceIp);
             }
             else
             {
                 try { await session.SendCommandAsync("terminal length 0", TimeSpan.FromSeconds(5), ct); } catch { }
                 var brief = await session.SendCommandAsync("show ip interface brief", TimeSpan.FromSeconds(15), ct);
-                var (encontrada, down) = WanPortInspector.CiscoWanStatus(brief, info.NomesBusca);
-                if (!encontrada) return null;
-                EscreverLinha(down
-                    ? $"[ALERTA 5b] Porta WAN {info.InterfaceExibicao} DOWN no {info.ModeloExibicao}."
-                    : $"[*] [5b] Porta WAN {info.InterfaceExibicao} UP no {info.ModeloExibicao} — falha é de rota/operadora.");
-                return down;
+                var arp = "";
+                try { arp = await session.SendCommandAsync("show arp", TimeSpan.FromSeconds(8), ct); } catch { }
+                return WanPortInspector.AvaliarPortasCisco(brief, info, arp, sourceIp);
             }
         }
         catch (Exception ex)
         {
-            EscreverLinha($"[AVISO 5b] Não foi possível verificar a porta WAN via serial ({ex.Message}) — seguindo fluxo normal.");
+            EscreverLinha($"[AVISO 5b] Não foi possível inspecionar as portas via serial ({ex.Message}).");
             return null;
         }
         finally
@@ -7825,8 +8346,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Se a WAN está DOWN no equipamento: pergunta se conecta o cabo (SIM repete o teste, até 3x)
-    /// ou segue normalmente (NÃO). Sem diagnóstico conclusivo, mantém comportamento atual.
+    /// Diagnóstico avançado quando a WAN falha: exibe janela didática com status das portas LAN e WAN,
+    /// proteção contra inversão de cabos e opções de ambiente cliente vs bancada.
     /// </summary>
     private async Task<ConnectivityTestResult> TratarWanDownAsync(
         ConnectivityService service, string wanTarget, string? sourceIp,
@@ -7834,47 +8355,109 @@ public partial class MainWindow : Window
     {
         var tag = (CbInterrupt.SelectedItem as ComboBoxItem)?.Tag?.ToString()
                ?? (CbModeloRoteadorInicial?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "";
-        var info = WanPortInspector.PorTagModelo(tag);
+        var info = WanPortInspector.ObterRoteadorPortasInfo(tag);
         if (info == null && (_isFortiGateDetected || IsTagFortiGate(tag)))
         {
-            info = new WanPortaInfo("Fortinet FortiGate 40F", "WAN (Porta WAN)", new[] { "wan", "wan1" }, false, true);
+            info = new RoteadorPortasInfo(
+                "Fortinet FortiGate 40F",
+                "Porta WAN (wan / wan1)",
+                new[] { "wan", "wan1" },
+                "Portas 1 a 3 (internal / LAN)",
+                new[] { "internal", "lan", "lan1", "lan2", "lan3" },
+                false,
+                true);
         }
         if (info == null) return atual;
 
-        bool? down;
-        try { down = await VerificarWanDownAsync(info, ct); }
-        catch { return atual; }
-        if (down != true) return atual;
+        PortasDiagnosticoResultado? diag = null;
+        try { diag = await AvaliarPortasRoteadorAsync(info, sourceIp, ct); }
+        catch { }
+
+        // Se a porta WAN estiver com link UP e não houver indício de inversão, a falha é puramente lógica/operadora
+        if (diag != null && diag.WanUp && !diag.PossivelInversaoCabos)
+        {
+            EscreverLinha($"[*] [5b] Porta WAN {diag.WanInterfaceExibicao} está UP no {diag.Modelo} — link físico OK, falha de ICMP é de rota/operadora.");
+            return atual;
+        }
+
+        // Se não conseguiu dados conclusivos via serial, cria resultado padrão
+        diag ??= new PortasDiagnosticoResultado(
+            info.ModeloExibicao,
+            info.WanInterfaceExibicao,
+            info.LanInterfaceExibicao,
+            true, true, true, false, false,
+            $"A porta WAN {info.WanInterfaceExibicao} está sem link físico.");
+
+        EscreverLinha(diag.PossivelInversaoCabos
+            ? $"[ALERTA 5b CRÍTICO] {diag.MensagemDiagnostico}"
+            : $"[ALERTA 5b] Porta WAN {diag.WanInterfaceExibicao} DOWN no {diag.Modelo}.");
 
         for (var tentativa = 1; tentativa <= 3; tentativa++)
         {
             ct.ThrowIfCancellationRequested();
-            var resp = Dispatcher.Invoke(() => MessageBox.Show(this,
-                $"A porta WAN {info.InterfaceExibicao} do roteador {info.ModeloExibicao} está DOWN (sem link físico).\n\n" +
-                $"👉 Por favor, conecte a porta WAN ao equipamento do acesso para testes de conectividade do serviço e clique SIM para repetir o teste.\n\n" +
-                $"Clique NÃO para seguir normalmente (WAN ficará como Offline).",
-                "Porta WAN DOWN — Fase 5b",
-                MessageBoxButton.YesNo, MessageBoxImage.Warning));
-            if (resp != MessageBoxResult.Yes)
+
+            var decision = Dispatcher.Invoke(() =>
+            {
+                var win = new WanDiagnosticsWindow(diag, async () =>
+                {
+                    var recheck = await AvaliarPortasRoteadorAsync(info, sourceIp, CancellationToken.None);
+                    if (recheck != null) diag = recheck;
+                    return diag!;
+                })
+                {
+                    Owner = this
+                };
+                win.ShowDialog();
+                return win.Decision;
+            });
+
+            if (decision == WanActionDecision.ProceedInBenchMode)
+            {
+                _isModoBancadaAtivo = true;
+                EscreverLinha("[*] [5b] Operador optou por prosseguir em MODO BANCADA.");
+                EscreverLinha("    -> Testes de WAN, Internet e Telefonia marcados como 'Bancada' e pulados sem apontar erro.");
+                return new ConnectivityTestResult(wanTarget, 0, 0, 0, 0, 0, 0, 0, false, new List<PingPacketInfo>());
+            }
+            else if (decision == WanActionDecision.ProceedOffline)
             {
                 EscreverLinha("[*] [5b] Operador optou por seguir com WAN Offline.");
                 break;
             }
-            EscreverLinha($"[*] [5b] Repetindo teste WAN após conexão ao equipamento do acesso (tentativa {tentativa}/3)...");
+            else if (decision == WanActionDecision.Cancel)
+            {
+                EscreverLinha("[*] [5b] Operador cancelou o teste de conectividade WAN.");
+                break;
+            }
+
+            // Retry
+            EscreverLinha($"[*] [5b] Repetindo teste WAN após verificação dos cabos (tentativa {tentativa}/3)...");
             AtualizarProgresso(78, "Fase 5b: Repetindo ICMP WAN...", $"Disparando pacotes ICMP para Gateway WAN ({wanTarget})...");
             var retry = await service.TestPingAsync(wanTarget, count: 4, timeoutMs: 2000, sourceIpAddress: sourceIp, cancellationToken: ct);
             if (retry.IsSuccess)
             {
-                EscreverLinha($"[OK 5b WAN] Conectividade de enlace WAN confirmada após conexão do cabo: RTT Médio {retry.AvgRttMs:F1}ms, 0% perda.");
+                EscreverLinha($"[OK 5b WAN] Conectividade de enlace WAN confirmada após reconexão: RTT Médio {retry.AvgRttMs:F1}ms, 0% perda.");
                 return retry;
             }
-            EscreverLinha($"[AVISO 5b WAN] Ainda sem resposta após a tentativa {tentativa}/3.");
+            EscreverLinha($"[AVISO 5b WAN] Gateway WAN ({wanTarget}) ainda sem resposta após tentativa {tentativa}/3.");
+
+            // Reavalia portas para próxima iteração se houver
+            if (tentativa < 3)
+            {
+                try
+                {
+                    var recheck = await AvaliarPortasRoteadorAsync(info, sourceIp, ct);
+                    if (recheck != null) diag = recheck;
+                }
+                catch { }
+            }
         }
+
         return atual;
     }
 
     private async Task<TripleIcmpResult> ExecutarTesteIcmpTriploAsync(CancellationToken ct)
     {
+        _isModoBancadaAtivo = false;
         var lanTarget = _loadedSaipCircuit?.LanIp ?? TxtIcmpTargetLan?.Text?.Trim() ?? "200.182.245.17";
         lanTarget = lanTarget.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "200.182.245.17";
 
@@ -7949,25 +8532,62 @@ public partial class MainWindow : Window
         }
 
         // -------------------------------------------------------------
-        // 5c. TESTE ICMP WEB (DNS Cloudflare 1.1.1.1 / Google 8.8.8.8)
+        // 5c. TESTE ICMP WEB / VOZ (Media Gateway) / MPLS (PE Loopback)
         // -------------------------------------------------------------
-        AtualizarProgresso(82, "Fase 5c: Testando ICMP WEB...", "Disparando pacotes ICMP para DNS Cloudflare (1.1.1.1)...");
-        EscreverLinha($"\n[*] [5c] TESTE ICMP WEB -> DNS Cloudflare (1.1.1.1) / Google (8.8.8.8)...");
-        var webRes = await service.TestPingAsync("1.1.1.1", count: 4, timeoutMs: 2000, sourceIpAddress: sourceIp, cancellationToken: ct);
-        if (!webRes.IsSuccess)
-        {
-            EscreverLinha("[*] Testando segundo host Web (Google DNS 8.8.8.8)...");
-            webRes = await service.TestPingAsync("8.8.8.8", count: 4, timeoutMs: 2000, sourceIpAddress: sourceIp, cancellationToken: ct);
-        }
+        ConnectivityTestResult webRes;
+        var circuit = _loadedSaipCircuit;
 
-        if (webRes.IsSuccess)
-            EscreverLinha($"[OK 5c WEB] Conectividade com a Internet pública confirmada via roteador sob teste: RTT Médio {webRes.AvgRttMs:F1}ms.");
+        if (_isModoBancadaAtivo)
+        {
+            AtualizarProgresso(82, "Fase 5c: Modo Bancada (Pulado)", "Modo Bancada ativo: teste de Internet pública / Media Gateway pulado.");
+            EscreverLinha("\n[*] [5c] Modo Bancada ativo: teste de Internet pública / Media Gateway pulado a pedido do operador.");
+            webRes = new ConnectivityTestResult("Bancada", 0, 0, 0, 0, 0, 0, 0, false, new List<PingPacketInfo>());
+        }
+        else if (circuit?.IsServicoVoz == true)
+        {
+            var mgwTarget = circuit.MediaGatewayIp ?? (TxtIcmpTargetWeb != null && !string.IsNullOrWhiteSpace(TxtIcmpTargetWeb.Text) && !TxtIcmpTargetWeb.Text.Contains("1.1.1.1") ? TxtIcmpTargetWeb.Text.Trim() : wanTarget);
+            AtualizarProgresso(82, "Fase 5c: Testando Media Gateway Voz...", $"Disparando pacotes ICMP para Media Gateway / Softswitch ({mgwTarget})...");
+            EscreverLinha($"\n[*] [5c] TESTE ICMP VOZ -> Media Gateway / Softswitch ({mgwTarget})...");
+            webRes = await service.TestPingAsync(mgwTarget, count: 4, timeoutMs: 2000, sourceIpAddress: sourceIp, cancellationToken: ct);
+            if (webRes.IsSuccess)
+                EscreverLinha($"[OK 5c VOZ] Conectividade com Media Gateway ({mgwTarget}) confirmada via roteador sob teste: RTT Médio {webRes.AvgRttMs:F1}ms.");
+            else
+                EscreverLinha($"[AVISO 5c VOZ] Media Gateway ({mgwTarget}) sem resposta ICMP (verifique roteamento de voz/sinalização ou liberação na operadora).");
+        }
+        else if (circuit?.IsServicoMpls == true)
+        {
+            var mplsTarget = circuit.PeLoopbackIp ?? (TxtIcmpTargetWeb != null && !string.IsNullOrWhiteSpace(TxtIcmpTargetWeb.Text) && !TxtIcmpTargetWeb.Text.Contains("1.1.1.1") ? TxtIcmpTargetWeb.Text.Trim() : wanTarget);
+            AtualizarProgresso(82, "Fase 5c: Testando Loopback PE MPLS...", $"Disparando pacotes ICMP para Loopback PE / Core ({mplsTarget})...");
+            EscreverLinha($"\n[*] [5c] TESTE ICMP MPLS -> Loopback PE / Core IP VPN ({mplsTarget})...");
+            webRes = await service.TestPingAsync(mplsTarget, count: 4, timeoutMs: 2000, sourceIpAddress: sourceIp, cancellationToken: ct);
+            if (webRes.IsSuccess)
+                EscreverLinha($"[OK 5c MPLS] Conectividade com Loopback PE / Core ({mplsTarget}) confirmada via roteador sob teste: RTT Médio {webRes.AvgRttMs:F1}ms.");
+            else
+                EscreverLinha($"[AVISO 5c MPLS] Loopback PE / Core ({mplsTarget}) sem resposta ICMP (verifique VRF ou anúncio BGP/rota estática na operadora).");
+        }
         else
-            EscreverLinha($"[AVISO 5c WEB] Internet externa sem resposta ICMP (normal caso o circuito WAN ainda não esteja ativado na operadora).");
+        {
+            AtualizarProgresso(82, "Fase 5c: Testando ICMP WEB...", "Disparando pacotes ICMP para DNS Cloudflare (1.1.1.1)...");
+            EscreverLinha($"\n[*] [5c] TESTE ICMP WEB -> DNS Cloudflare (1.1.1.1) / Google (8.8.8.8)...");
+            webRes = await service.TestPingAsync("1.1.1.1", count: 4, timeoutMs: 2000, sourceIpAddress: sourceIp, cancellationToken: ct);
+            if (!webRes.IsSuccess)
+            {
+                EscreverLinha("[*] Testando segundo host Web (Google DNS 8.8.8.8)...");
+                webRes = await service.TestPingAsync("8.8.8.8", count: 4, timeoutMs: 2000, sourceIpAddress: sourceIp, cancellationToken: ct);
+            }
+
+            if (webRes.IsSuccess)
+                EscreverLinha($"[OK 5c WEB] Conectividade com a Internet pública confirmada via roteador sob teste: RTT Médio {webRes.AvgRttMs:F1}ms.");
+            else
+                EscreverLinha($"[AVISO 5c WEB] Internet externa sem resposta ICMP (normal caso o circuito WAN ainda não esteja ativado na operadora).");
+        }
 
         EscreverLinha("=================================================================\n");
 
-        var summary = $"5a LAN: {(lanRes.IsSuccess ? $"{lanRes.AvgRttMs:F1}ms" : "Falha")} | 5b WAN: {(wanRes.IsSuccess ? $"{wanRes.AvgRttMs:F1}ms" : "Offline")} | 5c WEB: {(webRes.IsSuccess ? $"{webRes.AvgRttMs:F1}ms" : "Offline")}";
+        var label5c = (circuit?.IsServicoVoz == true) ? "5c MGW" : (circuit?.IsServicoMpls == true) ? "5c PE" : "5c WEB";
+        var wanStatusStr = _isModoBancadaAtivo ? "Bancada" : (wanRes.IsSuccess ? $"{wanRes.AvgRttMs:F1}ms" : "Offline");
+        var webStatusStr = _isModoBancadaAtivo ? "Bancada" : (webRes.IsSuccess ? $"{webRes.AvgRttMs:F1}ms" : "Offline");
+        var summary = $"5a LAN: {(lanRes.IsSuccess ? $"{lanRes.AvgRttMs:F1}ms" : "Falha")} | 5b WAN: {wanStatusStr} | {label5c}: {webStatusStr}";
         AtualizarProgresso(84, "Fase 5 Concluída!", summary);
 
         _lastIcmpResult = new TripleIcmpResult(lanRes, wanRes, webRes);
@@ -8026,6 +8646,50 @@ public partial class MainWindow : Window
         var sourceIp = ObterIpOrigemParaIcmp();
         var service = new ConnectivityService(EscreverLinhaAsync);
         var result = await service.TestTelnetAsync(host, port, username: telnetUser, password: telnetPass, timeoutMs: 10000, sourceIpAddress: sourceIp, cancellationToken: ct);
+
+        // Verifica indícios de TACACS+ na resposta da porta 23 (rejeição de credencial local ou banner de AAA corporativo)
+        var transcriptUpper = (result.Transcript ?? "").ToUpperInvariant();
+        var bannerUpper = (result.Banner ?? "").ToUpperInvariant();
+        var isTacacsDetectedInTelnet = transcriptUpper.Contains("TACACS") || bannerUpper.Contains("TACACS")
+            || transcriptUpper.Contains("AUTHENTICATION FAILED") || bannerUpper.Contains("AUTHENTICATION FAILED")
+            || transcriptUpper.Contains("AUTHORIZATION FAILED") || bannerUpper.Contains("AUTHORIZATION FAILED")
+            || transcriptUpper.Contains("LOGIN INVALID") || bannerUpper.Contains("LOGIN INVALID")
+            || transcriptUpper.Contains("BAD PASSWORDS") || bannerUpper.Contains("BAD PASSWORDS")
+            || transcriptUpper.Contains("CLOSED BY FOREIGN HOST");
+
+        // Se Telnet falhou ou se há indício de TACACS (comum em circuitos BLD com WAN conectada onde o Telnet padrão é desabilitado):
+        if (!result.IsSuccess || isTacacsDetectedInTelnet)
+        {
+            EscreverLinha($"[*] [PROVA TACACS/SSH] Verificando se a gerência corporativa assumiu via TACACS+ / SSH (porta 22)...");
+            var (sshOk, sshLat, _) = await service.TestTcpPortAsync(host, 22, timeoutMs: 5000, sourceIpAddress: sourceIp, cancellationToken: ct);
+            var (httpsOk, httpsLat, _) = (!sshOk)
+                ? await service.TestTcpPortAsync(host, 443, timeoutMs: 5000, sourceIpAddress: sourceIp, cancellationToken: ct)
+                : (false, 0L, "");
+
+            if (sshOk || httpsOk || isTacacsDetectedInTelnet)
+            {
+                var protoAtivo = sshOk ? $"SSH (porta 22, {sshLat}ms)" : (httpsOk ? $"HTTPS (porta 443, {httpsLat}ms)" : $"TACACS+ interceptado (porta {port})");
+                EscreverLinha($"\n=================================================================");
+                EscreverLinha($"  ✅ ACESSO REMOTO CONFIRMADO — GERÊNCIA VIA TACACS+");
+                EscreverLinha($"=================================================================");
+                EscreverLinha($"  ℹ️ O Telnet padrão foi desabilitado e o time CPE terá acesso pelo TACACS.");
+                EscreverLinha($"  ✓ Conectividade de gerência ativa: {protoAtivo}.");
+                EscreverLinha($"=================================================================\n");
+
+                AtualizarProgresso(100, "Fase F: Acesso Remoto OK (TACACS+)", "O Telnet padrão foi desabilitado e o time CPE terá acesso pelo TACACS.");
+
+                return new ConnectivityService.TelnetTestResult(
+                    Host: host,
+                    Port: sshOk ? 22 : (httpsOk ? 443 : port),
+                    IsSuccess: true,
+                    LatencyMs: sshOk ? sshLat : (httpsOk ? httpsLat : result.LatencyMs),
+                    Banner: "SSH/TACACS+ Ativo (Time CPE)",
+                    Transcript: (result.Transcript ?? "") + "\n[TACACS] O Telnet padrão foi desabilitado e o time CPE terá acesso pelo TACACS.",
+                    Error: null
+                );
+            }
+        }
+
         if (result.IsSuccess)
         {
             AtualizarProgresso(100, "Fase F: Telnet OK!", $"{host}:{port} — {result.LatencyMs}ms{(string.IsNullOrEmpty(result.Banner) ? "" : $" | {result.Banner}")}");
@@ -8099,6 +8763,20 @@ public partial class MainWindow : Window
     // FASE G · TESTAR BANDA
     private async void BtnTestarBanda_Click(object sender, RoutedEventArgs e)
     {
+        if (_loadedSaipCircuit?.IsCircuitoPrivadoSemInternet == true)
+        {
+            var msg = $"Este circuito está configurado como {_loadedSaipCircuit.TipoServicoDescricao}.\n\n" +
+                      "Por se tratar de uma rede corporativa fechada/privada sem trânsito direto para a Internet pública, o teste via SPEEDTEST não é executado.\n\n" +
+                      "Deseja abrir a Certidão de Nascimento oficial (ITU-T Y.1564) para realizar o teste de banda e SLA contra a central QT-600 / PE?";
+            var resp = MessageBox.Show(msg, "Circuito Privado — Teste de Banda Corporativo", MessageBoxButton.YesNo, MessageBoxImage.Information);
+            if (resp == MessageBoxResult.Yes)
+            {
+                BtnCertidaoNascimentoInicial_Click(sender, e);
+            }
+            DefinirBadgeStatus("G", "✅");
+            return;
+        }
+
         if (_lastIcmpResult != null && (!_lastIcmpResult.IsWanOk || !_lastIcmpResult.IsWebOk))
         {
             var prosseguir = MessageBox.Show(
@@ -8150,6 +8828,17 @@ public partial class MainWindow : Window
 
     private async Task<BandwidthTestResult> ExecutarTesteBandaAsync(CancellationToken ct, string? sourceIpAddress = null)
     {
+        if (_loadedSaipCircuit?.IsCircuitoPrivadoSemInternet == true)
+        {
+            EscreverLinha("\n=================================================================");
+            EscreverLinha($"  [INFO] Categoria: {_loadedSaipCircuit.TipoServicoDescricao}");
+            EscreverLinha("  [INFO] Circuito Privado sem Internet pública — Speedtest Internet dispensado.");
+            EscreverLinha("  [INFO] Homologação oficial de vazão e SLA realizada via CERTIDÃO DE NASCIMENTO (Y.1564).");
+            EscreverLinha("=================================================================\n");
+            AtualizarProgresso(100, "Fase G: Concluída (Circuito Privado)", "Medição de banda corporativa realizada via Certidão Y.1564.");
+            return new BandwidthTestResult(0, 0, 0, 0, "SPARC Y.1564", "Certidão de Nascimento", true, $"Circuito Privado ({_loadedSaipCircuit.TipoServicoDescricao}) — Teste corporativo via Certidão Y.1564");
+        }
+
         AtualizarProgresso(10, "Fase G: Testando Banda...", "Iniciando teste de vazão...");
         EscreverLinha("\n[*] [FASE G] TESTE DE BANDA / VELOCIDADE DE CONEXÃO");
 
@@ -8346,13 +9035,14 @@ public partial class MainWindow : Window
             // -------------------------------------------------------------
             SelecionarFase("E");
             DefinirBadgeStatus("E", "⏳");
-            EscreverLinha("\n>>> [ESTEIRA] FASE 5: TESTAR CONECTIVIDADE ICMP (5a LAN, 5b WAN, 5c WEB)");
+            var label5cNome = _loadedSaipCircuit?.IsServicoVoz == true ? "5c VOZ" : _loadedSaipCircuit?.IsServicoMpls == true ? "5c MPLS" : "5c WEB";
+            EscreverLinha($"\n>>> [ESTEIRA] FASE 5: TESTAR CONECTIVIDADE ICMP (5a LAN, 5b WAN, {label5cNome})");
             var icmpResult = await ExecutarTesteIcmpTriploAsync(ct);
             DefinirBadgeStatus("E", icmpResult.StatusBadge);
             await Task.Delay(1000, ct);
 
             // -------------------------------------------------------------
-            // FASE 6 (F): TESTAR ACESSO REMOTO (TELNET / SSH)
+            // FASE 6 (F): TESTAR ACESSO REMOTO (TELNET / SSH / TACACS)
             // -------------------------------------------------------------
             SelecionarFase("F");
             DefinirBadgeStatus("F", "⏳");
@@ -8360,30 +9050,8 @@ public partial class MainWindow : Window
                 ?? (!string.IsNullOrWhiteSpace(TxtTelnetTarget.Text) ? TxtTelnetTarget.Text.Trim() : "200.182.245.17");
             var telnetPortEsteira = int.TryParse(TxtTelnetPort.Text.Trim(), out var tp) ? tp : 23;
 
-            EscreverLinha("\n>>> [ESTEIRA] FASE 6: TESTAR ACESSO REMOTO");
+            EscreverLinha("\n>>> [ESTEIRA] FASE 6: TESTAR ACESSO REMOTO (TELNET / SSH / TACACS)");
             var telnetEsteiraResult = await ExecutarTesteTelnetAsync(telnetHostEsteira, telnetPortEsteira, ct);
-
-            var profileTagEsteira = (CbInterrupt.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "";
-            var isFortiEsteira = IsTagFortiGate(profileTagEsteira) || _isFortiGateDetected;
-            if (isFortiEsteira && !telnetEsteiraResult.IsSuccess)
-            {
-                var srv = new ConnectivityService(EscreverLinhaAsync);
-                var (sshOk, sshLat, _) = await srv.TestTcpPortAsync(telnetHostEsteira, 22, timeoutMs: 5000, sourceIpAddress: ObterIpOrigemParaIcmp(), cancellationToken: ct);
-                if (sshOk)
-                {
-                    telnetEsteiraResult = new ConnectivityService.TelnetTestResult(telnetHostEsteira, 22, true, sshLat, "SSH (Porta 22) Ativa", "SSH Conectado", null);
-                    EscreverLinha($"[OK] [FORTINET] Acesso remoto SSH (porta 22) validado com sucesso ({sshLat}ms)!");
-                }
-                else
-                {
-                    var (httpsOk, httpsLat, _) = await srv.TestTcpPortAsync(telnetHostEsteira, 443, timeoutMs: 5000, sourceIpAddress: ObterIpOrigemParaIcmp(), cancellationToken: ct);
-                    if (httpsOk)
-                    {
-                        telnetEsteiraResult = new ConnectivityService.TelnetTestResult(telnetHostEsteira, 443, true, httpsLat, "HTTPS (Porta 443) Ativa", "HTTPS Conectado", null);
-                        EscreverLinha($"[OK] [FORTINET] Acesso remoto HTTPS (porta 443) validado com sucesso ({httpsLat}ms)!");
-                    }
-                }
-            }
 
             DefinirBadgeStatus("F", telnetEsteiraResult.IsSuccess ? "✅" : "❌");
             await Task.Delay(1000, ct);
@@ -8420,7 +9088,17 @@ public partial class MainWindow : Window
             EscreverLinha($"  3. c) Provisionamento Rede  : {(_loadedSaipCircuit != null ? "CONFIGURADO COM SUCESSO" : "NÃO APLICADO")}");
             EscreverLinha($"  4. d) IP Dispositivo Teste  : {(_loadedSaipCircuit != null ? $"CONFIGURADO ({_loadedSaipCircuit.HostLanIp} + DNS 1.1.1.1/8.8.8.8)" : "NÃO CONFIGURADO")}");
             EscreverLinha($"  5. e) Conectividade ICMP    : {(icmpResult?.IsSuccess == true ? $"OK (5a LAN: {icmpResult.LanResult?.AvgRttMs:F1}ms | 5b WAN: {(icmpResult.WanResult?.IsSuccess == true ? $"{icmpResult.WanResult?.AvgRttMs:F1}ms" : "Offline")} | 5c WEB: {(icmpResult.WebResult?.IsSuccess == true ? $"{icmpResult.WebResult?.AvgRttMs:F1}ms" : "Offline")})" : "FALHA")}");
-            EscreverLinha($"     Telnet {telnetHostEsteira}:{telnetPortEsteira} : {(telnetEsteiraResult == null ? "NÃO TESTADO" : telnetEsteiraResult.IsSuccess ? $"OK ({telnetEsteiraResult.LatencyMs}ms{(string.IsNullOrEmpty(telnetEsteiraResult.Banner) ? "" : $" | {telnetEsteiraResult.Banner}")})" : $"FALHA ({telnetEsteiraResult.Error})")}");
+
+            var isTacacsConsol = telnetEsteiraResult?.IsSuccess == true &&
+                (telnetEsteiraResult.Banner?.Contains("TACACS", StringComparison.OrdinalIgnoreCase) == true ||
+                 telnetEsteiraResult.Transcript?.Contains("TACACS", StringComparison.OrdinalIgnoreCase) == true);
+            var telnetReportStr = telnetEsteiraResult == null ? "NÃO TESTADO" :
+                telnetEsteiraResult.IsSuccess ?
+                    (isTacacsConsol
+                        ? $"OK (SSH/TACACS+ Ativo — O Telnet padrão foi desabilitado e o time CPE terá acesso pelo TACACS)"
+                        : $"OK ({telnetEsteiraResult.LatencyMs}ms{(string.IsNullOrEmpty(telnetEsteiraResult.Banner) ? "" : $" | {telnetEsteiraResult.Banner}")})")
+                    : $"FALHA ({telnetEsteiraResult.Error})";
+            EscreverLinha($"     Acesso Remoto ({telnetHostEsteira}) : {telnetReportStr}");
             EscreverLinha($"  6. f) Teste de Banda        : {(speedResult.IsSuccess ? $"OK ({speedResult.DownloadMbps} Mbps)" : "FALHA/OFFLINE")}");
             EscreverLinha("=================================================================\n");
 

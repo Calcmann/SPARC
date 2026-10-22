@@ -2817,7 +2817,8 @@ public sealed class DeviceConnectionManager
         DeviceSeries series,
         NetworkDevice.Core.Firmware.RemoteFirmwareInfo? officialRemote,
         Func<string, Task>? progress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool checkWan = true)
     {
         if (_transport == null || !_transport.IsOpen)
             throw new InvalidOperationException("Console serial USB não está conectado.");
@@ -2829,7 +2830,7 @@ public sealed class DeviceConnectionManager
         {
             _session = await EnsureConsoleSessionAsync(log, ct);
             var updater = new NetworkDevice.Core.Firmware.RouterDirectFirmwareUpdater(log);
-            return await updater.AuditComplianceAsync(_session, series, officialRemote, ct);
+            return await updater.AuditComplianceAsync(_session, series, officialRemote, ct, checkWan);
         }
         finally
         {

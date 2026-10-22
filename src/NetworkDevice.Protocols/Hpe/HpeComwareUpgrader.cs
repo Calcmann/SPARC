@@ -322,8 +322,8 @@ public sealed class HpeComwareUpgrader
             await ProgressAsync("              NEM DESCONECTE OS CABOS DURANTE A ATUALIZAÇÃO!");
             await ProgressAsync("=================================================================\n");
 
-            // Inicia o Servidor TFTP Integrado com streaming de progresso em tempo real para a UI e terminal
-            await using var tftpServer = new EmbeddedTftpServer(fileDir);
+            // Inicia o Servidor TFTP Integrado com streaming de progresso em tempo real para a UI e terminal (amarrado ao IP do host)
+            await using var tftpServer = new EmbeddedTftpServer(fileDir, preferredLocalIp: hostIpAddress);
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             var lastUiUpdate = DateTime.MinValue;
             var lastLoggedPct = -1;
@@ -393,9 +393,10 @@ public sealed class HpeComwareUpgrader
                 } catch { }
 
                 // Configura IP temporário na GE0/1 (LAN) para TFTP e configura adaptador Windows
+                var lanPort = "GigabitEthernet0/1";
                 try
                 {
-                    await ConfigurarIpTemporarioHpeAsync(session, hostIpAddress, requestOperatorAction, cancellationToken, subnetMask, localAdapterName);
+                    lanPort = await ConfigurarIpTemporarioHpeAsync(session, hostIpAddress, requestOperatorAction, cancellationToken, subnetMask, localAdapterName);
                 }
                 catch (Exception ex) { await ProgressAsync($"[AVISO] Falha ao configurar IP temporário HPE: {ex.Message}"); }
 
@@ -456,32 +457,50 @@ public sealed class HpeComwareUpgrader
                 catch { }
 
                 _onProgress?.Invoke(20, "⚠️ NÃO DESLIGUE! Baixando Firmware via TFTP...", "Iniciando transferência TFTP de alta velocidade...");
-                await ProgressAsync($"[*] Iniciando transferência TFTP no HPE: tftp {hostIpAddress} get {fileName}...");
+                var tftpCmd = $"tftp {hostIpAddress} -i {lanPort} get {fileName}";
+                await ProgressAsync($"[*] Iniciando transferência TFTP no HPE: {tftpCmd}...");
 
                 stopwatch.Restart();
                 lastUiUpdate = DateTime.MinValue;
                 lastLoggedPct = -1;
 
+                var tftpConditions = new StopCondition[]
+                {
+                    new StopCondition.LineRegex("confirm", ConfirmPromptRegex),
+                    new StopCondition.Contains("Writing file...Done.", "Writing file...Done."),
+                    new StopCondition.Contains("File downloaded successfully", "File downloaded successfully"),
+                    new StopCondition.Contains("Failed to write received data to disk", "Failed to write received data to disk"),
+                    new StopCondition.Contains("already exists", "already exists"),
+                    new StopCondition.Contains("No route to host", "No route to host"),
+                    new StopCondition.Contains("Transmission timeout", "Transmission timeout"),
+                    new StopCondition.Contains("Cannot connect", "Cannot connect"),
+                    new StopCondition.Contains("Timeout", "Timeout"),
+                    new StopCondition.Contains("Error", "Error"),
+                    new StopCondition.Contains("not found", "not found"),
+                    new StopCondition.Contains("No such file", "No such file"),
+                    new StopCondition.Contains("Access violation", "Access violation"),
+                    new StopCondition.Contains("Unrecognized command", "Unrecognized command"),
+                    new StopCondition.Contains("Wrong parameter", "Wrong parameter")
+                };
+
                 var tftpOutput = await session.SendExpectAsync(
-                    $"tftp {hostIpAddress} get {fileName}",
-                    new StopCondition[]
-                    {
-                        new StopCondition.LineRegex("confirm", ConfirmPromptRegex),
-                        new StopCondition.Contains("Writing file...Done.", "Writing file...Done."),
-                        new StopCondition.Contains("File downloaded successfully", "File downloaded successfully"),
-                        new StopCondition.Contains("Failed to write received data to disk", "Failed to write received data to disk"),
-                        new StopCondition.Contains("already exists", "already exists"),
-                        new StopCondition.Contains("No route to host", "No route to host"),
-                        new StopCondition.Contains("Transmission timeout", "Transmission timeout"),
-                        new StopCondition.Contains("Cannot connect", "Cannot connect"),
-                        new StopCondition.Contains("Timeout", "Timeout"),
-                        new StopCondition.Contains("Error", "Error"),
-                        new StopCondition.Contains("not found", "not found"),
-                        new StopCondition.Contains("No such file", "No such file"),
-                        new StopCondition.Contains("Access violation", "Access violation")
-                    },
+                    tftpCmd,
+                    tftpConditions,
                     TimeSpan.FromMinutes(10),
                     cancellationToken);
+
+                // Se o Comware não reconhecer '-i <interface>', tenta formato direto tradicional
+                if (tftpOutput.Output.Contains("Unrecognized", StringComparison.OrdinalIgnoreCase) ||
+                    tftpOutput.Output.Contains("Wrong parameter", StringComparison.OrdinalIgnoreCase))
+                {
+                    await ProgressAsync($"[*] Parâmetro '-i' não suportado nesta versão do Comware. Tentando 'tftp {hostIpAddress} get {fileName}'...");
+                    tftpCmd = $"tftp {hostIpAddress} get {fileName}";
+                    tftpOutput = await session.SendExpectAsync(
+                        tftpCmd,
+                        tftpConditions,
+                        TimeSpan.FromMinutes(10),
+                        cancellationToken);
+                }
 
                 if (tftpOutput.Output.Contains("already exists", StringComparison.OrdinalIgnoreCase) ||
                     tftpOutput.Output.Contains("Overwrite", StringComparison.OrdinalIgnoreCase) ||
@@ -556,6 +575,16 @@ public sealed class HpeComwareUpgrader
             finally
             {
                 await tftpServer.StopAsync();
+                try
+                {
+                    if (System.Net.IPAddress.TryParse(hostIpAddress, out var hip))
+                    {
+                        var b = hip.GetAddressBytes();
+                        var rIp = $"{b[0]}.{b[1]}.{b[2]}.{b[3] - 1}";
+                        await HostNetworkManager.RemoveHostRouteAsync(rIp, CancellationToken.None);
+                    }
+                }
+                catch { }
             }
         }
 
@@ -1246,6 +1275,9 @@ public sealed class HpeComwareUpgrader
                 await ProgressAsync($"[AVISO] Configuração de IP local: {outNet}");
 
             await HostNetworkManager.EnsureTftpFirewallRuleAsync(ct);
+            var (okRoute, _) = await HostNetworkManager.EnsureHostRouteAsync(targetAdapter, routerIp, hostIp, ct);
+            if (okRoute)
+                await ProgressAsync($"[OK] Rota estrita /32 adicionada para {routerIp} na placa '{targetAdapter}' (anti-conflito Wi-Fi).");
         }
         catch (Exception ex)
         {

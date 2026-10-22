@@ -51,7 +51,29 @@ public sealed record ActivationReportData(
     IReadOnlyList<string>? DiagnosticAlerts,
     string? FalhaGeral,
     string? AppliedConfigScript = null,
-    double? BandaMbpsNominal = null);
+    double? BandaMbpsNominal = null,
+    string? TipoServicoDescricao = null,
+    string? MediaGatewayIp = null,
+    string? PeLoopbackIp = null);
+
+public sealed record DirectAccessReportData(
+    DateTime DataHora,
+    string? ClienteRazaoSocial,
+    string? DesignacaoIp,
+    string? NumeroOts,
+    string? PeRouter,
+    string? WanIp,
+    int WanCidr,
+    string? WanGateway,
+    string? WanSubnetMask,
+    double? BandaMbpsNominal,
+    string? AdaptadorRedeLocal,
+    ConnectivityTestResult? PeResult,
+    ConnectivityTestResult? GoogleResult,
+    ConnectivityTestResult? CloudflareResult,
+    BandwidthTestResult? BandResult,
+    IReadOnlyList<string>? DiagnosticAlerts = null,
+    string? Observacoes = null);
 
 public static class ActivationPdfReportService
 {
@@ -170,7 +192,13 @@ public static class ActivationPdfReportService
         var icmp5aBadge = is5a ? "<span class=\"tag-ok\">✅ RESPOSTA OK</span>" : "<span class=\"tag-fail\">❌ SEM RESPOSTA</span>";
         var icmp5bBadge = is5b ? "<span class=\"tag-ok\">✅ RESPOSTA OK</span>" : "<span class=\"tag-fail\">❌ SEM RESPOSTA</span>";
         var icmp5cBadge = is5c ? "<span class=\"tag-ok\">✅ RESPOSTA OK</span>" : "<span class=\"tag-fail\">❌ SEM RESPOSTA</span>";
-        var telnetBadge = isTelnet ? "<span class=\"tag-ok\">✅ CONEXÃO OK</span>" : "<span class=\"tag-fail\">❌ FALHA</span>";
+        var isTacacs = d.TelnetResult?.IsSuccess == true &&
+            (d.TelnetResult?.Banner?.Contains("TACACS", StringComparison.OrdinalIgnoreCase) == true ||
+             d.TelnetResult?.Transcript?.Contains("TACACS", StringComparison.OrdinalIgnoreCase) == true ||
+             d.TelnetResult?.Port == 22);
+        var telnetBadge = isTelnet
+            ? (isTacacs ? "<span class=\"tag-ok\">✅ TACACS+ (SSH OK)</span>" : "<span class=\"tag-ok\">✅ CONEXÃO OK</span>")
+            : "<span class=\"tag-fail\">❌ FALHA</span>";
         var avBanda = BandwidthTestService.AvaliarBanda(d.BandaMbpsNominal, d.BandResult?.DownloadMbps ?? 0);
         var bandBadge = d.BandResult == null
             ? "<span class=\"tag-warn\">⚠️ NÃO MEDIDO</span>"
@@ -186,6 +214,15 @@ public static class ActivationPdfReportService
         var loss5a = d.IcmpResult?.LanResult?.PacketLossPercentage ?? 0;
         var loss5b = d.IcmpResult?.WanResult?.PacketLossPercentage ?? (is5b ? 0 : 100);
         var loss5c = d.IcmpResult?.WebResult?.PacketLossPercentage ?? (is5c ? 0 : 100);
+        var isVoz = d.TipoServicoDescricao?.Contains("VOZ", StringComparison.OrdinalIgnoreCase) == true;
+        var isMpls = d.TipoServicoDescricao?.Contains("MPLS", StringComparison.OrdinalIgnoreCase) == true || d.TipoServicoDescricao?.Contains("VPN", StringComparison.OrdinalIgnoreCase) == true;
+        var label5c = isVoz ? "5c. ICMP VOZ" : (isMpls ? "5c. ICMP MPLS" : "5c. ICMP WEB");
+        var target5c = isVoz
+            ? (!string.IsNullOrWhiteSpace(d.MediaGatewayIp) ? $"{d.MediaGatewayIp} (Media Gateway Claro)" : (!string.IsNullOrWhiteSpace(d.IcmpResult?.WebResult?.Target) ? $"{d.IcmpResult.WebResult.Target} (Media Gateway Claro)" : "Media Gateway / Softswitch"))
+            : (isMpls
+                ? (!string.IsNullOrWhiteSpace(d.PeLoopbackIp) ? $"{d.PeLoopbackIp} (Loopback PE Claro)" : (!string.IsNullOrWhiteSpace(d.IcmpResult?.WebResult?.Target) ? d.IcmpResult.WebResult.Target : $"{wanGw} (Core / PE Claro)"))
+                : "1.1.1.1 / 8.8.8.8 (Internet)");
+
         var bandSpeed = d.BandResult != null
             ? $"{d.BandResult.DownloadMbps:F1} Mbps" +
               (d.BandaMbpsNominal is > 0
@@ -324,15 +361,15 @@ public static class ActivationPdfReportService
       <td>{icmp5bBadge}</td>
     </tr>
     <tr>
-      <td><b>5c. ICMP WEB</b></td>
-      <td>1.1.1.1 / 8.8.8.8 (Internet)</td>
+      <td><b>{label5c}</b></td>
+      <td>{target5c}</td>
       <td>RTT Médio: {rtt5c} | Perda: {loss5c:F0}%</td>
       <td>{icmp5cBadge}</td>
     </tr>
     <tr>
-      <td><b>6. Acesso Remoto (Telnet)</b></td>
-      <td>Porta TCP 23 @ {d.LanIp}</td>
-      <td>Usuário EBT (Privilege 15)</td>
+      <td><b>{(isTacacs ? "6. Acesso Remoto (SSH / TACACS+)" : "6. Acesso Remoto (Telnet)")}</b></td>
+      <td>Porta TCP {(d.TelnetResult?.Port ?? 23)} @ {d.LanIp}</td>
+      <td>{(isTacacs ? "Telnet padrão desabilitado — Time CPE via TACACS" : "Usuário EBT (Privilege 15)")}</td>
       <td>{telnetBadge}</td>
     </tr>
     <tr>
@@ -361,6 +398,255 @@ public static class ActivationPdfReportService
   </div>
   <div>
     <div class=""sign-line"">CONTROLE DE QUALIDADE / ATIVAÇÃO CLARO</div>
+  </div>
+</div>
+
+</body>
+</html>");
+
+        return sb.ToString();
+    }
+
+    public static async Task<string> GenerateDirectAccessPdfAsync(
+        DirectAccessReportData data,
+        string? targetPdfPath = null,
+        CancellationToken cancellationToken = default)
+    {
+        var htmlContent = GenerateDirectAccessHtml(data);
+        var tempHtmlPath = Path.Combine(Path.GetTempPath(), $"sparc_direct_report_{Guid.NewGuid():N}.html");
+        await File.WriteAllTextAsync(tempHtmlPath, htmlContent, Encoding.UTF8, cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(targetPdfPath))
+        {
+            var reportsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "backups", "Relatorios");
+            if (!Directory.Exists(reportsDir))
+            {
+                Directory.CreateDirectory(reportsDir);
+            }
+
+            var cleanDesig = string.IsNullOrWhiteSpace(data.DesignacaoIp)
+                ? "AcessoDireto"
+                : Path.GetInvalidFileNameChars().Aggregate(data.DesignacaoIp, (curr, c) => curr.Replace(c, '_'));
+
+            var fileName = $"Laudo_AcessoDireto_{cleanDesig}_{DateTime.Now:yyyyMMdd_HHmmss}.pdf";
+            targetPdfPath = Path.Combine(reportsDir, fileName);
+        }
+
+        var browserExe = FindHeadlessBrowser();
+        if (browserExe != null)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = browserExe,
+                    Arguments = $"--headless --disable-gpu --run-all-compositor-stages-before-draw --no-pdf-header-footer --print-to-pdf=\"{targetPdfPath}\" \"{tempHtmlPath}\"",
+                    CreateNoWindow = true,
+                    UseShellExecute = false
+                };
+
+                using var proc = Process.Start(psi);
+                if (proc != null)
+                {
+                    await proc.WaitForExitAsync(cancellationToken);
+                }
+
+                if (File.Exists(targetPdfPath) && new FileInfo(targetPdfPath).Length > 0)
+                {
+                    return targetPdfPath;
+                }
+            }
+            catch
+            {
+                // Fallback para HTML
+            }
+        }
+
+        var fallbackHtmlPath = Path.ChangeExtension(targetPdfPath, ".html");
+        File.Copy(tempHtmlPath, fallbackHtmlPath, true);
+        return fallbackHtmlPath;
+    }
+
+    public static string GenerateDirectAccessHtml(DirectAccessReportData d)
+    {
+        var cliente = SaipParser.CleanRazaoSocial(d.ClienteRazaoSocial) ?? "Não informado";
+        var designacao = d.DesignacaoIp ?? d.NumeroOts ?? "Não informada";
+        var ots = d.NumeroOts ?? "—";
+        var pe = d.PeRouter ?? "—";
+        var wanGw = d.WanGateway ?? "—";
+        var wanMask = d.WanSubnetMask ?? "—";
+        var adapterName = d.AdaptadorRedeLocal ?? "Placa de Rede Ethernet";
+
+        var isPeOk = d.PeResult?.IsSuccess == true;
+        var isGoogleOk = d.GoogleResult?.IsSuccess == true;
+        var isCloudflareOk = d.CloudflareResult?.IsSuccess == true;
+        var isBandOk = d.BandResult?.IsSuccess == true;
+        var avBanda = BandwidthTestService.AvaliarBanda(d.BandaMbpsNominal, d.BandResult?.DownloadMbps ?? 0);
+
+        var is100PercentApproved = isPeOk && (isGoogleOk || isCloudflareOk) && (avBanda?.Aprovado ?? isBandOk);
+        var statusBadge = is100PercentApproved ? "🟢 100% HOMOLOGADO E APROVADO" : "🔴 NÃO CONFORME / REPROVADO";
+        var statusColor = is100PercentApproved ? "#16A34A" : "#DC2626";
+
+        var peBadge = isPeOk ? "<span class=\"tag-ok\">✅ RESPOSTA OK</span>" : "<span class=\"tag-fail\">❌ SEM RESPOSTA</span>";
+        var googleBadge = isGoogleOk ? "<span class=\"tag-ok\">✅ RESPOSTA OK</span>" : "<span class=\"tag-fail\">❌ SEM RESPOSTA</span>";
+        var cfBadge = isCloudflareOk ? "<span class=\"tag-ok\">✅ RESPOSTA OK</span>" : "<span class=\"tag-fail\">❌ SEM RESPOSTA</span>";
+
+        var bandBadge = d.BandResult == null
+            ? "<span class=\"tag-warn\">⚠️ NÃO MEDIDO</span>"
+            : avBanda == null
+                ? (isBandOk ? "<span class=\"tag-ok\">✅ VAZÃO OK</span>" : "<span class=\"tag-warn\">⚠️ NÃO MEDIDO</span>")
+                : avBanda.Aprovado
+                    ? $"<span class=\"tag-ok\">✅ APROVADO ({avBanda.Percentual:F1}%)</span>"
+                    : $"<span class=\"tag-fail\">❌ REPROVADO ({avBanda.Percentual:F1}%)</span>";
+
+        var rttPe = d.PeResult?.AvgRttMs > 0 ? $"{d.PeResult.AvgRttMs:F1} ms" : "—";
+        var rttGoogle = d.GoogleResult?.AvgRttMs > 0 ? $"{d.GoogleResult.AvgRttMs:F1} ms" : "—";
+        var rttCf = d.CloudflareResult?.AvgRttMs > 0 ? $"{d.CloudflareResult.AvgRttMs:F1} ms" : "—";
+        var lossPe = d.PeResult?.PacketLossPercentage ?? (isPeOk ? 0 : 100);
+        var lossGoogle = d.GoogleResult?.PacketLossPercentage ?? (isGoogleOk ? 0 : 100);
+        var lossCf = d.CloudflareResult?.PacketLossPercentage ?? (isCloudflareOk ? 0 : 100);
+
+        var bandSpeed = d.BandResult != null
+            ? $"{d.BandResult.DownloadMbps:F1} Mbps (Down) / {d.BandResult.UploadMbps:F1} Mbps (Up)" +
+              (d.BandaMbpsNominal is > 0
+                  ? $" | Nominal: {d.BandaMbpsNominal:F1} Mbps ({(avBanda != null ? $"{avBanda.Percentual:F1}% — mín 92% ({avBanda.MinimoMbps:F1} Mbps)" : "—")})"
+                  : "")
+            : "—";
+
+        var sb = new StringBuilder();
+        sb.Append($@"<!DOCTYPE html>
+<html lang=""pt-BR"">
+<head>
+<meta charset=""utf-8"">
+<title>Laudo de Homologação de Link — {designacao}</title>
+<style>
+  @page {{ size: A4 portrait; margin: 12mm 15mm; }}
+  body {{ font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif; color: #1E293B; margin: 0; padding: 0; background: #FFF; font-size: 13px; line-height: 1.45; }}
+  .header {{ display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #E2E8F0; padding-bottom: 12px; margin-bottom: 16px; }}
+  .logo {{ font-size: 22px; font-weight: 800; color: #E11D48; letter-spacing: -0.5px; }}
+  .logo span {{ color: #0F172A; }}
+  .badge-status {{ display: inline-block; padding: 6px 14px; border-radius: 9999px; font-weight: 700; font-size: 12px; color: #FFF; background: {statusColor}; }}
+  .section-title {{ font-size: 14px; font-weight: 700; color: #0F172A; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 18px; margin-bottom: 8px; border-left: 4px solid #059669; padding-left: 8px; }}
+  .grid-2 {{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }}
+  .card {{ background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; }}
+  .card-title {{ font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase; margin-bottom: 6px; }}
+  .field-row {{ display: flex; justify-content: space-between; margin-bottom: 4px; border-bottom: 1px dashed #E2E8F0; padding-bottom: 2px; }}
+  .field-label {{ color: #64748B; font-weight: 500; }}
+  .field-val {{ color: #0F172A; font-weight: 600; font-family: 'Consolas', monospace; }}
+  table {{ width: 100%; border-collapse: collapse; margin-top: 6px; }}
+  th {{ background: #0F172A; color: #FFF; font-weight: 600; font-size: 11px; text-align: left; padding: 6px 10px; }}
+  td {{ padding: 6px 10px; border-bottom: 1px solid #E2E8F0; font-size: 12px; }}
+  tr:nth-child(even) {{ background: #F8FAFC; }}
+  .tag-ok {{ background: #DCFCE7; color: #166534; font-weight: 700; padding: 2px 8px; border-radius: 4px; display: inline-block; font-size: 11px; }}
+  .tag-fail {{ background: #FEE2E2; color: #991B1B; font-weight: 700; padding: 2px 8px; border-radius: 4px; display: inline-block; font-size: 11px; }}
+  .tag-warn {{ background: #FEF3C7; color: #92400E; font-weight: 700; padding: 2px 8px; border-radius: 4px; display: inline-block; font-size: 11px; }}
+  .diag-box {{ background: #FFFBEB; border: 1px solid #FCD34D; border-radius: 8px; padding: 12px; margin-top: 14px; }}
+  .diag-title {{ font-weight: 700; color: #B45309; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }}
+  .diag-item {{ margin-bottom: 6px; font-size: 12px; color: #78350F; }}
+  .footer-sign {{ display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 30px; padding-top: 15px; border-top: 1px solid #CBD5E1; }}
+  .sign-line {{ border-top: 1px solid #94A3B8; margin-top: 35px; text-align: center; font-size: 11px; color: #475569; font-weight: 600; padding-top: 4px; }}
+</style>
+</head>
+<body>
+
+<div class=""header"">
+  <div>
+    <div class=""logo"">SPARC <span>| Laudo Técnico de Link (Acesso Direto)</span></div>
+    <div style=""font-size: 11px; color: #64748B; margin-top: 2px;"">Homologação de Entrega em Modo Access (EDD/GPON) — Claro / Embratel</div>
+  </div>
+  <div>
+    <div class=""badge-status"">{statusBadge}</div>
+  </div>
+</div>
+
+<div class=""grid-2"">
+  <div class=""card"">
+    <div class=""card-title"">Identificação do Circuito & Cliente</div>
+    <div class=""field-row""><span class=""field-label"">Cliente:</span><span class=""field-val"">{cliente}</span></div>
+    <div class=""field-row""><span class=""field-label"">Designação IP:</span><span class=""field-val"">{designacao}</span></div>
+    <div class=""field-row""><span class=""field-label"">Número OTS:</span><span class=""field-val"">{ots}</span></div>
+    <div class=""field-row""><span class=""field-label"">PE Router:</span><span class=""field-val"">{pe}</span></div>
+  </div>
+
+  <div class=""card"">
+    <div class=""card-title"">Parâmetros de Teste & Conexão Física</div>
+    <div class=""field-row""><span class=""field-label"">Modo de Entrega:</span><span class=""field-val"">Acesso Direto (Sem Roteador)</span></div>
+    <div class=""field-row""><span class=""field-label"">Interface do Notebook:</span><span class=""field-val"">{adapterName}</span></div>
+    <div class=""field-row""><span class=""field-label"">Data / Hora:</span><span class=""field-val"">{d.DataHora:dd/MM/yyyy HH:mm:ss}</span></div>
+    <div class=""field-row""><span class=""field-label"">CIR Nominal (Banda):</span><span class=""field-val"">{(d.BandaMbpsNominal.HasValue ? $"{d.BandaMbpsNominal.Value:F0} Mbps" : "Não informado")}</span></div>
+  </div>
+</div>
+
+<div class=""section-title"">1. Endereçamento WAN Direto (Placa do Notebook)</div>
+<div class=""grid-2"">
+  <div class=""card"">
+    <div class=""card-title"">Endereço IP Atribuído ao Notebook</div>
+    <div class=""field-row""><span class=""field-label"">IP WAN:</span><span class=""field-val"">{d.WanIp}/{d.WanCidr}</span></div>
+    <div class=""field-row""><span class=""field-label"">Máscara:</span><span class=""field-val"">{wanMask}</span></div>
+  </div>
+
+  <div class=""card"">
+    <div class=""card-title"">Gateway da Operadora (PE) & DNS</div>
+    <div class=""field-row""><span class=""field-label"">Gateway PE:</span><span class=""field-val"">{wanGw}</span></div>
+    <div class=""field-row""><span class=""field-label"">DNS Primário / Secundário:</span><span class=""field-val"">1.1.1.1 / 8.8.8.8</span></div>
+  </div>
+</div>
+
+<div class=""section-title"">2. Resultados das Aferições de Conectividade e Banda</div>
+<table>
+  <thead>
+    <tr>
+      <th>Teste / Destino</th>
+      <th>Endereço Alvo</th>
+      <th>Métricas Obtidas (RTT / Perda / Jitter)</th>
+      <th>Resultado</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><b>ICMP Gateway PE (Operadora)</b></td>
+      <td>{wanGw}</td>
+      <td>RTT Médio: {rttPe} | Perda: {lossPe:F0}%</td>
+      <td>{peBadge}</td>
+    </tr>
+    <tr>
+      <td><b>ICMP Google DNS</b></td>
+      <td>8.8.8.8</td>
+      <td>RTT Médio: {rttGoogle} | Perda: {lossGoogle:F0}%</td>
+      <td>{googleBadge}</td>
+    </tr>
+    <tr>
+      <td><b>ICMP Cloudflare DNS</b></td>
+      <td>1.1.1.1</td>
+      <td>RTT Médio: {rttCf} | Perda: {lossCf:F0}%</td>
+      <td>{cfBadge}</td>
+    </tr>
+    <tr>
+      <td><b>Teste de Largura de Banda (Speedtest)</b></td>
+      <td>Internet / CDN Pública</td>
+      <td>Velocidade Medida: {bandSpeed}</td>
+      <td>{bandBadge}</td>
+    </tr>
+  </tbody>
+</table>");
+
+        if (d.DiagnosticAlerts != null && d.DiagnosticAlerts.Count > 0)
+        {
+            sb.Append(@"<div class=""diag-box""><div class=""diag-title"">⚠️ Observações Técnicas & Alertas</div>");
+            foreach (var diag in d.DiagnosticAlerts)
+            {
+                sb.Append($@"<div class=""diag-item"">• {diag.Replace("\n", "<br>• ")}</div>");
+            }
+            sb.Append("</div>");
+        }
+
+        sb.Append(@"
+<div class=""footer-sign"">
+  <div>
+    <div class=""sign-line"">TÉCNICO RESPONSÁVEL / HOMOLOGAÇÃO</div>
+  </div>
+  <div>
+    <div class=""sign-line"">RECEBIDO / CLIENTE OU FISCAL CLARO</div>
   </div>
 </div>
 

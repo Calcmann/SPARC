@@ -316,9 +316,10 @@ public sealed class HpeSaipConfigurator
         string wanInterface = "GigabitEthernet0/0",
         string lanInterface = "GigabitEthernet0/1",
         bool isComware5 = false,
-        bool incluirBldClaro = true,
+        bool? incluirBldClaro = null,
         bool incluirNatLab = false)
     {
+        bool bld = incluirBldClaro ?? (circuit.TipoServico == SaipServiceType.BusinessLinkDirect);
         var hostname = SanitizeHostname(circuit.DesignacaoIp ?? circuit.NumeroOts, "ROUTER-CPE");
         var wanDesc = SanitizeDescription(circuit.DesignacaoIp ?? circuit.NumeroOts ?? "LINK");
         var lanDesc = SanitizeDescription(circuit.ClienteRazaoSocial);
@@ -352,7 +353,7 @@ public sealed class HpeSaipConfigurator
             cmds.Add($"ip route-static 0.0.0.0 0.0.0.0 {circuit.WanGateway}");
         }
 
-        if (incluirBldClaro)
+        if (bld)
         {
             // Banners Oficiais Claro Brasil S.A.
             cmds.AddRange(new[]
@@ -480,7 +481,7 @@ public sealed class HpeSaipConfigurator
                 "authentication-mode scheme",
                 "user privilege level 3",
                 "protocol inbound telnet",
-                incluirBldClaro ? "acl 3087 inbound" : "quit",
+                bld ? "acl 3087 inbound" : "quit",
                 "quit",
             });
         }
@@ -508,7 +509,7 @@ public sealed class HpeSaipConfigurator
                 "authentication-mode scheme",
                 "user-role network-admin",
                 "protocol inbound telnet",
-                incluirBldClaro ? "acl 3087 inbound" : "quit",
+                bld ? "acl 3087 inbound" : "quit",
                 "quit",
             });
         }
@@ -851,33 +852,43 @@ public sealed class HpeSaipConfigurator
             await ProgressAsync("[OK] Provisionamento HPE concluído com sucesso!");
         }
 
-        // 12. Ativação do pool DHCP temporário na RAM (HPE Comware) para os testes automáticos do Android / PC
+        // 12. Ativação do pool DHCP temporário na RAM (HPE Comware) para os testes automáticos / Bancada
+        await AtivarDhcpTemporarioAsync(session, circuit, msg => { _ = ProgressAsync(msg); }, cancellationToken);
+
+        return report;
+    }
+
+    /// <summary>
+    /// Ativa sob demanda o servidor DHCP temporário na RAM (HPE Comware) em ~3 segundos.
+    /// </summary>
+    public static async Task AtivarDhcpTemporarioAsync(DeviceSession session, SaipCircuitData circuit, Action<string>? logger = null, CancellationToken cancellationToken = default)
+    {
         try
         {
-            await ProgressAsync("[*] Habilitando servidor DHCP temporário na LAN HPE Comware para validação automática...");
+            logger?.Invoke("[*] Ativando servidor DHCP temporário na LAN HPE Comware (running-config)...");
+            var lanIp = !string.IsNullOrWhiteSpace(circuit.LanIp) ? circuit.LanIp : "192.168.1.1";
+            var lanMask = !string.IsNullOrWhiteSpace(circuit.LanSubnetMask) ? circuit.LanSubnetMask : "255.255.255.0";
             var lanNet = string.IsNullOrWhiteSpace(circuit.LanBlockNetwork)
-                ? IpCalculator.CalculateNetworkAddress(circuit.LanIp, circuit.LanCidr)
+                ? (!string.IsNullOrWhiteSpace(circuit.LanIp) ? IpCalculator.CalculateNetworkAddress(circuit.LanIp, circuit.LanCidr) : "192.168.1.0")
                 : circuit.LanBlockNetwork;
 
-            await EnsureSystemViewAsync(session, _progress, cancellationToken);
+            await EnsureSystemViewAsync(session, logger != null ? msg => { logger(msg); return Task.CompletedTask; } : null, cancellationToken);
             await session.SendCommandAsync("dhcp enable", TimeSpan.FromSeconds(5), cancellationToken);
             await session.SendCommandAsync("dhcp server ip-pool SPARC_LAN", TimeSpan.FromSeconds(5), cancellationToken);
-            await session.SendCommandAsync($"gateway-list {circuit.LanIp}", TimeSpan.FromSeconds(5), cancellationToken);
-            await session.SendCommandAsync($"network {lanNet} mask {circuit.LanSubnetMask}", TimeSpan.FromSeconds(5), cancellationToken);
-            await session.SendCommandAsync($"forbidden-ip {circuit.LanIp}", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync($"gateway-list {lanIp}", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync($"network {lanNet} mask {lanMask}", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync($"forbidden-ip {lanIp}", TimeSpan.FromSeconds(5), cancellationToken);
             await session.SendCommandAsync("dns-list 1.1.1.1 8.8.8.8", TimeSpan.FromSeconds(5), cancellationToken);
             await session.SendCommandAsync("expired day 0 hour 2", TimeSpan.FromSeconds(5), cancellationToken);
             await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
             await session.SendCommandAsync("return", TimeSpan.FromSeconds(3), cancellationToken);
 
-            await ProgressAsync("[✓] Servidor DHCP temporário ativo na RAM (HPE Comware). Será removido ao final dos testes.");
+            logger?.Invoke("[✓] Servidor DHCP temporário ativo na RAM (HPE Comware)! O smartphone/instrumento receberá IP em instantes.");
         }
         catch (Exception ex)
         {
-            await ProgressAsync($"[AVISO] Falha ao ativar DHCP temporário HPE: {ex.Message}. Teste seguirá.");
+            logger?.Invoke($"[AVISO] Falha ao ativar DHCP temporário HPE: {ex.Message}");
         }
-
-        return report;
     }
 
     /// <summary>

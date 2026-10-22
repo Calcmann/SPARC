@@ -185,10 +185,12 @@ public sealed class FortiOsSaipConfigurator
         string adminPassword = "CQMR",
         bool incluirPolicyNat = true,
         bool incluirAdmin = false,
-        bool incluirBldClaro = true,
+        bool? incluirBldClaro = null,
         bool usarDhcpWan = false)
     {
         ArgumentNullException.ThrowIfNull(circuit);
+
+        bool bld = incluirBldClaro ?? (circuit.TipoServico == SaipServiceType.BusinessLinkDirect);
 
         var hostname = SanitizeHostname(circuit.DesignacaoIp ?? circuit.NumeroOts, "ROUTER-CPE");
         var wanAlias = SanitizeAlias($"WAN_EBT_{circuit.DesignacaoIp ?? circuit.NumeroOts ?? "LINK"}");
@@ -197,7 +199,7 @@ public sealed class FortiOsSaipConfigurator
 
         var cmds = new List<string>();
 
-        if (incluirBldClaro)
+        if (bld)
         {
             // Hostname e serviços globais
             cmds.AddRange(new[]
@@ -275,7 +277,7 @@ public sealed class FortiOsSaipConfigurator
             });
         }
 
-        if (incluirBldClaro)
+        if (bld)
         {
             // NTP Oficial Claro
             cmds.AddRange(new[]
@@ -393,7 +395,7 @@ public sealed class FortiOsSaipConfigurator
                 $"set password {adminPassword}",
                 "set accprofile super_admin",
             };
-            if (incluirBldClaro)
+            if (bld)
             {
                 adminList.Add("set trusthost1 200.255.156.192 255.255.255.192");
                 if (!string.IsNullOrWhiteSpace(circuit.WanGateway))
@@ -538,6 +540,16 @@ public sealed class FortiOsSaipConfigurator
         await CleanupPreviousConfigAsync(session, wanInterface, lanInterface, cancellationToken);
 
         // 4. Envia bloco FortiOS linha a linha (cadência 200ms, como nos perfis existentes).
+        bool bld = circuit.TipoServico == SaipServiceType.BusinessLinkDirect;
+        if (!bld)
+        {
+            await ProgressAsync($"[*] Serviço {circuit.TipoServicoDescricao}: aplicando configurações básicas para subir link e disponibilizar acesso remoto.");
+        }
+        else
+        {
+            await ProgressAsync("[*] Serviço BLD Internet: aplicando template completo de produção Claro (NTP, SNMP, TACACS, Shaper).");
+        }
+
         var commands = GenerateCommands(circuit, wanInterface, lanInterface, adminUser, adminPassword, aplicarNat, usarDhcpWan: aplicarNat);
         await ProgressAsync("[*] Aplicando comandos FortiOS (cadência: 200ms por linha)...");
         foreach (var cmd in commands)
@@ -569,10 +581,20 @@ public sealed class FortiOsSaipConfigurator
         }
         catch { }
 
-        // 5. Ativação do pool DHCP temporário (ID 999) na LAN FortiGate para validação automática do Android / PC
+        // 5. Ativação do pool DHCP temporário (ID 999) na LAN FortiGate para validação automática do Android / PC / Bancada
+        await AtivarDhcpTemporarioAsync(session, circuit, lanInterface, msg => { _ = ProgressAsync(msg); }, cancellationToken);
+
+        await ProgressAsync("[OK] PROVISIONAMENTO FORTIGATE 40F CONCLUIDO (persistencia automatica via 'end').");
+    }
+
+    /// <summary>
+    /// Ativa sob demanda o servidor DHCP temporário (ID 999) na LAN FortiGate em ~3 segundos.
+    /// </summary>
+    public static async Task AtivarDhcpTemporarioAsync(DeviceSession session, SaipCircuitData circuit, string lanInterface = "internal", Action<string>? logger = null, CancellationToken cancellationToken = default)
+    {
         try
         {
-            await ProgressAsync("[*] Habilitando servidor DHCP temporário na LAN FortiGate (ID 999) para validação automática...");
+            logger?.Invoke("[*] Habilitando servidor DHCP temporário na LAN FortiGate (ID 999)...");
             var hostLan = !string.IsNullOrWhiteSpace(circuit.HostLanIp)
                 ? circuit.HostLanIp
                 : IpCalculator.CalculateHostLanIp(circuit.LanIp, circuit.LanCidr);
@@ -601,14 +623,12 @@ public sealed class FortiOsSaipConfigurator
                 await Task.Delay(100, cancellationToken);
             }
             await EnsureRootShellAsync(session, cancellationToken);
-            await ProgressAsync("[✓] Servidor DHCP temporário ativo na LAN FortiGate (ID 999). Será removido ao final dos testes.");
+            logger?.Invoke("[✓] Servidor DHCP temporário ativo na LAN FortiGate (ID 999)! O smartphone/instrumento receberá IP em instantes.");
         }
         catch (Exception ex)
         {
-            await ProgressAsync($"[AVISO] Falha ao ativar DHCP temporário FortiGate: {ex.Message}. Teste seguirá.");
+            logger?.Invoke($"[AVISO] Falha ao ativar DHCP temporário FortiGate: {ex.Message}");
         }
-
-        await ProgressAsync("[OK] PROVISIONAMENTO FORTIGATE 40F CONCLUIDO (persistencia automatica via 'end').");
     }
 
     /// <summary>

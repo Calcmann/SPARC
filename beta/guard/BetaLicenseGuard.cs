@@ -29,13 +29,13 @@ internal static class BetaLicenseGuard
             var saved = BetaLicenseStore.Load();
 
             // 1. CONSULTA PRIORITÁRIA DA LICENÇA ONLINE NA INICIALIZAÇÃO
-            // Se estiver online com acesso à internet, sincroniza status com a nuvem (revogação ou prorrogação de prazo)
+            // Se estiver online com acesso à internet, sincroniza status com a nuvem (revogação, auditoria de cadastro ou prorrogação)
             try
             {
                 var onlineTask = Task.Run(() => CheckOnlineStatusSync(machine, saved));
-                if (onlineTask.Wait(TimeSpan.FromSeconds(4)))
+                if (onlineTask.Wait(TimeSpan.FromSeconds(5)))
                 {
-                    var (isOnline, isRevoked, newToken) = onlineTask.Result;
+                    var (isOnline, isRegistered, isRevoked, newToken) = onlineTask.Result;
                     if (isOnline)
                     {
                         if (isRevoked)
@@ -45,6 +45,30 @@ internal static class BetaLicenseGuard
                                 "Esta cópia do SPARC foi suspensa ou revogada pelo Administrador corporativo.\n\nEntre em contato com a supervisão para regularização do acesso.",
                                 "SPARC - Acesso Revogado", MessageBoxButton.OK, MessageBoxImage.Stop);
                             return false;
+                        }
+
+                        if (!isRegistered)
+                        {
+                            // AUDITORIA DE CÓPIA: Máquina online porém NÃO cadastrada no banco de dados corporativo!
+                            try { if (File.Exists(BetaConfig.LicensePath)) File.Delete(BetaConfig.LicensePath); } catch { }
+                            MessageBox.Show(
+                                "Esta cópia do SPARC não possui registro ativo no banco de dados corporativo.\n\n" +
+                                "Para continuar utilizando o sistema, é obrigatório solicitar o cadastro de identificação do técnico.",
+                                "SPARC - Identificação Obrigatória", MessageBoxButton.OK, MessageBoxImage.Warning);
+
+                            var prevM = app.ShutdownMode;
+                            app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                            try
+                            {
+                                var dlg = new ActivationWindow(
+                                    "Cópia não localizada no banco de dados corporativo. Cadastre-se na aba 'Cadastro & Ativação Online' para liberação do acesso.",
+                                    machine, BetaConfig.ExpiresUtc);
+                                return dlg.ShowDialog() == true;
+                            }
+                            finally
+                            {
+                                app.ShutdownMode = prevM;
+                            }
                         }
 
                         // Se o administrador prorrogou ou atualizou a chave online, baixa e grava localmente
@@ -102,6 +126,7 @@ internal static class BetaLicenseGuard
     /// Verificação em tempo de execução chamada durante verificação de atualizações online
     /// ou rotina periódica em segundo plano no Windows.
     /// Se a cópia foi revogada ou expirou na nuvem, bloqueia imediatamente.
+    /// Se a cópia não está registrada no banco de dados, solicita cadastro ao usuário.
     /// Se foi prorrogada ou liberada, atualiza a licença local silenciosamente.
     /// </summary>
     public static async Task<(bool Allowed, bool Revoked, bool Expired, string Message)> CheckRuntimeLicenseOnlineAsync()
@@ -112,7 +137,7 @@ internal static class BetaLicenseGuard
             var saved = BetaLicenseStore.Load();
             var now = BetaClock.EffectiveUtcNow();
 
-            var (isOnline, isRevoked, newToken) = await Task.Run(() => CheckOnlineStatusSync(machine, saved)).ConfigureAwait(false);
+            var (isOnline, isRegistered, isRevoked, newToken) = await Task.Run(() => CheckOnlineStatusSync(machine, saved)).ConfigureAwait(false);
             if (isOnline)
             {
                 if (isRevoked)
@@ -128,6 +153,25 @@ internal static class BetaLicenseGuard
                         Application.Current.Shutdown();
                     });
                     return (false, true, false, "Licença revogada pelo Administrador.");
+                }
+
+                if (!isRegistered)
+                {
+                    try { if (File.Exists(BetaConfig.LicensePath)) File.Delete(BetaConfig.LicensePath); } catch { }
+                    await Application.Current.Dispatcher.InvokeAsync(() =>
+                    {
+                        MessageBox.Show(
+                            "Esta cópia do SPARC não está registrada no banco de dados corporativo de técnicos autorizados.\n\nPor favor, realize o seu cadastro para solicitar a liberação de acesso.",
+                            "SPARC - Cadastro de Cópia Obrigatório", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        var dlg = new ActivationWindow(
+                            "Cópia não registrada no banco de dados corporativo. Cadastre seus dados para liberação de acesso.",
+                            machine, BetaConfig.ExpiresUtc);
+                        if (dlg.ShowDialog() != true)
+                        {
+                            Application.Current.Shutdown();
+                        }
+                    });
+                    return (false, false, false, "Cópia não registrada no banco de dados.");
                 }
 
                 if (!string.IsNullOrWhiteSpace(newToken))
@@ -174,11 +218,11 @@ internal static class BetaLicenseGuard
         }
     }
 
-    private static (bool IsOnline, bool IsRevoked, string? NewToken) CheckOnlineStatusSync(MachineIdentity machine, string? currentToken)
+    private static (bool IsOnline, bool IsRegistered, bool IsRevoked, string? NewToken) CheckOnlineStatusSync(MachineIdentity machine, string? currentToken)
     {
         try
         {
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(4) };
             client.DefaultRequestHeaders.Add("User-Agent", "SPARC-Beta");
             var token = !string.IsNullOrWhiteSpace(BetaConfig.GitHubReadOnlyToken) && !BetaConfig.GitHubReadOnlyToken.StartsWith("%%BETA_")
                 ? BetaConfig.GitHubReadOnlyToken
@@ -214,10 +258,10 @@ internal static class BetaLicenseGuard
                 catch { }
             }
 
-            // 2. Fallback via raw URL
+            // 2. Fallback via raw URL com bypass de CDN cache
             if (string.IsNullOrEmpty(json))
             {
-                var rawUrl = "https://raw.githubusercontent.com/Calcmann/repo/main/devices.json";
+                var rawUrl = $"https://raw.githubusercontent.com/Calcmann/repo/main/devices.json?t={DateTime.UtcNow.Ticks}";
                 using var req = new HttpRequestMessage(HttpMethod.Get, rawUrl);
                 if (!string.IsNullOrWhiteSpace(token))
                 {
@@ -230,38 +274,39 @@ internal static class BetaLicenseGuard
                 }
             }
 
-            if (string.IsNullOrEmpty(json)) return (false, false, null);
+            if (string.IsNullOrEmpty(json)) return (false, false, false, null);
 
             using var devicesDoc = JsonDocument.Parse(json);
-            if (devicesDoc.RootElement.ValueKind != JsonValueKind.Array) return (true, false, null);
+            if (devicesDoc.RootElement.ValueKind != JsonValueKind.Array) return (true, false, false, null);
 
             foreach (var item in devicesDoc.RootElement.EnumerateArray())
             {
                 var g = item.TryGetProperty("MachineGuid", out var gp) ? gp.GetString() : null;
                 var f = item.TryGetProperty("MachineFingerprint", out var fp) ? fp.GetString() : null;
-                if (string.Equals(g, machine.MachineGuid, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(f, machine.Fingerprint, StringComparison.OrdinalIgnoreCase))
+                if ((!string.IsNullOrWhiteSpace(g) && string.Equals(g, machine.MachineGuid, StringComparison.OrdinalIgnoreCase)) ||
+                    (!string.IsNullOrWhiteSpace(f) && string.Equals(f, machine.Fingerprint, StringComparison.OrdinalIgnoreCase)))
                 {
                     var status = item.TryGetProperty("Status", out var sp) ? sp.GetString() : null;
                     if (string.Equals(status, "Revoked", StringComparison.OrdinalIgnoreCase))
                     {
-                        return (true, true, null);
+                        return (true, true, true, null);
                     }
 
                     var authorizedToken = item.TryGetProperty("AuthorizedToken", out var tp) ? tp.GetString() : null;
                     if (!string.IsNullOrWhiteSpace(authorizedToken) && !authorizedToken.Equals(currentToken, StringComparison.Ordinal))
                     {
-                        return (true, false, authorizedToken);
+                        return (true, true, false, authorizedToken);
                     }
-                    return (true, false, null);
+                    return (true, true, false, null);
                 }
             }
 
-            return (true, false, null);
+            // Conectou ao banco de dados com sucesso, mas a máquina NÃO foi encontrada na base de dados!
+            return (true, false, false, null);
         }
         catch
         {
-            return (false, false, null);
+            return (false, false, false, null);
         }
     }
 }

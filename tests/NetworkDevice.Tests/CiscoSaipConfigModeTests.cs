@@ -231,5 +231,79 @@ public class CiscoSaipConfigModeTests
         Assert.Contains(fake.Commands, c => c == "no ip dhcp excluded-address 192.168.10.1");
         Assert.Contains(fake.Commands, c => c == "write memory");
     }
+
+    [Theory]
+    [InlineData(SaipServiceType.IpVpn)]
+    [InlineData(SaipServiceType.VozDigitalE1)]
+    [InlineData(SaipServiceType.VozSipIp)]
+    public void GenerateCommands_ParaMplsEVoz_UsaConfiguracaoBasicaComAcessoTelnetLocalSemBld(SaipServiceType tipoServico)
+    {
+        var circuit = new SaipCircuitData
+        {
+            TipoServico = tipoServico,
+            DesignacaoIp = "CIRCUITO-TESTE-01",
+            WanIp = "10.10.10.2",
+            WanSubnetMask = "255.255.255.252",
+            WanGateway = "10.10.10.1",
+            WanCidr = 30,
+            LanIp = "192.168.1.1",
+            LanSubnetMask = "255.255.255.0",
+            LanCidr = 24
+        };
+
+        var cmds = CiscoSaipConfigurator.GenerateCommands(circuit, "GigabitEthernet 0/0", "GigabitEthernet 0/1");
+
+        // 1. Sobe o link: WAN, LAN e Rota
+        Assert.Contains(cmds, c => c == "interface GigabitEthernet 0/0");
+        Assert.Contains(cmds, c => c == " ip address 10.10.10.2 255.255.255.252");
+        Assert.Contains(cmds, c => c == "interface GigabitEthernet 0/1");
+        Assert.Contains(cmds, c => c == " ip address 192.168.1.1 255.255.255.0");
+        Assert.Contains(cmds, c => c == "ip route 0.0.0.0 0.0.0.0 10.10.10.1");
+
+        // 2. Disponibiliza acesso remoto via Telnet (usuário privilege 15, login local, sem ACL de bloqueio)
+        Assert.Contains(cmds, c => c == "username EBT privilege 15 secret CQMR");
+        Assert.Contains(cmds, c => c == "enable secret PRO1AN");
+        Assert.Contains(cmds, c => c == " transport input telnet ssh");
+        Assert.Contains(cmds, c => c == " login local");
+        Assert.Contains(cmds, c => c == "write memory");
+
+        // 3. Omite componentes pesados específicos do BLD (TACACS, QoS Shaping, NTP, SNMP, ACLs restritivas)
+        Assert.DoesNotContain(cmds, c => c.StartsWith("aaa new-model"));
+        Assert.DoesNotContain(cmds, c => c.Contains("TACACS-SERVER-CLARO"));
+        Assert.DoesNotContain(cmds, c => c.Contains("policy-map SHAPE_OUT"));
+        Assert.DoesNotContain(cmds, c => c.Contains("service-policy output SHAPE_OUT"));
+        Assert.DoesNotContain(cmds, c => c.Contains("BLOQUEIO_TELNET"));
+        Assert.DoesNotContain(cmds, c => c.StartsWith("ntp server"));
+        Assert.DoesNotContain(cmds, c => c.StartsWith("snmp-server"));
+    }
+
+    [Fact]
+    public void GenerateCommands_ParaBLD_MantemTemplateCompletoProducaoClaro()
+    {
+        var circuit = new SaipCircuitData
+        {
+            TipoServico = SaipServiceType.BusinessLinkDirect,
+            DesignacaoIp = "BLD-PRODUCAO-01",
+            WanIp = "200.200.10.2",
+            WanSubnetMask = "255.255.255.252",
+            WanGateway = "200.200.10.1",
+            WanCidr = 30,
+            LanIp = "201.201.10.1",
+            LanSubnetMask = "255.255.255.248",
+            LanCidr = 29
+        };
+
+        var cmds = CiscoSaipConfigurator.GenerateCommands(circuit, "GigabitEthernet 0/0", "GigabitEthernet 0/1");
+
+        // BLD completo deve conter TACACS+, QoS Shaping, NTP, SNMP e ACL BLOQUEIO_TELNET
+        Assert.Contains(cmds, c => c == "aaa new-model");
+        Assert.Contains(cmds, c => c.Contains("TACACS-SERVER-CLARO"));
+        Assert.Contains(cmds, c => c.Contains("policy-map SHAPE_OUT"));
+        Assert.Contains(cmds, c => c.Contains("service-policy output SHAPE_OUT"));
+        Assert.Contains(cmds, c => c.Contains("BLOQUEIO_TELNET"));
+        Assert.Contains(cmds, c => c.StartsWith("ntp server"));
+        Assert.Contains(cmds, c => c.StartsWith("snmp-server"));
+        Assert.Contains(cmds, c => c.Contains("access-class BLOQUEIO_TELNET in"));
+    }
 }
 

@@ -338,4 +338,197 @@ Banda	20000
         Assert.Contains(" description SPO-IP-99123", cmds);
         Assert.Contains(" description * LAN *", cmds);
     }
+
+    [Fact]
+    public void ParseText_TroncoSip_PabxIp_DetectaVozSipComWanELan()
+    {
+        var fichaPdf1 = @"
+PRODUTO Tronco SIP - VIP SIP
+RAZÃO SOCIAL COMERCIAL PEREIRA DE ALIMENTOS LTDA
+DESIGNAÇÃO IP FNS/VL/4832032150
+ESTAÇÃO DE ACESSO FNS EST
+NÚMERO OTS 19189/2025-2
+TIPO DE ACESSO: FO EDD
+NOME DO SBC: hsbc01/02.fnspo
+IP WAN: 189.042.012.014
+IP PABX: 189.042.012.018
+SOFTSWITCH: SPO MGC IG2
+IP SIP ACESSO: 189.52.73.100
+IP SOFTSWITCH: 10.252.82.7
+IP SIP SOFTSWITCH: 10.5.33.233
+SINALIZAÇÃO: PABX IP
+FAIXA DE RAMAIS: 4832032150
+IP SERIAL USUÁRIO (IPV4) 189.042.012.014/30
+BLOCOS IPV4 189.042.012.016/30
+BANDA 1500
+";
+        var (ok, motivo) = SaipParser.Validar(fichaPdf1);
+        Assert.True(ok, motivo);
+
+        var data = SaipParser.ParseText(fichaPdf1);
+        Assert.Equal(SaipServiceType.VozSipIp, data.TipoServico);
+        Assert.False(data.IsLanArbitrada);
+        Assert.True(data.IsCircuitoPrivadoSemInternet);
+        Assert.True(data.IsServicoVoz);
+        Assert.Equal("10.252.82.7", data.MediaGatewayIp);
+        Assert.Equal("189.42.12.14", data.WanIp);
+        Assert.Equal("189.42.12.13", data.WanGateway);
+        Assert.Equal("189.42.12.17", data.LanIp);
+        Assert.Equal("189.42.12.18", data.HostLanIp);
+        Assert.Equal("189.42.12.18", data.IpPabx);
+        Assert.Equal("PABX IP", data.Sinalizacao);
+        Assert.Equal("COMERCIAL PEREIRA DE ALIMENTOS LTDA", data.ClienteRazaoSocial);
+    }
+
+    [Fact]
+    public void ParseText_TroncoDigital_R2D_E1_DetectaVozDigitalEArbitraLan()
+    {
+        var fichaPdf2 = @"
+PRODUTO Tronco SIP - VIP SIP
+RAZÃO SOCIAL COSTAO DO SANTINHO TURISMO E LAZER S.A.
+DESIGNAÇÃO IP FNS/VL/4832156650
+ESTAÇÃO DE ACESSO FNS PO
+NÚMERO OTS 65804/2026-1
+TIPO DE ACESSO: GPON
+VLAN: 22
+NOME DO SBC: rsbca1/a2.ctamr
+IP WAN: 200.247.157.106
+IP PABX: 200.247.251.170
+SOFTSWITCH: SPO MGC IG2
+IP SIP ACESSO: 200.209.124.213
+IP SOFTSWITCH: 10.252.82.7
+IP SIP SOFTSWITCH: 10.5.47.45
+SINALIZAÇÃO: PABX TDM.R2D
+FAIXA DE RAMAIS: 4832156650
+IP SERIAL USUÁRIO (IPV4) 200.247.157.106/30
+BLOCOS IPV4 -/-
+BANDA 1500
+";
+        var (ok, motivo) = SaipParser.Validar(fichaPdf2);
+        Assert.True(ok, motivo);
+
+        var data = SaipParser.ParseText(fichaPdf2);
+        Assert.Equal(SaipServiceType.VozDigitalE1, data.TipoServico);
+        Assert.True(data.IsLanArbitrada);
+        Assert.True(data.IsCircuitoPrivadoSemInternet);
+        Assert.Equal("200.247.157.106", data.WanIp);
+        Assert.Equal("200.247.157.105", data.WanGateway);
+        Assert.Equal("192.168.1.1", data.LanIp);
+        Assert.Equal("192.168.1.2", data.HostLanIp);
+        Assert.Equal("200.247.251.170", data.IpPabx);
+        Assert.Equal("PABX TDM.R2D", data.Sinalizacao);
+        Assert.Equal("COSTAO DO SANTINHO TURISMO E LAZER S.A", data.ClienteRazaoSocial);
+    }
+
+    [Fact]
+    public void ParseText_TroncoDigital_ISDN_E1_DetectaVozDigitalEArbitraLan()
+    {
+        var fichaIsdn = @"
+PRODUTO Tronco Digital E1
+RAZÃO SOCIAL HOSPITAL E MATERNIDADE SANTA HELENA S/A
+DESIGNAÇÃO IP SPO/E1/08001
+NÚMERO OTS 99182/2026-1
+IP WAN: 201.080.050.010
+SINALIZAÇÃO: ISDN
+IP SERIAL USUÁRIO (IPV4) 201.080.050.010/30
+BLOCOS IPV4 -/-
+";
+        var (ok, motivo) = SaipParser.Validar(fichaIsdn);
+        Assert.True(ok, motivo);
+
+        var data = SaipParser.ParseText(fichaIsdn);
+        Assert.Equal(SaipServiceType.VozDigitalE1, data.TipoServico);
+        Assert.True(data.IsLanArbitrada);
+        Assert.True(data.IsCircuitoPrivadoSemInternet);
+        Assert.Equal("192.168.1.1", data.LanIp);
+        Assert.Equal("192.168.1.2", data.HostLanIp);
+    }
+
+    [Fact]
+    public void MediaGatewayIp_ResolucaoHierarquica_FallbackCorreto()
+    {
+        // 1. IpSoftswitch prioritário
+        var c1 = new SaipCircuitData
+        {
+            TipoServico = SaipServiceType.VozSipIp,
+            IpSoftswitch = "10.252.82.7",
+            IpSipSoftswitch = "10.5.33.233",
+            IpSipAcesso = "189.52.73.100",
+            IpPabx = "189.42.12.18",
+            WanGateway = "189.42.12.13"
+        };
+        Assert.Equal("10.252.82.7", c1.MediaGatewayIp);
+        Assert.True(c1.IsServicoVoz);
+        Assert.False(c1.IsServicoMpls);
+        Assert.False(c1.IsServicoInternet);
+
+        // 2. Fallback para IpSipSoftswitch
+        var c2 = new SaipCircuitData
+        {
+            TipoServico = SaipServiceType.VozSipIp,
+            IpSipSoftswitch = "10.5.33.233",
+            IpSipAcesso = "189.52.73.100",
+            IpPabx = "189.42.12.18",
+            WanGateway = "189.42.12.13"
+        };
+        Assert.Equal("10.5.33.233", c2.MediaGatewayIp);
+
+        // 3. Fallback para IpSipAcesso
+        var c3 = new SaipCircuitData
+        {
+            TipoServico = SaipServiceType.VozSipIp,
+            IpSipAcesso = "189.52.73.100",
+            IpPabx = "189.42.12.18",
+            WanGateway = "189.42.12.13"
+        };
+        Assert.Equal("189.52.73.100", c3.MediaGatewayIp);
+
+        // 4. Fallback para IpPabx
+        var c4 = new SaipCircuitData
+        {
+            TipoServico = SaipServiceType.VozSipIp,
+            IpPabx = "189.42.12.18",
+            WanGateway = "189.42.12.13"
+        };
+        Assert.Equal("189.42.12.18", c4.MediaGatewayIp);
+
+        // 5. Fallback para WanGateway
+        var c5 = new SaipCircuitData
+        {
+            TipoServico = SaipServiceType.VozDigitalE1,
+            WanGateway = "189.42.12.13"
+        };
+        Assert.Equal("189.42.12.13", c5.MediaGatewayIp);
+
+        // MPLS
+        var cMpls = new SaipCircuitData
+        {
+            TipoServico = SaipServiceType.IpVpn,
+            PeLoopbackIp = "10.200.0.1",
+            WanGateway = "201.90.204.21"
+        };
+        Assert.True(cMpls.IsServicoMpls);
+        Assert.False(cMpls.IsServicoVoz);
+        Assert.False(cMpls.IsServicoInternet);
+    }
+
+    [Fact]
+    public void DetectarTipoServico_DeteccaoAutomatica_RobustezTotal()
+    {
+        // 1. BLD padrão
+        var bldText = "RAZAO SOCIAL TESTE\nIP SERIAL USUARIO 200.1.1.2/30\nBLOCOS IPV4 200.1.2.1/29\nPRODUTO Business Link Direct";
+        Assert.Equal(SaipServiceType.BusinessLinkDirect, SaipParser.DetectarTipoServico(bldText));
+
+        // 2. MPLS / IP VPN via texto mesmo sem prefixo Produto
+        var mplsText = "RAZAO SOCIAL EMPRESA X\nCIRCUITO CONECTIVIDADE IP VPN CORPORATIVA\nIP SERIAL 201.10.10.2/30\nPE ROUTER SPO-PE01";
+        Assert.Equal(SaipServiceType.IpVpn, SaipParser.DetectarTipoServico(mplsText));
+
+        // 3. Tronco SIP detectado por campos de voz (Softswitch, PABX IP) sem linha de produto
+        var vozSipText = "CLIENTE HOSPITAL\nIP SERIAL USUARIO 189.42.12.14/30\nIP SOFTSWITCH: 10.252.82.7\nIP PABX: 189.42.12.18\nFAIXA DE RAMAIS: 3000-3050";
+        Assert.Equal(SaipServiceType.VozSipIp, SaipParser.DetectarTipoServico(vozSipText));
+
+        // 4. Tronco Digital E1 detectado por sinalizacao R2D
+        var vozE1Text = "CLIENTE BANCO Y\nIP SERIAL USUARIO 201.80.50.10/30\nSINALIZACAO: PABX TDM.R2D\nE1 DIGITAL CAS";
+        Assert.Equal(SaipServiceType.VozDigitalE1, SaipParser.DetectarTipoServico(vozE1Text));
+    }
 }

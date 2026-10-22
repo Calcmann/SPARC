@@ -8,6 +8,7 @@ public partial class AppShell : Shell
 		Routing.RegisterRoute("RecoveryPage", typeof(Views.RecoveryPage));
 		Routing.RegisterRoute("ActivationPage", typeof(Views.ActivationPage));
 		Routing.RegisterRoute("ReportsHistoryPage", typeof(Views.ReportsHistoryPage));
+		Routing.RegisterRoute("Y1564Page", typeof(Views.Y1564Page));
 
 		var specialEnabled = Preferences.Default.Get("sparc_special_functions", false);
 		TabY1564.IsVisible = specialEnabled;

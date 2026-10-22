@@ -20,7 +20,7 @@
         <Tab Title="Zerar Configuração">
             <ShellContent ContentTemplate="{DataTemplate views:RecoveryPage}" Route="RecoveryPage" />
         </Tab>
-        <Tab x:Name="TabY1564" Title="Y.1564 / SLA" IsVisible="False">
+        <Tab x:Name="TabY1564" Title="Certidão Y.1564" IsVisible="False">
             <ShellContent ContentTemplate="{DataTemplate views:Y1564Page}" Route="Y1564Page" />
         </Tab>
         <Tab Title="Histórico">

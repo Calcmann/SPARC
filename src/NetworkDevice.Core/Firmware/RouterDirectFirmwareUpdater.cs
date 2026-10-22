@@ -71,7 +71,8 @@ public sealed class RouterDirectFirmwareUpdater
         DeviceSession session,
         DeviceSeries series,
         RemoteFirmwareInfo? officialRemote,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool checkWan = true)
     {
         await _logger("[*] [Auditoria] Verificando versão de firmware instalada no roteador...");
 
@@ -145,7 +146,9 @@ public sealed class RouterDirectFirmwareUpdater
             compliant = EvaluateComplianceStrict(series, rawOutput, currentVer, officialName, officialRemote?.DetectedVersion);
         }
 
-        var reachable = await TestWanReachabilityAsync(session, series, ct).ConfigureAwait(false);
+        var reachable = checkWan
+            ? await TestWanReachabilityAsync(session, series, ct).ConfigureAwait(false)
+            : false;
 
         var msg = compliant
             ? $"Equipamento em conformidade com a versão homologada ({officialName})."

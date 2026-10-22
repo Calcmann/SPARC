@@ -75,12 +75,12 @@
         <!-- ========================================================================= -->
         <Grid x:Name="GridTelaInicial" Visibility="Visible">
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-            <Border Background="#27272A" BorderBrush="#52525B" BorderThickness="1" CornerRadius="10" Padding="14,10" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="2">
+            <Border Background="#27272A" BorderBrush="#52525B" BorderThickness="1" CornerRadius="10" Padding="12,7" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Margin="2">
                 <StackPanel>
                     <!-- CABEÇALHO COMPACTO E LIMPO -->
-                    <StackPanel Margin="0,0,0,8">
-                        <Grid Margin="0,0,0,6">
-                            <Border Background="{StaticResource BetaBadgeBrush}" CornerRadius="10" Padding="12,2.5" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <StackPanel Margin="0,0,0,5">
+                        <Grid Margin="0,0,0,4">
+                            <Border Background="{StaticResource BetaBadgeBrush}" CornerRadius="10" Padding="12,2" HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="🔴" FontSize="10.5" VerticalAlignment="Center" Margin="0,0,6,0" />
                                     <TextBlock Text="VERSÃO BETA — CLARO S.A. — ATIVAÇÃO SC" FontWeight="Black" FontSize="11.5" Foreground="#FFFFFF" VerticalAlignment="Center" />
@@ -89,17 +89,15 @@
                             <Button x:Name="BtnAbrirAdmin" Visibility="Collapsed" Content="🛡️ Painel Admin" HorizontalAlignment="Right" VerticalAlignment="Center" Padding="10,4" Background="#3F3F46" Foreground="#F4F4F5" BorderThickness="0" FontWeight="Bold" FontSize="11" Cursor="Hand" Click="BtnAbrirAdmin_Click" ToolTip="Painel de Administração do Gestor SPARC (Ctrl+Shift+F12)" />
                         </Grid>
                         <!-- Logo centralizado ampliado -->
-                        <Image Source="Assets/sparc_logo_horizontal.png" Height="86" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,4,0,6" RenderOptions.BitmapScalingMode="HighQuality" ToolTip="SPARC — Sistema de Provisionamento e Ativação de Roteadores da Claro" />
-                        <TextBlock Text="Configure o equipamento, informe os dados e escolha como deseja executar o provisionamento."
-                                   FontSize="13" Foreground="#A1A1AA" Margin="0,2,0,0" HorizontalAlignment="Center" />
+                        <Image Source="Assets/sparc_logo_horizontal.png" Height="78" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,2,0,2" RenderOptions.BitmapScalingMode="HighQuality" ToolTip="SPARC — Sistema de Provisionamento e Ativação de Roteadores da Claro" />
                     </StackPanel>
 
                     <!-- ======================================================== -->
                     <!-- PASSO 1: EQUIPAMENTO & SERIAL                             -->
                     <!-- ======================================================== -->
-                    <Border Background="#27272A" BorderBrush="#52525B" BorderThickness="3.5,1,1,1" CornerRadius="6" Padding="14,10" Margin="0,0,0,8">
+                    <Border Background="#27272A" BorderBrush="#52525B" BorderThickness="3.5,1,1,1" CornerRadius="6" Padding="12,7" Margin="0,0,0,5">
                         <StackPanel>
-                            <DockPanel Margin="0,0,0,5">
+                            <DockPanel Margin="0,0,0,4">
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                     <Border Background="#B91C1C" CornerRadius="10" Width="26" Height="26" Margin="0,0,7,0">
                                         <TextBlock Text="1" FontWeight="Black" FontSize="13" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -114,13 +112,13 @@
 
                             <DockPanel VerticalAlignment="Center" LastChildFill="True">
                                 <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
-                                    <Button x:Name="BtnTestarAvaliarInicial" Content="🔌 Testar Conexão Porta Serial" Padding="12,6" Margin="0,0,14,0" FontSize="12" FontWeight="Bold" Background="#B91C1C" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnTestarAvaliar_Click" ToolTip="Testa a porta serial e avalia situação do equipamento (senha, modelo, versão, flash e configuração)" />
+                                    <Button x:Name="BtnTestarAvaliarInicial" Content="🔌 Testar Conexão Porta Serial" Padding="10,5" Margin="0,0,12,0" FontSize="12" FontWeight="Bold" Background="#B91C1C" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnTestarAvaliar_Click" ToolTip="Testa a porta serial e avalia situação do equipamento (senha, modelo, versão, flash e configuração)" />
                                     <TextBlock Text="Porta:" FontWeight="Black" FontSize="13.5" Foreground="#EE1C25" VerticalAlignment="Center" Margin="0,0,5,0" />
                                     <ComboBox x:Name="CbPortaInicial" Width="85" IsEditable="True" SelectionChanged="CbPortaInicial_SelectionChanged" />
-                                    <Button Content="🔄" Padding="4,5" Margin="3,0,0,0" ToolTip="Atualizar portas COM" Click="BtnAtualizarPortas_Click" />
-                                    <TextBlock x:Name="TxtSerialTestStatus" Text="" VerticalAlignment="Center" Margin="10,0,16,0" FontSize="11" FontWeight="SemiBold" Foreground="#4ADE80" MaxWidth="160" />
+                                    <Button Content="🔄" Padding="4,4" Margin="3,0,0,0" ToolTip="Atualizar portas COM" Click="BtnAtualizarPortas_Click" />
+                                    <TextBlock x:Name="TxtSerialTestStatus" Text="" VerticalAlignment="Center" Margin="10,0,14,0" FontSize="11" FontWeight="SemiBold" Foreground="#4ADE80" MaxWidth="160" />
                                 </StackPanel>
-                                <ComboBox x:Name="CbModeloRoteadorInicial" SelectedIndex="0" FontSize="13" FontWeight="Bold" Padding="6,8" VerticalAlignment="Center" SelectionChanged="CbModeloRoteadorInicial_SelectionChanged" PreviewMouseLeftButtonDown="CbModeloRoteadorInicial_PreviewMouseLeftButtonDown" ToolTip="Clique em qualquer ponto do campo para abrir a lista">
+                                <ComboBox x:Name="CbModeloRoteadorInicial" SelectedIndex="0" FontSize="13" FontWeight="Bold" Padding="6,6" VerticalAlignment="Center" SelectionChanged="CbModeloRoteadorInicial_SelectionChanged" PreviewMouseLeftButtonDown="CbModeloRoteadorInicial_PreviewMouseLeftButtonDown" ToolTip="Clique em qualquer ponto do campo para abrir a lista">
                                     <ComboBoxItem Content="— Selecione o modelo do equipamento —" Tag="" IsEnabled="False" />
                                     <ComboBoxItem Content="🖧 HPE MSR 954 / 958 (Ctrl+B @ 9600 - BootWare)" Tag="hpe.msr954.ctrl-b" />
                                     <ComboBoxItem Content="🖧 HPE MSR 930 / 931 / 935 (Ctrl+B @ 9600 - BootWare)" Tag="hpe.msr930.ctrl-b" />
@@ -138,9 +136,9 @@
                     <!-- ======================================================== -->
                     <!-- PASSO 2: DADOS DO CIRCUITO                                -->
                     <!-- ======================================================== -->
-                    <Border Background="#27272A" BorderBrush="#52525B" BorderThickness="3.5,1,1,1" CornerRadius="6" Padding="14,10" Margin="0,0,0,8">
+                    <Border Background="#27272A" BorderBrush="#52525B" BorderThickness="3.5,1,1,1" CornerRadius="6" Padding="12,7" Margin="0,0,0,5">
                         <StackPanel>
-                            <DockPanel Margin="0,0,0,5">
+                            <DockPanel Margin="0,0,0,4">
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                     <Border Background="#B91C1C" CornerRadius="10" Width="26" Height="26" Margin="0,0,7,0">
                                         <TextBlock Text="2" FontWeight="Black" FontSize="13" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -153,31 +151,64 @@
                                 </Border>
                             </DockPanel>
 
-                            <DockPanel Margin="0,0,0,4">
-                                <TextBlock Text="Origem dos dados:" FontSize="12" FontWeight="SemiBold" Foreground="#A1A1AA" VerticalAlignment="Center" />
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                    <RadioButton x:Name="RbModoSaip" Content="Importar Ficha SAIP (PDF/TXT)" IsChecked="True" FontWeight="SemiBold" Foreground="#E4E4E7" Margin="0,0,14,0" Checked="RbModoInsumo_Checked" />
+                            <!-- Seletor de Modo de Insumo (SAIP vs Manual) -->
+                            <DockPanel Margin="0,0,0,6">
+                                <TextBlock Text="Origem dos Parâmetros:" FontSize="12" FontWeight="SemiBold" Foreground="#A1A1AA" VerticalAlignment="Center" Margin="0,0,10,0" />
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <RadioButton x:Name="RbModoSaip" Content="Importar Ficha SAIP (PDF/TXT)" IsChecked="True" FontWeight="SemiBold" Foreground="#E4E4E7" Margin="0,0,18,0" Checked="RbModoInsumo_Checked" />
                                     <RadioButton x:Name="RbModoManual" Content="Informar manualmente (IPs, GW, VLAN)" FontWeight="SemiBold" Foreground="#E4E4E7" Checked="RbModoInsumo_Checked" />
                                 </StackPanel>
                             </DockPanel>
 
                             <!-- CONTAINER DINÂMICO DOS MODOS DE INSUMO -->
-                            <Border Background="#3F3F46" BorderBrush="#52525B" BorderThickness="1" CornerRadius="5" Padding="8">
+                            <Border Background="#3F3F46" BorderBrush="#52525B" BorderThickness="1" CornerRadius="5" Padding="6,5">
                                 <Grid>
                                     <!-- OPÇÃO 1: FICHA SAIP -->
                                     <StackPanel x:Name="GridInsumoSaip" Visibility="Visible">
-                                        <DockPanel Margin="0,0,0,4">
-                                            <Button x:Name="BtnCarregarSaip" Content="📂 Selecionar Arquivo SAIP (.pdf / .txt)" Padding="14,7" FontWeight="Black" FontSize="14" Background="#EE1C25" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnCarregarSaip_Click" MinWidth="220" />
-                                            <Button x:Name="BtnLimparSaip" Content="✖ Limpar" Padding="10,5" Margin="6,0,0,0" Visibility="Collapsed" Click="BtnLimparSaip_Click" />
+                                        <!-- 1. Linha do Botão Selecionar Arquivo SAIP -->
+                                        <DockPanel Margin="0,0,0,5">
+                                            <Button x:Name="BtnCarregarSaip" Content="📂 Selecionar Arquivo SAIP (.pdf / .txt)" Padding="12,5" FontWeight="Black" FontSize="13.5" Background="#EE1C25" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnCarregarSaip_Click" MinWidth="210" />
+                                            <Button x:Name="BtnLimparSaip" Content="✖ Limpar" Padding="10,4" Margin="6,0,0,0" Visibility="Collapsed" Click="BtnLimparSaip_Click" />
+                                            <TextBlock Text="✦ Selecione a ficha para detecção e preenchimento 100% automático dos parâmetros." Foreground="#CBD5E1" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0" FontStyle="Italic" />
                                         </DockPanel>
-                                        <Border Background="#27272A" BorderBrush="#52525B" BorderThickness="1" CornerRadius="4" Padding="6">
+
+                                        <!-- 2. Linha Tipo de Serviço (ABAIXO DO BOTÃO SELECIONAR ARQUIVO SAIP) -->
+                                        <ContentControl x:Name="ContainerTipoServicoSaip" Margin="0,0,0,6">
+                                            <StackPanel x:Name="PanelLinhaTipoServico" Orientation="Horizontal" VerticalAlignment="Center">
+                                                <ComboBox x:Name="CmbCategoriaServico" SelectedIndex="0" Padding="6,3" FontSize="11.5" FontWeight="Bold" Background="#27272A" Foreground="#FFFFFF" BorderBrush="#52525B" MinWidth="260" SelectionChanged="CmbCategoriaServico_SelectionChanged">
+                                                    <ComboBoxItem Content="🌐 BLD — Business Link Direct (Internet - Padrão)" Tag="BLD" />
+                                                    <ComboBoxItem Content="🛡️ MPLS — IP VPN Corporativa (LAN temporária)" Tag="MPLS" />
+                                                    <ComboBoxItem Content="📞 VOZ — Tronco Digital (R2D / ISDN - E1)" Tag="VOZ_E1" />
+                                                    <ComboBoxItem Content="📞 VOZ — Tronco SIP / PABX IP (com WAN e LAN)" Tag="VOZ_SIP" />
+                                                </ComboBox>
+                                                <Border x:Name="BorderBadgeOrigemServico" Margin="8,0,0,0" Background="#0C4A6E" BorderBrush="#38BDF8" BorderThickness="1" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                                                    <TextBlock x:Name="TxtOrigemTipoServico" Text="🤖 Automático via SAIP (ajuste opcional)" FontSize="10.5" FontWeight="Bold" Foreground="#38BDF8" />
+                                                </Border>
+                                            </StackPanel>
+                                        </ContentControl>
+
+                                        <!-- 3. Resumo da Ficha SAIP -->
+                                        <Border Background="#27272A" BorderBrush="#52525B" BorderThickness="1" CornerRadius="4" Padding="6,3">
                                             <TextBlock x:Name="TxtSaipResumo" Text="Nenhuma ficha SAIP selecionada. Clique no botão acima para carregar o arquivo PDF ou TXT da ordem de serviço."
-                                                       Foreground="#A1A1AA" FontSize="12.5" TextWrapping="Wrap" />
+                                                       Foreground="#A1A1AA" FontSize="12" TextWrapping="Wrap" />
+                                        </Border>
+
+                                        <!-- Alerta de Incompatibilidade de Banda x Modelo Homologado Claro -->
+                                        <Border x:Name="BorderAlertaBandaIncompativel" Background="#450A0A" BorderBrush="#EF4444" BorderThickness="1.5" CornerRadius="4" Padding="8,5" Margin="0,5,0,0" Visibility="Collapsed">
+                                            <DockPanel>
+                                                <TextBlock Text="⚠️" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                                <Button DockPanel.Dock="Right" Content="Ver Tabela Homologada →" Background="#7F1D1D" Foreground="#FCA5A5" FontWeight="Bold" FontSize="11" Padding="6,2" BorderThickness="0" Cursor="Hand" Click="BtnTabelaCpeHomologados_Click"/>
+                                                <TextBlock x:Name="TxtAlertaBandaIncompativel" Text="Aviso de incompatibilidade de banda" Foreground="#FEE2E2" FontSize="11.5" FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                            </DockPanel>
                                         </Border>
                                     </StackPanel>
 
                                     <!-- OPÇÃO 2: ENTRADA MANUAL -->
                                     <StackPanel x:Name="PanelInsumoManual" Visibility="Collapsed">
+                                        <ContentControl x:Name="ContainerTipoServicoManual" Margin="0,0,0,6" />
+                                        <Border Background="#1E1B4B" BorderBrush="#4F46E5" BorderThickness="1" CornerRadius="4" Padding="8,4" Margin="0,0,0,6">
+                                            <TextBlock Text="ℹ️ Modo Manual: Selecione acima o Tipo de Serviço correspondente (BLD para Internet, MPLS para VPN Corporativa ou VOZ para PABX/E1) para aplicar as regras e testes corretos." Foreground="#C7D2FE" FontSize="11" />
+                                        </Border>
                                         <Grid Margin="0,0,0,4">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto" />
@@ -185,11 +216,11 @@
                                                 <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="1.5*" />
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Grid.Column="0" Text="Designação:" VerticalAlignment="Center" FontWeight="Bold" Foreground="#E4E4E7" Margin="0,0,4,0" FontSize="12.5" />
-                                            <TextBox Grid.Column="1" x:Name="TxtManualDesignacao" Text="" Padding="4,5" Margin="0,0,8,0" TextChanged="TxtManual_TextChanged" />
+                                            <TextBlock Grid.Column="0" Text="Designação:" VerticalAlignment="Center" FontWeight="Bold" Foreground="#E4E4E7" Margin="0,0,4,0" FontSize="12" />
+                                            <TextBox Grid.Column="1" x:Name="TxtManualDesignacao" Text="" Padding="4,4" Margin="0,0,8,0" TextChanged="TxtManual_TextChanged" />
 
-                                            <TextBlock Grid.Column="2" Text="Nome do Cliente:" VerticalAlignment="Center" FontWeight="Bold" Foreground="#E4E4E7" Margin="0,0,4,0" FontSize="12.5" />
-                                            <TextBox Grid.Column="3" x:Name="TxtManualCliente" Text="" Padding="4,5" TextChanged="TxtManual_TextChanged" />
+                                            <TextBlock Grid.Column="2" Text="Nome do Cliente:" VerticalAlignment="Center" FontWeight="Bold" Foreground="#E4E4E7" Margin="0,0,4,0" FontSize="12" />
+                                            <TextBox Grid.Column="3" x:Name="TxtManualCliente" Text="" Padding="4,4" TextChanged="TxtManual_TextChanged" />
                                         </Grid>
 
                                         <Grid Margin="0,0,0,4">
@@ -205,23 +236,23 @@
                                                 <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="34" />
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Grid.Column="0" Text="WAN IP:" VerticalAlignment="Center" FontWeight="Bold" Foreground="#E4E4E7" Margin="0,0,3,0" FontSize="12.5" />
-                                            <TextBox Grid.Column="1" x:Name="TxtManualWanIp" Text="" Padding="4,5" Margin="0,0,5,0" TextChanged="TxtManual_TextChanged" ToolTip="Ex.: 201.90.204.22" />
-                                            <TextBlock Grid.Column="2" Text="WAN GW:" VerticalAlignment="Center" FontWeight="Bold" Foreground="#E4E4E7" Margin="0,0,3,0" FontSize="12.5" />
-                                            <TextBox Grid.Column="3" x:Name="TxtManualWanGw" Text="" Padding="4,5" Margin="0,0,5,0" TextChanged="TxtManual_TextChanged" ToolTip="Ex.: 201.90.204.21" />
-                                            <TextBlock Grid.Column="4" Text="/" VerticalAlignment="Center" FontWeight="Bold" Foreground="#E4E4E7" Margin="0,0,2,0" FontSize="12.5" />
-                                            <TextBox Grid.Column="5" x:Name="TxtManualWanCidr" Text="" Padding="4,5" Margin="0,0,6,0" TextChanged="TxtManual_TextChanged" ToolTip="Ex.: 30" />
-                                            <TextBlock Grid.Column="6" Text="LAN IP:" VerticalAlignment="Center" FontWeight="Bold" Foreground="#E4E4E7" Margin="0,0,3,0" FontSize="12.5" />
-                                            <TextBox Grid.Column="7" x:Name="TxtManualLanIp" Text="" Padding="4,5" Margin="0,0,5,0" TextChanged="TxtManual_TextChanged" ToolTip="Ex.: 200.182.245.17" />
-                                            <TextBlock Grid.Column="8" Text="/" VerticalAlignment="Center" FontWeight="Bold" Foreground="#E4E4E7" Margin="0,0,2,0" FontSize="12.5" />
-                                            <TextBox Grid.Column="9" x:Name="TxtManualLanCidr" Text="" Padding="4,5" TextChanged="TxtManual_TextChanged" ToolTip="Ex.: 28" />
+                                            <TextBlock Grid.Column="0" Text="WAN IP:" VerticalAlignment="Center" FontWeight="Bold" Foreground="#E4E4E7" Margin="0,0,3,0" FontSize="12" />
+                                            <TextBox Grid.Column="1" x:Name="TxtManualWanIp" Text="" Padding="4,4" Margin="0,0,5,0" TextChanged="TxtManual_TextChanged" ToolTip="Ex.: 201.90.204.22" />
+                                            <TextBlock Grid.Column="2" Text="WAN GW:" VerticalAlignment="Center" FontWeight="Bold" Foreground="#E4E4E7" Margin="0,0,3,0" FontSize="12" />
+                                            <TextBox Grid.Column="3" x:Name="TxtManualWanGw" Text="" Padding="4,4" Margin="0,0,5,0" TextChanged="TxtManual_TextChanged" ToolTip="Ex.: 201.90.204.21" />
+                                            <TextBlock Grid.Column="4" Text="/" VerticalAlignment="Center" FontWeight="Bold" Foreground="#E4E4E7" Margin="0,0,2,0" FontSize="12" />
+                                            <TextBox Grid.Column="5" x:Name="TxtManualWanCidr" Text="" Padding="4,4" Margin="0,0,6,0" TextChanged="TxtManual_TextChanged" ToolTip="Ex.: 30" />
+                                            <TextBlock Grid.Column="6" Text="LAN IP:" VerticalAlignment="Center" FontWeight="Bold" Foreground="#E4E4E7" Margin="0,0,3,0" FontSize="12" />
+                                            <TextBox Grid.Column="7" x:Name="TxtManualLanIp" Text="" Padding="4,4" Margin="0,0,5,0" TextChanged="TxtManual_TextChanged" ToolTip="Ex.: 200.182.245.17" />
+                                            <TextBlock Grid.Column="8" Text="/" VerticalAlignment="Center" FontWeight="Bold" Foreground="#E4E4E7" Margin="0,0,2,0" FontSize="12" />
+                                            <TextBox Grid.Column="9" x:Name="TxtManualLanCidr" Text="" Padding="4,4" TextChanged="TxtManual_TextChanged" ToolTip="Ex.: 28" />
                                         </Grid>
 
                                         <Border Background="#1E2A1E" BorderBrush="#3F5A3F" BorderThickness="1" CornerRadius="3" Padding="5,2" Margin="0,0,0,4">
-                                            <TextBlock x:Name="TxtManualHostCalculadoPreview" Text="Host LAN Calculado: — (preencha LAN IP)" FontWeight="SemiBold" Foreground="#A1A1AA" FontSize="12" />
+                                            <TextBlock x:Name="TxtManualHostCalculadoPreview" Text="Host LAN Calculado: — (preencha LAN IP)" FontWeight="SemiBold" Foreground="#A1A1AA" FontSize="11.5" />
                                         </Border>
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                            <Button x:Name="BtnAplicarManualInline" Content="✓ Aplicar Informações" Padding="10,3" FontWeight="Bold" FontSize="12" Background="#B91C1C" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnAplicarManual_Click" ToolTip="Valida e carrega os dados manuais para liberar o checklist" />
+                                            <Button x:Name="BtnAplicarManualInline" Content="✓ Aplicar Informações" Padding="10,3" FontWeight="Bold" FontSize="11.5" Background="#B91C1C" Foreground="White" BorderThickness="0" Cursor="Hand" Click="BtnAplicarManual_Click" ToolTip="Valida e carrega os dados manuais para liberar o checklist" />
                                         </StackPanel>
                                     </StackPanel>
                                 </Grid>
@@ -232,9 +263,9 @@
                     <!-- ======================================================== -->
                     <!-- PASSO 3: MODO DE EXECUÇÃO & FIRMWARE                      -->
                     <!-- ======================================================== -->
-                    <Border Background="#27272A" BorderBrush="#52525B" BorderThickness="3.5,1,1,1" CornerRadius="6" Padding="14,10" Margin="0,0,0,8">
+                    <Border Background="#27272A" BorderBrush="#52525B" BorderThickness="3.5,1,1,1" CornerRadius="6" Padding="12,7" Margin="0,0,0,5">
                         <StackPanel>
-                            <DockPanel Margin="0,0,0,5">
+                            <DockPanel Margin="0,0,0,4">
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                     <Border Background="#B91C1C" CornerRadius="10" Width="26" Height="26" Margin="0,0,7,0">
                                         <TextBlock Text="3" FontWeight="Black" FontSize="13" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -248,9 +279,9 @@
                             </DockPanel>
 
                             <!-- SELEÇÃO / ATUALIZAÇÃO DE FIRMWARE -->
-                            <Border x:Name="PanelFirmwareObrigatorio" Visibility="Visible" Background="#27272A" BorderBrush="#52525B" BorderThickness="1" CornerRadius="6" Padding="8,6" Margin="0,5,0,0">
+                            <Border x:Name="PanelFirmwareObrigatorio" Visibility="Visible" Background="#27272A" BorderBrush="#52525B" BorderThickness="1" CornerRadius="6" Padding="6,4" Margin="0,3,0,0">
                                 <StackPanel>
-                                    <DockPanel Margin="0,0,0,5">
+                                    <DockPanel Margin="0,0,0,4">
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                             <TextBlock Text="Origem:" FontWeight="Bold" FontSize="11.5" Foreground="#A1A1AA" VerticalAlignment="Center" Margin="0,0,8,0" />
                                             <RadioButton x:Name="RbFirmwareRepo" Content="Repositório Homologado (Online / Cache)" IsChecked="True" Foreground="#F4F4F5" FontWeight="Bold" FontSize="11.5" Margin="0,0,12,0" Checked="RbFirmwareOrigin_Changed" VerticalAlignment="Center" />
@@ -259,7 +290,7 @@
                                         <CheckBox x:Name="ChkAtualizarFirmwareAuto" IsChecked="True" Content="Atualizar / Validar Firmware (.ipe / .bin) via TFTP" FontWeight="Bold" FontSize="11.5" Foreground="#E4E4E7" HorizontalAlignment="Right" VerticalAlignment="Center" Checked="ChkAtualizarFirmwareAuto_Changed" Unchecked="ChkAtualizarFirmwareAuto_Changed" />
                                     </DockPanel>
 
-                                    <Grid Margin="0,0,0,4">
+                                    <Grid Margin="0,0,0,3">
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" />
                                             <ColumnDefinition Width="Auto" />
@@ -267,15 +298,15 @@
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
 
-                                        <Button Grid.Column="0" x:Name="BtnBuscarFirmwareOnline" Content="🌐 Buscar Online" Padding="12,5" FontWeight="Black" FontSize="12.5" Background="#2563EB" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,6,0" Click="BtnBuscarFirmwareOnline_Click" ToolTip="Verifica e obtém a versão homologada mais recente no repositório central para este modelo" />
-                                        <Button Grid.Column="1" x:Name="BtnAtualizarBaseFirmwares" Content="🔄 Atualizar Base de Firmwares" Padding="10,5" FontWeight="Bold" FontSize="12" Background="#0D9488" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,6,0" Click="BtnAtualizarBaseFirmwares_Click" ToolTip="Verifica e sincroniza todas as versões de firmwares homologados de todos os modelos no repositório local" />
-                                        <Button Grid.Column="2" x:Name="BtnSelecionarFirmwareAuto" Content="📂 Arquivo Local..." Padding="10,5" FontWeight="Bold" FontSize="12" Background="#4B5563" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,10,0" Click="BtnSelecionarFirmwareAuto_Click" ToolTip="Selecionar manualmente um arquivo do disco (.bin, .out, .ipe)" />
-                                        <Button Grid.Column="3" x:Name="BtnAbrirPastaFirmwares" Content="📁 Abrir Pasta C:\SPARC\firmwares" Padding="8,5" FontWeight="SemiBold" FontSize="11" Background="#3F3F46" Foreground="#E4E4E7" BorderThickness="0" Cursor="Hand" HorizontalAlignment="Right" Click="BtnAbrirPastaFirmwares_Click" ToolTip="Abre o repositório local de firmwares no Windows Explorer" />
+                                        <Button Grid.Column="0" x:Name="BtnBuscarFirmwareOnline" Content="🌐 Buscar Online" Padding="12,4" FontWeight="Black" FontSize="12" Background="#2563EB" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,6,0" Click="BtnBuscarFirmwareOnline_Click" ToolTip="Verifica e obtém a versão homologada mais recente no repositório central para este modelo" />
+                                        <Button Grid.Column="1" x:Name="BtnAtualizarBaseFirmwares" Content="🔄 Atualizar Base de Firmwares" Padding="10,4" FontWeight="Bold" FontSize="11.5" Background="#0D9488" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,6,0" Click="BtnAtualizarBaseFirmwares_Click" ToolTip="Verifica e sincroniza todas as versões de firmwares homologados de todos os modelos no repositório local" />
+                                        <Button Grid.Column="2" x:Name="BtnSelecionarFirmwareAuto" Content="📂 Arquivo Local..." Padding="10,4" FontWeight="Bold" FontSize="11.5" Background="#4B5563" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,10,0" Click="BtnSelecionarFirmwareAuto_Click" ToolTip="Selecionar manualmente um arquivo do disco (.bin, .out, .ipe)" />
+                                        <Button Grid.Column="3" x:Name="BtnAbrirPastaFirmwares" Content="📁 Abrir Pasta C:\SPARC\firmwares" Padding="8,4" FontWeight="SemiBold" FontSize="11" Background="#3F3F46" Foreground="#E4E4E7" BorderThickness="0" Cursor="Hand" HorizontalAlignment="Right" Click="BtnAbrirPastaFirmwares_Click" ToolTip="Abre o repositório local de firmwares no Windows Explorer" />
                                     </Grid>
 
-                                    <StackPanel Margin="0,2,0,0">
-                                        <TextBlock x:Name="TxtFirmwareAutoInfo" Text="Nenhum firmware selecionado (clique em Buscar Online ou Selecionar Firmware)" Margin="0,2,0,0" Foreground="#FCA5A5" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                        <ProgressBar x:Name="PbDownloadFirmware" Height="5" Margin="0,4,0,0" Visibility="Collapsed" Minimum="0" Maximum="100" Value="0" Foreground="#38BDF8" Background="#18181B" />
+                                    <StackPanel Margin="0,1,0,0">
+                                        <TextBlock x:Name="TxtFirmwareAutoInfo" Text="Nenhum firmware selecionado (clique em Buscar Online ou Selecionar Firmware)" Margin="0,1,0,0" Foreground="#FCA5A5" FontSize="11.5" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                        <ProgressBar x:Name="PbDownloadFirmware" Height="4" Margin="0,3,0,0" Visibility="Collapsed" Minimum="0" Maximum="100" Value="0" Foreground="#38BDF8" Background="#18181B" />
                                     </StackPanel>
                                 </StackPanel>
                             </Border>
@@ -283,15 +314,15 @@
                     </Border>
 
                     <!-- CHECKLIST DE PRONTIDÃO EXPANDIDO, VISUAL E ORGANIZADO -->
-                    <Border Background="#3F3F46" BorderBrush="#52525B" BorderThickness="1.5" CornerRadius="8" Padding="8,6" Margin="0,0,0,6">
+                    <Border Background="#3F3F46" BorderBrush="#52525B" BorderThickness="1.5" CornerRadius="8" Padding="6,4" Margin="0,0,0,5">
                         <StackPanel>
-                            <DockPanel Margin="0,0,0,5">
-                                <TextBlock Text="✓ Prontidão para Iniciar" FontWeight="Black" FontSize="13" Foreground="#E4E4E7" VerticalAlignment="Center" />
-                                <TextBlock x:Name="TxtChecklistTotalPronto" Text="0 de 4 concluídos" FontWeight="Bold" FontSize="12" Foreground="#A1A1AA" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                            <DockPanel Margin="0,0,0,3">
+                                <TextBlock Text="✓ Prontidão para Iniciar" FontWeight="Black" FontSize="12.5" Foreground="#E4E4E7" VerticalAlignment="Center" />
+                                <TextBlock x:Name="TxtChecklistTotalPronto" Text="0 de 4 concluídos" FontWeight="Bold" FontSize="11.5" Foreground="#A1A1AA" HorizontalAlignment="Right" VerticalAlignment="Center" />
                             </DockPanel>
 
                             <!-- 4 CARDS LADO A LADO -->
-                            <Grid Margin="0,0,0,6">
+                            <Grid Margin="0,0,0,4">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
@@ -300,34 +331,34 @@
                                 </Grid.ColumnDefinitions>
 
                                 <!-- ITEM 1a: MODELO -->
-                                <Border x:Name="CardChkModelo" Grid.Column="0" Background="#3B1818" BorderBrush="#52525B" BorderThickness="1" CornerRadius="6" Padding="6,4" Margin="0,0,3,0">
+                                <Border x:Name="CardChkModelo" Grid.Column="0" Background="#3B1818" BorderBrush="#52525B" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="0,0,3,0">
                                     <StackPanel>
-                                        <TextBlock x:Name="TxtChkModeloIcon" Text="🔴 1a. Modelo" FontWeight="Black" FontSize="12.5" Foreground="#FCA5A5" />
-                                        <TextBlock x:Name="TxtChkModeloSub" Text="Selecione Cisco ou HPE" FontSize="11" Foreground="#A1A1AA" Margin="0,1,0,0" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock x:Name="TxtChkModeloIcon" Text="🔴 1a. Modelo" FontWeight="Black" FontSize="12" Foreground="#FCA5A5" />
+                                        <TextBlock x:Name="TxtChkModeloSub" Text="Selecione Cisco ou HPE" FontSize="10.5" Foreground="#A1A1AA" Margin="0,1,0,0" TextTrimming="CharacterEllipsis" />
                                     </StackPanel>
                                 </Border>
 
                                 <!-- ITEM 1b: STATUS SERIAL -->
-                                <Border x:Name="CardChkSerial" Grid.Column="1" Background="#3B1818" BorderBrush="#52525B" BorderThickness="1" CornerRadius="6" Padding="6,4" Margin="2,0,2,0">
+                                <Border x:Name="CardChkSerial" Grid.Column="1" Background="#3B1818" BorderBrush="#52525B" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="2,0,2,0">
                                     <StackPanel>
-                                        <TextBlock x:Name="TxtChkSerialIcon" Text="🔴 1b. Status Serial" FontWeight="Black" FontSize="12.5" Foreground="#FCA5A5" />
-                                        <TextBlock x:Name="TxtChkSerialSub" Text="Clique 'Testar Conexão Porta Serial'" FontSize="11" Foreground="#A1A1AA" Margin="0,1,0,0" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock x:Name="TxtChkSerialIcon" Text="🔴 1b. Status Serial" FontWeight="Black" FontSize="12" Foreground="#FCA5A5" />
+                                        <TextBlock x:Name="TxtChkSerialSub" Text="Clique 'Testar Conexão Porta Serial'" FontSize="10.5" Foreground="#A1A1AA" Margin="0,1,0,0" TextTrimming="CharacterEllipsis" />
                                     </StackPanel>
                                 </Border>
 
                                 <!-- ITEM 2: FICHA SAIP -->
-                                <Border x:Name="CardChkDados" Grid.Column="2" Background="#3B1818" BorderBrush="#52525B" BorderThickness="1" CornerRadius="6" Padding="6,4" Margin="2,0,2,0">
+                                <Border x:Name="CardChkDados" Grid.Column="2" Background="#3B1818" BorderBrush="#52525B" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="2,0,2,0">
                                     <StackPanel>
-                                        <TextBlock x:Name="TxtChkDadosIcon" Text="🔴 2. Ficha SAIP" FontWeight="Black" FontSize="12.5" Foreground="#FCA5A5" />
-                                        <TextBlock x:Name="TxtChkDadosSub" Text="Carregue PDF/TXT ou Manual" FontSize="11" Foreground="#A1A1AA" Margin="0,1,0,0" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock x:Name="TxtChkDadosIcon" Text="🔴 2. Ficha SAIP" FontWeight="Black" FontSize="12" Foreground="#FCA5A5" />
+                                        <TextBlock x:Name="TxtChkDadosSub" Text="Carregue PDF/TXT ou Manual" FontSize="10.5" Foreground="#A1A1AA" Margin="0,1,0,0" TextTrimming="CharacterEllipsis" />
                                     </StackPanel>
                                 </Border>
 
                                 <!-- ITEM 3: FIRMWARE -->
-                                <Border x:Name="CardChkFirmware" Grid.Column="3" Background="#3B1818" BorderBrush="#52525B" BorderThickness="1" CornerRadius="6" Padding="6,4" Margin="3,0,0,0">
+                                <Border x:Name="CardChkFirmware" Grid.Column="3" Background="#3B1818" BorderBrush="#52525B" BorderThickness="1" CornerRadius="6" Padding="6,3" Margin="3,0,0,0">
                                     <StackPanel>
-                                        <TextBlock x:Name="TxtChkFirmwareIcon" Text="🔴 3. Firmware" FontWeight="Black" FontSize="12.5" Foreground="#FCA5A5" />
-                                        <TextBlock x:Name="TxtChkFirmwareSub" Text="Selecione .ipe / .bin" FontSize="11" Foreground="#A1A1AA" Margin="0,1,0,0" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock x:Name="TxtChkFirmwareIcon" Text="🔴 3. Firmware" FontWeight="Black" FontSize="12" Foreground="#FCA5A5" />
+                                        <TextBlock x:Name="TxtChkFirmwareSub" Text="Selecione .ipe / .bin" FontSize="10.5" Foreground="#A1A1AA" Margin="0,1,0,0" TextTrimming="CharacterEllipsis" />
                                     </StackPanel>
                                 </Border>
                             </Grid>
@@ -342,58 +373,119 @@
 
                     <!-- BOTÃO DE AÇÃO PRINCIPAL DINÂMICO -->
                     <Button x:Name="BtnAvancarParaEsteira" Style="{StaticResource CtaPrimaryStyle}" Content="⚡ Iniciar Provisionamento Automático"
-                            Padding="14,8" Background="{StaticResource ClaroGradientBrush}" Foreground="White" BorderThickness="0" FontWeight="Black" FontSize="15" Cursor="Hand"
+                            Padding="12,6" Background="{StaticResource ClaroGradientBrush}" Foreground="White" BorderThickness="0" FontWeight="Black" FontSize="14.5" Cursor="Hand"
                             HorizontalAlignment="Stretch" Click="BtnAvancarParaEsteira_Click" IsEnabled="False" ToolTip="Valide: modelo + teste serial + dados do circuito" />
 
                     <!-- DESCRIÇÃO DO BOTÃO CONFORME O MODO -->
-<TextBlock x:Name="TxtDescricaoBotaoAcao" Text="O SPARC executará as 7 etapas em sequência. Acompanhe o progresso na esteira."
-                                Foreground="#A1A1AA" FontSize="12" FontWeight="SemiBold" Margin="0,3,0,4" HorizontalAlignment="Center" />
+                    <TextBlock x:Name="TxtDescricaoBotaoAcao" Text="O SPARC executará as 7 etapas em sequência. Acompanhe o progresso na esteira."
+                               Foreground="#A1A1AA" FontSize="11.5" FontWeight="SemiBold" Margin="0,2,0,3" HorizontalAlignment="Center" />
+
+                    <!-- BOTÃO NATIVO: CERTIDÃO DE NASCIMENTO (Y.1564 / SIMPLIFICADO) -->
+                    <Border Background="#131E31" BorderBrush="#0284C7" BorderThickness="1.5" CornerRadius="7" Padding="4,2" Margin="0,2,0,2">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="0" x:Name="BtnCertidaoNascimentoInicial"
+                                    Content="📜 EMITIR CERTIDÃO DE NASCIMENTO (Y.1564)"
+                                    Padding="12,6" Background="#0284C7" Foreground="White" BorderThickness="0"
+                                    FontWeight="Black" FontSize="13" Cursor="Hand"
+                                    HorizontalAlignment="Stretch" Click="BtnCertidaoNascimentoInicial_Click"
+                                    ToolTip="Validação oficial de entrega de circuito segundo padrão ITU-T Y.1564 (requer Ficha SAIP importada)" />
+                            <Border Grid.Column="1" Background="#0C4A6E" CornerRadius="5" Padding="8,4" Margin="5,0,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="MTS-5800 / QT-600" FontSize="10.5" FontWeight="Bold" Foreground="#38BDF8" VerticalAlignment="Center" />
+                            </Border>
+                        </Grid>
+                    </Border>
+
+                    <!-- BOTÃO NATIVO: TESTAR LINK SEM ROTEADOR (MODO ACESSO / WAN DIRETA) -->
+                    <Border Background="#132B23" BorderBrush="#059669" BorderThickness="1.5" CornerRadius="7" Padding="4,2" Margin="0,2,0,2">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="0" x:Name="BtnTestarLinkSemRoteadorInicial"
+                                    Content="🔌 TESTAR LINK SEM ROTEADOR (MODO ACESSO)"
+                                    Padding="12,6" Background="#059669" Foreground="White" BorderThickness="0"
+                                    FontWeight="Black" FontSize="13" Cursor="Hand"
+                                    HorizontalAlignment="Stretch" Click="BtnTestarLinkSemRoteadorInicial_Click"
+                                    ToolTip="Testa o link diretamente na porta de entrega do acesso (EDD/GPON) configurando o IP WAN na placa de rede do notebook" />
+                            <Border Grid.Column="1" Background="#064E3B" CornerRadius="5" Padding="8,4" Margin="5,0,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="IP WAN / SPEEDTEST" FontSize="10.5" FontWeight="Bold" Foreground="#34D399" VerticalAlignment="Center" />
+                            </Border>
+                        </Grid>
+                    </Border>
+
+                    <!-- BOTÃO NATIVO: TESTE DE BANDA LARGA & QUALIDADE (CLOUDFLARE SPEED / JITTER / BUFFERBLOAT) -->
+                    <Border Background="#25143A" BorderBrush="#7C3AED" BorderThickness="1.5" CornerRadius="7" Padding="4,2" Margin="0,2,0,2">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="0" x:Name="BtnTesteBandaLargaInicial"
+                                    Content="🚀 TESTE DE BANDA LARGA (TELEMETRIA COMPLETA)"
+                                    Padding="12,6" Background="#7C3AED" Foreground="White" BorderThickness="0"
+                                    FontWeight="Black" FontSize="13" Cursor="Hand"
+                                    HorizontalAlignment="Stretch" Click="BtnTesteBandaLargaInicial_Click"
+                                    ToolTip="Teste avançado de vazão, jitter, bufferbloat, georreferenciamento e emissão de relatório oficial com gráficos" />
+                            <Border Grid.Column="1" Background="#3B1768" CornerRadius="5" Padding="8,4" Margin="5,0,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="CLOUDFLARE / JITTER" FontSize="10.5" FontWeight="Bold" Foreground="#C084FC" VerticalAlignment="Center" />
+                            </Border>
+                        </Grid>
+                    </Border>
 
                     <!-- BOTÃO OPÇÕES AVANÇADAS VIA ATALHO CTRL+SHIFT+V -->
                     <Button x:Name="BtnSemiAutoAtalho" Content="⚙️ OPÇÕES AVANÇADAS (Ctrl+Shift+V)"
-                            Padding="14,8" Background="#B91C1C" Foreground="White" BorderThickness="0" FontWeight="Black" FontSize="15" Cursor="Hand"
+                            Padding="12,6" Background="#B91C1C" Foreground="White" BorderThickness="0" FontWeight="Black" FontSize="14" Cursor="Hand"
                             HorizontalAlignment="Stretch" Click="BtnSemiAutoAtalho_Click" IsEnabled="True" Visibility="Collapsed"
                             ToolTip="Atalho: Ctrl+Shift+V — Acessa a esteira em modo passo a passo" />
 
                     <!-- BOTÃO ANALISADOR DE DADOS VIA ATALHO CTRL+SHIFT+V -->
                     <Button x:Name="BtnAnalisadorDados" Content="📊 Analisador de Dados (Y.1564 / Loop Digital / VIAVI)"
-                            Padding="12,7" Background="#0369A1" Foreground="White" BorderBrush="#0284C7" BorderThickness="1"
-                            FontWeight="Bold" FontSize="13" Cursor="Hand" Margin="0,4,0,0"
+                            Padding="10,6" Background="#0369A1" Foreground="White" BorderBrush="#0284C7" BorderThickness="1"
+                            FontWeight="Bold" FontSize="12.5" Cursor="Hand" Margin="0,3,0,0"
                             HorizontalAlignment="Stretch" Click="BtnAnalisadorDados_Click" Visibility="Collapsed"
                             ToolTip="Atalho: Ctrl+Shift+V — Abre o Analisador de Dados com testes ITU-T Y.1564, Loop Digital (Refletor VIAVI/JDSU), ajuste de parâmetros de SLA, MTU e banda" />
 
                     <!-- BOTÃO RECUPERAÇÃO FORTINET 40F VIA ATALHO CTRL+SHIFT+V -->
                     <Button x:Name="BtnRecuperacaoFortinet" Content="🛠️ Recuperação Fortinet 40F (Bootloader)"
-                            Padding="12,7" Background="#881337" Foreground="White" BorderBrush="#BE123C" BorderThickness="1"
-                            FontWeight="Bold" FontSize="13" Cursor="Hand" Margin="0,4,0,0"
+                            Padding="10,6" Background="#881337" Foreground="White" BorderBrush="#BE123C" BorderThickness="1"
+                            FontWeight="Bold" FontSize="12.5" Cursor="Hand" Margin="0,3,0,0"
                             HorizontalAlignment="Stretch" Click="BtnRecuperacaoFortinet_Click" Visibility="Collapsed"
                             ToolTip="Atalho: Ctrl+Shift+V — Abre a janela avançada de recuperação autônoma e bootloader (BIOS) do FortiGate 40F" />
 
 
                     <!-- OPÇÃO SECRETA NAT (LAB) — mesmo atalho, default DESLIGADA -->
                     <CheckBox x:Name="ChkNatLab" Content="🌐 Habilitar NAT (LAB) — modem de acesso 4G / bancada"
-                            Foreground="#FCA5A5" FontSize="12" FontWeight="Bold" Margin="0,4,0,0"
+                            Foreground="#FCA5A5" FontSize="11.5" FontWeight="Bold" Margin="0,3,0,0"
                             HorizontalAlignment="Center" Visibility="Collapsed" IsChecked="False"
                             ToolTip="Opção secreta (Ctrl+Shift+V) para testes em bancada de laboratório com modem 4G. Quando marcada, habilita NAT overload no Cisco e política com NAT (set nat enable) no FortiGate 40F." />
 
-                    <!-- MANUAL -->
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,3,0,2">
+                    <!-- MANUAL E TABELA DE CPES HOMOLOGADOS CLARO -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,3,0,3">
                         <Button x:Name="BtnAbrirManualInicial" Content="📖 Abrir Manual de Instruções (PDF)" Background="Transparent" Foreground="#A1A1AA" FontWeight="Bold" BorderThickness="0" Cursor="Hand" Click="BtnAbrirManual_Click" ToolTip="Guia ilustrado de cabeamento e tempos de boot" />
+                        <TextBlock Text="|" Foreground="#52525B" VerticalAlignment="Center" Margin="10,0" FontWeight="Bold" />
+                        <Button x:Name="BtnTabelaCpeHomologadosInicial" Content="📊 CPEs Homologados Claro (Banda x Modelo)" Background="Transparent" Foreground="#38BDF8" FontWeight="Bold" BorderThickness="0" Cursor="Hand" Click="BtnTabelaCpeHomologados_Click" ToolTip="Tabela técnica oficial de capacidade de banda x modelo homologado Claro (CPE's Empresariais.xlsx)" />
+                        <TextBlock Text="|" Foreground="#52525B" VerticalAlignment="Center" Margin="10,0" FontWeight="Bold" />
+                        <Button x:Name="BtnToggleDhcpLanInicial" Content="📶 Alternar DHCP LAN (3s)" Background="Transparent" Foreground="#34D399" FontWeight="Bold" BorderThickness="0" Cursor="Hand" Click="BtnToggleDhcpLan_Click" ToolTip="Ativa ou Remove sob demanda o pool DHCP na LAN do roteador sem necessidade de reaprovisionamento." />
                     </StackPanel>
 
                     <!-- RODAPÉ COMPACTO COM CONTROLE DE ZOOM / ESCALA DA UI -->
-                    <Border Background="#3F3F46" BorderBrush="#52525B" BorderThickness="1" CornerRadius="4" Padding="10,5" Margin="0,2,0,0">
+                    <Border Background="#3F3F46" BorderBrush="#52525B" BorderThickness="1" CornerRadius="4" Padding="8,3" Margin="0,2,0,0">
                         <DockPanel>
                             <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
-                                <TextBlock Text="✉ Desenvolvido por:" FontWeight="Bold" FontSize="11.5" Foreground="#A1A1AA" VerticalAlignment="Center" Margin="0,0,4,0" />
-                                <TextBlock Text="george.calcmann@claro.com.br" FontWeight="Bold" FontSize="11.5" Foreground="#EE1C25" VerticalAlignment="Center" Margin="0,0,16,0" />
+                                <TextBlock Text="✉ Desenvolvido por:" FontWeight="Bold" FontSize="11" Foreground="#A1A1AA" VerticalAlignment="Center" Margin="0,0,4,0" />
+                                <TextBlock Text="george.calcmann@claro.com.br" FontWeight="Bold" FontSize="11" Foreground="#EE1C25" VerticalAlignment="Center" Margin="0,0,16,0" />
                             </StackPanel>
 
                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
                                 <Border Background="#18181B" BorderBrush="#52525B" BorderThickness="1" CornerRadius="3" Padding="6,2" Margin="0,0,10,0" VerticalAlignment="Center">
                                     <TextBlock x:Name="TxtAppVersionInicial" Text="Release v0.8.23 Beta" FontSize="11" FontWeight="SemiBold" Foreground="#F87171" VerticalAlignment="Center" ToolTip="Versão de Release do SPARC" />
                                 </Border>
-                                <TextBlock Text="Claro S.A. — Ativação SC" FontSize="11.5" FontWeight="SemiBold" Foreground="#A1A1AA" VerticalAlignment="Center" />
+                                <TextBlock Text="Claro S.A. — Ativação SC" FontSize="11" FontWeight="SemiBold" Foreground="#A1A1AA" VerticalAlignment="Center" />
                             </StackPanel>
 
                             <!-- CONTROLE DINÂMICO DE ESCALA UI (14" 1080P / DPI ZOOM) -->
@@ -443,7 +535,8 @@
                         <Button x:Name="BtnAutoRestaurarRede" Content="↩ Restaurar configuração IP do Windows" Padding="12,6" Margin="4,3" Background="#0F766E" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnAutoRestaurarRede_Click" Visibility="Collapsed" ToolTip="Volta a placa de rede ao IP/DHCP anterior ao teste (ou mantém para mais testes)" />
                         <Button x:Name="BtnAutoRetestarBanda" Content="🔄 Re-testar Largura de Banda" Padding="12,6" Margin="4,3" Background="#D97706" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnAutoRetestarBanda_Click" Visibility="Collapsed" ToolTip="Executa novamente o teste de velocidade/largura de banda da Fase 7 e atualiza o relatório técnico" />
                         <Button x:Name="BtnAutoSalvarScript" Content="📝 Salvar script TXT" Padding="12,6" Margin="4,3" Background="#3F3F46" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnAutoSalvarScript_Click" Visibility="Collapsed" ToolTip="Salva em TXT as configurações aplicadas no equipamento (running-config)" />
-                        <Button x:Name="BtnAutoCertidaoY1564" Content="📜 CERTIDÃO DE NASCIMENTO - Y.1564" Padding="12,6" Margin="4,3" Background="#DC2626" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnAutoCertidaoY1564_Click" Visibility="Collapsed" ToolTip="Abre as opções e executa o teste oficial ITU-T Y.1564 contra o QT VIAVI/JDSU remoto, gerando a Certidão de Nascimento em PDF" />
+                        <Button x:Name="BtnAutoCertidaoY1564" Content="📜 CERTIDÃO DE NASCIMENTO (Y.1564)" Padding="14,6" Margin="4,3" Background="#0284C7" Foreground="White" BorderThickness="0" FontWeight="Black" Click="BtnAutoCertidaoY1564_Click" Visibility="Collapsed" ToolTip="Emissão oficial da Certidão de Nascimento (ITU-T Y.1564) para homologação do circuito" />
+                        <Button x:Name="BtnAutoTestarLinkSemRoteador" Content="🔌 TESTAR LINK SEM ROTEADOR" Padding="14,6" Margin="4,3" Background="#059669" Foreground="White" BorderThickness="0" FontWeight="Black" Click="BtnAutoTestarLinkSemRoteador_Click" Visibility="Collapsed" ToolTip="Validação de link direto no acesso (EDD/GPON) sem roteador da operadora" />
                         <Button x:Name="BtnAutoVoltar" Content="← Voltar à Esteira" Padding="14,6" Margin="4,3" Background="#64748B" Foreground="White" BorderThickness="0" Click="BtnAutoVoltar_Click" Visibility="Collapsed" />
                     </WrapPanel>
                     <Border Background="#0A0E14" CornerRadius="6" Margin="0,14,0,0" MaxHeight="200">
@@ -574,6 +667,8 @@
                         <TextBlock Text="✉ Contato:" FontWeight="Bold" FontSize="12.5" Foreground="#A1A1AA" VerticalAlignment="Center" Margin="0,0,4,0" />
                         <TextBlock Text="george.calcmann@claro.com.br" FontWeight="Bold" FontSize="12.5" Foreground="#EE1C25" VerticalAlignment="Center" Margin="0,0,12,0" />
                         <Button x:Name="BtnAbrirManualFooter" Content="📖 Manual de Instruções (PDF)" Padding="10,3" Margin="0,0,8,0" Background="#B91C1C" Foreground="White" BorderThickness="0" FontWeight="Bold" FontSize="13" Cursor="Hand" Click="BtnAbrirManual_Click" ToolTip="Abrir Manual Ilustrado com diagrama de cabos e portas WAN/LAN" />
+                        <Button x:Name="BtnTabelaCpeHomologadosFooter" Content="📊 CPEs Homologados" Padding="10,3" Margin="0,0,8,0" Background="#0369A1" Foreground="White" BorderThickness="0" FontWeight="Bold" FontSize="13" Cursor="Hand" Click="BtnTabelaCpeHomologados_Click" ToolTip="Tabela técnica oficial de capacidade de banda x modelo homologado Claro" />
+                        <Button x:Name="BtnToggleDhcpLanFooter" Content="📶 DHCP LAN (3s)" Padding="10,3" Margin="0,0,8,0" Background="#047857" Foreground="White" BorderThickness="0" FontWeight="Bold" FontSize="13" Cursor="Hand" Click="BtnToggleDhcpLan_Click" ToolTip="Ativa ou Remove instantaneamente o servidor DHCP temporário na LAN do roteador (em 3 segundos) para testes com Smartphone / MTS-5800 sem precisar reaprovisionar." />
                         <Button Content="Limpar Terminal" Padding="8,3" Background="#3F3F46" Foreground="#E4E4E7" BorderThickness="0" FontSize="13" Click="BtnLimparTerminal_Click" />
                     </StackPanel>
                 </StatusBarItem>
@@ -845,16 +940,16 @@
                                             <TextBox x:Name="TxtIcmpTargetWan" Text="201.90.204.21" Padding="4,2" FontSize="13" />
                                         </StackPanel>
                                     </Border>
-                                    <!-- 5c WEB -->
+                                    <!-- 5c WEB / ESPECIALIZADO -->
                                     <Border Grid.Column="2" Background="#3F3F46" BorderBrush="#52525B" BorderThickness="1" CornerRadius="6" Padding="8" Margin="4,0,0,0">
                                         <StackPanel>
-                                            <TextBlock Text="5c · ICMP WEB (DNS Web)" FontWeight="Bold" FontSize="13" Foreground="#FCA5A5" Margin="0,0,0,4" />
+                                            <TextBlock x:Name="TxtIcmpLabel5c" Text="5c · ICMP WEB (DNS Web)" FontWeight="Bold" FontSize="13" Foreground="#FCA5A5" Margin="0,0,0,4" />
                                             <TextBox x:Name="TxtIcmpTargetWeb" Text="1.1.1.1, 8.8.8.8" Padding="4,2" FontSize="13" />
                                         </StackPanel>
                                     </Border>
                                 </Grid>
                                 <TextBox x:Name="TxtIcmpTarget" Visibility="Collapsed" />
-                                <TextBlock Text="Dispara testes ICMP sequenciais: 5a (Interface LAN local), 5b (Gateway WAN Claro) e 5c (DNS Cloudflare 1.1.1.1 / Google 8.8.8.8)." Foreground="#A1A1AA" FontSize="13" TextWrapping="Wrap" />
+                                <TextBlock x:Name="TxtIcmpDescricao" Text="Dispara testes ICMP sequenciais: 5a (Interface LAN local), 5b (Gateway WAN Claro) e 5c (conforme Categoria de Serviço: DNS Web em BLD, Loopback PE em MPLS ou Media Gateway em VOZ)." Foreground="#A1A1AA" FontSize="13" TextWrapping="Wrap" />
                             </StackPanel>
 
                             <!-- =================== FASE 6: TESTAR ACESSO REMOTO (TELNET) =================== -->

@@ -337,6 +337,65 @@ public class CloudLicenseServiceTests : IDisposable
         Assert.True(revoked);
         Assert.Contains("revogada", msg, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public async System.Threading.Tasks.Task AuditDeviceRegistrationAsync_ReturnsActive_WhenDeviceRegisteredAndActive()
+    {
+        var svc = new CloudLicenseService(_tempFile);
+        svc.ForceLocalOnly = true;
+        var req = new ActivationRequestData("req", "guid-audit-active", "fp-audit-active", true, null, "Carlos", "Silva");
+        var lic = new GeneratedLicenseResult(true, "token-active", "2026-11-30", DateTime.UtcNow.AddDays(30), 30, null);
+        svc.RegisterOrUpdateDevice(req, lic);
+
+        var result = await svc.AuditDeviceRegistrationAsync("guid-audit-active", "fp-audit-active");
+
+        Assert.True(result.IsOnline);
+        Assert.True(result.IsRegistered);
+        Assert.True(result.IsActive);
+        Assert.False(result.IsRevoked);
+        Assert.Equal("Carlos Silva", result.TechnicianName);
+        Assert.Equal("token-active", result.AuthorizedToken);
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task AuditDeviceRegistrationAsync_ReturnsRevoked_WhenDeviceRegisteredAndRevoked()
+    {
+        var svc = new CloudLicenseService(_tempFile);
+        svc.ForceLocalOnly = true;
+        var req = new ActivationRequestData("req", "guid-audit-revoked", "fp-audit-revoked", true, null, "Ana", "Paula");
+        var lic = new GeneratedLicenseResult(true, "token-revoked", "2026-11-30", DateTime.UtcNow.AddDays(30), 30, null);
+        svc.RegisterOrUpdateDevice(req, lic);
+        svc.RevokeDevice("guid-audit-revoked", "Desligada da empresa");
+
+        var result = await svc.AuditDeviceRegistrationAsync("guid-audit-revoked", "fp-audit-revoked");
+
+        Assert.True(result.IsOnline);
+        Assert.True(result.IsRegistered);
+        Assert.False(result.IsActive);
+        Assert.True(result.IsRevoked);
+        Assert.Equal("Ana Paula", result.TechnicianName);
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task AuditDeviceRegistrationAsync_ReturnsNotRegistered_WhenDeviceNotInDatabase()
+    {
+        var svc = new CloudLicenseService(_tempFile);
+        svc.ForceLocalOnly = true;
+
+        // Base de dados tem outro técnico registrado
+        var req = new ActivationRequestData("req", "guid-other-technician", "fp-other", true, null, "Lucas", "Outro");
+        var lic = new GeneratedLicenseResult(true, "token-other", "2026-11-30", DateTime.UtcNow.AddDays(30), 30, null);
+        svc.RegisterOrUpdateDevice(req, lic);
+
+        var result = await svc.AuditDeviceRegistrationAsync("guid-unknown-machine", "fp-unknown");
+
+        Assert.True(result.IsOnline);
+        Assert.False(result.IsRegistered);
+        Assert.False(result.IsActive);
+        Assert.False(result.IsRevoked);
+        Assert.Null(result.TechnicianName);
+        Assert.Contains("não localizada", result.Message, StringComparison.OrdinalIgnoreCase);
+    }
 }
 
 

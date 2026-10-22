@@ -2,6 +2,7 @@ using Android.Hardware.Usb;
 using Microsoft.Maui.Controls;
 using NetworkDevice.Android.Services;
 using NetworkDevice.Cisco;
+using NetworkDevice.Core.Detection;
 using NetworkDevice.Core.Diagnostics;
 using NetworkDevice.Core.Domain;
 using NetworkDevice.Core.Firmware;
@@ -56,9 +57,35 @@ public partial class ProvisioningPage : ContentPage
         base.OnAppearing();
         ScanUsb();
         UpdateTechnicianHeader();
+        UpdateSmartphoneModelUI();
         UpdateSpecialFunctionsVisibility();
         UpdateFirmwareRepoSummary();
         IniciarVerificacaoPeriodicaLicenca();
+    }
+
+    private void UpdateSmartphoneModelUI()
+    {
+        try
+        {
+            var p = SmartphoneModelAdapter.Instance.CurrentProfile;
+            LblDeviceModelTitle.Text = p.SummaryBadge;
+            LblDeviceModelSpecs.Text = $"{p.AndroidVersion} • Buffer UDP: {p.RecommendedUdpBufferSizeBytes / (1024 * 1024)}MB • Calibração: {p.ScreenCategoryName}";
+
+            if (p.RequiresManualOtgToggle)
+            {
+                BorderOtgAdvisor.IsVisible = true;
+                LblOtgAdvisorTitle.Text = $"Conectividade OTG ({p.Manufacturer})";
+                LblOtgAdvisorMessage.Text = p.VendorOtgGuide;
+            }
+            else
+            {
+                BorderOtgAdvisor.IsVisible = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"[!] Erro ao calibrar perfil do smartphone: {ex.Message}");
+        }
     }
 
     private void UpdateFirmwareRepoSummary()
@@ -106,11 +133,26 @@ public partial class ProvisioningPage : ContentPage
         await Navigation.PushModalAsync(new NavigationPage(new FirmwareRepoPage()));
     }
 
+    private async void OnDeviceDiagnosticsClicked(object? sender, EventArgs e)
+    {
+        await SmartphoneModelAdapter.Instance.ShowHardwareDiagnosticsAsync(this);
+    }
+
+    private void OnOpenOtgSettingsClicked(object? sender, EventArgs e)
+    {
+        SmartphoneModelAdapter.Instance.OpenDeviceOtgOrSystemSettings();
+    }
+
+    private void OnOpenBatterySettingsClicked(object? sender, EventArgs e)
+    {
+        SmartphoneModelAdapter.Instance.OpenBatteryOptimizationSettings();
+    }
+
     private void UpdateSpecialFunctionsVisibility()
     {
         var enabled = Preferences.Default.Get("sparc_special_functions", false);
         LayoutNatLab.IsVisible = enabled;
-        BtnAnalisadorDados.IsVisible = enabled;
+        BtnAnalisadorDados.IsVisible = true; // Certidão de Nascimento é nativa na UI principal
         (Shell.Current as AppShell)?.SetSpecialFunctionsVisibility(enabled);
     }
 
@@ -805,15 +847,15 @@ public partial class ProvisioningPage : ContentPage
         CircuitDetailsLayout.IsVisible = true;
 
         SaipClientLabel.Text = $"Cliente: {saip.ClienteRazaoSocial ?? "Não informado"}";
-        var prodText = !string.IsNullOrWhiteSpace(saip.Produto) ? saip.Produto : (saip.TipoServico == SaipServiceType.IpVpn ? "IP VPN (MPLS)" : "BLD");
-        SaipCircuitLabel.Text = $"Produto: {prodText} | Designação: {saip.DesignacaoIp ?? "-"} | OTS: {saip.NumeroOts ?? "-"}";
+        var prodText = !string.IsNullOrWhiteSpace(saip.Produto) ? saip.Produto : saip.TipoServicoDescricao;
+        SaipCircuitLabel.Text = $"🤖 Serviço Detectado: {saip.TipoServicoDescricao} | Designação: {saip.DesignacaoIp ?? "-"} | OTS: {saip.NumeroOts ?? "-"}";
         SaipWanLabel.Text = $"WAN: {saip.WanIp}/{saip.WanCidr} (Gateway: {saip.WanGateway})";
         SaipLanLabel.Text = $"LAN: {saip.LanIp}/{saip.LanCidr}{(saip.IsLanArbitrada ? " [LAN Arbitrada]" : "")} | Host: {saip.HostLanIp}";
         SaipBandwidthLabel.Text = $"Banda Nominal: {(saip.BandaMbpsNominal.HasValue ? $"{saip.BandaMbpsNominal.Value} Mbps" : "N/D")}";
 
         TxtBadgeStep2.Text = "✅ Ficha OK";
         TxtBadgeStep2.TextColor = Color.FromArgb("#4ADE80");
-        AppendLog($"[✓] Ficha SAIP carregada ({origem}): Produto '{prodText}', Cliente '{saip.ClienteRazaoSocial}', WAN '{saip.WanIp}', LAN '{saip.LanIp}'");
+        AppendLog($"[✓] Ficha SAIP carregada ({origem}): Serviço '{saip.TipoServicoDescricao}', Produto '{prodText}', Cliente '{saip.ClienteRazaoSocial}', WAN '{saip.WanIp}', LAN '{saip.LanIp}'");
     }
 
     private void OnToggleManualEditClicked(object? sender, EventArgs e)
@@ -829,6 +871,17 @@ public partial class ProvisioningPage : ContentPage
             EditHostLanEntry.Text = saip.HostLanIp;
             EditBandaEntry.Text = saip.BandaMbpsNominal?.ToString("F0");
             EditOtsEntry.Text = saip.NumeroOts;
+            EditTipoServicoPicker.SelectedIndex = saip.TipoServico switch
+            {
+                SaipServiceType.IpVpn => 1,
+                SaipServiceType.VozDigitalE1 => 2,
+                SaipServiceType.VozSipIp => 3,
+                _ => 0
+            };
+        }
+        else
+        {
+            EditTipoServicoPicker.SelectedIndex = 0;
         }
 
         ManualEditCard.IsVisible = !ManualEditCard.IsVisible;
@@ -865,11 +918,22 @@ public partial class ProvisioningPage : ContentPage
             banda = bVal;
         }
 
+        var selectedService = EditTipoServicoPicker.SelectedIndex switch
+        {
+            1 => SaipServiceType.IpVpn,
+            2 => SaipServiceType.VozDigitalE1,
+            3 => SaipServiceType.VozSipIp,
+            _ => SaipServiceType.BusinessLinkDirect
+        };
+        bool precisaArbitrarLan = selectedService == SaipServiceType.IpVpn || selectedService == SaipServiceType.VozDigitalE1;
+
         var newSaip = new SaipCircuitData
         {
             ClienteRazaoSocial = string.IsNullOrWhiteSpace(EditClienteEntry.Text) ? "Cliente Homologação" : EditClienteEntry.Text.Trim(),
             DesignacaoIp = string.IsNullOrWhiteSpace(EditDesignacaoEntry.Text) ? "MANUAL-CIRCUITO" : EditDesignacaoEntry.Text.Trim(),
             NumeroOts = EditOtsEntry.Text?.Trim(),
+            TipoServico = selectedService,
+            IsLanArbitrada = precisaArbitrarLan,
             WanIp = wanIp,
             WanCidr = wanCidr,
             WanGateway = EditWanGwEntry.Text?.Trim() ?? string.Empty,
@@ -882,7 +946,7 @@ public partial class ProvisioningPage : ContentPage
 
         SetSaipData(newSaip, "Edição Manual");
         ManualEditCard.IsVisible = false;
-        await DisplayAlert("Parâmetros Atualizados", "Os parâmetros do circuito foram gravados para esta sessão de provisionamento.", "OK");
+        await DisplayAlert("Parâmetros Atualizados", $"Circuito gravado como {newSaip.TipoServicoDescricao} para esta sessão de provisionamento.", "OK");
     }
 
     #endregion
@@ -1059,12 +1123,36 @@ public partial class ProvisioningPage : ContentPage
     private async Task TratarEquipamentoComSenhaAsync(DeviceDetectionResult detected)
     {
         var modelName = detected.Series != DeviceSeries.Unknown ? detected.Series.ToString() : detected.Manufacturer.ToString();
-        var choice = await DisplayActionSheet(
-            $"🔒 Roteador Protegido por Senha ({modelName})",
-            "Cancelar",
-            null,
-            "🔑 Informar Login e Senha",
-            $"⚡ Zerar Configuração ({modelName})");
+        var hasCircuit = _connManager.LoadedCircuit != null;
+
+        string choice;
+        if (hasCircuit)
+        {
+            choice = await DisplayActionSheet(
+                $"🔒 Roteador Protegido por Senha ({modelName})",
+                "Cancelar",
+                null,
+                "⚡ Iniciar Modo Automático (Quebra + Reload Único)",
+                "🔑 Informar Login e Senha",
+                $"🛠️ Zerar Configuração Manual ({modelName})");
+        }
+        else
+        {
+            choice = await DisplayActionSheet(
+                $"🔒 Roteador Protegido por Senha ({modelName})",
+                "Cancelar",
+                null,
+                "🔑 Informar Login e Senha",
+                $"⚡ Zerar Configuração ({modelName})");
+        }
+
+        if (choice == "⚡ Iniciar Modo Automático (Quebra + Reload Único)")
+        {
+            ViewTelaInicial.IsVisible = false;
+            ViewModoAutomatico.IsVisible = true;
+            _ = ExecutarModoAutomaticoAsync();
+            return;
+        }
 
         if (choice == "🔑 Informar Login e Senha")
         {
@@ -1109,7 +1197,7 @@ public partial class ProvisioningPage : ContentPage
                 }
             }
         }
-        else if (choice != null && choice.StartsWith("⚡ Zerar Configuração"))
+        else if (choice != null && (choice.Contains("Zerar Configuração") || choice.Contains("Recovery")))
         {
             if (Shell.Current != null)
                 await Shell.Current.GoToAsync("//RecoveryPage");
@@ -1260,14 +1348,15 @@ public partial class ProvisioningPage : ContentPage
                     }
                 }
 
-                // 2. Audita versão em execução no equipamento com loop serial isolado
+                // 2. Audita versão em execução no equipamento com loop serial isolado (sem ping WAN em bancada)
                 try
                 {
                     fwAudit = await _connManager.AuditFirmwareComplianceAsync(
                         detected.Series,
                         officialRemote,
                         s => { LogAuto(s); return Task.CompletedTask; },
-                        ct);
+                        ct,
+                        checkWan: false);
 
                     versaoExibida = !string.IsNullOrWhiteSpace(fwAudit.CurrentVersion) && fwAudit.CurrentVersion != "Não identificado"
                         ? fwAudit.CurrentVersion
@@ -1281,6 +1370,11 @@ public partial class ProvisioningPage : ContentPage
 
             bool precisaAtualizarFw = atualizarFw && detected != null && fwAudit != null && !fwAudit.IsCompliant;
 
+            // REGRA DE OURO (RELOAD ÚNICO): Se a opção 'Atualizar Firmware' estiver marcada, a Etapa 1 NUNCA reinicia o equipamento!
+            // O reload é sempre postergado para a Etapa 2, unificando gravação de firmware + zeramento de configuração em 1 ÚNICO reboot.
+            bool postergarReloadParaFase2 = atualizarFw;
+            NetworkDevice.Core.Provisioning.DeviceSanitizationStatus? sanitizationPrevia = null;
+
             // =====================================================================
             // FASE 1: ZERAR CONFIGURAÇÃO (1/7)
             // =====================================================================
@@ -1288,7 +1382,7 @@ public partial class ProvisioningPage : ContentPage
             Progresso(10, "1/7 Zerando Configuração...");
             LogAuto("\n>>> [AUTO 1/7] Zerar Configuração (verificando senha e terminal)");
 
-            if (precisaAtualizarFw)
+            if (postergarReloadParaFase2)
             {
                 // RELOAD SERÁ UNIFICADO NA FASE 2!
                 if (detected?.OperatingState == DeviceOperatingState.PasswordProtected)
@@ -1312,8 +1406,8 @@ public partial class ProvisioningPage : ContentPage
                 {
                     try
                     {
-                        var sanitization = await _connManager.DetectSanitizationAsync(ct);
-                        LogAuto($"[*] [AVALIAÇÃO DE CONFIGURAÇÃO] {sanitization.Summary}");
+                        sanitizationPrevia = await _connManager.DetectSanitizationAsync(ct);
+                        LogAuto($"[*] [AVALIAÇÃO DE CONFIGURAÇÃO] {sanitizationPrevia.Summary}");
                     }
                     catch (Exception exSanit)
                     {
@@ -1322,7 +1416,7 @@ public partial class ProvisioningPage : ContentPage
                 }
 
                 SetEtapa(1, "✅ 1. Zerar Configuração — OK (Agendado / Reload unificado na Etapa 2)", "#16A34A");
-                LogAuto("[✓] Atualização de firmware pendente detectada. O zeramento da configuração (write erase / format nvram:) e o reload serão UNIFICADOS com a gravação do novo firmware na Etapa 2!");
+                LogAuto("[✓] Avaliação de firmware habilitada. O zeramento da configuração residual e o reload foram UNIFICADOS na Etapa 2 para garantir 1 ÚNICO REBOOT!");
                 Progresso(20, "1/7 Zeramento Agendado (Reload Único)");
             }
             else
@@ -1349,10 +1443,10 @@ public partial class ProvisioningPage : ContentPage
                 }
                 else
                 {
-                    var sanitization = await _connManager.DetectSanitizationAsync(ct);
-                    LogAuto($"[*] [AVALIAÇÃO DE CONFIGURAÇÃO] {sanitization.Summary}");
+                    sanitizationPrevia = await _connManager.DetectSanitizationAsync(ct);
+                    LogAuto($"[*] [AVALIAÇÃO DE CONFIGURAÇÃO] {sanitizationPrevia.Summary}");
 
-                    if (sanitization.IsClean)
+                    if (sanitizationPrevia.IsClean)
                     {
                         SetEtapa(1, "✅ 1. Zerar Configuração — OK (Padrão de Fábrica / Base Limpa)", "#16A34A");
                         LogAuto("[✓] Equipamento já em padrão de fábrica limpo (zero lixo). Zeramento dispensado com sucesso!");
@@ -1361,7 +1455,7 @@ public partial class ProvisioningPage : ContentPage
                     {
                         SetEtapa(1, "⏳ 1. Zerar Configuração — Zerando config antiga...", "#D97706");
                         Progresso(15, "1/7 Zerando e Reiniciando...");
-                        LogAuto($"[*] Configuração residual identificada ({sanitization.Summary}). Aplicando comandos de zeramento e reiniciando...");
+                        LogAuto($"[*] Configuração residual identificada ({sanitizationPrevia.Summary}). Aplicando comandos de zeramento e reiniciando...");
 
                         var zerou = await _connManager.EraseConfigurationAndReloadAsync(
                             detected!.Manufacturer,
@@ -1399,8 +1493,38 @@ public partial class ProvisioningPage : ContentPage
             else if (!precisaAtualizarFw)
             {
                 var targetName = officialRemote?.FileName ?? officialCanonicalName ?? "Homologado";
-                SetEtapa(2, $"✅ 2. Firmware — mantido (mesma versão: {versaoExibida})", "#16A34A");
-                LogAuto($"[✓] Firmware já em conformidade com a imagem selecionada/homologada ({targetName}). Nenhuma atualização necessária.");
+                SetEtapa(2, $"✅ 2. Firmware — mantido (já homologado: {versaoExibida})", "#16A34A");
+                LogAuto($"[✓] Firmware já em conformidade com a imagem selecionada/homologada ({targetName}). Nenhuma gravação necessária.");
+
+                // Como o reload foi unificado na Etapa 2 e o firmware já estava homologado,
+                // verificamos se a configuração residual precisa de zeramento (Reload Único aqui)
+                if (sanitizationPrevia != null && !sanitizationPrevia.IsClean)
+                {
+                    SetEtapa(1, "⏳ 1. Zerar Configuração — Limpando resíduos...", "#D97706");
+                    LogAuto($"[*] Configuração residual detectada na Etapa 1 ({sanitizationPrevia.Summary}). Aplicando zeramento da NVRAM e reiniciando agora em base limpa (Reload Único)...");
+                    Progresso(30, "Limpando e Reiniciando...");
+
+                    var zerou = await _connManager.EraseConfigurationAndReloadAsync(
+                        detected!.Manufacturer,
+                        detected.Series,
+                        msg => { LogAuto(msg); return Task.CompletedTask; },
+                        ct);
+
+                    if (zerou)
+                    {
+                        SetEtapa(1, "✅ 1. Zerar Configuração — OK (Base Limpa / Reload Único)", "#16A34A");
+                        LogAuto("[✓] Roteador reinicializado com sucesso em padrão de fábrica limpo!");
+                    }
+                    else
+                    {
+                        SetEtapa(1, "⚠️ 1. Zerar Configuração — Aviso no zeramento", "#CA8A04");
+                    }
+                }
+                else
+                {
+                    SetEtapa(1, "✅ 1. Zerar Configuração — OK (Padrão de Fábrica / Base Limpa)", "#16A34A");
+                    LogAuto("[✓] Equipamento já em padrão de fábrica limpo (zero resíduos). Nenhum reboot necessário!");
+                }
                 Progresso(40, "2/7 OK");
             }
             else
@@ -2035,14 +2159,44 @@ public partial class ProvisioningPage : ContentPage
                         var isHpeDev = _connManager.LastDetectionResult?.Manufacturer == DeviceManufacturer.Hpe;
                         var defaultTelnetPass = isHpeDev ? "PRO1ANPRO1AN" : "CQMR";
                         var telnetOk = await _connManager.SwitchToTelnetSessionAsync(telnetTarget, 23, "EBT", defaultTelnetPass, LogAuto, ct, localIpAddress: ethIp);
-                        _lastTelnetResult = new ConnectivityService.TelnetTestResult(telnetTarget, 23, telnetOk, 10, telnetOk ? "Telnet Conectado" : "Falha", "OK", null);
-                        SetEtapa(6, telnetOk ? $"✅ 6. Telnet (TCP 23 EBT/{defaultTelnetPass}) — OK (Migrado)" : "⚠️ 6. Telnet — sem resposta (Cabo LAN ou IP pendente)", telnetOk ? "#16A34A" : "#FBBF24");
+                        if (telnetOk)
+                        {
+                            _lastTelnetResult = new ConnectivityService.TelnetTestResult(telnetTarget, 23, true, 10, "Telnet Conectado", "OK", null);
+                            SetEtapa(6, $"✅ 6. Telnet (TCP 23 EBT/{defaultTelnetPass}) — OK (Migrado)", "#16A34A");
+                        }
+                        else
+                        {
+                            var srv = new ConnectivityService(msg => { LogAuto(msg); return Task.CompletedTask; });
+                            var (sshOk, sshLat, _) = await srv.TestTcpPortAsync(telnetTarget, 22, timeoutMs: 4000, sourceIpAddress: effectiveSourceIp, cancellationToken: ct);
+                            if (sshOk)
+                            {
+                                _lastTelnetResult = new ConnectivityService.TelnetTestResult(telnetTarget, 22, true, sshLat, "SSH/TACACS+ Ativo (Time CPE)", "O Telnet padrão foi desabilitado e o time CPE terá acesso pelo TACACS.", null);
+                                SetEtapa(6, "✅ 6. Acesso Remoto (TACACS+/SSH) — OK", "#16A34A");
+                                LogAuto($"[✓] Acesso remoto confirmado: O Telnet padrão foi desabilitado e o time CPE terá acesso pelo TACACS (SSH porta 22 respondendo em {sshLat}ms)!");
+                            }
+                            else
+                            {
+                                _lastTelnetResult = new ConnectivityService.TelnetTestResult(telnetTarget, 23, false, 0, "Falha", "Sem resposta Telnet/SSH", null);
+                                SetEtapa(6, "⚠️ 6. Telnet — sem resposta (Cabo LAN ou IP pendente)", "#FBBF24");
+                            }
+                        }
                     }
                     catch (Exception exTel)
                     {
-                        LogAuto($"[!] Acesso Telnet indisponível: {exTel.Message}");
-                        _lastTelnetResult = new ConnectivityService.TelnetTestResult(telnetTarget, 23, false, 0, "Inacessível", exTel.Message, null);
-                        SetEtapa(6, "⚠️ 6. Telnet — sem resposta", "#FBBF24");
+                        var srv = new ConnectivityService(msg => { LogAuto(msg); return Task.CompletedTask; });
+                        var (sshOk, sshLat, _) = await srv.TestTcpPortAsync(telnetTarget, 22, timeoutMs: 4000, sourceIpAddress: effectiveSourceIp, cancellationToken: ct);
+                        if (sshOk)
+                        {
+                            _lastTelnetResult = new ConnectivityService.TelnetTestResult(telnetTarget, 22, true, sshLat, "SSH/TACACS+ Ativo (Time CPE)", "O Telnet padrão foi desabilitado e o time CPE terá acesso pelo TACACS.", null);
+                            SetEtapa(6, "✅ 6. Acesso Remoto (TACACS+/SSH) — OK", "#16A34A");
+                            LogAuto($"[✓] Acesso remoto confirmado: O Telnet padrão foi desabilitado e o time CPE terá acesso pelo TACACS (SSH porta 22 respondendo em {sshLat}ms)!");
+                        }
+                        else
+                        {
+                            LogAuto($"[!] Acesso Telnet indisponível: {exTel.Message}");
+                            _lastTelnetResult = new ConnectivityService.TelnetTestResult(telnetTarget, 23, false, 0, "Inacessível", exTel.Message, null);
+                            SetEtapa(6, "⚠️ 6. Telnet — sem resposta", "#FBBF24");
+                        }
                     }
                 }
                 Progresso(92, "6/7 Acesso Remoto Concluído");
@@ -2104,18 +2258,19 @@ public partial class ProvisioningPage : ContentPage
 
             try { Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(500)); } catch { }
 
-            await DisplayAlert("Provisionamento Concluído",
+            var manterDhcp = await DisplayAlert("🛡️ Manter DHCP para Testes / Certidão?",
                 $"Esteira executada com sucesso para o circuito '{circuit.DesignacaoIp ?? circuit.ClienteRazaoSocial}'!\n\n" +
                 $"• Provisionamento: OK\n" +
                 $"• ICMP LAN: {icmpLan} | WAN: {icmpWan} | WEB: {icmpWeb}\n" +
                 $"• Banda: {_lastBandResult?.DownloadMbps:F1} Mbps\n\n" +
-                $"O servidor DHCP temporário de testes será removido do roteador, restaurando a configuração 100% estática.\n\n" +
-                $"Toque em 'Compartilhar Relatório' para gerar o documento técnico de ativação.",
-                "OK");
+                $"Deseja MANTER o servidor DHCP temporário ativo na LAN para realização de testes com o MTS-5800 ou Certidão de Nascimento?\n\n" +
+                $"• SIM (MANTER DHCP): Mantém o IP no smartphone/notebook para testes de bancada e Certidão.\n" +
+                $"• NÃO (ENTREGA FINAL): Remove o DHCP agora e regrava a NVRAM 100% estática.",
+                "SIM (MANTER DHCP)", "NÃO (ENTREGA FINAL)");
 
             // Remoção do pool DHCP temporário: restaura a configuração 100% estática do roteador
             var sessaoAtiva = _connManager.TelnetSession ?? _connManager.CurrentSession;
-            if (sessaoAtiva != null)
+            if (sessaoAtiva != null && !manterDhcp)
             {
                 var isHpe = detected?.Manufacturer == DeviceManufacturer.Hpe ||
                             (ModelPicker.SelectedItem?.ToString()?.Contains("HPE", StringComparison.OrdinalIgnoreCase) == true) ||
@@ -2142,6 +2297,11 @@ public partial class ProvisioningPage : ContentPage
                 {
                     _connManager.ResumeReadLoop();
                 }
+            }
+            else if (manterDhcp)
+            {
+                LogAuto("\n[✓] SERVIDOR DHCP MANTIDO ATIVO NA LAN para testes com MTS-5800 e Certidão de Nascimento!");
+                LogAuto("[i] Para remover o DHCP antes da entrega final ao cliente, utilize a opção de remoção de DHCP.");
             }
 
             // Se a atualização de firmware foi postergada na Fase 2 e a WAN agora está online (ICMP WAN ou WEB OK)
@@ -2286,9 +2446,86 @@ public partial class ProvisioningPage : ContentPage
             }
         }
 
-        // 5c WEB
-        AppendLog("[*] 5c: Testando ICMP para DNS Web (1.1.1.1)...");
-        var webRes = await srv.TestPingAsync("1.1.1.1", count: 4, timeoutMs: 2500, sourceIpAddress: sourceIp, cancellationToken: ct);
+        bool isModoBancadaAtivo = false;
+        if (!wanRes.IsSuccess)
+        {
+            var modeloTag = saip.DescriptionRoteador ?? saip.PeRouter ?? "";
+            var portasInfo = WanPortInspector.ObterRoteadorPortasInfo(modeloTag);
+            var wanNome = portasInfo?.WanInterfaceExibicao ?? "Porta WAN";
+            var lanNome = portasInfo?.LanInterfaceExibicao ?? "Porta LAN";
+
+            var escolha = await MainThread.InvokeOnMainThreadAsync(async () =>
+            {
+                return await DisplayActionSheet(
+                    $"Diagnóstico: {wanNome} sem resposta",
+                    "Continuar Offline",
+                    null,
+                    "🔌 Conectei o Cabo WAN (Repetir Teste)",
+                    "🧪 Seguir em Modo Bancada (Pular WAN)",
+                    "⚠️ Dica: Verificar Inversão de Cabos");
+            });
+
+            if (escolha == "🧪 Seguir em Modo Bancada (Pular WAN)")
+            {
+                isModoBancadaAtivo = true;
+                AppendLog("[*] [5b] Operador selecionou MODO BANCADA: testes de WAN e Internet serão pulados.");
+            }
+            else if (escolha == "⚠️ Dica: Verificar Inversão de Cabos")
+            {
+                await MainThread.InvokeOnMainThreadAsync(async () =>
+                {
+                    await DisplayAlert(
+                        "Proteção contra Inversão de Cabos",
+                        $"Certifique-se de que o cabo do adaptador OTG/Rede do smartphone está conectado na {lanNome} e o cabo do modem/acesso Claro está conectado na {wanNome}.\n\nSe os cabos estiverem invertidos, a WAN não responderá.",
+                        "Entendido");
+                });
+            }
+            else if (escolha == "🔌 Conectei o Cabo WAN (Repetir Teste)")
+            {
+                AppendLog("[*] [5b] Repetindo teste ICMP para Gateway WAN...");
+                wanRes = await srv.TestPingAsync(wanTarget, count: 4, timeoutMs: 2500, sourceIpAddress: sourceIp, cancellationToken: ct);
+                if (wanRes.IsSuccess)
+                    AppendLog($"[OK 5b WAN] Conectividade WAN confirmada: RTT Médio {wanRes.AvgRttMs:F1}ms.");
+            }
+        }
+
+        // 5c WEB / VOZ (Media Gateway) / MPLS (Loopback PE)
+        ConnectivityTestResult webRes;
+        if (isModoBancadaAtivo)
+        {
+            AppendLog("[*] [5c] Modo Bancada ativo: teste de Internet pública / Media Gateway pulado.");
+            webRes = new ConnectivityTestResult("Bancada", 0, 0, 0, 0, 0, 0, 0, false, new List<PingPacketInfo>());
+        }
+        else if (saip.IsServicoVoz)
+        {
+            var mgw = saip.MediaGatewayIp ?? saip.WanGateway ?? "10.0.0.1";
+            AppendLog($"[*] 5c: Testando ICMP para Media Gateway Voz ({mgw})...");
+            webRes = await srv.TestPingAsync(mgw, count: 4, timeoutMs: 2500, sourceIpAddress: sourceIp, cancellationToken: ct);
+            if (webRes.IsSuccess)
+                AppendLog($"[OK 5c VOZ] Media Gateway ({mgw}) respondeu: RTT {webRes.AvgRttMs:F1}ms.");
+            else
+                AppendLog($"[AVISO 5c VOZ] Media Gateway ({mgw}) sem resposta ICMP.");
+        }
+        else if (saip.IsServicoMpls)
+        {
+            var mplsTarget = saip.PeLoopbackIp ?? saip.WanGateway ?? "10.0.0.1";
+            AppendLog($"[*] 5c: Testando ICMP para Loopback PE / Core MPLS ({mplsTarget})...");
+            webRes = await srv.TestPingAsync(mplsTarget, count: 4, timeoutMs: 2500, sourceIpAddress: sourceIp, cancellationToken: ct);
+            if (webRes.IsSuccess)
+                AppendLog($"[OK 5c MPLS] Loopback PE ({mplsTarget}) respondeu: RTT {webRes.AvgRttMs:F1}ms.");
+            else
+                AppendLog($"[AVISO 5c MPLS] Loopback PE ({mplsTarget}) sem resposta ICMP.");
+        }
+        else
+        {
+            AppendLog("[*] 5c: Testando ICMP para DNS Web (1.1.1.1)...");
+            webRes = await srv.TestPingAsync("1.1.1.1", count: 4, timeoutMs: 2500, sourceIpAddress: sourceIp, cancellationToken: ct);
+            if (!webRes.IsSuccess)
+            {
+                AppendLog("[*] Testando segundo host Web (Google DNS 8.8.8.8)...");
+                webRes = await srv.TestPingAsync("8.8.8.8", count: 4, timeoutMs: 2500, sourceIpAddress: sourceIp, cancellationToken: ct);
+            }
+        }
 
         return new TripleIcmpData(lanRes, wanRes, webRes);
     }
@@ -2669,7 +2906,10 @@ public partial class ProvisioningPage : ContentPage
                 DiagnosticAlerts: new List<string>(),
                 FalhaGeral: null,
                 AppliedConfigScript: _connManager.LastAppliedConfig,
-                BandaMbpsNominal: circuit.BandaMbpsNominal);
+                BandaMbpsNominal: circuit.BandaMbpsNominal,
+                TipoServicoDescricao: circuit.TipoServicoDescricao ?? circuit.TipoServico.ToString(),
+                MediaGatewayIp: circuit.MediaGatewayIp,
+                PeLoopbackIp: circuit.PeLoopbackIp);
 
             var html = ActivationPdfReportService.GenerateHtml(reportData);
             var pdfPath = await ReportsStorageService.Instance.SaveReportAsync($"Relatorio_SPARC_{circuit.DesignacaoIp ?? "Circuito"}", html, ".html", "Ativação SAIP");
@@ -2747,11 +2987,23 @@ public partial class ProvisioningPage : ContentPage
 
     private async void OnAbrirAnalisadorClicked(object? sender, EventArgs e)
     {
-        if (Shell.Current != null)
+        if (_connManager.LoadedCircuit == null)
         {
-            await Shell.Current.GoToAsync("//Y1564Page");
+            await DisplayAlert("Ficha SAIP Obrigatória",
+                "⚠️ Nenhuma Ficha SAIP foi carregada.\n\nPara emitir a Certidão de Nascimento oficial (ITU-T Y.1564), importe primeiro a Ficha SAIP (PDF ou TXT) no Passo 2 da tela inicial.",
+                "OK");
+            return;
         }
-        else
+
+        try
+        {
+            if (Shell.Current is AppShell appShell)
+            {
+                appShell.SetSpecialFunctionsVisibility(true);
+            }
+            await Shell.Current!.GoToAsync("//Y1564Page");
+        }
+        catch
         {
             await Navigation.PushAsync(new Y1564Page());
         }
@@ -2759,11 +3011,23 @@ public partial class ProvisioningPage : ContentPage
 
     private async void OnAutoCertidaoY1564Clicked(object? sender, EventArgs e)
     {
-        if (Shell.Current != null)
+        if (_connManager.LoadedCircuit == null)
         {
-            await Shell.Current.GoToAsync("//Y1564Page");
+            await DisplayAlert("Ficha SAIP Obrigatória",
+                "⚠️ Nenhuma Ficha SAIP foi carregada.\n\nPara emitir a Certidão de Nascimento oficial (ITU-T Y.1564), importe primeiro a Ficha SAIP (PDF ou TXT) no Passo 2.",
+                "OK");
+            return;
         }
-        else
+
+        try
+        {
+            if (Shell.Current is AppShell appShell)
+            {
+                appShell.SetSpecialFunctionsVisibility(true);
+            }
+            await Shell.Current!.GoToAsync("//Y1564Page");
+        }
+        catch
         {
             await Navigation.PushAsync(new Y1564Page());
         }

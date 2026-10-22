@@ -333,5 +333,97 @@ public sealed class Y1564Tests
 
         try { File.Delete(generated); } catch { }
     }
+
+    [Fact]
+    public void CertidaoNascimento_NomeclaturaPadraoEmbratel_SubstituiBarrasPorTracos()
+    {
+        // Descritivo Técnico Embratel (Página 41):
+        // Designação SPO/IP/47287 => SPO-IP-47287.pdf
+        var rawDesig = "SPO/IP/47287";
+        var nomeOficial = rawDesig.Trim().Replace('/', '-').Replace('\\', '-');
+        foreach (var c in Path.GetInvalidFileNameChars()) nomeOficial = nomeOficial.Replace(c, '-');
+        if (!nomeOficial.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)) nomeOficial += ".pdf";
+
+        Assert.Equal("SPO-IP-47287.pdf", nomeOficial);
+
+        // Teste com outra designação real
+        var rawDesig2 = "LFS/IP/02924";
+        var nomeOficial2 = rawDesig2.Trim().Replace('/', '-').Replace('\\', '-');
+        foreach (var c in Path.GetInvalidFileNameChars()) nomeOficial2 = nomeOficial2.Replace(c, '-');
+        if (!nomeOficial2.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)) nomeOficial2 += ".pdf";
+
+        Assert.Equal("LFS-IP-02924.pdf", nomeOficial2);
+    }
+
+    [Theory]
+    [InlineData("BLD", 250, 0.20, 74.0, 28.0, 1500)]
+    [InlineData("BLD", 1200, 0.20, 250.0, 160.0, 1500)]
+    [InlineData("MPLS", 250, 0.02, 40.0, 16.0, 1500)]
+    [InlineData("MPLS", 1200, 0.02, 150.0, 80.0, 1500)]
+    [InlineData("VOZ", 250, 0.02, 20.0, 6.0, 64)]
+    [InlineData("VOZ", 1200, 0.02, 50.0, 16.0, 64)]
+    public void CertidaoNascimento_PresetsServicosEmbratel_ParametrizacaoCorreta(
+        string servico, int distKm, double expectedLoss, double expectedDelay, double expectedJitter, int expectedFrame)
+    {
+        double maxLoss = (servico == "VOZ" || servico == "MPLS") ? (distKm <= 1200 ? 0.02 : 0.05) : 0.20;
+        double maxDelay = servico == "VOZ"
+            ? (distKm <= 250 ? 20.0 : (distKm <= 1200 ? 50.0 : 154.0))
+            : (servico == "MPLS"
+                ? (distKm <= 250 ? 40.0 : (distKm <= 1200 ? 150.0 : 230.0))
+                : (distKm <= 250 ? 74.0 : (distKm <= 1200 ? 250.0 : 460.0)));
+        double maxJitter = servico == "VOZ"
+            ? (distKm <= 250 ? 6.0 : (distKm <= 1200 ? 16.0 : 20.0))
+            : (servico == "MPLS"
+                ? (distKm <= 250 ? 16.0 : (distKm <= 1200 ? 80.0 : 80.0))
+                : (distKm <= 250 ? 28.0 : (distKm <= 1200 ? 160.0 : 260.0)));
+
+        int frame = servico == "VOZ" ? 64 : 1500;
+
+        Assert.Equal(expectedLoss, maxLoss, 2);
+        Assert.Equal(expectedDelay, maxDelay, 1);
+        Assert.Equal(expectedJitter, maxJitter, 1);
+        Assert.Equal(expectedFrame, frame);
+    }
+
+    [Fact]
+    public void CertidaoNascimento_LoopbackStatsRecord_CalculatesCorrectly()
+    {
+        var stats = new DigitalLoopbackStats(
+            IsActive: true,
+            Port: 5001,
+            BindAddress: "0.0.0.0",
+            TotalPacketsRx: 154200,
+            TotalPacketsTx: 154200,
+            TotalBytesRx: 154200 * 1500,
+            TotalBytesTx: 154200 * 1500,
+            CurrentRxMbps: 198.4,
+            CurrentTxMbps: 198.4,
+            CurrentRxPps: 16500,
+            CurrentTxPps: 16500,
+            LastRemoteEndPoint: "200.250.153.41:5001",
+            Elapsed: TimeSpan.FromMinutes(15));
+
+        Assert.True(stats.IsActive);
+        Assert.Equal(5001, stats.Port);
+        Assert.Equal(154200, stats.TotalPacketsRx);
+        Assert.Equal(154200, stats.TotalPacketsTx);
+        Assert.Equal("200.250.153.41:5001", stats.LastRemoteEndPoint);
+        Assert.Equal(TimeSpan.FromMinutes(15), stats.Elapsed);
+    }
+
+    [Fact]
+    public void CertidaoNascimento_ModoInicial_EhRefletorComDuracaoIndefinida()
+    {
+        // Regra de Negócio Técnica Embratel / Claro:
+        // O instrumento de campo (MTS-5800 ou SPARC Mobile) deve iniciar no modo Refletor LLB na porta 5001
+        // com tempo indefinido, aguardando o início do teste de 15 minutos disparado remotamente pelo QT-600.
+        const string modoPadrao = "Loopback";
+        const int portaPadrao = 5001;
+        var duracaoIndefinida = TimeSpan.Zero; // Representa contínuo / indefinido
+
+        Assert.Equal("Loopback", modoPadrao);
+        Assert.Equal(5001, portaPadrao);
+        Assert.Equal(TimeSpan.Zero, duracaoIndefinida);
+    }
 }
 

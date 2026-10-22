@@ -21,6 +21,7 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable, IDisposable
     private readonly string _rootDirectory;
     private readonly int _port;
     private readonly bool _throttleForRommon;
+    private readonly IPAddress? _preferredLocalIp;
     private Socket? _listenerSocket;
     private CancellationTokenSource? _cts;
     private Task? _serverTask;
@@ -30,11 +31,15 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable, IDisposable
     public event Action<string, long, long, double>? TransferProgress;
     public event Action<string>? LogMessage;
 
-    public EmbeddedTftpServer(string rootDirectory, int port = DefaultPort, bool throttleForRommon = false)
+    public EmbeddedTftpServer(string rootDirectory, int port = DefaultPort, bool throttleForRommon = false, string? preferredLocalIp = null)
     {
         _rootDirectory = rootDirectory;
         _port = port;
         _throttleForRommon = throttleForRommon;
+        if (!string.IsNullOrWhiteSpace(preferredLocalIp) && IPAddress.TryParse(preferredLocalIp.Trim(), out var parsedIp))
+        {
+            _preferredLocalIp = parsedIp;
+        }
     }
 
     public bool IsRunning => _listenerSocket is not null;
@@ -46,27 +51,45 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable, IDisposable
 
         _cts = new CancellationTokenSource();
 
+        // Verificação preventiva proativa: finaliza Tftpd32, Tftpd64 ou outros servidores TFTP antes de subir o socket
+        if (autoCloseKnownTftpConflicts)
+        {
+            try
+            {
+                var conflict = UdpPortDiagnostics.FindProcessUsingUdpPort(_port);
+                if (conflict != null && !conflict.IsCurrentProcess &&
+                    (conflict.ProcessName.Contains("tftpd", StringComparison.OrdinalIgnoreCase) ||
+                     conflict.ProcessName.Contains("tftp32", StringComparison.OrdinalIgnoreCase) ||
+                     conflict.ProcessName.Contains("tftp64", StringComparison.OrdinalIgnoreCase) ||
+                     conflict.ProcessName.Contains("solarwinds", StringComparison.OrdinalIgnoreCase) ||
+                     conflict.ProcessName.Contains("3cdaemon", StringComparison.OrdinalIgnoreCase)))
+                {
+                    LogMessage?.Invoke($"[TFTP] Porta {_port} ocupada pelo aplicativo '{conflict.ProcessName}' (PID {conflict.ProcessId}). Encerrando processo conflitante...");
+                    if (UdpPortDiagnostics.TryCloseConflictingProcess(conflict))
+                    {
+                        Thread.Sleep(400);
+                    }
+                }
+            }
+            catch { }
+        }
+
         _listenerSocket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp)
         {
             ReceiveBufferSize = 2 * 1024 * 1024,
             SendBufferSize = 2 * 1024 * 1024
         };
 
+        // 1. Tenta bind exclusivo primeiro para assegurar que nenhum app externo sequestre os pacotes
         try
         {
-            _listenerSocket.ExclusiveAddressUse = false;
-            _listenerSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-        }
-        catch { }
-
-        try
-        {
+            _listenerSocket.ExclusiveAddressUse = true;
             _listenerSocket.Bind(new IPEndPoint(IPAddress.Any, _port));
+            goto SocketBound;
         }
-        catch (SocketException ex) when (
-            ex.SocketErrorCode == SocketError.AddressAlreadyInUse || ex.NativeErrorCode == 10048 ||
-            ex.SocketErrorCode == SocketError.AccessDenied || ex.NativeErrorCode == 10013)
+        catch (SocketException)
         {
+            // Se falhou bind exclusivo, tenta fechar processos conflitantes novamente
             var conflict = UdpPortDiagnostics.FindProcessUsingUdpPort(_port);
             if (autoCloseKnownTftpConflicts && conflict != null && !conflict.IsCurrentProcess &&
                 (conflict.ProcessName.Contains("tftpd", StringComparison.OrdinalIgnoreCase) ||
@@ -76,9 +99,10 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable, IDisposable
                 LogMessage?.Invoke($"[TFTP] Porta {_port} ocupada pelo aplicativo '{conflict.ProcessName}' (PID {conflict.ProcessId}). Encerrando processo conflitante...");
                 if (UdpPortDiagnostics.TryCloseConflictingProcess(conflict))
                 {
-                    Thread.Sleep(350);
+                    Thread.Sleep(400);
                     try
                     {
+                        _listenerSocket.ExclusiveAddressUse = true;
                         _listenerSocket.Bind(new IPEndPoint(IPAddress.Any, _port));
                         goto SocketBound;
                     }
@@ -86,12 +110,23 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable, IDisposable
                 }
             }
 
-            _listenerSocket?.Close();
-            _listenerSocket?.Dispose();
-            _listenerSocket = null;
+            // Fallback para SO_REUSEADDR se necessário
+            try
+            {
+                _listenerSocket.ExclusiveAddressUse = false;
+                _listenerSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+                _listenerSocket.Bind(new IPEndPoint(IPAddress.Any, _port));
+                goto SocketBound;
+            }
+            catch (Exception ex)
+            {
+                _listenerSocket?.Close();
+                _listenerSocket?.Dispose();
+                _listenerSocket = null;
 
-            var diagnosticMsg = UdpPortDiagnostics.BuildFriendlyConflictMessage(_port, conflict);
-            throw new InvalidOperationException(diagnosticMsg, ex);
+                var diagnosticMsg = UdpPortDiagnostics.BuildFriendlyConflictMessage(_port, conflict);
+                throw new InvalidOperationException(diagnosticMsg, ex);
+            }
         }
 
     SocketBound:
@@ -253,7 +288,10 @@ public sealed class EmbeddedTftpServer : IAsyncDisposable, IDisposable
         const int SioUdpConnReset = -1744830452;
         try { transferSocket.IOControl(SioUdpConnReset, new byte[] { 0 }, null); } catch { }
 
-        transferSocket.Bind(new IPEndPoint(IPAddress.Any, 0)); // Porta efêmera dedicada
+        var bindLocalEp = _preferredLocalIp != null 
+            ? new IPEndPoint(_preferredLocalIp, 0)
+            : new IPEndPoint(IPAddress.Any, 0);
+        transferSocket.Bind(bindLocalEp); // Porta efêmera dedicada no IP local correto
         try { transferSocket.Connect(clientEp); } catch { }
 
         if (!File.Exists(fullPath))

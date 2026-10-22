@@ -25,6 +25,14 @@ public sealed class CiscoSaipConfigurator
     /// </summary>
     public string? BootImage { get; set; }
 
+    /// <summary>
+    /// Força o modo de script (true = BLD Completo Claro com TACACS/QoS/NTP/SNMP/ACLs;
+    /// false = Básico para subir link e disponibilizar acesso remoto via Telnet).
+    /// Quando null (padrão), é deduzido automaticamente a partir de circuit.TipoServico
+    /// (BLD = true; MPLS/Voz = false).
+    /// </summary>
+    public bool? IncluirBldClaro { get; set; }
+
     public CiscoSaipConfigurator(Func<string, Task>? progress = null)
     {
         _progress = progress;
@@ -143,8 +151,11 @@ public sealed class CiscoSaipConfigurator
         string wanInterface = "GigabitEthernet 4",
         string lanInterface = "GigabitEthernet 5",
         bool incluirNatLab = false,
-        string? bootImage = null)
+        string? bootImage = null,
+        bool? incluirBldClaro = null)
     {
+        bool isBld = incluirBldClaro ?? (circuit.TipoServico == SaipServiceType.BusinessLinkDirect);
+
         var hostname = SanitizeHostname(circuit.DesignacaoIp ?? circuit.NumeroOts, "ROUTER-CPE");
         var wanDesc = SanitizeDescription(circuit.DescriptionRoteador ?? (circuit.DesignacaoIp ?? "LINK"), "LINK");
 
@@ -215,41 +226,56 @@ public sealed class CiscoSaipConfigurator
             "multilink bundle-name authenticated",
             "no cdp run",
             "clock summer-time BR recurring 1 Sun Oct 0:00 3 Sun Feb 0:00",
-
-            // 2. USUARIOS LOCAIS E MODO PRIVILEGIADO
-            "enable secret PRO1AN",
-            "username EBT privilege 1 secret CQMR",
-
-            // 3. AAA (TACACS+ E FALLBACK LOCAL)
-            "aaa new-model",
-            "aaa authentication password-prompt Password:",
-            "aaa authentication username-prompt Login:",
-            "aaa authentication login TACACS-SERVER-CLARO group tacacs+ local",
-            "aaa authentication login admin local",
-            "aaa authorization config-commands",
-            "aaa authorization exec default group tacacs+ local",
-            "aaa authorization commands 1 default group tacacs+ local",
-            "aaa authorization commands 6 default group tacacs+ local",
-            "aaa authorization commands 15 default group tacacs+ local",
-            "aaa accounting exec default start-stop group tacacs+",
-            "aaa accounting commands 1 default start-stop group tacacs+",
-            "aaa accounting commands 6 default start-stop group tacacs+",
-            "aaa accounting commands 15 default start-stop group tacacs+",
-            "aaa session-id common",
-            "tacacs server TACACS-SERVER-CLARO",
-            " address ipv4 200.255.166.129",
-            " key 7 080F636D2A152505052B",
-            " timeout 2",
-            " exit",
-            "tacacs-server timeout 2",
-            $"ip tacacs source-interface {cleanWan}",
-
-            // 4. QOS (SHAPING WAN)
-            "policy-map SHAPE_OUT",
-            " class class-default",
-            $"  shape average {bandaBps}",
-            " exit",
         });
+
+        if (isBld)
+        {
+            // 2. USUARIOS LOCAIS E MODO PRIVILEGIADO (PADRAO BLD CLARO COM TACACS+)
+            cmds.AddRange(new[]
+            {
+                "enable secret PRO1AN",
+                "username EBT privilege 1 secret CQMR",
+
+                // 3. AAA (TACACS+ E FALLBACK LOCAL)
+                "aaa new-model",
+                "aaa authentication password-prompt Password:",
+                "aaa authentication username-prompt Login:",
+                "aaa authentication login TACACS-SERVER-CLARO group tacacs+ local",
+                "aaa authentication login admin local",
+                "aaa authorization config-commands",
+                "aaa authorization exec default group tacacs+ local",
+                "aaa authorization commands 1 default group tacacs+ local",
+                "aaa authorization commands 6 default group tacacs+ local",
+                "aaa authorization commands 15 default group tacacs+ local",
+                "aaa accounting exec default start-stop group tacacs+",
+                "aaa accounting commands 1 default start-stop group tacacs+",
+                "aaa accounting commands 6 default start-stop group tacacs+",
+                "aaa accounting commands 15 default start-stop group tacacs+",
+                "aaa session-id common",
+                "tacacs server TACACS-SERVER-CLARO",
+                " address ipv4 200.255.166.129",
+                " key 7 080F636D2A152505052B",
+                " timeout 2",
+                " exit",
+                "tacacs-server timeout 2",
+                $"ip tacacs source-interface {cleanWan}",
+
+                // 4. QOS (SHAPING WAN)
+                "policy-map SHAPE_OUT",
+                " class class-default",
+                $"  shape average {bandaBps}",
+                " exit",
+            });
+        }
+        else
+        {
+            // 2. MODO BASICO (MPLS E VOZ): AUTENTICACAO LOCAL DIRETA COM PRIVILEGIO 15 PARA TELNET
+            cmds.AddRange(new[]
+            {
+                "enable secret PRO1AN",
+                "username EBT privilege 15 secret CQMR",
+            });
+        }
 
         // 5. INTERFACES
         // Desabilita portas de switch integradas quando aplicável
@@ -324,27 +350,33 @@ public sealed class CiscoSaipConfigurator
             cmds.Add($" ipv6 address {circuit.WanIpv6}/{circuit.WanIpv6Prefix.Value}");
             cmds.Add(" ipv6 enable");
         }
-        cmds.Add(" service-policy output SHAPE_OUT");
+        if (isBld)
+        {
+            cmds.Add(" service-policy output SHAPE_OUT");
+        }
         cmds.Add(" no shutdown");
         cmds.Add(" exit");
 
         // LAN (Entrega Cliente)
-        cmds.Add($"interface {lanInterface}");
-        cmds.Add(" description * LAN *");
-        cmds.Add($" ip address {circuit.LanIp} {circuit.LanSubnetMask}");
-        cmds.Add(" no ip redirects");
-        cmds.Add(" no ip unreachables");
-        cmds.Add(" no ip proxy-arp");
-        cmds.Add(" duplex auto");
-        cmds.Add(" speed auto");
-        cmds.Add(" no cdp enable");
-        if (!string.IsNullOrWhiteSpace(circuit.LanIpv6) && circuit.LanIpv6Prefix.HasValue)
+        if (!string.IsNullOrWhiteSpace(circuit.LanIp))
         {
-            cmds.Add($" ipv6 address {circuit.LanIpv6}/{circuit.LanIpv6Prefix.Value}");
-            cmds.Add(" ipv6 enable");
+            cmds.Add($"interface {lanInterface}");
+            cmds.Add(" description * LAN *");
+            cmds.Add($" ip address {circuit.LanIp} {circuit.LanSubnetMask}");
+            cmds.Add(" no ip redirects");
+            cmds.Add(" no ip unreachables");
+            cmds.Add(" no ip proxy-arp");
+            cmds.Add(" duplex auto");
+            cmds.Add(" speed auto");
+            cmds.Add(" no cdp enable");
+            if (!string.IsNullOrWhiteSpace(circuit.LanIpv6) && circuit.LanIpv6Prefix.HasValue)
+            {
+                cmds.Add($" ipv6 address {circuit.LanIpv6}/{circuit.LanIpv6Prefix.Value}");
+                cmds.Add(" ipv6 enable");
+            }
+            cmds.Add(" no shutdown");
+            cmds.Add(" exit");
         }
-        cmds.Add(" no shutdown");
-        cmds.Add(" exit");
 
         // 6. ROTEAMENTO E SERVICOS DE REDE
         cmds.Add("ip forward-protocol nd");
@@ -360,63 +392,67 @@ public sealed class CiscoSaipConfigurator
         }
         cmds.Add("ip ssh version 2");
         cmds.Add("crypto key generate rsa modulus 2048");
-        cmds.Add($"ntp server 200.20.186.75 prefer source {cleanWan}");
-        cmds.Add($"ntp server 200.20.186.94 source {cleanWan}");
-        cmds.Add("snmp-server community claro21sup RO 87");
-        cmds.Add("snmp-server community LIDER RO");
-        cmds.Add("snmp-server host 200.255.156.194 LIDER");
-        cmds.Add("access-list 87 permit 200.255.156.192 0.0.0.63");
 
-        // 7. LISTAS DE ACESSO (BLOQUEIO GERENCIA VTY)
-        cmds.Add("ip access-list extended BLOQUEIO_TELNET");
-        if (!string.IsNullOrWhiteSpace(circuit.PeLoopbackIp))
+        if (isBld)
         {
-            cmds.Add(" remark IP LOOPBACK PE");
-            cmds.Add($" permit ip host {circuit.PeLoopbackIp} any");
-            cmds.Add($" permit ip any host {circuit.PeLoopbackIp}");
-        }
-        cmds.Add(" remark IP PE - CCTO");
-        cmds.Add($" permit ip host {circuit.WanGateway} any");
-        cmds.Add($" permit ip any host {circuit.WanGateway}");
-        cmds.Add(" remark IP GERENCIA GCPE");
-        cmds.Add(" permit ip any 200.255.156.192 0.0.0.63");
-        cmds.Add(" permit ip 200.255.156.192 0.0.0.63 any");
-        if (!string.IsNullOrWhiteSpace(circuit.LanIp))
-        {
-            var lanNet = !string.IsNullOrWhiteSpace(circuit.LanBlockNetwork)
-                ? circuit.LanBlockNetwork
-                : IpCalculator.CalculateNetworkAddress(circuit.LanIp, circuit.LanCidr);
-            var wildcard = WildcardFromMask(circuit.LanSubnetMask, circuit.LanCidr);
-            cmds.Add(" remark IP REDE LAN / BANCADA HOMOLOGACAO");
-            cmds.Add($" permit ip {lanNet} {wildcard} any");
-            cmds.Add($" permit ip any {lanNet} {wildcard}");
-            cmds.Add($" permit ip host {circuit.LanIp} any");
-            cmds.Add($" permit ip any host {circuit.LanIp}");
-        }
-        cmds.Add(" exit");
+            cmds.Add($"ntp server 200.20.186.75 prefer source {cleanWan}");
+            cmds.Add($"ntp server 200.20.186.94 source {cleanWan}");
+            cmds.Add("snmp-server community claro21sup RO 87");
+            cmds.Add("snmp-server community LIDER RO");
+            cmds.Add("snmp-server host 200.255.156.194 LIDER");
+            cmds.Add("access-list 87 permit 200.255.156.192 0.0.0.63");
 
-        bool hasIpv6 = !string.IsNullOrWhiteSpace(circuit.WanIpv6);
-        if (hasIpv6 && !string.IsNullOrWhiteSpace(circuit.WanIpv6Gateway))
-        {
-            cmds.Add("ipv6 access-list BLOQUEIO_TELNET_IPV6");
-            cmds.Add(" remark IPV6 PE - CCTO");
-            cmds.Add($" permit ipv6 host {circuit.WanIpv6Gateway} any");
-            cmds.Add($" permit ipv6 any host {circuit.WanIpv6Gateway}");
-            if (!string.IsNullOrWhiteSpace(circuit.PeIpv6Loopback))
+            // 7. LISTAS DE ACESSO (BLOQUEIO GERENCIA VTY BLD)
+            cmds.Add("ip access-list extended BLOQUEIO_TELNET");
+            if (!string.IsNullOrWhiteSpace(circuit.PeLoopbackIp))
             {
-                cmds.Add(" remark IPV6 LOOPBACK PE");
-                cmds.Add($" permit ipv6 host {circuit.PeIpv6Loopback} any");
-                cmds.Add($" permit ipv6 any host {circuit.PeIpv6Loopback}");
+                cmds.Add(" remark IP LOOPBACK PE");
+                cmds.Add($" permit ip host {circuit.PeLoopbackIp} any");
+                cmds.Add($" permit ip any host {circuit.PeLoopbackIp}");
             }
-            if (!string.IsNullOrWhiteSpace(circuit.LanIpv6))
+            cmds.Add(" remark IP PE - CCTO");
+            cmds.Add($" permit ip host {circuit.WanGateway} any");
+            cmds.Add($" permit ip any host {circuit.WanGateway}");
+            cmds.Add(" remark IP GERENCIA GCPE");
+            cmds.Add(" permit ip any 200.255.156.192 0.0.0.63");
+            cmds.Add(" permit ip 200.255.156.192 0.0.0.63 any");
+            if (!string.IsNullOrWhiteSpace(circuit.LanIp))
             {
-                var lanIpv6Net = !string.IsNullOrWhiteSpace(circuit.LanIpv6Block) ? circuit.LanIpv6Block : circuit.LanIpv6;
-                var pfx = circuit.LanIpv6Prefix.HasValue ? $"/{circuit.LanIpv6Prefix.Value}" : "/64";
-                cmds.Add(" remark IPV6 LAN BANCADA HOMOLOGACAO");
-                cmds.Add($" permit ipv6 {lanIpv6Net}{pfx} any");
-                cmds.Add($" permit ipv6 any {lanIpv6Net}{pfx}");
+                var lanNet = !string.IsNullOrWhiteSpace(circuit.LanBlockNetwork)
+                    ? circuit.LanBlockNetwork
+                    : IpCalculator.CalculateNetworkAddress(circuit.LanIp, circuit.LanCidr);
+                var wildcard = WildcardFromMask(circuit.LanSubnetMask, circuit.LanCidr);
+                cmds.Add(" remark IP REDE LAN / BANCADA HOMOLOGACAO");
+                cmds.Add($" permit ip {lanNet} {wildcard} any");
+                cmds.Add($" permit ip any {lanNet} {wildcard}");
+                cmds.Add($" permit ip host {circuit.LanIp} any");
+                cmds.Add($" permit ip any host {circuit.LanIp}");
             }
             cmds.Add(" exit");
+
+            bool hasIpv6 = !string.IsNullOrWhiteSpace(circuit.WanIpv6);
+            if (hasIpv6 && !string.IsNullOrWhiteSpace(circuit.WanIpv6Gateway))
+            {
+                cmds.Add("ipv6 access-list BLOQUEIO_TELNET_IPV6");
+                cmds.Add(" remark IPV6 PE - CCTO");
+                cmds.Add($" permit ipv6 host {circuit.WanIpv6Gateway} any");
+                cmds.Add($" permit ipv6 any host {circuit.WanIpv6Gateway}");
+                if (!string.IsNullOrWhiteSpace(circuit.PeIpv6Loopback))
+                {
+                    cmds.Add(" remark IPV6 LOOPBACK PE");
+                    cmds.Add($" permit ipv6 host {circuit.PeIpv6Loopback} any");
+                    cmds.Add($" permit ipv6 any host {circuit.PeIpv6Loopback}");
+                }
+                if (!string.IsNullOrWhiteSpace(circuit.LanIpv6))
+                {
+                    var lanIpv6Net = !string.IsNullOrWhiteSpace(circuit.LanIpv6Block) ? circuit.LanIpv6Block : circuit.LanIpv6;
+                    var pfx = circuit.LanIpv6Prefix.HasValue ? $"/{circuit.LanIpv6Prefix.Value}" : "/64";
+                    cmds.Add(" remark IPV6 LAN BANCADA HOMOLOGACAO");
+                    cmds.Add($" permit ipv6 {lanIpv6Net}{pfx} any");
+                    cmds.Add($" permit ipv6 any {lanIpv6Net}{pfx}");
+                }
+                cmds.Add(" exit");
+            }
         }
 
         // NAT overload de LAB (opção de bancada)
@@ -443,29 +479,58 @@ public sealed class CiscoSaipConfigurator
         cmds.Add(" exec-timeout 15 0");
         cmds.Add(" privilege level 15");
         cmds.Add(" logging synchronous");
-        cmds.Add(" login authentication admin");
-        cmds.Add(" exit");
-
-        cmds.Add("line vty 0 4");
-        cmds.Add(" access-class BLOQUEIO_TELNET in");
-        cmds.Add(" access-class BLOQUEIO_TELNET out");
-        if (hasIpv6 && !string.IsNullOrWhiteSpace(circuit.WanIpv6Gateway))
+        if (isBld)
         {
-            cmds.Add(" ipv6 access-class BLOQUEIO_TELNET_IPV6 in");
-            cmds.Add(" ipv6 access-class BLOQUEIO_TELNET_IPV6 out");
+            cmds.Add(" login authentication admin");
         }
-        cmds.Add(" exec-timeout 15 0");
-        cmds.Add(" timeout login response 120");
-        cmds.Add(" privilege level 15");
-        cmds.Add(" login authentication TACACS-SERVER-CLARO");
-        cmds.Add(" transport input telnet ssh");
+        else
+        {
+            cmds.Add(" login local");
+        }
         cmds.Add(" exit");
 
-        cmds.Add("line vty 5 15");
-        cmds.Add(" privilege level 15");
-        cmds.Add(" login authentication TACACS-SERVER-CLARO");
-        cmds.Add(" transport input telnet ssh");
-        cmds.Add(" exit");
+        if (isBld)
+        {
+            cmds.Add("line vty 0 4");
+            cmds.Add(" access-class BLOQUEIO_TELNET in");
+            cmds.Add(" access-class BLOQUEIO_TELNET out");
+            bool hasIpv6 = !string.IsNullOrWhiteSpace(circuit.WanIpv6);
+            if (hasIpv6 && !string.IsNullOrWhiteSpace(circuit.WanIpv6Gateway))
+            {
+                cmds.Add(" ipv6 access-class BLOQUEIO_TELNET_IPV6 in");
+                cmds.Add(" ipv6 access-class BLOQUEIO_TELNET_IPV6 out");
+            }
+            cmds.Add(" exec-timeout 15 0");
+            cmds.Add(" timeout login response 120");
+            cmds.Add(" privilege level 15");
+            cmds.Add(" login authentication TACACS-SERVER-CLARO");
+            cmds.Add(" transport input telnet ssh");
+            cmds.Add(" exit");
+
+            cmds.Add("line vty 5 15");
+            cmds.Add(" privilege level 15");
+            cmds.Add(" login authentication TACACS-SERVER-CLARO");
+            cmds.Add(" transport input telnet ssh");
+            cmds.Add(" exit");
+        }
+        else
+        {
+            // MODO BASICO (MPLS E VOZ): ACESSO REMOTO VIA TELNET DIRETO E DESIMPEDIDO
+            cmds.Add("line vty 0 4");
+            cmds.Add(" exec-timeout 15 0");
+            cmds.Add(" timeout login response 120");
+            cmds.Add(" privilege level 15");
+            cmds.Add(" login local");
+            cmds.Add(" transport input telnet ssh");
+            cmds.Add(" exit");
+
+            cmds.Add("line vty 5 15");
+            cmds.Add(" exec-timeout 15 0");
+            cmds.Add(" privilege level 15");
+            cmds.Add(" login local");
+            cmds.Add(" transport input telnet ssh");
+            cmds.Add(" exit");
+        }
 
         cmds.Add("scheduler allocate 20000 1000");
         cmds.Add("end");
@@ -624,8 +689,18 @@ public sealed class CiscoSaipConfigurator
         }
         await Task.Delay(300, cancellationToken);
 
+        bool isBld = IncluirBldClaro ?? (circuit.TipoServico == SaipServiceType.BusinessLinkDirect);
+        if (!isBld)
+        {
+            await ProgressAsync($"[*] Serviço {circuit.TipoServicoDescricao}: aplicando configurações básicas para subir link e disponibilizar acesso remoto via Telnet.");
+        }
+        else
+        {
+            await ProgressAsync("[*] Serviço BLD Internet: aplicando template completo de produção Claro (TACACS, QoS Shaping, NTP, SNMP, ACLs).");
+        }
+
         // 5. Lista de comandos a serem aplicados com cadência otimizada e segura de 200ms
-        var commands = GenerateCommands(circuit, wanInterface, lanInterface, IncluirNatLab, BootImage);
+        var commands = GenerateCommands(circuit, wanInterface, lanInterface, IncluirNatLab, BootImage, IncluirBldClaro);
         if (IncluirNatLab)
             await ProgressAsync("[*] Opção secreta NAT (LAB) ATIVA: WAN em DHCP dinâmico + NAT overload habilitados para testes em bancada com modem 4G.");
 
@@ -758,32 +833,46 @@ public sealed class CiscoSaipConfigurator
 
         await ProgressAsync("[OK] Configuração Cisco gravada permanentemente na NVRAM com config-register 0x2102!");
 
-        // 8. Ativação do pool DHCP temporário na RAM (running-config) para os testes automáticos do Android
+        // 8. Ativação do pool DHCP temporário na RAM (running-config) para os testes automáticos do Android / Bancada
+        await AtivarDhcpTemporarioAsync(session, circuit, msg => { _ = ProgressAsync(msg); }, cancellationToken);
+
+        await ProgressAsync("[*] PROVISIONAMENTO SAIP CONCLUÍDO COM SUCESSO (Acesso Telnet EBT/PRO1AN ativo)!");
+    }
+
+    /// <summary>
+    /// Ativa sob demanda o servidor DHCP temporário na RAM (running-config) em ~3 segundos,
+    /// permitindo acesso via DHCP para smartphones e instrumentos (MTS-5800 / Certidão de Nascimento)
+    /// sem necessidade de reaprovisionar o roteador.
+    /// </summary>
+    public static async Task AtivarDhcpTemporarioAsync(DeviceSession session, SaipCircuitData circuit, Action<string>? logger = null, CancellationToken cancellationToken = default)
+    {
         try
         {
-            await ProgressAsync("[*] Habilitando servidor DHCP temporário na LAN para validação automática do Android...");
+            logger?.Invoke("[*] Ativando servidor DHCP temporário na LAN do Cisco (running-config)...");
+            var lanIp = !string.IsNullOrWhiteSpace(circuit.LanIp) ? circuit.LanIp : "192.168.1.1";
+            var lanMask = !string.IsNullOrWhiteSpace(circuit.LanSubnetMask) ? circuit.LanSubnetMask : "255.255.255.0";
             var lanNet = string.IsNullOrWhiteSpace(circuit.LanBlockNetwork)
-                ? IpCalculator.CalculateNetworkAddress(circuit.LanIp, circuit.LanCidr)
+                ? (!string.IsNullOrWhiteSpace(circuit.LanIp) ? IpCalculator.CalculateNetworkAddress(circuit.LanIp, circuit.LanCidr) : "192.168.1.0")
                 : circuit.LanBlockNetwork;
 
-            await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(5), cancellationToken);
-            await session.SendCommandAsync($"ip dhcp excluded-address {circuit.LanIp}", TimeSpan.FromSeconds(5), cancellationToken);
+            await EnsurePrivilegedExecAsync(session, cancellationToken);
+            await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(10), cancellationToken);
+            await session.SendCommandAsync("service dhcp", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync($"ip dhcp excluded-address {lanIp}", TimeSpan.FromSeconds(5), cancellationToken);
             await session.SendCommandAsync("ip dhcp pool SPARC_LAN", TimeSpan.FromSeconds(5), cancellationToken);
-            await session.SendCommandAsync($"network {lanNet} {circuit.LanSubnetMask}", TimeSpan.FromSeconds(5), cancellationToken);
-            await session.SendCommandAsync($"default-router {circuit.LanIp}", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync($"network {lanNet} {lanMask}", TimeSpan.FromSeconds(5), cancellationToken);
+            await session.SendCommandAsync($"default-router {lanIp}", TimeSpan.FromSeconds(5), cancellationToken);
             await session.SendCommandAsync("dns-server 1.1.1.1 8.8.8.8", TimeSpan.FromSeconds(5), cancellationToken);
             await session.SendCommandAsync("lease 0 2", TimeSpan.FromSeconds(5), cancellationToken);
             await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
             await EnsurePrivilegedExecAsync(session, cancellationToken);
 
-            await ProgressAsync("[✓] Servidor DHCP temporário ativo na RAM (running-config). Será removido ao final dos testes.");
+            logger?.Invoke("[✓] Servidor DHCP temporário ativo na RAM (running-config)! O smartphone/instrumento receberá IP em instantes.");
         }
         catch (Exception ex)
         {
-            await ProgressAsync($"[AVISO] Falha ao ativar DHCP temporário: {ex.Message}. Teste seguirá.");
+            logger?.Invoke($"[AVISO] Falha ao ativar DHCP temporário no Cisco: {ex.Message}");
         }
-
-        await ProgressAsync("[*] PROVISIONAMENTO SAIP CONCLUÍDO COM SUCESSO (Acesso Telnet EBT/PRO1AN ativo)!");
     }
 
     /// <summary>

@@ -41,6 +41,30 @@
                             <Button Grid.Column="1" Text="🔄 Atualizar" Clicked="OnCheckAppUpdateClicked" BackgroundColor="#1E293B" TextColor="#FBBF24" CornerRadius="6" FontSize="11" HeightRequest="30" Padding="4,0" />
                             <Button Grid.Column="2" Text="👤 Perfil" Clicked="OnNavigateActivationClicked" BackgroundColor="#1E293B" TextColor="#4ADE80" CornerRadius="6" FontSize="11" HeightRequest="30" Padding="4,0" />
                         </Grid>
+
+                        <!-- Card de Adaptação Dinâmica ao Modelo de Smartphone -->
+                        <Border x:Name="BorderDeviceModelCard" BackgroundColor="#0F172A" Stroke="#1E293B" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="10, 8" Margin="0, 2, 0, 0">
+                            <Grid ColumnDefinitions="*, Auto" RowDefinitions="Auto, Auto" RowSpacing="3">
+                                <Label Grid.Row="0" Grid.Column="0" x:Name="LblDeviceModelTitle" Text="📱 Identificando smartphone..." FontSize="11.5" FontAttributes="Bold" TextColor="#38BDF8" LineBreakMode="TailTruncation" />
+                                <Button Grid.Row="0" Grid.RowSpan="2" Grid.Column="1" Text="⚙️ Diagnóstico" Clicked="OnDeviceDiagnosticsClicked" BackgroundColor="#1E293B" TextColor="#38BDF8" CornerRadius="6" FontSize="10.5" HeightRequest="30" Padding="8, 0" VerticalOptions="Center" />
+                                <Label Grid.Row="1" Grid.Column="0" x:Name="LblDeviceModelSpecs" Text="Calibrando parâmetros de hardware..." FontSize="10" TextColor="#94A3B8" LineBreakMode="TailTruncation" />
+                            </Grid>
+                        </Border>
+
+                        <!-- Banner de Conectividade OTG para Fabricantes com Ativação Manual (Xiaomi, POCO, Oppo, Realme, Vivo) -->
+                        <Border x:Name="BorderOtgAdvisor" BackgroundColor="#451A03" Stroke="#D97706" StrokeThickness="1" StrokeShape="RoundRectangle 8" Padding="10, 8" Margin="0, 2, 0, 0" IsVisible="False">
+                            <VerticalStackLayout Spacing="6">
+                                <Grid ColumnDefinitions="Auto, *">
+                                    <Label Grid.Column="0" Text="⚠️" FontSize="14" VerticalOptions="Center" Margin="0, 0, 6, 0" />
+                                    <Label Grid.Column="1" x:Name="LblOtgAdvisorTitle" Text="Aviso de Conectividade USB OTG" FontSize="11" FontAttributes="Bold" TextColor="#FBBF24" VerticalOptions="Center" />
+                                </Grid>
+                                <Label x:Name="LblOtgAdvisorMessage" Text="Este smartphone pode exigir ativação manual de Conexão OTG nas Configurações do Android para reconhecer o cabo." FontSize="10" TextColor="#FEF3C7" />
+                                <Grid ColumnDefinitions="*, *" ColumnSpacing="6">
+                                    <Button Grid.Column="0" Text="🔌 Ativar OTG no Android" Clicked="OnOpenOtgSettingsClicked" BackgroundColor="#D97706" TextColor="White" CornerRadius="6" FontSize="10.5" FontAttributes="Bold" HeightRequest="32" Padding="4, 0" />
+                                    <Button Grid.Column="1" Text="🔋 Bateria / Suspender" Clicked="OnOpenBatterySettingsClicked" BackgroundColor="#78350F" TextColor="#FDE68A" CornerRadius="6" FontSize="10.5" HeightRequest="32" Padding="4, 0" />
+                                </Grid>
+                            </VerticalStackLayout>
+                        </Border>
                     </VerticalStackLayout>
                 </Frame>
 
@@ -208,6 +232,20 @@
                                     </VerticalStackLayout>
                                 </Grid>
 
+                                <VerticalStackLayout Spacing="2">
+                                    <Label Text="Tipo de Serviço (Manual / Override):" FontSize="10.5" TextColor="#C7D2FE" />
+                                    <Picker x:Name="EditTipoServicoPicker" Title="Selecione o Tipo de Serviço" TextColor="White" BackgroundColor="#0F172A" FontSize="11" HeightRequest="36">
+                                        <Picker.ItemsSource>
+                                            <x:Array Type="{x:Type x:String}">
+                                                <x:String>🌐 BLD — Business Link Direct (Internet)</x:String>
+                                                <x:String>🛡️ MPLS — IP VPN Corporativa (LAN temporária)</x:String>
+                                                <x:String>📞 VOZ — Tronco Digital (R2D / ISDN - E1)</x:String>
+                                                <x:String>📞 VOZ — Tronco SIP / PABX IP</x:String>
+                                            </x:Array>
+                                        </Picker.ItemsSource>
+                                    </Picker>
+                                </VerticalStackLayout>
+
                                 <Grid ColumnDefinitions="*, *" ColumnSpacing="6" Margin="0,4,0,0">
                                     <Button Grid.Column="0" Text="✕ Cancelar" Clicked="OnCancelManualEditClicked" BackgroundColor="#334155" TextColor="White" CornerRadius="6" FontSize="11" HeightRequest="34" />
                                     <Button Grid.Column="1" Text="💾 Salvar Parâmetros" Clicked="OnSaveManualEditClicked" BackgroundColor="#059669" TextColor="White" CornerRadius="6" FontSize="11" HeightRequest="34" FontAttributes="Bold" />
@@ -277,8 +315,8 @@
                             <Button Grid.Column="0" Text="🖥️ Terminal CLI" Clicked="OnAbrirTerminalClicked" BackgroundColor="#3F3F46" TextColor="White" CornerRadius="6" FontSize="11" HeightRequest="36" />
                             <Button Grid.Column="1" Text="🛠️ Quebra Senha" Clicked="OnAbrirRecuperacaoClicked" BackgroundColor="#881337" TextColor="White" CornerRadius="6" FontSize="11" HeightRequest="36" />
                         </Grid>
-                        <!-- Botão Especial Oculto por Padrão: Analisador Y.1564 -->
-                        <Button x:Name="BtnAnalisadorDados" Text="📊 Analisador de Dados (Y.1564 / Loop VIAVI)" Clicked="OnAbrirAnalisadorClicked" BackgroundColor="#0284C7" TextColor="White" CornerRadius="6" FontAttributes="Bold" FontSize="11" HeightRequest="36" Margin="0, 4, 0, 0" IsVisible="False" />
+                        <!-- Botão Nativo: Certidão de Nascimento (Y.1564) -->
+                        <Button x:Name="BtnAnalisadorDados" Text="📜 Emitir Certidão de Nascimento (Y.1564)" Clicked="OnAbrirAnalisadorClicked" BackgroundColor="#0284C7" TextColor="White" CornerRadius="6" FontAttributes="Bold" FontSize="12" HeightRequest="40" Margin="0, 4, 0, 0" IsVisible="True" />
                     </VerticalStackLayout>
                 </Frame>
             </VerticalStackLayout>

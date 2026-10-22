@@ -11,6 +11,19 @@ public enum DeviceLicenseStatus
 }
 
 /// <summary>
+/// Resultado da auditoria de registro de uma cópia/dispositivo no banco de dados corporativo.
+/// </summary>
+public sealed record DeviceAuditResult(
+    bool IsOnline,
+    bool IsRegistered,
+    bool IsActive,
+    bool IsRevoked,
+    string? AuthorizedToken,
+    string? TechnicianName,
+    string? RegisteredVersion,
+    string Message);
+
+/// <summary>
 /// Representa o registro cadastral e de licenciamento de uma máquina/cópia do SPARC em campo.
 /// </summary>
 public sealed class OnlineDeviceRecord

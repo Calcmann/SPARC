@@ -547,6 +547,76 @@ public sealed class CloudLicenseService
     }
 
     /// <summary>
+    /// Audita se uma cópia/máquina está devidamente registrada no banco de dados corporativo (devices.json).
+    /// Retorna se a máquina está registrada, se está ativa, se foi revogada, ou se é necessário solicitar cadastro.
+    /// </summary>
+    public async Task<DeviceAuditResult> AuditDeviceRegistrationAsync(
+        string machineGuid,
+        string machineFingerprint,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var devices = await FetchRemoteDevicesAsync(ct).ConfigureAwait(false);
+            if (!ForceLocalOnly && (devices == null || devices.Count == 0))
+            {
+                // Se offline ou não foi possível carregar a lista remota
+                return new DeviceAuditResult(
+                    IsOnline: false,
+                    IsRegistered: false,
+                    IsActive: false,
+                    IsRevoked: false,
+                    AuthorizedToken: null,
+                    TechnicianName: null,
+                    RegisteredVersion: null,
+                    Message: "Não foi possível conectar ao banco de dados corporativo para auditoria.");
+            }
+
+            var dev = devices.FirstOrDefault(d =>
+                (!string.IsNullOrWhiteSpace(machineGuid) && string.Equals(d.MachineGuid, machineGuid, StringComparison.OrdinalIgnoreCase)) ||
+                (!string.IsNullOrWhiteSpace(machineFingerprint) && string.Equals(d.MachineFingerprint, machineFingerprint, StringComparison.OrdinalIgnoreCase)));
+
+            if (dev == null)
+            {
+                return new DeviceAuditResult(
+                    IsOnline: true,
+                    IsRegistered: false,
+                    IsActive: false,
+                    IsRevoked: false,
+                    AuthorizedToken: null,
+                    TechnicianName: null,
+                    RegisteredVersion: null,
+                    Message: "Cópia não localizada no banco de dados corporativo. Cadastro obrigatório.");
+            }
+
+            var isRevoked = string.Equals(dev.Status, "Revoked", StringComparison.OrdinalIgnoreCase);
+            var isActive = !isRevoked && (string.Equals(dev.Status, "Active", StringComparison.OrdinalIgnoreCase) || string.IsNullOrWhiteSpace(dev.Status));
+
+            return new DeviceAuditResult(
+                IsOnline: true,
+                IsRegistered: true,
+                IsActive: isActive,
+                IsRevoked: isRevoked,
+                AuthorizedToken: dev.AuthorizedToken,
+                TechnicianName: dev.FullName,
+                RegisteredVersion: dev.ClientVersion,
+                Message: isRevoked ? "Cópia revogada pelo Administrador corporativo." : "Cópia registrada e ativa no banco de dados.");
+        }
+        catch (Exception ex)
+        {
+            return new DeviceAuditResult(
+                IsOnline: false,
+                IsRegistered: false,
+                IsActive: false,
+                IsRevoked: false,
+                AuthorizedToken: null,
+                TechnicianName: null,
+                RegisteredVersion: null,
+                Message: $"Falha ao auditar registro da cópia: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Sincroniza a base de dispositivos local com a nuvem (devices.json no GitHub).
     /// </summary>
     public async Task<(bool Success, string Message)> SyncDevicesToRemoteAsync(CancellationToken ct = default)
