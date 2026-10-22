@@ -350,71 +350,30 @@ public class BroadbandTestEngine
         var list = new List<BroadbandServerInfo>();
         try
         {
-            var cliPath = FindSpeedtestCli();
-            if (cliPath == null) return list;
-
-            var psi = new ProcessStartInfo
+            var servers = await OoklaSpeedtestService.Instance.GetNearbyServersAsync(cancellationToken);
+            foreach (var s in servers)
             {
-                FileName = cliPath,
-                Arguments = "-L --format=json --accept-license --accept-gdpr",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
+                var coords = (s.Latitude.HasValue && s.Longitude.HasValue)
+                    ? (s.Latitude.Value, s.Longitude.Value)
+                    : ResolveCityCoordinates(s.Location);
 
-            using var proc = Process.Start(psi);
-            if (proc == null) return list;
-
-            var stdout = await proc.StandardOutput.ReadToEndAsync(cancellationToken);
-            await proc.WaitForExitAsync(cancellationToken);
-
-            if (string.IsNullOrWhiteSpace(stdout)) return list;
-
-            using var doc = JsonDocument.Parse(stdout);
-            if (doc.RootElement.TryGetProperty("servers", out var arr) && arr.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var el in arr.EnumerateArray())
+                double? dist = null;
+                if (coords != null && clientGeo?.ClientLatitude != null && clientGeo.ClientLongitude != null)
                 {
-                    var id = el.TryGetProperty("id", out var pId) ? pId.GetInt64().ToString() : Guid.NewGuid().ToString("N");
-                    var name = el.TryGetProperty("name", out var pN) ? pN.GetString() ?? "Ookla Server" : "Ookla Server";
-                    var location = el.TryGetProperty("location", out var pL) ? pL.GetString() ?? "" : "";
-                    var country = el.TryGetProperty("country", out var pC) ? pC.GetString() ?? "Brazil" : "Brazil";
-                    var host = el.TryGetProperty("host", out var pH) ? pH.GetString() ?? "" : "";
-                    var port = el.TryGetProperty("port", out var pP) ? pP.GetInt32() : 8080;
-
-                    var coords = ResolveCityCoordinates(location);
-                    double? dist = null;
-                    if (coords != null && clientGeo?.ClientLatitude != null && clientGeo.ClientLongitude != null)
-                    {
-                        dist = CalculateDistanceKm(clientGeo.ClientLatitude.Value, clientGeo.ClientLongitude.Value, coords.Value.Lat, coords.Value.Lon);
-                    }
-                    else if (clientGeo?.ClientCity != null && location.Contains(clientGeo.ClientCity, StringComparison.OrdinalIgnoreCase))
-                    {
-                        dist = 5.0; // Mesma cidade
-                    }
-
-                    list.Add(new BroadbandServerInfo(
-                        Id: id,
-                        Name: name,
-                        Sponsor: name,
-                        Location: location,
-                        Country: country,
-                        Host: host,
-                        Port: port,
-                        Latitude: coords?.Lat,
-                        Longitude: coords?.Lon,
-                        DistanceKm: dist,
-                        LatencyMs: null,
-                        ServerType: "Ookla"));
+                    dist = CalculateDistanceKm(clientGeo.ClientLatitude.Value, clientGeo.ClientLongitude.Value, coords.Value.Item1, coords.Value.Item2);
                 }
+                else if (clientGeo?.ClientCity != null && s.Location.Contains(clientGeo.ClientCity, StringComparison.OrdinalIgnoreCase))
+                {
+                    dist = 5.0; // Mesma cidade
+                }
+
+                list.Add(s with { DistanceKm = dist });
             }
         }
         catch
         {
             // Fallback silencioso caso Ookla CLI não responda
         }
-
         return list;
     }
 
@@ -1043,7 +1002,7 @@ public class BroadbandTestEngine
     }
 
     /// <summary>
-    /// Executa teste usando o speedtest.exe oficial da Ookla com telemetria JSON/JSONL.
+    /// Executa teste usando o speedtest.exe oficial da Ookla com telemetria JSON/JSONL streaming em tempo real.
     /// </summary>
     private async Task<BroadbandTestResult> RunOoklaTestAsync(
         BroadbandServerInfo server,
@@ -1053,89 +1012,14 @@ public class BroadbandTestEngine
         List<BroadbandPoint> timeSeries,
         CancellationToken cancellationToken)
     {
-        var cliPath = FindSpeedtestCli();
-        if (cliPath == null)
+        await LogAsync($"[OOKLA CLI] Inicializando motor oficial Ookla contra servidor: {server.DisplayText}...");
+        var res = await OoklaSpeedtestService.Instance.RunSpeedtestAsync(server.Id, progress, cancellationToken);
+        if (res.TimeSeries != null && res.TimeSeries.Count > 0)
         {
-            throw new FileNotFoundException("Utilitário Ookla speedtest.exe não encontrado no sistema.");
+            timeSeries.AddRange(res.TimeSeries);
         }
-
-        var serverArg = !string.IsNullOrWhiteSpace(server.Id) && long.TryParse(server.Id, out _)
-            ? $" -s {server.Id}"
-            : "";
-
-        var srcArg = !string.IsNullOrWhiteSpace(sourceIpAddress) ? $" -i {sourceIpAddress.Trim()}" : "";
-        var psi = new ProcessStartInfo
-        {
-            FileName = cliPath,
-            Arguments = $"--format=json --accept-license --accept-gdpr{serverArg}{srcArg}",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-
-        var sw = Stopwatch.StartNew();
-        using var process = Process.Start(psi);
-        if (process == null)
-            throw new InvalidOperationException("Falha ao iniciar processo Ookla speedtest.exe.");
-
-        progress?.Report(new BroadbandProgressEvent("Ookla", 30, 0, 0, 0, $"Executando teste via {server.Sponsor}..."));
-
-        var stdout = await process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var stderr = await process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.WaitForExitAsync(cancellationToken);
-
-        if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(stdout))
-        {
-            throw new InvalidOperationException($"Speedtest CLI falhou (ExitCode {process.ExitCode}): {stderr}");
-        }
-
-        using var doc = JsonDocument.Parse(stdout);
-        var root = doc.RootElement;
-
-        var downloadBps = root.TryGetProperty("download", out var dl) && dl.TryGetProperty("bandwidth", out var dlBps) ? dlBps.GetDouble() : 0;
-        var uploadBps = root.TryGetProperty("upload", out var ul) && ul.TryGetProperty("bandwidth", out var ulBps) ? ulBps.GetDouble() : 0;
-        var latency = root.TryGetProperty("ping", out var ping) && ping.TryGetProperty("latency", out var lat) ? lat.GetDouble() : 0;
-        var jitter = root.TryGetProperty("ping", out var pingJ) && pingJ.TryGetProperty("jitter", out var jit) ? jit.GetDouble() : 0;
-        var packetLoss = root.TryGetProperty("packetLoss", out var pl) ? pl.GetDouble() : 0.0;
-        var resultUrl = root.TryGetProperty("result", out var res) && res.TryGetProperty("url", out var url) ? url.GetString() : null;
-
-        var dlLatency = root.TryGetProperty("download", out var dlObj) && dlObj.TryGetProperty("latency", out var dlLat) && dlLat.TryGetProperty("iqm", out var dlIqm) ? dlIqm.GetDouble() : latency;
-        var ulLatency = root.TryGetProperty("upload", out var ulObj) && ulObj.TryGetProperty("latency", out var ulLat) && ulLat.TryGetProperty("iqm", out var ulIqm) ? ulIqm.GetDouble() : latency;
-
-        var downloadMbps = Math.Round((downloadBps * 8) / 1_000_000.0, 2);
-        var uploadMbps = Math.Round((uploadBps * 8) / 1_000_000.0, 2);
-
-        timeSeries.Add(new BroadbandPoint(1.0, 0, latency, jitter, "Ping"));
-        timeSeries.Add(new BroadbandPoint(4.0, downloadMbps, dlLatency, jitter, "Download"));
-        timeSeries.Add(new BroadbandPoint(8.0, uploadMbps, ulLatency, jitter, "Upload"));
-
-        var bufferbloat = CalculateBufferbloat(latency, jitter, dlLatency, ulLatency);
-
-        progress?.Report(new BroadbandProgressEvent("Concluído", 100, downloadMbps, latency, jitter,
-            $"Teste concluído! Download: {downloadMbps:F1} Mbps | Upload: {uploadMbps:F1} Mbps"));
-
-        return new BroadbandTestResult(
-            IsSuccess: true,
-            DownloadAvgMbps: downloadMbps,
-            DownloadPeakMbps: downloadMbps,
-            UploadAvgMbps: uploadMbps,
-            UploadPeakMbps: uploadMbps,
-            LatencyIdleMs: latency,
-            LatencyMinMs: latency,
-            LatencyMaxMs: Math.Max(dlLatency, ulLatency),
-            JitterMs: jitter,
-            PacketLossPct: packetLoss,
-            Bufferbloat: bufferbloat,
-            GeoInfo: geoInfo,
-            PrimaryServer: server,
-            FallbackHistory: Array.Empty<BroadbandFallbackEvent>(),
-            TimeSeries: timeSeries,
-            StatusMessage: $"Sucesso via {server.Sponsor}",
-            ValidationUrl: resultUrl,
-            Duration: sw.Elapsed,
-            LocalAdapterName: null,
-            SourceIpAddress: sourceIpAddress);
+        await LogAsync($"[OOKLA SUCESSO] Resultado registrado: Download {res.DownloadAvgMbps:F1} Mbps | Upload {res.UploadAvgMbps:F1} Mbps | Ping {res.LatencyIdleMs:F0}ms | Certificação: {res.ValidationUrl}");
+        return res;
     }
 
     private static double CalculateJitter(List<double> latencies)
@@ -1241,16 +1125,6 @@ public class BroadbandTestEngine
 
     private static string? FindSpeedtestCli()
     {
-        var appDir = AppDomain.CurrentDomain.BaseDirectory;
-        var local = Path.Combine(appDir, "speedtest.exe");
-        if (File.Exists(local)) return local;
-
-        var repoUi = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "src", "NetworkDevice.UI", "speedtest.exe");
-        if (File.Exists(repoUi)) return Path.GetFullPath(repoUi);
-
-        var hardcoded = @"C:\SPARC\src\NetworkDevice.UI\speedtest.exe";
-        if (File.Exists(hardcoded)) return hardcoded;
-
-        return null;
+        return OoklaSpeedtestService.Instance.GetCliExecutablePath();
     }
 }

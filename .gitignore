@@ -51,4 +51,5 @@ dist-beta/
 screen_a01.png
 __pycache__/
 *.pyc
+tools/
 

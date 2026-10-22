@@ -510,6 +510,7 @@ public static class BroadbandPdfReportService
       <div class=""geo-row""><span>PoP Datacenter:</span> <span>{geo?.ServerColoIata ?? "Auto"} ({geo?.ServerCity ?? "Edge"})</span></div>
       <div class=""geo-row""><span>Distância Geodésica:</span> <span>{(geo?.DistanceKm.HasValue == true ? $"~{geo.DistanceKm:F1} km" : "Estimada")}</span></div>
       <div class=""geo-row""><span>Tecnologia de Teste:</span> <span>{srv?.ServerType ?? "HTTP Stream"}</span></div>
+{(string.IsNullOrWhiteSpace(r.ValidationUrl) ? "" : $@"      <div class=""geo-row""><span>Certificação Oficial:</span> <span><a href=""{r.ValidationUrl}"" style=""color: #2563EB; font-weight: bold; text-decoration: none;"">📡 {r.ValidationUrl}</a></span></div>")}
     </div>
   </div>
 </div>
