@@ -273,6 +273,88 @@
       color: var(--text-muted);
     }
 
+    /* Hero Action Card (Painel de Destaque Superior) */
+    .hero-action-card {
+      background: linear-gradient(135deg, #131c31 0%, #0c1220 100%);
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 14px 18px;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      box-shadow: 0 4px 25px rgba(0, 0, 0, 0.45);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero-action-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, #7c3aed, #06b6d4, #10b981);
+    }
+    .hero-left, .hero-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .btn-hero-start {
+      background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 50%, #4f46e5 100%);
+      color: #ffffff;
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: 0.5px;
+      padding: 13px 24px;
+      border-radius: 9px;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      box-shadow: 0 0 24px rgba(124, 58, 237, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .btn-hero-start:not(:disabled):hover {
+      box-shadow: 0 0 35px rgba(124, 58, 237, 0.85);
+      transform: translateY(-2px) scale(1.02);
+      filter: brightness(1.15);
+    }
+    .btn-hero-start:not(:disabled):active {
+      transform: translateY(0) scale(0.99);
+      box-shadow: 0 0 18px rgba(124, 58, 237, 0.4);
+    }
+    .btn-hero-start:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+      filter: grayscale(0.5);
+    }
+    .btn-icon {
+      font-size: 18px;
+      line-height: 1;
+      display: inline-block;
+      transition: transform 0.2s ease;
+    }
+    .btn-hero-start:not(:disabled):hover .btn-icon {
+      transform: translateY(-2px) scale(1.18);
+    }
+    .hero-badge-spec {
+      font-size: 10.5px;
+      font-weight: 700;
+      color: #94a3b8;
+      background: #1e293b;
+      border: 1px solid #334155;
+      padding: 7px 11px;
+      border-radius: 6px;
+      letter-spacing: 0.3px;
+      white-space: nowrap;
+    }
+
     /* Actions Footer */
     .actions {
       display: flex;
@@ -335,7 +417,7 @@
     @media print {
       body { background: #fff; color: #000; padding: 0; }
       .container { max-width: 100%; }
-      .actions, .btn-primary, .btn-secondary, .log-box { display: none !important; }
+      .hero-action-card, .actions, .btn-primary, .btn-hero-start, .btn-secondary, .log-box { display: none !important; }
       .header, .kpi-card, .chart-card, .topology-card {
         background: #fff !important;
         border: 1px solid #cbd5e1 !important;
@@ -394,6 +476,27 @@
         <select id="cbServers" onchange="onServerSelectChange()" style="background: #1e293b; border: 1px solid #334155; color: #fff; padding: 8px 10px; border-radius: 6px; font-size: 11.5px; font-weight: bold; width: 100%; cursor: pointer;">
           <option value="auto" selected>⭐ [AUTOMÁTICO] Menor Esforço (Descobrindo servidores locais...)</option>
         </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- BARRA HERO PRINCIPAL DE DISPARO DO TESTE (MÁXIMO DESTAQUE NO TOPO DA PÁGINA) -->
+  <div class="hero-action-card">
+    <div class="hero-left">
+      <button class="btn-hero-start" id="btnStart" onclick="startTest()">
+        <span class="btn-icon">🚀</span>
+        <span>INICIAR TESTE DE BANDA LARGA</span>
+      </button>
+      <button class="btn-secondary" id="btnCancel" onclick="cancelTest()" disabled>
+        🛑 Cancelar
+      </button>
+    </div>
+    <div class="hero-right">
+      <button class="btn-report" id="btnPrint" onclick="printReport()" disabled>
+        📄 Salvar Laudo PDF
+      </button>
+      <div class="hero-badge-spec">
+        RFC 6349 • ITU-T Y.1564 • Menor Esforço
       </div>
     </div>
   </div>
@@ -514,18 +617,18 @@
     [00:00:00] SPARC Web Speed Engine inicializado com sucesso. Pronto para teste.
   </div>
 
-  <!-- AÇÕES -->
+  <!-- AÇÕES SECUNDÁRIAS DE APOIO NO RODAPÉ -->
   <div class="actions" style="margin-top: 14px;">
-    <div style="display: flex; gap: 10px;">
-      <button class="btn-primary" id="btnStart" onclick="startTest()">
-        🚀 INICIAR TESTE DE BANDA LARGA
+    <div style="display: flex; gap: 10px; align-items: center;">
+      <button class="btn-primary" id="btnStartBottom" onclick="startTest()">
+        🚀 Repetir / Iniciar Teste
       </button>
-      <button class="btn-secondary" id="btnCancel" onclick="cancelTest()" disabled>
+      <button class="btn-secondary" id="btnCancelBottom" onclick="cancelTest()" disabled>
         🛑 Cancelar
       </button>
     </div>
-    <div style="display: flex; gap: 10px;">
-      <button class="btn-report" id="btnPrint" onclick="printReport()" disabled>
+    <div style="display: flex; gap: 10px; align-items: center;">
+      <button class="btn-report" id="btnPrintBottom" onclick="printReport()" disabled>
         📄 Imprimir Laudo / Salvar PDF
       </button>
     </div>
@@ -808,14 +911,30 @@
     return 2 * R * Math.asin(Math.sqrt(a));
   }
 
+  function setButtonsState(running, canPrint = null) {
+    const bStart = document.getElementById('btnStart');
+    const bStartB = document.getElementById('btnStartBottom');
+    const bCancel = document.getElementById('btnCancel');
+    const bCancelB = document.getElementById('btnCancelBottom');
+    const bPrint = document.getElementById('btnPrint');
+    const bPrintB = document.getElementById('btnPrintBottom');
+
+    if (bStart) bStart.disabled = running;
+    if (bStartB) bStartB.disabled = running;
+    if (bCancel) bCancel.disabled = !running;
+    if (bCancelB) bCancelB.disabled = !running;
+    if (canPrint !== null) {
+      if (bPrint) bPrint.disabled = !canPrint;
+      if (bPrintB) bPrintB.disabled = !canPrint;
+    }
+  }
+
   async function startTest() {
     if (isRunning) return;
     isRunning = true;
     abortController = new AbortController();
 
-    document.getElementById('btnStart').disabled = true;
-    document.getElementById('btnCancel').disabled = false;
-    document.getElementById('btnPrint').disabled = true;
+    setButtonsState(true, false);
 
     setStatus('running', 'EXECUTANDO TESTE...');
     document.getElementById('chartOverlay').style.display = 'none';
@@ -870,7 +989,7 @@
       document.getElementById('txtBufferbloatDelta').innerText = `+Δ ${deltaMs.toFixed(1)} ms sob carga`;
 
       setStatus('success', 'HOMOLOGADO COM SUCESSO');
-      document.getElementById('btnPrint').disabled = false;
+      setButtonsState(false, true);
       log(`[CONCLUÍDO] Download: ${dlRes.avg.toFixed(1)} Mbps | Upload: ${ulRes.avg.toFixed(1)} Mbps | Ping: ${idlePing.avg.toFixed(0)} ms | Grade: ${grade}`);
     } catch (e) {
       if (e.name === 'AbortError') {
@@ -880,10 +999,10 @@
         setStatus('error', 'FALHA NO TESTE');
         log(`[ERRO] ${e.message}`);
       }
+      setButtonsState(false, false);
     } finally {
       isRunning = false;
-      document.getElementById('btnStart').disabled = false;
-      document.getElementById('btnCancel').disabled = true;
+      setButtonsState(false);
     }
   }
 
