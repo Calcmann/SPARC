@@ -5267,18 +5267,9 @@ public partial class MainWindow : Window
         win.ShowDialog();
     }
 
-    private void BtnTestarLinkSemRoteadorInicial_Click(object sender, RoutedEventArgs e)
+    private void BtnTestarBandaInicial_Click(object sender, RoutedEventArgs e)
     {
-        var win = new TesteLinkSemRoteadorWindow(_loadedSaipCircuit)
-        {
-            Owner = this
-        };
-        win.ShowDialog();
-    }
-
-    private void BtnTesteBandaLargaInicial_Click(object sender, RoutedEventArgs e)
-    {
-        var win = new TesteBandaLargaWindow(_loadedSaipCircuit?.BandaMbpsNominal)
+        var win = new TestarBandaWindow(_loadedSaipCircuit, initialTabIndex: 0)
         {
             Owner = this
         };
@@ -5287,7 +5278,7 @@ public partial class MainWindow : Window
 
     private void BtnAutoTestarLinkSemRoteador_Click(object sender, RoutedEventArgs e)
     {
-        var win = new TesteLinkSemRoteadorWindow(_loadedSaipCircuit)
+        var win = new TestarBandaWindow(_loadedSaipCircuit, initialTabIndex: 1)
         {
             Owner = this
         };

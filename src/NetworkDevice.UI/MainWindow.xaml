@@ -399,40 +399,21 @@
                         </Grid>
                     </Border>
 
-                    <!-- BOTÃO NATIVO: TESTAR LINK SEM ROTEADOR (MODO ACESSO / WAN DIRETA) -->
-                    <Border Background="#132B23" BorderBrush="#059669" BorderThickness="1.5" CornerRadius="7" Padding="4,2" Margin="0,2,0,2">
+                    <!-- BOTÃO UNIFICADO: TESTAR BANDA (TELEMETRIA COMPLETA & MODO ACESSO) -->
+                    <Border Background="#1E1B4B" BorderBrush="#6366F1" BorderThickness="1.5" CornerRadius="7" Padding="4,2" Margin="0,2,0,2">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <Button Grid.Column="0" x:Name="BtnTestarLinkSemRoteadorInicial"
-                                    Content="🔌 TESTAR LINK SEM ROTEADOR (MODO ACESSO)"
-                                    Padding="12,6" Background="#059669" Foreground="White" BorderThickness="0"
-                                    FontWeight="Black" FontSize="13" Cursor="Hand"
-                                    HorizontalAlignment="Stretch" Click="BtnTestarLinkSemRoteadorInicial_Click"
-                                    ToolTip="Testa o link diretamente na porta de entrega do acesso (EDD/GPON) configurando o IP WAN na placa de rede do notebook" />
-                            <Border Grid.Column="1" Background="#064E3B" CornerRadius="5" Padding="8,4" Margin="5,0,0,0" VerticalAlignment="Center">
-                                <TextBlock Text="IP WAN / SPEEDTEST" FontSize="10.5" FontWeight="Bold" Foreground="#34D399" VerticalAlignment="Center" />
-                            </Border>
-                        </Grid>
-                    </Border>
-
-                    <!-- BOTÃO NATIVO: TESTE DE BANDA LARGA & QUALIDADE (CLOUDFLARE SPEED / JITTER / BUFFERBLOAT) -->
-                    <Border Background="#25143A" BorderBrush="#7C3AED" BorderThickness="1.5" CornerRadius="7" Padding="4,2" Margin="0,2,0,2">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <Button Grid.Column="0" x:Name="BtnTesteBandaLargaInicial"
-                                    Content="🚀 TESTE DE BANDA LARGA (TELEMETRIA COMPLETA)"
-                                    Padding="12,6" Background="#7C3AED" Foreground="White" BorderThickness="0"
-                                    FontWeight="Black" FontSize="13" Cursor="Hand"
-                                    HorizontalAlignment="Stretch" Click="BtnTesteBandaLargaInicial_Click"
-                                    ToolTip="Teste avançado de vazão, jitter, bufferbloat, georreferenciamento e emissão de relatório oficial com gráficos" />
-                            <Border Grid.Column="1" Background="#3B1768" CornerRadius="5" Padding="8,4" Margin="5,0,0,0" VerticalAlignment="Center">
-                                <TextBlock Text="CLOUDFLARE / JITTER" FontSize="10.5" FontWeight="Bold" Foreground="#C084FC" VerticalAlignment="Center" />
+                            <Button Grid.Column="0" x:Name="BtnTestarBandaInicial"
+                                    Content="🚀 TESTAR BANDA"
+                                    Padding="12,7" Background="#6366F1" Foreground="White" BorderThickness="0"
+                                    FontWeight="Black" FontSize="13.5" Cursor="Hand"
+                                    HorizontalAlignment="Stretch" Click="BtnTestarBandaInicial_Click"
+                                    ToolTip="Módulo unificado de teste de banda larga: Telemetria de vazão/jitter/bufferbloat e validação direta de link sem roteador (Modo Acesso)" />
+                            <Border Grid.Column="1" Background="#312E81" CornerRadius="5" Padding="8,4" Margin="5,0,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="SPEEDTEST / TELEMETRIA" FontSize="10.5" FontWeight="Bold" Foreground="#A5B4FC" VerticalAlignment="Center" />
                             </Border>
                         </Grid>
                     </Border>

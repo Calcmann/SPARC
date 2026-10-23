@@ -1,0 +1,770 @@
+<Window x:Class="NetworkDevice.UI.TestarBandaWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="SPARC — Módulo Unificado de Teste de Banda &amp; Homologação de Link"
+        Icon="Assets/sparc.ico"
+        Height="890" Width="1080"
+        MinHeight="750" MinWidth="920"
+        WindowStartupLocation="CenterOwner"
+        Background="#080C15">
+
+    <Window.Resources>
+        <!-- Estilo dos Botões Primários com Efeito Visual Moderno -->
+        <Style x:Key="ModernGradientButtonStyle" TargetType="Button">
+            <Setter Property="Foreground" Value="#FFFFFF" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="btnBorder"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="8"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="btnBorder" Property="Opacity" Value="0.92" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="btnBorder" Property="Opacity" Value="0.80" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="btnBorder" Property="Opacity" Value="0.40" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Estilo dos Cards HUD Escuros -->
+        <Style x:Key="HudCardStyle" TargetType="Border">
+            <Setter Property="Background" Value="#0F172A" />
+            <Setter Property="BorderBrush" Value="#1E293B" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="SnapsToDevicePixels" Value="True" />
+        </Style>
+
+        <!-- Estilo Moderno para as Abas do TabControl -->
+        <Style x:Key="ModernTabItemStyle" TargetType="TabItem">
+            <Setter Property="Foreground" Value="#94A3B8" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Padding" Value="18,10" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="tabBorder"
+                                Background="#0B132B"
+                                BorderBrush="#1E293B"
+                                BorderThickness="1,1,1,0"
+                                CornerRadius="8,8,0,0"
+                                Margin="0,0,6,0"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" ContentSource="Header" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="tabBorder" Property="Background" Value="#172554" />
+                                <Setter Property="Foreground" Value="#F8FAFC" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="tabBorder" Property="Background" Value="#0F172A" />
+                                <Setter TargetName="tabBorder" Property="BorderBrush" Value="#6366F1" />
+                                <Setter TargetName="tabBorder" Property="BorderThickness" Value="1.5,1.5,1.5,0" />
+                                <Setter Property="Foreground" Value="#FFFFFF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="16,14">
+        <Grid.RowDefinitions>
+            <!-- 0: Header Executivo Unificado -->
+            <RowDefinition Height="Auto" />
+            <!-- 1: Abas do Sistema -->
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- ================= 0: HEADER DA JANELA (EXECUTIVE SLATE) ================= -->
+        <Border Grid.Row="0" Style="{StaticResource HudCardStyle}" Padding="16,12" Margin="0,0,0,10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Identidade Visual SPARC & Tag de Certificação -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,16,0">
+                    <Image Source="Assets/sparc_logo_horizontal.png" Height="38" Margin="0,0,14,0" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality" />
+                    <Border Background="#4F46E5" CornerRadius="6" Padding="8,4" VerticalAlignment="Center">
+                        <TextBlock Text="⚡ TESTAR BANDA" FontWeight="Black" FontSize="11" Foreground="#FFFFFF" />
+                    </Border>
+                </StackPanel>
+
+                <!-- Título e Subtítulo Tecnológico -->
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,16,0">
+                    <TextBlock Text="Módulo Integrado de Telemetria de Vazão, Qualidade &amp; Acesso Direto" FontWeight="Bold" FontSize="13.5" Foreground="#F8FAFC" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="Speed.Cloudflare Anycast • Jitter / Bufferbloat • Modo Access WAN Direta (EDD / GPON) • ITU-T / RFC 6349" FontSize="11" Foreground="#94A3B8" TextTrimming="CharacterEllipsis" Margin="0,2,0,0" />
+                </StackPanel>
+
+                <!-- Badge de Status Executivo -->
+                <Border Grid.Column="2" x:Name="BadgeStatus" Background="#1E293B" BorderBrush="#334155" BorderThickness="1" CornerRadius="8" Padding="14,7" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock x:Name="TxtStatusDot" Text="●" FontSize="12" Foreground="#38BDF8" Margin="0,0,6,0" VerticalAlignment="Center" />
+                        <TextBlock x:Name="TxtStatusGeral" Text="PRONTO PARA TESTAR" FontWeight="Black" FontSize="11.5" Foreground="#FFFFFF" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- ================= 1: ABAS DO SISTEMA (TABCONTROL UNIFICADO) ================= -->
+        <TabControl Grid.Row="1" x:Name="MainTabControl" Background="Transparent" BorderThickness="0" Margin="0">
+
+            <!-- ##################################################################################### -->
+            <!-- ABA 1: TELEMETRIA DE BANDA LARGA & QUALIDADE (CLOUDFLARE / JITTER / BUFFERBLOAT)       -->
+            <!-- ##################################################################################### -->
+            <TabItem Style="{StaticResource ModernTabItemStyle}">
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="🚀" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center" />
+                        <TextBlock Text="Telemetria de Banda Larga &amp; Qualidade" VerticalAlignment="Center" />
+                    </StackPanel>
+                </TabItem.Header>
+
+                <Grid Margin="0,8,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="0,0,0,4">
+
+                            <!-- CARD 1: SELEÇÃO DE SERVIDOR & PRÉ-TESTE AUTOMÁTICO -->
+                            <Border Style="{StaticResource HudCardStyle}" Padding="16,12" Margin="0,0,0,10">
+                                <StackPanel>
+                                    <DockPanel Margin="0,0,0,8">
+                                        <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                                            <TextBlock Text="🌐 SELEÇÃO DE SERVIDOR &amp; PROVEDOR" FontWeight="Black" FontSize="11.5" Foreground="#38BDF8" />
+                                            <Border Background="#1E293B" CornerRadius="4" Padding="6,2" Margin="10,0,0,0">
+                                                <TextBlock Text="PRÉ-TESTE AUTOMÁTICO ATIVO" FontSize="9.5" FontWeight="Bold" Foreground="#94A3B8" />
+                                            </Border>
+                                        </StackPanel>
+
+                                        <Button x:Name="BtnRecarregarServidores" Content="🔄 Re-sondar Servidores" Padding="10,4" FontSize="11" FontWeight="Bold" Background="#1E293B" Foreground="#38BDF8" BorderBrush="#334155" BorderThickness="1" Cursor="Hand" HorizontalAlignment="Right" Click="BtnRecarregarServidores_Click" />
+                                    </DockPanel>
+
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="2*" />
+                                            <ColumnDefinition Width="1.2*" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                            <TextBlock Text="Servidor Alvo / PoP de Destino:" FontSize="11" FontWeight="SemiBold" Foreground="#94A3B8" Margin="0,0,0,4" />
+                                            <ComboBox x:Name="CbServidores" FontSize="12" FontWeight="Bold" Padding="8,6" Background="#1E293B" Foreground="#F8FAFC" BorderBrush="#334155" BorderThickness="1" SelectionChanged="CbServidores_SelectionChanged" />
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="Interface de Rede Local (Isolamento):" FontSize="11" FontWeight="SemiBold" Foreground="#94A3B8" Margin="0,0,0,4" />
+                                            <ComboBox x:Name="CbAdaptadoresRede" FontSize="12" FontWeight="Bold" Padding="8,6" Background="#1E293B" Foreground="#F8FAFC" BorderBrush="#334155" BorderThickness="1" />
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <Border Background="#090D16" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="6" Padding="12,8">
+                                        <TextBlock x:Name="TxtInfoProximidade" Text="✦ Pré-teste habilitado: sondagem concorrente de latência e micro-vazão elegerá automaticamente o melhor servidor e preparará fallback em cascata." FontSize="11" Foreground="#94A3B8" TextWrapping="Wrap" />
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- CARD 2: PAINEL DE INDICADORES DIGITAIS (HUD KPIs COM TOPO COLORIDO) -->
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <!-- KPI 1: DOWNLOAD -->
+                                <Border Grid.Column="0" Style="{StaticResource HudCardStyle}" Margin="0,0,8,0">
+                                    <Grid>
+                                        <Border Height="3" Background="#10B981" VerticalAlignment="Top" CornerRadius="10,10,0,0" />
+                                        <StackPanel Margin="14,14,14,12">
+                                            <DockPanel Margin="0,0,0,6">
+                                                <TextBlock Text="⬇ DOWNLOAD" FontWeight="Black" FontSize="11" Foreground="#10B981" DockPanel.Dock="Left" />
+                                                <Border Background="#064E3B" CornerRadius="4" Padding="5,2" DockPanel.Dock="Right">
+                                                    <TextBlock Text="FASE 1" FontSize="9" FontWeight="Black" Foreground="#6EE7B7" />
+                                                </Border>
+                                            </DockPanel>
+
+                                            <StackPanel Orientation="Horizontal" Margin="0,4,0,4">
+                                                <TextBlock x:Name="TxtDlTelemetriaMbps" Text="0.0" FontWeight="Black" FontSize="30" Foreground="#FFFFFF" />
+                                                <TextBlock Text=" Mbps" FontSize="13" FontWeight="Bold" Foreground="#64748B" VerticalAlignment="Bottom" Margin="4,0,0,5" />
+                                            </StackPanel>
+
+                                            <ProgressBar x:Name="PbDlTelemetria" Height="6" Background="#1E293B" Foreground="#10B981" BorderThickness="0" Value="0" Maximum="100" Margin="0,2,0,6" />
+                                            <TextBlock x:Name="TxtDlTelemetriaPico" Text="Pico: 0.0 Mbps" FontSize="11" FontWeight="SemiBold" Foreground="#94A3B8" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <!-- KPI 2: UPLOAD -->
+                                <Border Grid.Column="1" Style="{StaticResource HudCardStyle}" Margin="0,0,8,0">
+                                    <Grid>
+                                        <Border Height="3" Background="#3B82F6" VerticalAlignment="Top" CornerRadius="10,10,0,0" />
+                                        <StackPanel Margin="14,14,14,12">
+                                            <DockPanel Margin="0,0,0,6">
+                                                <TextBlock Text="⬆ UPLOAD" FontWeight="Black" FontSize="11" Foreground="#3B82F6" DockPanel.Dock="Left" />
+                                                <Border Background="#1E3A8A" CornerRadius="4" Padding="5,2" DockPanel.Dock="Right">
+                                                    <TextBlock Text="FASE 2" FontSize="9" FontWeight="Black" Foreground="#93C5FD" />
+                                                </Border>
+                                            </DockPanel>
+
+                                            <StackPanel Orientation="Horizontal" Margin="0,4,0,4">
+                                                <TextBlock x:Name="TxtUlTelemetriaMbps" Text="0.0" FontWeight="Black" FontSize="30" Foreground="#FFFFFF" />
+                                                <TextBlock Text=" Mbps" FontSize="13" FontWeight="Bold" Foreground="#64748B" VerticalAlignment="Bottom" Margin="4,0,0,5" />
+                                            </StackPanel>
+
+                                            <ProgressBar x:Name="PbUlTelemetria" Height="6" Background="#1E293B" Foreground="#3B82F6" BorderThickness="0" Value="0" Maximum="100" Margin="0,2,0,6" />
+                                            <TextBlock x:Name="TxtUlTelemetriaPico" Text="Pico: 0.0 Mbps" FontSize="11" FontWeight="SemiBold" Foreground="#94A3B8" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <!-- KPI 3: LATÊNCIA & JITTER -->
+                                <Border Grid.Column="2" Style="{StaticResource HudCardStyle}" Margin="0,0,8,0">
+                                    <Grid>
+                                        <Border Height="3" Background="#06B6D4" VerticalAlignment="Top" CornerRadius="10,10,0,0" />
+                                        <StackPanel Margin="14,14,14,12">
+                                            <DockPanel Margin="0,0,0,6">
+                                                <TextBlock Text="📶 LATÊNCIA &amp; RTT" FontWeight="Black" FontSize="11" Foreground="#06B6D4" DockPanel.Dock="Left" />
+                                                <Border Background="#164E63" CornerRadius="4" Padding="5,2" DockPanel.Dock="Right">
+                                                    <TextBlock Text="TEMPO REAL" FontSize="9" FontWeight="Black" Foreground="#67E8F9" />
+                                                </Border>
+                                            </DockPanel>
+
+                                            <StackPanel Orientation="Horizontal" Margin="0,4,0,4">
+                                                <TextBlock x:Name="TxtLatenciaMs" Text="0" FontWeight="Black" FontSize="30" Foreground="#FFFFFF" />
+                                                <TextBlock Text=" ms" FontSize="13" FontWeight="Bold" Foreground="#64748B" VerticalAlignment="Bottom" Margin="4,0,0,5" />
+                                            </StackPanel>
+
+                                            <StackPanel Orientation="Horizontal" Margin="0,2,0,4">
+                                                <TextBlock Text="Jitter: " FontSize="10.5" Foreground="#64748B" />
+                                                <TextBlock x:Name="TxtJitterMs" Text="0.0 ms" FontSize="10.5" FontWeight="Bold" Foreground="#E2E8F0" />
+                                                <TextBlock Text=" • Perda: " FontSize="10.5" Foreground="#64748B" Margin="4,0,0,0" />
+                                                <TextBlock x:Name="TxtPacketLoss" Text="0%" FontSize="10.5" FontWeight="Bold" Foreground="#E2E8F0" />
+                                            </StackPanel>
+
+                                            <TextBlock x:Name="TxtEficienciaRota" Text="Piso Fibra: ~1ms • Efic: 100%" FontSize="10" FontWeight="SemiBold" Foreground="#38BDF8" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <!-- KPI 4: BUFFERBLOAT -->
+                                <Border Grid.Column="3" Style="{StaticResource HudCardStyle}">
+                                    <Grid>
+                                        <Border Height="3" Background="#A855F7" VerticalAlignment="Top" CornerRadius="10,10,0,0" />
+                                        <StackPanel Margin="14,14,14,12">
+                                            <DockPanel Margin="0,0,0,6">
+                                                <TextBlock Text="⚖ BUFFERBLOAT" FontWeight="Black" FontSize="11" Foreground="#A855F7" DockPanel.Dock="Left" />
+                                                <Border Background="#581C87" CornerRadius="4" Padding="5,2" DockPanel.Dock="Right">
+                                                    <TextBlock Text="QUALIDADE" FontSize="9" FontWeight="Black" Foreground="#D8B4FE" />
+                                                </Border>
+                                            </DockPanel>
+
+                                            <StackPanel Orientation="Horizontal" Margin="0,4,0,4">
+                                                <TextBlock x:Name="TxtBufferbloatGrade" Text="—" FontWeight="Black" FontSize="30" Foreground="#10B981" />
+                                                <TextBlock Text=" Grade" FontSize="13" FontWeight="Bold" Foreground="#64748B" VerticalAlignment="Bottom" Margin="4,0,0,5" />
+                                            </StackPanel>
+
+                                            <Border Background="#1E293B" CornerRadius="4" Padding="6,3" Margin="0,2,0,0">
+                                                <TextBlock x:Name="TxtBufferbloatDesc" Text="Sob carga contínua" FontSize="10" Foreground="#94A3B8" TextTrimming="CharacterEllipsis" />
+                                            </Border>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+
+                            <!-- CARD 3: GRÁFICO DINÂMICO DE VAZÃO COM PREENCHIMENTO EM GRADIENTE -->
+                            <Border Style="{StaticResource HudCardStyle}" Padding="16,12" Margin="0,0,0,10">
+                                <StackPanel>
+                                    <DockPanel Margin="0,0,0,8">
+                                        <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                                            <TextBlock Text="📈 CURVA TEMPORAL DE VAZÃO (TELEMETRIA EM TEMPO REAL)" FontWeight="Black" FontSize="11.5" Foreground="#38BDF8" />
+                                            <TextBlock Text="• Amostragem Contínua" FontSize="10.5" Foreground="#64748B" Margin="8,0,0,0" />
+                                        </StackPanel>
+
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                            <Border Background="#10B981" Width="9" Height="9" CornerRadius="4.5" Margin="0,0,5,0" />
+                                            <TextBlock Text="Download" FontSize="11" FontWeight="Bold" Foreground="#94A3B8" Margin="0,0,14,0" />
+                                            <Border Background="#3B82F6" Width="9" Height="9" CornerRadius="4.5" Margin="0,0,5,0" />
+                                            <TextBlock Text="Upload" FontSize="11" FontWeight="Bold" Foreground="#94A3B8" />
+                                        </StackPanel>
+                                    </DockPanel>
+
+                                    <!-- CANVAS DO GRÁFICO COM ÁREA EM GRADIENTE -->
+                                    <Border Background="#060911" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="8" Height="140" ClipToBounds="True">
+                                        <Grid>
+                                            <Line X1="0" Y1="35" X2="1200" Y2="35" Stroke="#161F30" StrokeDashArray="3,3" StrokeThickness="1" />
+                                            <Line X1="0" Y1="70" X2="1200" Y2="70" Stroke="#161F30" StrokeDashArray="3,3" StrokeThickness="1" />
+                                            <Line X1="0" Y1="105" X2="1200" Y2="105" Stroke="#161F30" StrokeDashArray="3,3" StrokeThickness="1" />
+
+                                            <Rectangle HorizontalAlignment="Center" Width="1" Fill="#1E293B" StrokeDashArray="2,2" />
+
+                                            <Canvas x:Name="CanvasGrafico">
+                                                <Polygon x:Name="PolygonDownloadArea" Opacity="0.32">
+                                                    <Polygon.Fill>
+                                                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                            <GradientStop Color="#10B981" Offset="0"/>
+                                                            <GradientStop Color="#0010B981" Offset="1"/>
+                                                        </LinearGradientBrush>
+                                                    </Polygon.Fill>
+                                                </Polygon>
+
+                                                <Polygon x:Name="PolygonUploadArea" Opacity="0.32">
+                                                    <Polygon.Fill>
+                                                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                            <GradientStop Color="#3B82F6" Offset="0"/>
+                                                            <GradientStop Color="#003B82F6" Offset="1"/>
+                                                        </LinearGradientBrush>
+                                                    </Polygon.Fill>
+                                                </Polygon>
+
+                                                <Polyline x:Name="PolylineDownload" Stroke="#10B981" StrokeThickness="3.0" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                <Polyline x:Name="PolylineUpload" Stroke="#38BDF8" StrokeThickness="3.0" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                            </Canvas>
+
+                                            <Border x:Name="OverlayContainer" Background="#99060911" CornerRadius="6" Padding="12,6" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <TextBlock x:Name="TxtOverlayGrafico" Text="Aguardando disparo do teste..." FontSize="12" Foreground="#64748B" FontWeight="SemiBold" />
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- CARD 4: TOPOLOGIA DE ROTA & FÍSICA DA FIBRA ÓPTICA -->
+                            <Border Style="{StaticResource HudCardStyle}" Padding="16,12" Margin="0,0,0,10">
+                                <StackPanel>
+                                    <DockPanel Margin="0,0,0,8">
+                                        <TextBlock Text="📍 TOPOLOGIA DE REDE &amp; PROPAGAÇÃO EM FIBRA ÓPTICA" FontWeight="Black" FontSize="11.5" Foreground="#38BDF8" DockPanel.Dock="Left" />
+                                        <TextBlock Text="Piso Teórico: 1 ms RTT a cada ~78 km de Fibra Sílica" FontSize="10.5" Foreground="#64748B" HorizontalAlignment="Right" />
+                                    </DockPanel>
+
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- Origem (Cliente / Link Testado) -->
+                                        <Border Grid.Column="0" Background="#090D16" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="8" Padding="12,10">
+                                            <StackPanel>
+                                                <DockPanel Margin="0,0,0,6">
+                                                    <TextBlock Text="💻 CLIENTE (LINK TESTADO)" FontWeight="Black" FontSize="10.5" Foreground="#38BDF8" DockPanel.Dock="Left" />
+                                                    <Border Background="#1E293B" CornerRadius="4" Padding="5,2" DockPanel.Dock="Right">
+                                                        <TextBlock Text="ORIGEM" FontSize="9" FontWeight="Bold" Foreground="#94A3B8" />
+                                                    </Border>
+                                                </DockPanel>
+                                                <TextBlock x:Name="TxtGeoIpPublico" Text="IP: Identificando..." FontSize="11.5" FontWeight="SemiBold" Foreground="#F8FAFC" Margin="0,0,0,2" />
+                                                <TextBlock x:Name="TxtGeoAsn" Text="ASN: ..." FontSize="11" Foreground="#94A3B8" Margin="0,0,0,2" />
+                                                <TextBlock x:Name="TxtGeoLocalidade" Text="Localidade: ..." FontSize="11" Foreground="#94A3B8" Margin="0,0,0,2" />
+                                                <TextBlock x:Name="TxtGeoCoordenadas" Text="GPS: ..." FontSize="10.5" Foreground="#64748B" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- Barra Central: Propagação Óptica e Distância -->
+                                        <Border Grid.Column="1" Background="#090D16" BorderBrush="#334155" BorderThickness="1" CornerRadius="8" Padding="14,8" VerticalAlignment="Center" Margin="12,0">
+                                            <StackPanel HorizontalAlignment="Center">
+                                                <TextBlock Text="⚡" FontSize="18" Foreground="#38BDF8" HorizontalAlignment="Center" Margin="0,0,0,2" />
+                                                <TextBlock x:Name="TxtDistanciaKm" Text="~ km" FontSize="12.5" FontWeight="Black" Foreground="#38BDF8" HorizontalAlignment="Center" />
+                                                <TextBlock Text="Distância Haversine" FontSize="9" Foreground="#64748B" HorizontalAlignment="Center" Margin="0,2,0,0" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- Destino (Datacenter / Servidor Alvo) -->
+                                        <Border Grid.Column="2" Background="#090D16" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="8" Padding="12,10">
+                                            <StackPanel>
+                                                <DockPanel Margin="0,0,0,6">
+                                                    <TextBlock Text="🏢 SERVIDOR ALVO / POP" FontWeight="Black" FontSize="10.5" Foreground="#A855F7" DockPanel.Dock="Left" />
+                                                    <Border Background="#1E293B" CornerRadius="4" Padding="5,2" DockPanel.Dock="Right">
+                                                        <TextBlock Text="DESTINO" FontSize="9" FontWeight="Bold" Foreground="#94A3B8" />
+                                                    </Border>
+                                                </DockPanel>
+                                                <TextBlock x:Name="TxtGeoServidor" Text="Servidor: ..." FontSize="11.5" FontWeight="SemiBold" Foreground="#F8FAFC" Margin="0,0,0,2" />
+                                                <TextBlock x:Name="TxtGeoPoP" Text="PoP Datacenter: ..." FontSize="11" Foreground="#94A3B8" Margin="0,0,0,2" />
+                                                <TextBlock x:Name="TxtGeoServidorLocal" Text="Cidade: ..." FontSize="11" Foreground="#94A3B8" Margin="0,0,0,2" />
+                                                <TextBlock x:Name="TxtGeoTecnologia" Text="Protocolo: Cloudflare Speed / HTTP Stream" FontSize="10.5" Foreground="#64748B" />
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- CARD 5: LOG DE EXECUÇÃO & RESILIÊNCIA EM CADEIA -->
+                            <Border Style="{StaticResource HudCardStyle}" Padding="14,10">
+                                <StackPanel>
+                                    <DockPanel Margin="0,0,0,6">
+                                        <TextBlock Text="📜 LOG DE RESILIÊNCIA &amp; AUDITORIA TÉCNICA" FontWeight="Bold" FontSize="11" Foreground="#94A3B8" DockPanel.Dock="Left" />
+                                        <TextBlock x:Name="TxtLogStatus" Text="Sistema em espera" FontSize="10" Foreground="#64748B" HorizontalAlignment="Right" />
+                                    </DockPanel>
+                                    <TextBox x:Name="TxtLogTelemetria" Height="80" Background="#060911" Foreground="#94A3B8" FontFamily="Consolas, 'Courier New', monospace" FontSize="11" BorderThickness="1" BorderBrush="#1E293B" IsReadOnly="True" VerticalScrollBarVisibility="Auto" TextWrapping="Wrap" Padding="6" />
+                                </StackPanel>
+                            </Border>
+
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- RODAPÉ DE AÇÕES DA ABA 1 -->
+                    <Border Grid.Row="1" Style="{StaticResource HudCardStyle}" Padding="14,10" Margin="0,10,0,0">
+                        <DockPanel LastChildFill="False">
+                            <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+                                <Button x:Name="BtnIniciarTelemetria" Content="🚀 INICIAR TESTE DE BANDA LARGA" Style="{StaticResource ModernGradientButtonStyle}" Padding="18,9" FontSize="12.5" Click="BtnIniciarTelemetria_Click">
+                                    <Button.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                            <GradientStop Color="#7C3AED" Offset="0"/>
+                                            <GradientStop Color="#4F46E5" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Button.Background>
+                                </Button>
+
+                                <Button x:Name="BtnCancelarTelemetria" Content="🛑 Cancelar" Style="{StaticResource ModernGradientButtonStyle}" Padding="12,9" Margin="10,0,0,0" Background="#334155" FontSize="12" IsEnabled="False" Click="BtnCancelarTelemetria_Click" />
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" DockPanel.Dock="Right">
+                                <Button x:Name="BtnGerarPdfTelemetria" Content="📄 Emitir Relatório PDF Executivo" Style="{StaticResource ModernGradientButtonStyle}" Padding="16,9" FontSize="12" IsEnabled="False" Click="BtnGerarPdfTelemetria_Click" ToolTip="Gera o laudo oficial em PDF com gráficos vetoriais de vazão e física da fibra">
+                                    <Button.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                            <GradientStop Color="#0284C7" Offset="0"/>
+                                            <GradientStop Color="#0369A1" Offset="1"/>
+                                        </LinearGradientBrush>
+                                    </Button.Background>
+                                </Button>
+
+                                <Button x:Name="BtnAbrirPastaTelemetria" Content="📂 Abrir Pasta" Style="{StaticResource ModernGradientButtonStyle}" Padding="12,9" Margin="10,0,0,0" Background="#1E293B" Foreground="#F8FAFC" FontSize="12" Click="BtnAbrirPastaTelemetria_Click" />
+                                <Button x:Name="BtnFecharTelemetria" Content="Fechar" Style="{StaticResource ModernGradientButtonStyle}" Padding="14,9" Margin="10,0,0,0" Background="#1E293B" Foreground="#94A3B8" FontSize="12" Click="BtnFechar_Click" />
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <!-- ##################################################################################### -->
+            <!-- ABA 2: TESTAR LINK SEM ROTEADOR (MODO ACESSO / WAN DIRETA EDD/GPON)                     -->
+            <!-- ##################################################################################### -->
+            <TabItem Style="{StaticResource ModernTabItemStyle}">
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="🔌" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center" />
+                        <TextBlock Text="Testar Link sem Roteador (Modo Acesso)" VerticalAlignment="Center" />
+                    </StackPanel>
+                </TabItem.Header>
+
+                <Grid Margin="0,8,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel Margin="0,0,0,4">
+
+                            <!-- CARD 1: DADOS DO CIRCUITO (FICHA SAIP / MANUAL) -->
+                            <Border Style="{StaticResource HudCardStyle}" Padding="14,10" Margin="0,0,0,10">
+                                <StackPanel>
+                                    <DockPanel Margin="0,0,0,8">
+                                        <TextBlock Text="📋 DADOS DO CIRCUITO (FICHA SAIP)" FontWeight="Black" FontSize="12" Foreground="#38BDF8" DockPanel.Dock="Left" />
+                                        <Border x:Name="BorderBadgeSaip" Background="#1E293B" CornerRadius="4" Padding="6,2" HorizontalAlignment="Right">
+                                            <TextBlock x:Name="TxtBadgeSaip" Text="✓ Ficha SAIP Carregada" FontSize="10.5" FontWeight="Bold" Foreground="#4ADE80" />
+                                        </Border>
+                                    </DockPanel>
+
+                                    <Grid Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="2.2*" />
+                                            <ColumnDefinition Width="1.4*" />
+                                            <ColumnDefinition Width="1.2*" />
+                                            <ColumnDefinition Width="1.4*" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- Cliente -->
+                                        <Border Grid.Column="0" Background="#090D16" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="6" Padding="10,5" Margin="0,0,6,0">
+                                            <StackPanel>
+                                                <TextBlock Text="Cliente / Razão Social:" FontSize="10" Foreground="#94A3B8" />
+                                                <TextBox x:Name="TxtClienteNome" Text="Identificando..." FontSize="12" FontWeight="Bold" Foreground="#F8FAFC" Background="Transparent" BorderThickness="0" Margin="0,2,0,0" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- Designação -->
+                                        <Border Grid.Column="1" Background="#090D16" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="6" Padding="10,5" Margin="0,0,6,0">
+                                            <StackPanel>
+                                                <TextBlock Text="Designação IP / OTS:" FontSize="10" Foreground="#94A3B8" />
+                                                <TextBox x:Name="TxtDesignacao" Text="—" FontSize="12" FontWeight="Bold" Foreground="#38BDF8" Background="Transparent" BorderThickness="0" Margin="0,2,0,0" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- CIR Nominal -->
+                                        <Border Grid.Column="2" Background="#090D16" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="6" Padding="10,5" Margin="0,0,6,0">
+                                            <StackPanel>
+                                                <TextBlock Text="Banda Contratada (CIR):" FontSize="10" Foreground="#94A3B8" />
+                                                <TextBox x:Name="TxtVelocidadeCir" Text="100 Mbps" FontSize="12" FontWeight="Bold" Foreground="#F59E0B" Background="Transparent" BorderThickness="0" Margin="0,2,0,0" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- Roteador PE -->
+                                        <Border Grid.Column="3" Background="#090D16" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="6" Padding="10,5">
+                                            <StackPanel>
+                                                <TextBlock Text="Roteador PE Claro:" FontSize="10" Foreground="#94A3B8" />
+                                                <TextBox x:Name="TxtPeRouter" Text="—" FontSize="12" FontWeight="Bold" Foreground="#A78BFA" Background="Transparent" BorderThickness="0" Margin="0,2,0,0" />
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+
+                                    <!-- Linha 2: Parâmetros IP WAN -->
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="1.5*" />
+                                            <ColumnDefinition Width="1.2*" />
+                                            <ColumnDefinition Width="1.5*" />
+                                            <ColumnDefinition Width="1.2*" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <Border Grid.Column="0" Background="#090D16" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="6" Padding="10,5" Margin="0,0,6,0">
+                                            <StackPanel>
+                                                <TextBlock Text="IP WAN do Circuito (Notebook):" FontSize="10" Foreground="#94A3B8" />
+                                                <TextBox x:Name="TxtWanIp" Text="10.0.0.2" FontSize="12" FontWeight="Bold" FontFamily="Consolas" Foreground="#34D399" Background="Transparent" BorderThickness="0" Margin="0,2,0,0" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Grid.Column="1" Background="#090D16" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="6" Padding="10,5" Margin="0,0,6,0">
+                                            <StackPanel>
+                                                <TextBlock Text="Máscara WAN (CIDR):" FontSize="10" Foreground="#94A3B8" />
+                                                <TextBox x:Name="TxtWanMascara" Text="255.255.255.252" FontSize="12" FontFamily="Consolas" Foreground="#F8FAFC" Background="Transparent" BorderThickness="0" Margin="0,2,0,0" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Grid.Column="2" Background="#090D16" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="6" Padding="10,5" Margin="0,0,6,0">
+                                            <StackPanel>
+                                                <TextBlock Text="Gateway PE (Operadora):" FontSize="10" Foreground="#94A3B8" />
+                                                <TextBox x:Name="TxtWanGateway" Text="10.0.0.1" FontSize="12" FontWeight="Bold" FontFamily="Consolas" Foreground="#38BDF8" Background="Transparent" BorderThickness="0" Margin="0,2,0,0" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Grid.Column="3" Background="#090D16" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="6" Padding="10,5">
+                                            <StackPanel>
+                                                <TextBlock Text="DNS Primário / Secundário:" FontSize="10" Foreground="#94A3B8" />
+                                                <TextBlock Text="1.1.1.1  /  8.8.8.8" FontSize="11" FontFamily="Consolas" Foreground="#CBD5E1" Margin="0,3,0,0" />
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- CARD 2: PLACA DE REDE DO NOTEBOOK (INTERFACE FÍSICA) -->
+                            <Border Style="{StaticResource HudCardStyle}" Padding="14,10" Margin="0,0,0,10">
+                                <StackPanel>
+                                    <DockPanel Margin="0,0,0,8">
+                                        <TextBlock Text="💻 PLACA DE REDE DO NOTEBOOK" FontWeight="Black" FontSize="12" Foreground="#38BDF8" DockPanel.Dock="Left" />
+                                        <Border x:Name="BorderStatusPlaca" Background="#1E293B" CornerRadius="4" Padding="8,2" HorizontalAlignment="Right">
+                                            <TextBlock x:Name="TxtStatusPlaca" Text="⚪ Checando placa..." FontSize="10.5" FontWeight="Bold" Foreground="#FBBF24" />
+                                        </Border>
+                                    </DockPanel>
+
+                                    <Grid Margin="0,0,0,6">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="2.5*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <ComboBox Grid.Column="0" x:Name="CmbAdaptadoresAcesso" Background="#090D16" Foreground="#F8FAFC" BorderBrush="#334155" Padding="8,6" FontSize="12" FontWeight="SemiBold" Margin="0,0,8,0" SelectionChanged="CmbAdaptadoresAcesso_SelectionChanged" />
+
+                                        <Button Grid.Column="1" x:Name="BtnAtualizarAdaptadores" Content="🔄 Atualizar" Padding="10,6" Margin="0,0,8,0" Background="#1E293B" Foreground="#38BDF8" BorderThickness="1" BorderBrush="#334155" Cursor="Hand" Click="BtnAtualizarAdaptadores_Click" ToolTip="Atualiza a lista de placas de rede conectadas" />
+
+                                        <Button Grid.Column="2" x:Name="BtnAplicarIpWan" Content="⚡ Aplicar IP WAN no Windows" Padding="12,6" Margin="0,0,8,0" Background="#059669" Foreground="White" FontWeight="Bold" BorderThickness="0" Cursor="Hand" Click="BtnAplicarIpWan_Click" ToolTip="Configura o IP WAN estático, máscara, gateway e DNS 1.1.1.1/8.8.8.8 na placa de rede do Windows com rota prioritária" />
+
+                                        <Button Grid.Column="3" x:Name="BtnRestaurarDhcp" Content="↩ Restaurar DHCP" Padding="12,6" Background="#334155" Foreground="#CBD5E1" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand" Click="BtnRestaurarDhcp_Click" ToolTip="Restaura a placa de rede para DHCP automático ou para a configuração original capturada" />
+                                    </Grid>
+
+                                    <TextBlock x:Name="TxtInfoAdaptador" Text="Selecione o adaptador Ethernet conectado ao cabo do circuito (porta de acesso EDD/GPON)." FontSize="11" Foreground="#64748B" Margin="2,2,0,0" />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- CARD 3: TESTES DE CONECTIVIDADE ICMP -->
+                            <Border Style="{StaticResource HudCardStyle}" Padding="14,10" Margin="0,0,0,10">
+                                <StackPanel>
+                                    <DockPanel Margin="0,0,0,8">
+                                        <TextBlock Text="📡 TESTES DE CONECTIVIDADE ICMP" FontWeight="Black" FontSize="12" Foreground="#38BDF8" DockPanel.Dock="Left" />
+                                        <Button x:Name="BtnTestarIcmp" Content="▶ Testar Pings ICMP" Padding="12,4" Background="#0284C7" Foreground="White" FontWeight="Bold" FontSize="11" BorderThickness="0" Cursor="Hand" HorizontalAlignment="Right" Click="BtnTestarIcmp_Click" ToolTip="Dispara sequência de pacotes ICMP para o Gateway PE, Google DNS e Cloudflare DNS" />
+                                    </DockPanel>
+
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- 1. Gateway PE -->
+                                        <Border Grid.Column="0" Background="#090D16" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="6" Padding="10,8" Margin="0,0,6,0">
+                                            <StackPanel>
+                                                <DockPanel Margin="0,0,0,4">
+                                                    <TextBlock Text="1. Gateway PE (Operadora)" FontSize="11" FontWeight="Bold" Foreground="#F8FAFC" DockPanel.Dock="Left" />
+                                                    <Border x:Name="BadgeIcmpPe" Background="#334155" CornerRadius="3" Padding="6,1" HorizontalAlignment="Right">
+                                                        <TextBlock x:Name="TxtBadgeIcmpPe" Text="⚪ PENDENTE" FontSize="9.5" FontWeight="Bold" Foreground="#FFFFFF" />
+                                                    </Border>
+                                                </DockPanel>
+                                                <TextBlock x:Name="TxtDestinoPe" Text="Alvo: 10.0.0.1" FontSize="11" FontFamily="Consolas" Foreground="#38BDF8" Margin="0,0,0,4" />
+                                                <TextBlock x:Name="TxtMetricasPe" Text="RTT Médio: — | Perda: —" FontSize="11" Foreground="#94A3B8" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- 2. Google DNS (8.8.8.8) -->
+                                        <Border Grid.Column="1" Background="#090D16" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="6" Padding="10,8" Margin="0,0,6,0">
+                                            <StackPanel>
+                                                <DockPanel Margin="0,0,0,4">
+                                                    <TextBlock Text="2. Google DNS (Internet)" FontSize="11" FontWeight="Bold" Foreground="#F8FAFC" DockPanel.Dock="Left" />
+                                                    <Border x:Name="BadgeIcmpGoogle" Background="#334155" CornerRadius="3" Padding="6,1" HorizontalAlignment="Right">
+                                                        <TextBlock x:Name="TxtBadgeIcmpGoogle" Text="⚪ PENDENTE" FontSize="9.5" FontWeight="Bold" Foreground="#FFFFFF" />
+                                                    </Border>
+                                                </DockPanel>
+                                                <TextBlock Text="Alvo: 8.8.8.8" FontSize="11" FontFamily="Consolas" Foreground="#38BDF8" Margin="0,0,0,4" />
+                                                <TextBlock x:Name="TxtMetricasGoogle" Text="RTT Médio: — | Perda: —" FontSize="11" Foreground="#94A3B8" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- 3. Cloudflare DNS (1.1.1.1) -->
+                                        <Border Grid.Column="2" Background="#090D16" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="6" Padding="10,8">
+                                            <StackPanel>
+                                                <DockPanel Margin="0,0,0,4">
+                                                    <TextBlock Text="3. Cloudflare DNS (Web)" FontSize="11" FontWeight="Bold" Foreground="#F8FAFC" DockPanel.Dock="Left" />
+                                                    <Border x:Name="BadgeIcmpCf" Background="#334155" CornerRadius="3" Padding="6,1" HorizontalAlignment="Right">
+                                                        <TextBlock x:Name="TxtBadgeIcmpCf" Text="⚪ PENDENTE" FontSize="9.5" FontWeight="Bold" Foreground="#FFFFFF" />
+                                                    </Border>
+                                                </DockPanel>
+                                                <TextBlock Text="Alvo: 1.1.1.1" FontSize="11" FontFamily="Consolas" Foreground="#38BDF8" Margin="0,0,0,4" />
+                                                <TextBlock x:Name="TxtMetricasCf" Text="RTT Médio: — | Perda: —" FontSize="11" Foreground="#94A3B8" />
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- CARD 4: TESTE DE BANDA (SPEEDTEST) -->
+                            <Border Style="{StaticResource HudCardStyle}" Padding="14,10" Margin="0,0,0,10">
+                                <StackPanel>
+                                    <DockPanel Margin="0,0,0,8">
+                                        <TextBlock Text="🚀 TESTE DE LARGURA DE BANDA (SPEEDTEST)" FontWeight="Black" FontSize="12" Foreground="#38BDF8" DockPanel.Dock="Left" />
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                            <ComboBox x:Name="CmbMetodoSpeedtest" Background="#090D16" Foreground="#F8FAFC" BorderBrush="#334155" Padding="6,3" FontSize="11" Margin="0,0,8,0">
+                                                <ComboBoxItem Content="⚡ Nativo HTTP CDN (Fast/Cloudflare)" Tag="Nativo" IsSelected="True" />
+                                                <ComboBoxItem Content="🚀 Speedtest CLI (Ookla)" Tag="Cli" />
+                                            </ComboBox>
+                                            <Button x:Name="BtnIniciarSpeedtest" Content="▶ Iniciar Speedtest" Padding="12,4" Background="#D97706" Foreground="White" FontWeight="Bold" FontSize="11" BorderThickness="0" Cursor="Hand" Click="BtnIniciarSpeedtest_Click" ToolTip="Executa medição de vazão em tempo real" />
+                                        </StackPanel>
+                                    </DockPanel>
+
+                                    <!-- Métricas de Banda -->
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="1.4*" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <Border Grid.Column="0" Background="#090D16" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="6" Padding="10,6" Margin="0,0,6,0">
+                                            <StackPanel>
+                                                <TextBlock Text="Download Medido:" FontSize="10" Foreground="#94A3B8" />
+                                                <TextBlock x:Name="TxtDlAcessoMbps" Text="0.0 Mbps" FontSize="17" FontWeight="Black" Foreground="#4ADE80" Margin="0,2,0,0" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Grid.Column="1" Background="#090D16" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="6" Padding="10,6" Margin="0,0,6,0">
+                                            <StackPanel>
+                                                <TextBlock Text="Upload Medido:" FontSize="10" Foreground="#94A3B8" />
+                                                <TextBlock x:Name="TxtUlAcessoMbps" Text="0.0 Mbps" FontSize="17" FontWeight="Black" Foreground="#38BDF8" Margin="0,2,0,0" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Grid.Column="2" Background="#090D16" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="6" Padding="10,6" Margin="0,0,6,0">
+                                            <StackPanel>
+                                                <TextBlock Text="Latência Speedtest:" FontSize="10" Foreground="#94A3B8" />
+                                                <TextBlock x:Name="TxtLatenciaSpeedtest" Text="— ms" FontSize="17" FontWeight="Black" Foreground="#F59E0B" Margin="0,2,0,0" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Grid.Column="3" Background="#090D16" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="6" Padding="10,6">
+                                            <StackPanel>
+                                                <TextBlock Text="Veredito Regulatório (CIR):" FontSize="10" Foreground="#94A3B8" />
+                                                <TextBlock x:Name="TxtVereditoBanda" Text="Aguardando teste..." FontSize="12" FontWeight="Bold" Foreground="#CBD5E1" Margin="0,3,0,0" TextTrimming="CharacterEllipsis" />
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+
+                                    <Grid Margin="0,0,0,4">
+                                        <ProgressBar x:Name="PbSpeedtest" Height="7" Background="#1E293B" Foreground="#059669" BorderThickness="0" Value="0" Maximum="100" />
+                                    </Grid>
+                                    <TextBlock x:Name="TxtProgressoSpeedtest" Text="Pronto para teste de banda." FontSize="10" Foreground="#64748B" HorizontalAlignment="Right" />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- CARD 5: CONSOLE DE LOGS -->
+                            <Border Style="{StaticResource HudCardStyle}" Padding="14,10">
+                                <StackPanel>
+                                    <DockPanel Margin="0,0,0,6">
+                                        <TextBlock Text="🖥️ LOG DE EXECUÇÃO" FontWeight="Black" FontSize="11" Foreground="#94A3B8" DockPanel.Dock="Left" />
+                                        <Button x:Name="BtnLimparLog" Content="Limpar" Padding="6,1" FontSize="10" Background="#1E293B" Foreground="#94A3B8" BorderThickness="0" Cursor="Hand" HorizontalAlignment="Right" Click="BtnLimparLog_Click" />
+                                    </DockPanel>
+
+                                    <Border Background="#0A0E14" CornerRadius="6" MaxHeight="110" Padding="6">
+                                        <ScrollViewer x:Name="ScrollLog" VerticalScrollBarVisibility="Auto">
+                                            <TextBlock x:Name="TxtLogConsole" Text="[LOG] Módulo de Teste de Link Direto inicializado. Conecte o cabo ao acesso e clique em EXECUTAR TESTE COMPLETO." FontFamily="Consolas" FontSize="11" Foreground="#94A3B8" TextWrapping="Wrap" />
+                                        </ScrollViewer>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- RODAPÉ DE AÇÕES DA ABA 2 -->
+                    <Border Grid.Row="1" Style="{StaticResource HudCardStyle}" Padding="14,10" Margin="0,10,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button x:Name="BtnTesteCompleto" Content="🚀 EXECUTAR TESTE COMPLETO (IP + PING + BANDA)" Padding="14,8" Margin="0,0,8,0" Background="#059669" Foreground="White" FontWeight="Black" FontSize="12.5" BorderThickness="0" Cursor="Hand" Click="BtnTesteCompleto_Click" ToolTip="Executa em sequência: Configura IP WAN no Windows -> Testa Pings ICMP -> Executa Speedtest -> Emite Laudo Técnico em PDF" />
+
+                                <Button x:Name="BtnVisualizarPdf" Content="📄 Abrir Laudo (PDF)" Padding="12,8" Margin="0,0,8,0" Background="#0284C7" Foreground="White" FontWeight="Bold" FontSize="12" BorderThickness="0" Cursor="Hand" Visibility="Collapsed" Click="BtnVisualizarPdf_Click" ToolTip="Abre o arquivo PDF gerado" />
+
+                                <Button x:Name="BtnSalvarPdf" Content="💾 Salvar PDF como..." Padding="12,8" Margin="0,0,8,0" Background="#334155" Foreground="White" FontWeight="Bold" FontSize="12" BorderThickness="0" Cursor="Hand" Visibility="Collapsed" Click="BtnSalvarPdf_Click" ToolTip="Salva cópia do relatório técnico em PDF no local desejado" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button x:Name="BtnFecharAcesso" Content="Fechar" Padding="14,8" Background="#334155" Foreground="#CBD5E1" FontWeight="SemiBold" FontSize="12" BorderThickness="0" Cursor="Hand" Click="BtnFechar_Click" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+    </Grid>
+</Window>
