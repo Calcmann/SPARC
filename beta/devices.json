@@ -1,5 +1,31 @@
 [
   {
+    "MachineGuid": "0ef227fa-c79b-4d01-817b-95d8373896a0",
+    "MachineFingerprint": "DE4A12820BD07B5D2C80EFC83461A6CE331850461E3202C085237B86B1B77266",
+    "FirstName": "George Lu\u00EDs",
+    "LastName": "Calcmann",
+    "Phone": "(00) 00000-0000",
+    "Email": "george.calcmann@claro.com.br",
+    "Company": "Claro S.A",
+    "EmployeeId": "123456",
+    "Cluster": "Florian\u00F3polis",
+    "Uf": "SC",
+    "ClientVersion": "BETA-TESTES-0.8.61-20261002",
+    "FirstRegisteredUtc": "2026-10-23T17:55:00.9922506Z",
+    "LastSeenUtc": "2026-10-23T17:55:00.9922725Z",
+    "ExpirationDateIso": "2027-01-21",
+    "ValidDays": 90,
+    "Status": "Active",
+    "AuthorizedToken": "SPB1.eyJnIjoiMGVmMjI3ZmEtYzc5Yi00ZDAxLTgxN2ItOTVkODM3Mzg5NmEwIiwiZiI6IkRFNEExMjgyMEJEMDdCNUQyQzgwRUZDODM0NjFBNkNFMzMxODUwNDYxRTMyMDJDMDg1MjM3Qjg2QjFCNzcyNjYiLCJleHAiOiIyMDI3LTAxLTIxVDAwOjAwOjAwWiJ9.Y69PNuDrG0QylU00hewf1B0YWzfIhNucusOITtfHPVdJoYRktMzXa6vY1KhLyt3VFmz3ReywKlTrZCgUrTQawsjANnNG8z8gB5g5oIhdogFhm287OJ5vbawfoWI2GppRuCwMlzvfH6rYwNq4YS7pNxzHBUHESBmrzcBafUvvAhOhRAxZsKVaVqHrWZ4p5x69EuN3Ki_Y03xu20WGS2ZIMj7Y1CJkWAegTzc2deDc_HFHy_07RbUBWVRM_9sYRQgvGvFiZbOwadBEf3tEY4Sp2wcrkNsxKnIHgzNONkbrKC00Nq64rhTpbebyK38gWgMqNMx9W2bLb0eUohieIdiUrQ",
+    "Notes": "Aprovado online (90 dias)",
+    "Platform": "Windows",
+    "PlatformBadge": "\uD83E\uDE9F Windows",
+    "FullName": "George Lu\u00EDs Calcmann",
+    "CalculatedStatus": 0,
+    "StatusBadge": "\uD83D\uDFE2 Ativo",
+    "WhatsAppUrl": "https://wa.me/5500000000000"
+  },
+  {
     "MachineGuid": "4a5d9b04-6b99-449c-bff2-72dc252a4300",
     "MachineFingerprint": "0FEFB84C2125EB6F9A4D52F50006017A1BBD969CD2B7A15C79CA134C026099A3",
     "FirstName": "Jos\u00E9 Volmir",
@@ -359,8 +385,8 @@
     "Platform": "Android",
     "PlatformBadge": "\uD83D\uDCF1 Android",
     "FullName": "George Lu\u00EDs Calcmann",
-    "CalculatedStatus": 0,
-    "StatusBadge": "\uD83D\uDFE2 Ativo",
+    "CalculatedStatus": 1,
+    "StatusBadge": "\uD83D\uDFE1 A Expirar (\u003C7d)",
     "WhatsAppUrl": "https://wa.me/5548988036632"
   },
   {
@@ -385,8 +411,8 @@
     "Platform": "Android",
     "PlatformBadge": "\uD83D\uDCF1 Android",
     "FullName": "Carlostesteclar11999998888ot998877 Carlos@claro.com.brsp-capitalspcarlos",
-    "CalculatedStatus": 0,
-    "StatusBadge": "\uD83D\uDFE2 Ativo",
+    "CalculatedStatus": 1,
+    "StatusBadge": "\uD83D\uDFE1 A Expirar (\u003C7d)",
     "WhatsAppUrl": "https://wa.me/12345"
   }
 ]
