@@ -62,8 +62,8 @@ public sealed class HpeComwareRecovery
         @"(?i)(?:\[Y/N\]|\?)\s*$",
         RegexOptions.Compiled);
 
-    internal static readonly Regex ComwarePrompt = new(
-        @"^(?!\s*<[0-9]>)(?!\s*<EXTEND)(?!\s*<BASIC)(?!\s*<MAIN)(?!\s*<BOOT)(?!\s*<ETHERNET)(?!\s*<FILE)(?!\s*<Storage)\s*(?:<[A-Za-z0-9_\-\.]+>|\[[A-Za-z0-9_\-\.]+\])\s*$",
+    public static readonly Regex ComwarePrompt = new(
+        @"^(?!\s*<[0-9]>)(?!\s*<EXTEND)(?!\s*<BASIC)(?!\s*<MAIN)(?!\s*<BOOT)(?!\s*<ETHERNET)(?!\s*<FILE)(?!\s*<SERIAL)(?!\s*<Storage)\s*(?:<[A-Za-z][A-Za-z0-9_\-\./]*>|\[[A-Za-z][A-Za-z0-9_\-\./]*\])\s*$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private static readonly Regex PressReturnPrompt = new(
@@ -1021,7 +1021,7 @@ public static class HpeBootWareStateMachine
 
     public static async Task<bool> EnsureExtendedBootWareAsync(DeviceSession session, Func<string, Task>? progress, CancellationToken ct)
     {
-        for (int attempt = 1; attempt <= 4; attempt++)
+        for (int attempt = 1; attempt <= 5; attempt++)
         {
             await session.WriteLineAsync(string.Empty, ct);
             await Task.Delay(250, ct);
@@ -1037,6 +1037,8 @@ public static class HpeBootWareStateMachine
                         new StopCondition.Contains("MENU", "MENU"),
                         new StopCondition.Contains("Enter file No", "Enter file No"),
                         new StopCondition.Contains("[Y/N]", "[Y/N]"),
+                        new StopCondition.Contains("Press <Ctrl+C>", "Press <Ctrl+C>"),
+                        new StopCondition.Contains("Waiting ...", "Waiting ..."),
                         new StopCondition.Prompt()
                     },
                     TimeSpan.FromSeconds(3),
@@ -1044,6 +1046,17 @@ public static class HpeBootWareStateMachine
             }
             catch (SessionTimeoutException)
             {
+                continue;
+            }
+
+            if (res.Output.Contains("Press <Ctrl+C>", StringComparison.OrdinalIgnoreCase) ||
+                res.Output.Contains("Waiting ...", StringComparison.OrdinalIgnoreCase) ||
+                res.Output.Contains("CCCC"))
+            {
+                if (progress != null)
+                    await progress($"[{DateTime.Now:HH:mm:ss}] [STATE: XModemTransfer] -> TX: Ctrl+C (Abortando transferência serial)...");
+                await session.SendCtrlCAsync(ct);
+                await Task.Delay(500, ct);
                 continue;
             }
 

@@ -153,5 +153,51 @@ public sealed class HpeBootWareTests
         Assert.True(match.Success);
         Assert.Equal(expectedTag.ToUpperInvariant(), match.Groups["ver"].Value.ToUpperInvariant());
     }
+
+    [Theory]
+    [InlineData("<HPE>", true)]
+    [InlineData("[HPE]", true)]
+    [InlineData("<HPE-MSR954>", true)]
+    [InlineData("[HPE-GigabitEthernet0/0]", true)]
+    [InlineData("|<1> Boot System", false)]
+    [InlineData("<1> Boot System", false)]
+    [InlineData("|<1>", false)]
+    [InlineData("<1>", false)]
+    [InlineData("<0> Exit To Main Menu", false)]
+    [InlineData("Enter your choice(0-9):", false)]
+    [InlineData("<EXTENDED-BOOTWARE MENU>", false)]
+    [InlineData("<SERIAL SUBMENU>", false)]
+    [InlineData("<ETHERNET SUBMENU>", false)]
+    [InlineData("<FILE CONTROL>", false)]
+    [InlineData("Waiting ...CCCCCCCC", false)]
+    public void ComwarePrompt_RejectsBootWareMenuItems_AndMatchesTruePrompts(string input, bool expectedMatch)
+    {
+        var isMatch = HpeComwareRecovery.ComwarePrompt.IsMatch(input.Trim());
+        Assert.Equal(expectedMatch, isMatch);
+    }
+
+    [Theory]
+    [InlineData("Enter your choice(0-9):", HpeMenuState.ExtendedBootWare)]
+    [InlineData("<EXTENDED-BOOTWARE MENU>", HpeMenuState.ExtendedBootWare)]
+    [InlineData("Enter your choice(0-3):", HpeMenuState.SerialSubMenu)]
+    [InlineData("<SERIAL SUBMENU>", HpeMenuState.SerialSubMenu)]
+    [InlineData("Enter your choice(0-5):", HpeMenuState.EthernetSubMenu)]
+    [InlineData("<ETHERNET SUBMENU>", HpeMenuState.EthernetSubMenu)]
+    [InlineData("Enter your choice(0-6):", HpeMenuState.FileControl)]
+    [InlineData("<File CONTROL>", HpeMenuState.FileControl)]
+    [InlineData("<HPE>", HpeMenuState.ComwareCli)]
+    [InlineData("[HPE]", HpeMenuState.ComwareCli)]
+    public void DetectState_CorrectlyIdentifiesMenuAndCliStates(string text, HpeMenuState expectedState)
+    {
+        var (state, _) = HpeBootWareStateMachine.DetectState(text);
+        Assert.Equal(expectedState, state);
+    }
+
+    [Fact]
+    public void DetectState_RejectsBootWareMenuItemAsComwareCli()
+    {
+        var (state, _) = HpeBootWareStateMachine.DetectState("|<1> Boot System");
+        Assert.NotEqual(HpeMenuState.ComwareCli, state);
+    }
 }
 
