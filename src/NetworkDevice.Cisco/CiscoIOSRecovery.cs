@@ -16,7 +16,7 @@ public enum InterruptMethod
 public sealed class CiscoIOSRecovery
 {
     private static readonly Regex RommonRouterPrompt = new(
-        @"(?i)(?:rommon\s*\S*\s*>|common\s*\S*\s*>|cannot determine first executable|readonly rommon initialized|cannot load image)",
+        @"(?i)(?:rommon\s*\S*\s*>|common\s*\S*\s*>|cannot determine first executable|cannot load image)",
         RegexOptions.Compiled);
 
     private static readonly Regex RommonSwitchPrompt = new(

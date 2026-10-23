@@ -29,15 +29,18 @@ public sealed class BootInterruptProfile
         new(@"(?i)(?:rommon|common)\s*\S*\s*[>#]", RegexOptions.Compiled),
         new(@"(?i)rommon\s*\d+\s*>", RegexOptions.Compiled),
         new(@"(?i)^rommon\s*>", RegexOptions.Compiled),
-        new(@"(?i)^>", RegexOptions.Compiled),
         new(@"(?i)switch\s*[:>]", RegexOptions.Compiled),
         new(@"(?i)loader\s*>", RegexOptions.Compiled)
     };
 
     public IReadOnlyList<Regex> OsBootPatterns { get; init; } = new List<Regex>
     {
-        new(@"Self-decompressing the image", RegexOptions.Compiled | RegexOptions.IgnoreCase),
+        new(@"Self[-\s]decompressing\s+the\s+image", RegexOptions.Compiled | RegexOptions.IgnoreCase),
         new(@"Loading\s+.*(?:\.bin|\.image)", RegexOptions.Compiled | RegexOptions.IgnoreCase),
+        new(@"Digitally\s+Signed\s+Production\s+Software", RegexOptions.Compiled | RegexOptions.IgnoreCase),
+        new(@"Smart\s+Init\s+is\s+enabled", RegexOptions.Compiled | RegexOptions.IgnoreCase),
+        new(@"Cisco\s+IOS\s+Software", RegexOptions.Compiled | RegexOptions.IgnoreCase),
+        new(@"IOS\s+Image\s+Load\s+Test", RegexOptions.Compiled | RegexOptions.IgnoreCase),
         new(@"Initial Configuration Dialog", RegexOptions.Compiled | RegexOptions.IgnoreCase),
         new(@"Press RETURN to get started", RegexOptions.Compiled | RegexOptions.IgnoreCase),
         new(@"^(?:User|Username|login)\s*:", RegexOptions.Compiled | RegexOptions.IgnoreCase)

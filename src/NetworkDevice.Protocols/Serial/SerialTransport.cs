@@ -19,7 +19,7 @@ public sealed class SerialTransport : ITransport
         TimeSpan? breakDuration = null,
         TimeSpan? readTimeout = null)
     {
-        _breakDuration = breakDuration ?? TimeSpan.FromMilliseconds(180);
+        _breakDuration = breakDuration ?? TimeSpan.FromMilliseconds(250);
         _readTimeout = readTimeout ?? TimeSpan.FromMilliseconds(200);
         _port = new SerialPort(portName?.Trim() ?? "", baudRate, parity, dataBits, stopBits)
         {
