@@ -22,8 +22,8 @@ public sealed class DeviceDetector : IDeviceDetector
         RegexOptions.Compiled);
 
     private static readonly Regex HpePromptRegex = new(
-        @"^[ \t]*[\<\[][A-Za-z0-9_\-\.\/]+[\>\]]\s*$",
-        RegexOptions.Compiled | RegexOptions.Multiline);
+        @"^[ \t]*(?!\<[0-9]\>)(?!\<EXTEND)(?!\<BASIC)(?!\<MAIN)(?!\<BOOT)(?!\<ETHERNET)(?!\<FILE)(?!\<SERIAL)(?!\<Storage)[\<\[][A-Za-z][A-Za-z0-9_\-\.\/]*[\>\]]\s*$",
+        RegexOptions.Compiled | RegexOptions.Multiline | RegexOptions.IgnoreCase);
 
     private static readonly Regex CiscoPromptRegex = new(
         @"^[ \t]*[A-Za-z0-9_\-\.\/]+(?:\([A-Za-z0-9_\-\.\/]+\))?[>#]\s*$",
@@ -251,20 +251,28 @@ public sealed class DeviceDetector : IDeviceDetector
                           || rawPrompt.Contains("Press ENTER to get started", StringComparison.OrdinalIgnoreCase)
                           || rawPrompt.Contains("Line con0 is available", StringComparison.OrdinalIgnoreCase);
 
-        var isBootware = !isOpenPrompt && !isComwareReady && (
-                          rawPrompt.Contains("choice(0-", StringComparison.OrdinalIgnoreCase)
-                       || rawPrompt.Contains("choice (0-", StringComparison.OrdinalIgnoreCase)
-                       || rawPrompt.Contains("EXTENDED-BOOTWARE", StringComparison.OrdinalIgnoreCase)
-                       || rawPrompt.Contains("BASIC BOOT MENU", StringComparison.OrdinalIgnoreCase)
-                       || rawPrompt.Contains("<MAIN MENU>", StringComparison.OrdinalIgnoreCase)
-                       || rawPrompt.Contains("Enter your choice", StringComparison.OrdinalIgnoreCase)
-                       || rawPrompt.Contains("Please enter q/Q to quit", StringComparison.OrdinalIgnoreCase)
-                       || rawPrompt.Contains("Image program does not exist", StringComparison.OrdinalIgnoreCase)
-                       || rawPrompt.Contains("Loading images fails", StringComparison.OrdinalIgnoreCase)
-                       || rawPrompt.Contains("The image does not exist", StringComparison.OrdinalIgnoreCase)
-                       || rawPrompt.Contains("Loading boot image fails", StringComparison.OrdinalIgnoreCase)
-                       || rawPrompt.Contains("The main application file does not exist", StringComparison.OrdinalIgnoreCase)
-                       || rawPrompt.Contains("Booting App fails", StringComparison.OrdinalIgnoreCase));
+        var isBootware = rawPrompt.Contains("choice(0-", StringComparison.OrdinalIgnoreCase)
+                      || rawPrompt.Contains("choice (0-", StringComparison.OrdinalIgnoreCase)
+                      || rawPrompt.Contains("choice:", StringComparison.OrdinalIgnoreCase)
+                      || rawPrompt.Contains("EXTENDED-BOOTWARE", StringComparison.OrdinalIgnoreCase)
+                      || rawPrompt.Contains("EXTENDED ASSISTANT MENU", StringComparison.OrdinalIgnoreCase)
+                      || rawPrompt.Contains("BASIC BOOT MENU", StringComparison.OrdinalIgnoreCase)
+                      || rawPrompt.Contains("<MAIN MENU>", StringComparison.OrdinalIgnoreCase)
+                      || rawPrompt.Contains("Enter your choice", StringComparison.OrdinalIgnoreCase)
+                      || rawPrompt.Contains("Format File System", StringComparison.OrdinalIgnoreCase)
+                      || rawPrompt.Contains("Please enter q/Q to quit", StringComparison.OrdinalIgnoreCase)
+                      || rawPrompt.Contains("Image program does not exist", StringComparison.OrdinalIgnoreCase)
+                      || rawPrompt.Contains("Loading images fails", StringComparison.OrdinalIgnoreCase)
+                      || rawPrompt.Contains("The image does not exist", StringComparison.OrdinalIgnoreCase)
+                      || rawPrompt.Contains("Loading boot image fails", StringComparison.OrdinalIgnoreCase)
+                      || rawPrompt.Contains("The main application file does not exist", StringComparison.OrdinalIgnoreCase)
+                      || rawPrompt.Contains("Booting App fails", StringComparison.OrdinalIgnoreCase);
+
+        if (isBootware)
+        {
+            isOpenPrompt = false;
+            isComwareReady = false;
+        }
 
         // 1b. Detecção de BIOS / Bootloader / Falha de Imagem Fortinet (FortiGate 40F)
         var isFortiBios = rawPrompt.Contains("FOS boot failed", StringComparison.OrdinalIgnoreCase)
@@ -310,7 +318,7 @@ public sealed class DeviceDetector : IDeviceDetector
             || Regex.IsMatch(rawPrompt, @"(?i)(?:FortiGate|FGT|FG)[A-Za-z0-9_\-]*\s+login\s*[:?]")
             || userSelectedSeries == DeviceSeries.FortiGate40F;
 
-        var isCisco = !isFortinet && (isRommon
+        var isCisco = !isFortinet && !isHpe && (isRommon
             || rawPrompt.Contains("User Access Verification", StringComparison.OrdinalIgnoreCase)
             || rawPrompt.Contains("Bad passwords", StringComparison.OrdinalIgnoreCase)
             || rawPrompt.Contains("Bad secrets", StringComparison.OrdinalIgnoreCase)

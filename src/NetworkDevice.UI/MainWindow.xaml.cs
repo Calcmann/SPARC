@@ -460,7 +460,14 @@ public partial class MainWindow : Window
             }
         }
 
-        RevalidarFirmwareCarregadoAoMudarModelo();
+        if (RbFirmwareRepo?.IsChecked == true)
+        {
+            AtualizarSelecaoFirmwarePorModelo(feedbackVisual: false);
+        }
+        else
+        {
+            RevalidarFirmwareCarregadoAoMudarModelo();
+        }
         AtualizarCredencialTelnetPadraoPorModelo();
     }
 
@@ -473,8 +480,8 @@ public partial class MainWindow : Window
         var tag = item?.Tag?.ToString() ?? "";
         if (string.IsNullOrEmpty(tag))
         {
-            var profile = CbInterrupt?.SelectedItem as BootInterruptProfile;
-            tag = profile?.Id ?? "";
+            var itemInterrupt = CbInterrupt?.SelectedItem as ComboBoxItem;
+            tag = itemInterrupt?.Tag?.ToString() ?? "";
         }
 
         if (tag.Contains("1002", StringComparison.OrdinalIgnoreCase) || tag.Contains("1003", StringComparison.OrdinalIgnoreCase) || tag.Contains("1000", StringComparison.OrdinalIgnoreCase) || tag.Contains("100x", StringComparison.OrdinalIgnoreCase)) return DeviceSeries.Msr1002;
@@ -1611,14 +1618,34 @@ public partial class MainWindow : Window
             var detector = new DeviceDetector();
             var detection = detector.ClassifyPrompt(prompt, userSeries);
 
-            var isForti = detection.Manufacturer == DeviceManufacturer.Fortinet || isFortiConsole || userTag.Contains("forti", StringComparison.OrdinalIgnoreCase);
-            var isRommon = detection.BootState == BootState.Rommon;
-            var isBootware = detection.BootState == BootState.Bootware;
-            _isRommonOrBootwareDetected = detection.OperatingState == DeviceOperatingState.BootFailure;
+            var isHpeDetected = detection.Manufacturer == DeviceManufacturer.Hpe
+                             || isBootware
+                             || prompt.Contains("choice(0-", StringComparison.OrdinalIgnoreCase)
+                             || prompt.Contains("choice (0-", StringComparison.OrdinalIgnoreCase)
+                             || prompt.Contains("choice:", StringComparison.OrdinalIgnoreCase)
+                             || prompt.Contains("BOOTWARE", StringComparison.OrdinalIgnoreCase)
+                             || prompt.Contains("EXTENDED ASSISTANT MENU", StringComparison.OrdinalIgnoreCase)
+                             || prompt.Contains("Format File System", StringComparison.OrdinalIgnoreCase)
+                             || prompt.Contains("HPE", StringComparison.OrdinalIgnoreCase)
+                             || prompt.Contains("Comware", StringComparison.OrdinalIgnoreCase)
+                             || prompt.StartsWith("<")
+                             || prompt.StartsWith("[");
+
+            var isForti = !isHpeDetected && (detection.Manufacturer == DeviceManufacturer.Fortinet || isFortiConsole || userTag.Contains("forti", StringComparison.OrdinalIgnoreCase));
+            var isRommon = !isHpeDetected && detection.BootState == BootState.Rommon;
+            var isBootware = isHpeDetected && (detection.BootState == BootState.Bootware || prompt.Contains("choice(0-", StringComparison.OrdinalIgnoreCase) || prompt.Contains("choice:", StringComparison.OrdinalIgnoreCase) || prompt.Contains("BOOTWARE", StringComparison.OrdinalIgnoreCase));
+            _isRommonOrBootwareDetected = isBootware || isRommon || detection.OperatingState == DeviceOperatingState.BootFailure;
             var isDisclaimer = DeviceDetector.IsDisclaimerPrompt(prompt) || DeviceDetector.IsDisclaimerPrompt(fullLogAccumulator.ToString());
             var isPasswordLocked = !_isRommonOrBootwareDetected && !isDisclaimer && (detection.OperatingState == DeviceOperatingState.PasswordProtected || (isForti && !fortiAuthenticated && !isDisclaimer));
-            var isCisco = !isForti && (
+
+            var isHpe = isHpeDetected || (!isForti && (
+                isHpePromptOrSelected ||
+                userTag.Contains("hpe", StringComparison.OrdinalIgnoreCase) ||
+                userTag.Contains("msr", StringComparison.OrdinalIgnoreCase)));
+
+            var isCisco = !isForti && !isHpe && (
                 detection.Manufacturer == DeviceManufacturer.Cisco ||
+                isRommon ||
                 prompt.Contains("User Access Verification", StringComparison.OrdinalIgnoreCase) ||
                 prompt.Contains("cisco", StringComparison.OrdinalIgnoreCase) ||
                 prompt.Contains("IOS", StringComparison.OrdinalIgnoreCase) ||
@@ -1631,11 +1658,6 @@ public partial class MainWindow : Window
                 userTag.Contains("921", StringComparison.OrdinalIgnoreCase) ||
                 userTag.Contains("900", StringComparison.OrdinalIgnoreCase) ||
                 userTag.Contains("800", StringComparison.OrdinalIgnoreCase));
-            var isHpe = !isForti && !isCisco && (
-                detection.Manufacturer == DeviceManufacturer.Hpe ||
-                isHpePromptOrSelected ||
-                userTag.Contains("hpe", StringComparison.OrdinalIgnoreCase) ||
-                userTag.Contains("msr", StringComparison.OrdinalIgnoreCase));
             _isFortiGateDetected = isForti;
 
             EscreverLinha($"[OK] Conexão serial física {porta} @ {baud} validada com sucesso!");
@@ -1645,6 +1667,7 @@ public partial class MainWindow : Window
                 if (_isRommonOrBootwareDetected)
                 {
                     _serialOk = true;
+                    _skipFactoryReset = false; // Roteador no BootWare ou ROMMON (sem SO) NUNCA pula a Fase 1!
                     var modeName = isForti ? "BIOS / Bootloader (Fortinet)" : (isRommon ? "ROMMON (Cisco)" : "BootWare (HPE)");
                     TxtSerialTestStatus.Text = isForti ? "🔴 BIOS / Sem Firmware (Fortinet)" : $"🟡 {modeName}";
                     TxtSerialTestStatus.Foreground = isForti
@@ -1668,24 +1691,25 @@ public partial class MainWindow : Window
                         else if (DeviceDetector.Cisco1900ModelRegex.IsMatch(prompt)) detectedCisco = DeviceSeries.Series1900;
                     }
 
-                    var is841 = !isForti && (detectedCisco == DeviceSeries.Isr841 || (detectedCisco == DeviceSeries.Unknown && userSeries == DeviceSeries.Isr841));
-                    var is921 = !isForti && !is841 && (detectedCisco == DeviceSeries.Isr921 || (detectedCisco == DeviceSeries.Unknown && userSeries == DeviceSeries.Isr921));
-                    var is2900 = !isForti && !is841 && !is921 && (detectedCisco == DeviceSeries.Series2900 || (detectedCisco == DeviceSeries.Unknown && userSeries == DeviceSeries.Series2900));
-                    var is1900 = !isForti && !is841 && !is921 && !is2900 && (detectedCisco == DeviceSeries.Series1900 || (detectedCisco == DeviceSeries.Unknown && userSeries == DeviceSeries.Series1900));
+                    var is841 = !isForti && !isHpe && (detectedCisco == DeviceSeries.Isr841 || (detectedCisco == DeviceSeries.Unknown && userSeries == DeviceSeries.Isr841));
+                    var is921 = !isForti && !isHpe && !is841 && (detectedCisco == DeviceSeries.Isr921 || (detectedCisco == DeviceSeries.Unknown && userSeries == DeviceSeries.Isr921));
+                    var is2900 = !isForti && !isHpe && !is841 && !is921 && (detectedCisco == DeviceSeries.Series2900 || (detectedCisco == DeviceSeries.Unknown && userSeries == DeviceSeries.Series2900));
+                    var is1900 = !isForti && !isHpe && !is841 && !is921 && !is2900 && (detectedCisco == DeviceSeries.Series1900 || (detectedCisco == DeviceSeries.Unknown && userSeries == DeviceSeries.Series1900));
 
-                    var isHpe1002 = !isForti && (detection.Series == DeviceSeries.Msr1002
+                    var isHpe1002 = isHpe && (detection.Series == DeviceSeries.Msr1002
                                  || DeviceDetector.Hpe1002ModelRegex.IsMatch(prompt)
                                  || userSeries == DeviceSeries.Msr1002);
 
-                    var isHpe930 = !isForti && !isHpe1002 && (
+                    var isHpe930 = isHpe && !isHpe1002 && (
                                    detection.Series == DeviceSeries.Msr930
                                 || DeviceDetector.Hpe930ModelRegex.IsMatch(prompt)
                                 || userSeries == DeviceSeries.Msr930);
 
-                    var isHpe954 = !isForti && !isHpe1002 && !isHpe930 && (
+                    var isHpe954 = isHpe && !isHpe1002 && !isHpe930 && (
                                    detection.Series == DeviceSeries.Msr954
                                 || DeviceDetector.Hpe954ModelRegex.IsMatch(prompt)
-                                || userSeries == DeviceSeries.Msr954);
+                                || userSeries == DeviceSeries.Msr954
+                                || isBootware);
 
                     string especificoNome;
                     string fwExemplo;
@@ -1701,15 +1725,15 @@ public partial class MainWindow : Window
                     else if (isHpe)
                     {
                         especificoNome = isHpe1002 ? "HPE MSR 1002 / 1003" :
-                                         isHpe930 ? "HPE MSR 930" :
-                                         isHpe954 ? "HPE MSR 954" : "HPE Comware / MSR (Selecione o Modelo no Passo 1)";
+                                         isHpe930 ? "HPE MSR 930" : "HPE MSR 954";
                         fwExemplo = isHpe1002 ? "msr1000-cmw710-*.ipe ou *.bin" :
-                                    isHpe930 ? "msr930-cmw710-*.ipe" :
-                                    isHpe954 ? "msr954-cmw710-*.ipe ou *.bin" : "*.ipe / *.bin";
+                                    isHpe930 ? "msr930-cmw710-*.ipe" : "msr954-cmw710-*.ipe ou *.bin";
                         portaTftp = "GigabitEthernet0/0 (GE 0)";
                         if (isHpe1002) SelecionarModeloNoCombo("hpe.msr1002.ctrl-b");
                         else if (isHpe930) SelecionarModeloNoCombo("hpe.msr930.ctrl-b");
-                        else if (isHpe954) SelecionarModeloNoCombo("hpe.msr954.ctrl-b");
+                        else SelecionarModeloNoCombo("hpe.msr954.ctrl-b");
+
+                        AtualizarSelecaoFirmwarePorModelo(feedbackVisual: true);
                     }
                     else if (is841)
                     {
@@ -4545,14 +4569,21 @@ public partial class MainWindow : Window
             try { CbInterrupt.SelectedIndex = CbModeloRoteadorInicial.SelectedIndex - 1; } finally { _syncingCombos = false; }
         }
 
+        var detectedOrSelected = ObterSerieAtualSelecionadaOuDetectada();
         var profileTag = (CbInterrupt.SelectedItem as ComboBoxItem)?.Tag?.ToString()
                       ?? (CbModeloRoteadorInicial.SelectedItem as ComboBoxItem)?.Tag?.ToString();
         var profile = BootInterruptProfiles.FindById(profileTag);
-        var isForti = profile.Id.Contains("forti", StringComparison.OrdinalIgnoreCase)
+        var isForti = detectedOrSelected == DeviceSeries.FortiGate40F
+                   || profile.Id.Contains("forti", StringComparison.OrdinalIgnoreCase)
                    || profile.Manufacturer.Contains("Fortinet", StringComparison.OrdinalIgnoreCase)
                    || IsTagFortiGate(profileTag ?? "")
                    || _isFortiGateDetected;
-        var isHpe = !isForti && (profile.Id.Contains("hpe", StringComparison.OrdinalIgnoreCase) || profile.Family.Contains("MSR", StringComparison.OrdinalIgnoreCase));
+        var isHpe = !isForti && (
+            detectedOrSelected is DeviceSeries.Msr954 or DeviceSeries.Msr930 or DeviceSeries.Msr1002
+            || profile.Id.Contains("hpe", StringComparison.OrdinalIgnoreCase)
+            || profile.Family.Contains("MSR", StringComparison.OrdinalIgnoreCase)
+            || (profileTag != null && (profileTag.Contains("hpe", StringComparison.OrdinalIgnoreCase) || profileTag.Contains("msr", StringComparison.OrdinalIgnoreCase)))
+        );
 
         try
         {
@@ -4648,7 +4679,14 @@ public partial class MainWindow : Window
             }
             else if (isHpe)
             {
-                if (_skipFactoryReset)
+                if (_isRommonOrBootwareDetected)
+                {
+                    SetEtapa(1, "⏭ 1. Zerar Configuração — em modo BootWare", "#16A34A");
+                    Progresso(20, "1/7 BootWare Detectado");
+                    LogAuto(">>> [AUTO 1/7] Roteador HPE MSR em modo BootWare (sem SO). Prosseguindo para recuperação de firmware via TFTP.");
+                    firmwareDesejado = true;
+                }
+                else if (_skipFactoryReset)
                 {
                     SetEtapa(1, "⏭ 1. Zerar Configuração — pulado (Login autenticado)", "#16A34A");
                     Progresso(20, "1/7 OK (Autenticado)");
@@ -4667,8 +4705,8 @@ public partial class MainWindow : Window
                     Progresso(20, "1/7 OK");
                 }
 
-                // Reavalia se o equipamento caiu no BootWare após Fase 1 apenas se o operador optou por atualizar
-                if (_isRommonOrBootwareDetected && (ChkAtualizarFirmwareAuto?.IsChecked == true)) firmwareDesejado = true;
+                // Reavalia se o equipamento caiu no BootWare após Fase 1
+                if (_isRommonOrBootwareDetected) firmwareDesejado = true;
 
                 if (firmwareDesejado)
                 {
@@ -4694,7 +4732,14 @@ public partial class MainWindow : Window
             }
             else
             {
-                if (_skipFactoryReset)
+                if (_isRommonOrBootwareDetected)
+                {
+                    SetEtapa(1, "⏭ 1. Zerar Configuração — em modo ROMMON", "#16A34A");
+                    Progresso(18, "1/7 ROMMON Detectado");
+                    LogAuto(">>> [AUTO 1/7] Cisco em modo ROMMON (sem IOS). Prosseguindo para recuperação de boot.");
+                    firmwareDesejado = true;
+                }
+                else if (_skipFactoryReset)
                 {
                     SetEtapa(1, "⏭ 1. Zerar Configuração — pulado (Login autenticado)", "#16A34A");
                     Progresso(18, "1/7 OK (Autenticado)");
@@ -4710,8 +4755,8 @@ public partial class MainWindow : Window
                     Progresso(18, "1/7 OK");
                 }
 
-                // Reavalia se o equipamento caiu no ROMMON após Fase 1 apenas se o operador optou por atualizar
-                if (_isRommonOrBootwareDetected && (ChkAtualizarFirmwareAuto?.IsChecked == true)) firmwareDesejado = true;
+                // Reavalia se o equipamento caiu no ROMMON após Fase 1
+                if (_isRommonOrBootwareDetected) firmwareDesejado = true;
 
                 if (firmwareDesejado)
                 {
@@ -6037,15 +6082,22 @@ public partial class MainWindow : Window
 
     private async Task ExecutarZerarConfigAsync(string porta, int baud, CancellationToken ct)
     {
+        var currentSeries = ObterSerieAtualSelecionadaOuDetectada();
         // Importa perfil de hardware
         var profileTag = (CbInterrupt.SelectedItem as ComboBoxItem)?.Tag?.ToString()
                       ?? (CbModeloRoteadorInicial.SelectedItem as ComboBoxItem)?.Tag?.ToString();
         var profile = BootInterruptProfiles.FindById(profileTag);
-        var isForti = profile.Id.Contains("forti", StringComparison.OrdinalIgnoreCase)
+        var isForti = currentSeries == DeviceSeries.FortiGate40F
+                   || profile.Id.Contains("forti", StringComparison.OrdinalIgnoreCase)
                    || profile.Manufacturer.Contains("Fortinet", StringComparison.OrdinalIgnoreCase)
                    || IsTagFortiGate(profileTag ?? "")
                    || _isFortiGateDetected;
-        var isHpe = !isForti && (profile.Id.Contains("hpe", StringComparison.OrdinalIgnoreCase) || profile.Family.Contains("MSR", StringComparison.OrdinalIgnoreCase));
+        var isHpe = !isForti && (
+            currentSeries is DeviceSeries.Msr954 or DeviceSeries.Msr930 or DeviceSeries.Msr1002
+            || profile.Id.Contains("hpe", StringComparison.OrdinalIgnoreCase)
+            || profile.Family.Contains("MSR", StringComparison.OrdinalIgnoreCase)
+            || (profileTag != null && (profileTag.Contains("hpe", StringComparison.OrdinalIgnoreCase) || profileTag.Contains("msr", StringComparison.OrdinalIgnoreCase)))
+        );
 
         if (isForti)
         {
@@ -7831,7 +7883,8 @@ public partial class MainWindow : Window
         AtualizarProgresso(10, "Fase B: Iniciando Upgrade e TFTP...", "Iniciando servidor TFTP e conectando...");
         EscreverLinha($"\n[*] [FASE B] ATUALIZAÇÃO DE FIRMWARE VIA TFTP ({fileName})...");
 
-        var isPreForti = _isFortiGateDetected || fileName.EndsWith(".out", StringComparison.OrdinalIgnoreCase);
+        var currentSeries = ObterSerieAtualSelecionadaOuDetectada();
+        var isPreForti = currentSeries == DeviceSeries.FortiGate40F || _isFortiGateDetected;
         var fortiUser = !string.IsNullOrEmpty(_lastFortiResolvedUser) ? _lastFortiResolvedUser : "admin";
         var fortiPass = _lastFortiResolvedPass ?? "CQMR";
 
@@ -7852,21 +7905,42 @@ public partial class MainWindow : Window
 
         var promptStr = session.CurrentPrompt ?? "";
         var profileTag = (CbInterrupt.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "";
-        var isForti = IsTagFortiGate(profileTag)
+        var isForti = currentSeries == DeviceSeries.FortiGate40F
+                   || IsTagFortiGate(profileTag)
                    || promptStr.Contains("FortiGate", StringComparison.OrdinalIgnoreCase)
                    || promptStr.Contains("FGT", StringComparison.OrdinalIgnoreCase)
                    || promptStr.Contains("FortiOS", StringComparison.OrdinalIgnoreCase)
-                   || fileName.EndsWith(".out", StringComparison.OrdinalIgnoreCase)
                    || _isFortiGateDetected;
 
-        var isHpe = !isForti && (profileTag.Contains("hpe", StringComparison.OrdinalIgnoreCase)
-                 || profileTag.Contains("msr", StringComparison.OrdinalIgnoreCase)
-                 || promptStr.StartsWith("[")
-                 || promptStr.StartsWith("<")
-                 || promptStr.Contains("HPE", StringComparison.OrdinalIgnoreCase)
-                 || promptStr.Contains("MSR", StringComparison.OrdinalIgnoreCase)
-                 || promptStr.Contains("Comware", StringComparison.OrdinalIgnoreCase)
-                 || fileName.EndsWith(".ipe", StringComparison.OrdinalIgnoreCase));
+        var isHpe = !isForti && (
+            currentSeries is DeviceSeries.Msr954 or DeviceSeries.Msr930 or DeviceSeries.Msr1002
+            || profileTag.Contains("hpe", StringComparison.OrdinalIgnoreCase)
+            || profileTag.Contains("msr", StringComparison.OrdinalIgnoreCase)
+            || promptStr.StartsWith("[")
+            || promptStr.StartsWith("<")
+            || promptStr.Contains("HPE", StringComparison.OrdinalIgnoreCase)
+            || promptStr.Contains("MSR", StringComparison.OrdinalIgnoreCase)
+            || promptStr.Contains("Comware", StringComparison.OrdinalIgnoreCase)
+            || promptStr.Contains("BootWare", StringComparison.OrdinalIgnoreCase)
+            || promptStr.Contains("choice(0-", StringComparison.OrdinalIgnoreCase)
+        );
+
+        if (currentSeries != DeviceSeries.Unknown && !string.IsNullOrWhiteSpace(_selectedIosBinPath))
+        {
+            var compat = FirmwareCompatibilityValidator.Validate(currentSeries, _selectedIosBinPath);
+            if (!compat.IsCompatible)
+            {
+                EscreverLinha($"\n=================================================================");
+                EscreverLinha($"   ❌ BLOQUEIO CRÍTICO DE SEGURANÇA: FIRMWARE INCOMPATÍVEL");
+                EscreverLinha($"=================================================================");
+                EscreverLinha($"  Equipamento Detectado/Selecionado : {FirmwareModelMap.GetDefinition(currentSeries)?.DisplayName ?? currentSeries.ToString()}");
+                EscreverLinha($"  Arquivo Tentado                   : {fileName}");
+                EscreverLinha($"  Motivo do Bloqueio                : {compat.ErrorMessage}");
+                EscreverLinha($"  Formato Esperado                  : {compat.ExpectedFormatDescription}");
+                EscreverLinha($"=================================================================\n");
+                throw new InvalidOperationException($"Firmware incompatível com {currentSeries}: {compat.ErrorMessage}");
+            }
+        }
 
         bool success;
         if (isForti)
@@ -8221,19 +8295,18 @@ public partial class MainWindow : Window
         }
         else
         {
-            var is2900 = profileTag.Contains("2900", StringComparison.OrdinalIgnoreCase)
-                      || profileTag.Contains("c2900", StringComparison.OrdinalIgnoreCase)
-                      || fileName.Contains("c2900", StringComparison.OrdinalIgnoreCase);
+            var is2900 = currentSeries == DeviceSeries.Series2900
+                      || profileTag.Contains("2900", StringComparison.OrdinalIgnoreCase)
+                      || profileTag.Contains("c2900", StringComparison.OrdinalIgnoreCase);
 
-            var is921 = !is2900 && (profileTag.Contains("921", StringComparison.OrdinalIgnoreCase)
-                     || profileTag.Contains("c900", StringComparison.OrdinalIgnoreCase)
-                     || fileName.Contains("c900", StringComparison.OrdinalIgnoreCase));
+            var is921 = !is2900 && (currentSeries == DeviceSeries.Isr921
+                     || profileTag.Contains("921", StringComparison.OrdinalIgnoreCase)
+                     || profileTag.Contains("c900", StringComparison.OrdinalIgnoreCase));
 
-            var is841 = !is2900 && !is921 && (profileTag.Contains("841", StringComparison.OrdinalIgnoreCase)
+            var is841 = !is2900 && !is921 && (currentSeries == DeviceSeries.Isr841
+                     || profileTag.Contains("841", StringComparison.OrdinalIgnoreCase)
                      || profileTag.Contains("c841", StringComparison.OrdinalIgnoreCase)
-                     || profileTag.Contains("c800", StringComparison.OrdinalIgnoreCase)
-                     || fileName.Contains("c841", StringComparison.OrdinalIgnoreCase)
-                     || fileName.Contains("c800", StringComparison.OrdinalIgnoreCase));
+                     || profileTag.Contains("c800", StringComparison.OrdinalIgnoreCase));
 
             var is1900 = !is2900 && !is921 && !is841;
 

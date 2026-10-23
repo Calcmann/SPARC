@@ -439,4 +439,43 @@ LDA-IP-02580#";
         Assert.Equal(DeviceSeries.Series1900, result.Series);
         Assert.Equal(DeviceOperatingState.Ready, result.OperatingState);
     }
+
+    [Fact]
+    public void ClassifyPrompt_HpeBootWareMenu_ClassifiesAsHpeAndBootFailure()
+    {
+        var output = @"
+======================<EXTEND ASSISTANT MENU>======================
+|<1> Boot System                                                   |
+|<2> Enter Extended Assistant Menu                                 |
+|<3> Restore Factory Default Configuration                         |
+|<4> Enter Serial SubMenu                                          |
+|<5> Enter Ethernet SubMenu                                        |
+|<6> Format File System                                            |
+|<7> Reboot                                                        |
+===================================================================
+Enter your choice(0-7): ";
+
+        var result = _detector.ClassifyPrompt(output);
+
+        Assert.Equal(DeviceManufacturer.Hpe, result.Manufacturer);
+        Assert.Equal(DeviceOperatingState.BootFailure, result.OperatingState);
+        Assert.Equal(BootState.Bootware, result.BootState);
+        Assert.Equal(AccessState.RommonOrBootware, result.AccessState);
+        Assert.NotEqual(DeviceManufacturer.Cisco, result.Manufacturer);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_HpeBootWare_MissingFirmwareError_ClassifiesAsHpeBootFailure()
+    {
+        var output = @"
+Basic BootWare Version: 1.68
+Loading boot image fails: flash:/msr954-cmw710-boot.bin does not exist!
+Enter your choice(0-9): ";
+
+        var result = _detector.ClassifyPrompt(output);
+
+        Assert.Equal(DeviceManufacturer.Hpe, result.Manufacturer);
+        Assert.Equal(DeviceOperatingState.BootFailure, result.OperatingState);
+        Assert.Equal(BootState.Bootware, result.BootState);
+    }
 }
