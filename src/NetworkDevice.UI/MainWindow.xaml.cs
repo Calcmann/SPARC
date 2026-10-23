@@ -7218,7 +7218,7 @@ public partial class MainWindow : Window
     {
         if (string.IsNullOrEmpty(_selectedIosBinPath))
         {
-            MessageBox.Show("Selecione um arquivo de firmware (.bin para Cisco ou .out para Fortinet) para efetuar a recuperação.", "Aviso", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show("Selecione um arquivo de firmware (.bin para Cisco, .ipe para HPE ou .out para Fortinet) para efetuar a recuperação.", "Aviso", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
 
@@ -7284,6 +7284,116 @@ public partial class MainWindow : Window
                 DefinirBadgeStatus("B", "❌");
                 AtualizarProgresso(0, "Falha na Recuperação", ex.Message);
                 EscreverLinha($"\n[ERRO NA RECUPERAÇÃO BIOS TFTP] {ex.Message}");
+                return;
+            }
+            finally
+            {
+                _cts?.Dispose();
+                _cts = null;
+                SetBusy(false);
+            }
+        }
+
+        var profileTag = (CbInterrupt.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "";
+        var isHpe = _selectedIosBinPath?.EndsWith(".ipe", StringComparison.OrdinalIgnoreCase) == true
+                 || profileTag.Contains("hpe", StringComparison.OrdinalIgnoreCase)
+                 || profileTag.Contains("msr", StringComparison.OrdinalIgnoreCase);
+
+        if (isHpe)
+        {
+            SelecionarFase("B");
+            DefinirBadgeStatus("B", "⏳");
+            SetBusy(true);
+            _cts = new CancellationTokenSource();
+            var baudH = int.TryParse(CbBaud.Text, out var bh) ? bh : 9600;
+
+            try
+            {
+                AtualizarProgresso(15, "Recuperação BootWare TFTP...", "Conectando ao terminal serial HPE...");
+                EscreverLinha("\n[*] [FASE B] RECUPERAÇÃO DE FIRMWARE VIA BOOTWARE TFTP (HPE Comware)...");
+
+                var sessionOptions = new SessionOptions
+                {
+                    PromptMatcher = RegexPromptMatcher.Universal(),
+                    CommandTimeout = TimeSpan.FromSeconds(30),
+                    ConnectTimeout = TimeSpan.FromSeconds(15)
+                };
+
+                var transport = new SerialTransport(porta, baudH);
+                await using var session = new DeviceSession(transport, sessionOptions);
+                session.RawOutput += OnRawOutput;
+                await session.ConnectAsync(_cts.Token);
+
+                // Normaliza prompt ou lê banner
+                var pResp = await session.SendCommandAsync(string.Empty, TimeSpan.FromSeconds(4), _cts.Token);
+                var pCur = (session.CurrentPrompt ?? pResp).Trim();
+
+                var isOperacionalComware = pCur.StartsWith("<") || pCur.StartsWith("[") || pCur.Contains("HPE", StringComparison.OrdinalIgnoreCase) || pResp.Contains("SHELL_LOGIN");
+
+                if (isOperacionalComware)
+                {
+                    EscreverLinha("\n[AVISO] Roteador HPE operacional detectado no sistema operacional Comware (<HPE>), não no BootWare.");
+                    EscreverLinha("        Em modo Comware operacional, o upgrade deve ser realizado via 'Atualizar Firmware'.");
+
+                    var migrarUpgrade = MessageBox.Show(
+                        "O equipamento conectado é um roteador HPE MSR operacional no sistema Comware (prompt <HPE>), e não no menu de emergência BootWare.\n\n" +
+                        "Deseja iniciar a 'Atualização de Firmware' via sistema operacional Comware agora?",
+                        "HPE Operacional Detectado",
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Question);
+
+                    if (migrarUpgrade == MessageBoxResult.Yes)
+                    {
+                        session.RawOutput -= OnRawOutput;
+                        await session.DisposeAsync();
+                        await ExecutarUpgradeFirmwareAsync(porta, baudH, hostIp, _cts.Token);
+                        return;
+                    }
+                    else
+                    {
+                        EscreverLinha("[!] Operação de recuperação BootWare cancelada pelo operador.");
+                        DefinirBadgeStatus("B", "⚪");
+                        AtualizarProgresso(0, "Recuperação cancelada", "Roteador já está no SO Comware.");
+                        return;
+                    }
+                }
+
+                // Se estiver no BootWare (ou menu), executa recuperação BootWare TFTP
+                var successHpe = await ExecutarBootWareTftpDownloadAsync(
+                    session,
+                    "0",
+                    _selectedIosBinPath,
+                    hostIp,
+                    routerIp,
+                    subnetMask,
+                    _cts.Token);
+
+                if (successHpe)
+                {
+                    _isRommonOrBootwareDetected = false;
+                    DefinirBadgeStatus("B", "✅");
+                    AtualizarProgresso(100, "Fase B Concluída!", "Firmware HPE transferido e gravado via BootWare TFTP com sucesso.");
+                    MessageBox.Show("Firmware transferido e gravado na Flash via BootWare TFTP com sucesso!", "BootWare TFTP Concluído", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                else
+                {
+                    DefinirBadgeStatus("B", "❌");
+                    AtualizarProgresso(0, "Falha no BootWare TFTP", "Transferência não confirmada.");
+                }
+                return;
+            }
+            catch (OperationCanceledException)
+            {
+                DefinirBadgeStatus("B", "⚪");
+                AtualizarProgresso(0, "Recuperação cancelada", "Cancelado pelo operador.");
+                EscreverLinha("\n[!] Recuperação BootWare TFTP cancelada.");
+                return;
+            }
+            catch (Exception ex)
+            {
+                DefinirBadgeStatus("B", "❌");
+                AtualizarProgresso(0, "Falha na Recuperação", ex.Message);
+                EscreverLinha($"\n[ERRO NA RECUPERAÇÃO BOOTWARE TFTP] {ex.Message}");
                 return;
             }
             finally

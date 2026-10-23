@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using NetworkDevice.Core.Provisioning;
+using NetworkDevice.Core.Recovery;
 using NetworkDevice.Core.Session;
 using NetworkDevice.Protocols.Tftp;
 
@@ -1284,137 +1285,110 @@ public sealed class HpeComwareUpgrader
             await ProgressAsync($"[AVISO] Não foi possível ajustar o IP do adaptador Windows automaticamente: {ex.Message}");
         }
 
-        // 2. Limpa IPs residuais em GE0/0 e Vlan1 para evitar erro de sobreposição de sub-rede
-        await session.SendCommandAsync("system-view", TimeSpan.FromSeconds(5), ct);
-        await Task.Delay(200, ct);
-
-        // Desativa timeout de inatividade na console para proteger pausas e ausências do técnico
+        // 2. Desativa timeout de inatividade na console de forma segura sem deslogar
         try
         {
-            await session.SendCommandAsync("line aux 0", TimeSpan.FromSeconds(3), ct);
-            await session.SendCommandAsync("idle-timeout 0 0", TimeSpan.FromSeconds(3), ct);
-            await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), ct);
+            await EnsureSystemViewAsync(session, _progress, ct);
+            var lineResp = await session.SendCommandAsync("line con 0", TimeSpan.FromSeconds(3), ct);
+            if (!lineResp.Contains("Unrecognized", StringComparison.OrdinalIgnoreCase) &&
+                !lineResp.Contains("Wrong parameter", StringComparison.OrdinalIgnoreCase))
+            {
+                await session.SendCommandAsync("idle-timeout 0 0", TimeSpan.FromSeconds(3), ct);
+            }
+            else
+            {
+                var uiResp = await session.SendCommandAsync("user-interface con 0", TimeSpan.FromSeconds(3), ct);
+                if (!uiResp.Contains("Unrecognized", StringComparison.OrdinalIgnoreCase) &&
+                    !uiResp.Contains("Wrong parameter", StringComparison.OrdinalIgnoreCase))
+                {
+                    await session.SendCommandAsync("idle-timeout 0 0", TimeSpan.FromSeconds(3), ct);
+                }
+            }
         }
         catch { }
+        finally
+        {
+            await EnsureSystemViewAsync(session, _progress, ct);
+        }
+
+        // Limpa IPs residuais em GE0/0, GE0/1 e Vlan1 para evitar erro de sobreposição de sub-rede
         try
         {
-            await session.SendCommandAsync("line con 0", TimeSpan.FromSeconds(3), ct);
-            await session.SendCommandAsync("idle-timeout 0 0", TimeSpan.FromSeconds(3), ct);
-            await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), ct);
+            await EnsureSystemViewAsync(session, _progress, ct);
+            await session.SendCommandAsync("interface GigabitEthernet0/0", TimeSpan.FromSeconds(5), ct);
+            await session.SendCommandAsync("undo ip address", TimeSpan.FromSeconds(5), ct);
         }
         catch { }
+
         try
         {
-            await session.SendCommandAsync("user-interface aux 0", TimeSpan.FromSeconds(3), ct);
-            await session.SendCommandAsync("idle-timeout 0 0", TimeSpan.FromSeconds(3), ct);
-            await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), ct);
+            await EnsureSystemViewAsync(session, _progress, ct);
+            await session.SendCommandAsync("interface Vlan-interface1", TimeSpan.FromSeconds(5), ct);
+            await session.SendCommandAsync("undo ip address", TimeSpan.FromSeconds(5), ct);
         }
         catch { }
 
-        await session.SendCommandAsync("interface GigabitEthernet0/0", TimeSpan.FromSeconds(5), ct);
-        await Task.Delay(200, ct);
-        await session.SendCommandAsync("undo ip address", TimeSpan.FromSeconds(5), ct);
-        await Task.Delay(200, ct);
-        await session.SendCommandAsync("quit", TimeSpan.FromSeconds(5), ct);
-
-        await session.SendCommandAsync("interface Vlan-interface1", TimeSpan.FromSeconds(5), ct);
-        await Task.Delay(200, ct);
-        await session.SendCommandAsync("undo ip address", TimeSpan.FromSeconds(5), ct);
-        await Task.Delay(200, ct);
-        await session.SendCommandAsync("quit", TimeSpan.FromSeconds(5), ct);
-
-        // 3. Configura GigabitEthernet0/1 (Porta LAN padrão do HPE) em modo Route com o IP do Roteador
-        await session.SendCommandAsync("interface GigabitEthernet0/1", TimeSpan.FromSeconds(5), ct);
-        await Task.Delay(200, ct);
-        var linkResp = await session.SendExpectAsync("port link-mode route",
-            new StopCondition[] { new StopCondition.Contains("[Y/N]", "[Y/N]"), new StopCondition.Prompt() },
-            TimeSpan.FromSeconds(8), ct);
-        if (linkResp.Output.Contains("[Y/N]", StringComparison.OrdinalIgnoreCase))
+        try
         {
-            await session.WriteLineAsync("Y", ct);
-            await session.WaitForAsync(new StopCondition[] { new StopCondition.Prompt() }, TimeSpan.FromSeconds(8), ct);
-            await Task.Delay(300, ct);
+            await EnsureSystemViewAsync(session, _progress, ct);
+            await session.SendCommandAsync("interface GigabitEthernet0/1", TimeSpan.FromSeconds(5), ct);
+            await session.SendCommandAsync("undo ip address", TimeSpan.FromSeconds(5), ct);
         }
-        await session.SendCommandAsync($"ip address {routerIp} {mask}", TimeSpan.FromSeconds(5), ct);
-        await Task.Delay(200, ct);
-        await session.SendCommandAsync("undo shutdown", TimeSpan.FromSeconds(5), ct);
-        await Task.Delay(200, ct);
-        await session.SendCommandAsync("quit", TimeSpan.FromSeconds(5), ct);
-        await session.SendCommandAsync("quit", TimeSpan.FromSeconds(5), ct); // volta para <HPE>
-        // Aguarda auto-negotiation estabilizar antes de verificar link (evita falso DOWN)
-        await Task.Delay(6000, ct);
+        catch { }
 
-        // 4. Inspeciona se a porta GigabitEthernet0/1 (GE1 / LAN) está com link físico UP (com retry anti-falso-negativo)
+        // 3. Inspeciona se há cabo Ethernet conectado com link físico ativo (UP) nas portas do HPE
+        await EnsureUserViewAsync(session, _progress, ct);
         var briefOut = string.Empty;
-        for (var retry = 0; retry < 3; retry++)
+        try
         {
-            try
-            {
-                briefOut = await session.SendCommandAsync("display interface GigabitEthernet0/1", TimeSpan.FromSeconds(10), ct);
-                var tmpUp = briefOut.Contains("Current state: UP", StringComparison.OrdinalIgnoreCase)
-                         || briefOut.Contains("Line protocol state: UP", StringComparison.OrdinalIgnoreCase);
-                if (tmpUp) break;
-            }
-            catch
-            {
-                try { await session.WriteLineAsync(string.Empty, ct); } catch { }
-            }
-            await Task.Delay(2500, ct);
+            briefOut = await session.SendCommandAsync("display interface brief", TimeSpan.FromSeconds(10), ct);
         }
-        var isUp = briefOut.Contains("Current state: UP", StringComparison.OrdinalIgnoreCase)
-                || briefOut.Contains("Line protocol state: UP", StringComparison.OrdinalIgnoreCase)
-                || briefOut.Contains("GigabitEthernet0/1 is UP", StringComparison.OrdinalIgnoreCase);
+        catch { }
 
-        if (!isUp)
+        var ge0Up = await IsHpePortUpAsync(session, "GigabitEthernet0/0", briefOut, ct);
+        var ge1Up = await IsHpePortUpAsync(session, "GigabitEthernet0/1", briefOut, ct);
+        var geOtherLanUp = await IsHpePortUpAsync(session, "GigabitEthernet0/2", briefOut, ct)
+                        || await IsHpePortUpAsync(session, "GigabitEthernet0/3", briefOut, ct)
+                        || await IsHpePortUpAsync(session, "GigabitEthernet0/4", briefOut, ct);
+
+        if (!ge0Up && !ge1Up && !geOtherLanUp)
         {
             await ProgressAsync("\n=================================================================");
-            await ProgressAsync("   ⚠️ CONEXÃO DO CABO DE REDE NECESSÁRIA NA PORTA LAN (GE1)");
+            await ProgressAsync("   ⚠️ CONEXÃO DO CABO DE REDE NECESSÁRIA NO ROTEADOR HPE");
             await ProgressAsync("=================================================================");
-            await ProgressAsync("  A porta GigabitEthernet0/1 (GE1 / LAN) está com link DOWN.");
+            await ProgressAsync("  Nenhuma porta Ethernet com link físico ativo (UP) detectada.");
             await ProgressAsync("👉 Conecte o cabo de rede Ethernet do seu computador na porta:");
-            await ProgressAsync("🟢 GigabitEthernet 0/1 (GE 1 / LAN do HPE)");
+            await ProgressAsync("🟢 GigabitEthernet 0/0 (GE 0 / WAN)");
+            await ProgressAsync("   OU");
+            await ProgressAsync("🟢 GigabitEthernet 0/1 (GE 1 / LAN)");
             await ProgressAsync("=================================================================\n");
 
             if (requestOperatorAction != null)
             {
                 await requestOperatorAction(
-                    "⚠️ CONEXÃO DO CABO DE REDE NA PORTA LAN (GE1)\n\n" +
-                    "A porta LAN (GigabitEthernet0/1 / GE1) do roteador HPE está desconectada (Link DOWN).\n\n" +
+                    "⚠️ CONEXÃO DO CABO DE REDE NO ROTEADOR HPE\n\n" +
+                    "Nenhuma porta Ethernet ativa (Link DOWN) detectada no roteador HPE.\n\n" +
                     "👉 CONECTE O CABO DE REDE ETHERNET NA PORTA:\n" +
-                    "🟢 GigabitEthernet 0/1 (GE 1 / LAN do HPE)\n\n" +
-                    "Esta é a porta utilizada para transferência de Firmware TFTP e Provisionamento.\n\n" +
-                    "Clique em OK assim que o cabo estiver conectado na porta GE 1.",
+                    "🟢 GigabitEthernet 0/0 (GE 0 / WAN)  OU  GigabitEthernet 0/1 (GE 1 / LAN)\n\n" +
+                    "Clique em OK assim que o cabo estiver conectado.",
                     ct);
             }
 
-            // Acorda o terminal Comware e absorve eventuais syslogs decorrentes do encaixe do cabo e tempo de espera
-            try
-            {
-                await session.WriteLineAsync(string.Empty, ct);
-                await Task.Delay(500, ct);
-                await session.WriteLineAsync(string.Empty, ct);
-                await Task.Delay(500, ct);
-            }
-            catch { }
-
-            // Aguarda e valida se a porta subiu o link físico com tolerância e retry seguro
-            for (var i = 0; i < 20; i++)
+            // Aguarda e valida se alguma porta sobe o link físico com retry anti-falso-negativo
+            for (var i = 0; i < 12; i++)
             {
                 await Task.Delay(1500, ct);
                 try
                 {
-                    briefOut = await session.SendCommandAsync("display interface GigabitEthernet0/1", TimeSpan.FromSeconds(15), ct);
-                    if (briefOut.Contains("Current state: UP", StringComparison.OrdinalIgnoreCase)
-                     || briefOut.Contains("Line protocol state: UP", StringComparison.OrdinalIgnoreCase)
-                     || briefOut.Contains("GigabitEthernet0/1 is UP", StringComparison.OrdinalIgnoreCase))
-                    {
-                        await ProgressAsync("[OK] Link físico UP detectado na porta GigabitEthernet0/1 (GE1)!");
-                        break;
-                    }
+                    briefOut = await session.SendCommandAsync("display interface brief", TimeSpan.FromSeconds(8), ct);
+                    if (await IsHpePortUpAsync(session, "GigabitEthernet0/0", briefOut, ct)) { ge0Up = true; break; }
+                    if (await IsHpePortUpAsync(session, "GigabitEthernet0/1", briefOut, ct)) { ge1Up = true; break; }
+                    if (await IsHpePortUpAsync(session, "GigabitEthernet0/2", briefOut, ct) ||
+                        await IsHpePortUpAsync(session, "GigabitEthernet0/3", briefOut, ct) ||
+                        await IsHpePortUpAsync(session, "GigabitEthernet0/4", briefOut, ct)) { geOtherLanUp = true; break; }
                 }
                 catch (SessionTimeoutException)
                 {
-                    // Envia newline para destravar a console caso um log assíncrono tenha mascarado o prompt
                     try { await session.WriteLineAsync(string.Empty, ct); } catch { }
                 }
                 catch (Exception ex)
@@ -1424,15 +1398,101 @@ public sealed class HpeComwareUpgrader
                 }
             }
         }
+
+        // 4. Configura o IP temporário na porta que está fisicamente conectada (UP)
+        string targetPort;
+        if (ge0Up)
+        {
+            targetPort = "GigabitEthernet0/0";
+            await ProgressAsync($"[OK] Link físico UP detectado na porta {targetPort} (GE0 / WAN).");
+            await ProgressAsync($"[*] Configurando IP {routerIp}/{mask} em {targetPort}...");
+            await EnsureSystemViewAsync(session, _progress, ct);
+            await session.SendCommandAsync("interface GigabitEthernet0/0", TimeSpan.FromSeconds(5), ct);
+            await session.SendCommandAsync("undo shutdown", TimeSpan.FromSeconds(5), ct);
+            await session.SendCommandAsync($"ip address {routerIp} {mask}", TimeSpan.FromSeconds(5), ct);
+        }
+        else if (ge1Up || !geOtherLanUp)
+        {
+            targetPort = "GigabitEthernet0/1";
+            if (ge1Up)
+                await ProgressAsync($"[OK] Link físico UP detectado na porta {targetPort} (GE1 / LAN).");
+            else
+                await ProgressAsync($"[*] Configurando IP {routerIp}/{mask} na porta {targetPort} (GE1 / LAN) por padrão...");
+
+            await EnsureSystemViewAsync(session, _progress, ct);
+            await session.SendCommandAsync("interface GigabitEthernet0/1", TimeSpan.FromSeconds(5), ct);
+            var linkResp = await session.SendExpectAsync("port link-mode route",
+                new StopCondition[] { new StopCondition.Contains("[Y/N]", "[Y/N]"), new StopCondition.Prompt() },
+                TimeSpan.FromSeconds(8), ct);
+            if (linkResp.Output.Contains("[Y/N]", StringComparison.OrdinalIgnoreCase))
+            {
+                await session.WriteLineAsync("Y", ct);
+                await session.WaitForAsync(new StopCondition[] { new StopCondition.Prompt() }, TimeSpan.FromSeconds(8), ct);
+                await Task.Delay(300, ct);
+            }
+            await session.SendCommandAsync("undo shutdown", TimeSpan.FromSeconds(5), ct);
+            await session.SendCommandAsync($"ip address {routerIp} {mask}", TimeSpan.FromSeconds(5), ct);
+        }
         else
         {
-            await ProgressAsync("[OK] Link físico UP confirmado na porta GigabitEthernet0/1 (GE1).");
+            targetPort = "Vlan-interface1";
+            await ProgressAsync($"[OK] Link físico UP detectado no switch LAN (VLAN 1). Configurando {targetPort}...");
+            await EnsureSystemViewAsync(session, _progress, ct);
+            await session.SendCommandAsync("interface Vlan-interface1", TimeSpan.FromSeconds(5), ct);
+            await session.SendCommandAsync("undo shutdown", TimeSpan.FromSeconds(5), ct);
+            await session.SendCommandAsync($"ip address {routerIp} {mask}", TimeSpan.FromSeconds(5), ct);
         }
 
-        await session.SendCommandAsync("save force", TimeSpan.FromSeconds(10), ct);
-        await Task.Delay(500, ct);
+        await EnsureUserViewAsync(session, _progress, ct);
+        await Task.Delay(1000, ct);
 
-        return "GigabitEthernet0/1";
+        return targetPort;
+    }
+
+    private static async Task<bool> EnsureUserViewAsync(DeviceSession session, Func<string, Task>? progress, CancellationToken ct)
+    {
+        return await HpeComwareRecovery.EnsureHpeUserViewAsync(session, progress, ct);
+    }
+
+    private static async Task EnsureSystemViewAsync(DeviceSession session, Func<string, Task>? progress, CancellationToken ct)
+    {
+        await HpeComwareRecovery.EnsureHpeUserViewAsync(session, progress, ct);
+        await session.SendCommandAsync("system-view", TimeSpan.FromSeconds(5), ct);
+        await Task.Delay(200, ct);
+    }
+
+    private static async Task<bool> IsHpePortUpAsync(DeviceSession session, string portName, string briefOut, CancellationToken ct)
+    {
+        var shortName = portName.Replace("GigabitEthernet", "GE", StringComparison.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(briefOut))
+        {
+            foreach (var rawLine in briefOut.Split('\n'))
+            {
+                var line = rawLine.Trim();
+                if (line.Length == 0) continue;
+                var parts = line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 2) continue;
+                var p = parts[0];
+                if (p.Equals(portName, StringComparison.OrdinalIgnoreCase) || p.Equals(shortName, StringComparison.OrdinalIgnoreCase))
+                {
+                    var status = parts[1];
+                    if (status.Equals("UP", StringComparison.OrdinalIgnoreCase)) return true;
+                    if (status.Equals("DOWN", StringComparison.OrdinalIgnoreCase) || status.Equals("ADM", StringComparison.OrdinalIgnoreCase)) return false;
+                }
+            }
+        }
+
+        try
+        {
+            var outSingle = await session.SendCommandAsync($"display interface {portName}", TimeSpan.FromSeconds(6), ct);
+            return outSingle.Contains("Current state: UP", StringComparison.OrdinalIgnoreCase)
+                || outSingle.Contains("Line protocol state: UP", StringComparison.OrdinalIgnoreCase)
+                || outSingle.Contains($"{portName} is UP", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private async Task ProgressAsync(string message)
