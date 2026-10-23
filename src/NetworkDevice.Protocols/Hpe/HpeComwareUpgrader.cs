@@ -292,23 +292,17 @@ public sealed class HpeComwareUpgrader
             return true;
         }
 
-        // ANTES DE TRANSFERIR: compara versão do arquivo do usuário com versões já na FLASH (evita transferência redundante)
-        var flashVersions = Regex.Matches(flashDirOutput, @"(?i)r\d{4}(?:p\d+)?").Select(m => Norm(m.Value)).Distinct().ToList();
-        var isMesmaVersaoNaFlash = !string.IsNullOrEmpty(targetNorm) && flashVersions.Contains(targetNorm);
-        // Também valida via .ipe/.bin específicos
-        var areBinFilesAlreadyOnFlash = isMesmaVersaoNaFlash
-            || (!string.IsNullOrEmpty(targetVersionTag) && flashDirOutput.Contains(targetVersionTag, StringComparison.OrdinalIgnoreCase))
-            || (!string.IsNullOrEmpty(targetNorm) && flashDirOutput.Contains(targetNorm, StringComparison.OrdinalIgnoreCase));
+        // ANTES DE TRANSFERIR: só pula transferência TFTP se o arquivo EXATO já existir na Flash.
+        // Para pacotes .IPE, NUNCA pular com base apenas em versão parcial/pacotes .bin,
+        // porque 'boot-loader file flash:/<fileName> main' EXIGE a presença física do arquivo .IPE na flash!
+        var arquivoAlvoJaNaFlash = ArquivoExisteNaFlash(flashDirOutput, fileName);
 
-        // Se .ipe alvo já está na flash (ex: MSR954-CMW710-R6749P43.ipe com 123 MB) => versão igual, pula TFTP
-        var ipeAlvoJaNaFlash = ArquivoExisteNaFlash(flashDirOutput, fileName);
-
-        if (areBinFilesAlreadyOnFlash || ipeAlvoJaNaFlash)
+        if (arquivoAlvoJaNaFlash)
         {
-            await ProgressAsync($"[*] [INFO] Versão {targetVersionTag} já presente na FLASH (arquivo/pacotes com mesma versão detectados)!");
-            await ProgressAsync($"    -> Arquivo alvo na flash: {(ipeAlvoJaNaFlash ? fileName : "pacotes .bin")} | Transferência TFTP DESNECESSÁRIA.");
+            await ProgressAsync($"[*] [INFO] Arquivo {fileName} já presente na FLASH!");
+            await ProgressAsync($"    -> Arquivo alvo na flash: {fileName} | Transferência TFTP DESNECESSÁRIA.");
             await ProgressAsync($"    -> Pulando download TFTP de {fileSizeMb:N1} MB e garantindo apenas ativação no bootloader.");
-            _onProgress?.Invoke(80, "Versão já na Flash", $"Pulando TFTP — garantindo boot-loader para {targetVersionTag}...");
+            _onProgress?.Invoke(80, "Arquivo já na Flash", $"Pulando TFTP — garantindo boot-loader para {targetVersionTag}...");
         }
         else
         {
@@ -589,24 +583,20 @@ public sealed class HpeComwareUpgrader
             }
         }
 
-        // 3. Configuração do Bootloader - só limpa versões antigas se realmente for atualizar
-        // Se bootloader já está na versão alvo, este ponto nunca é alcançado (retorno antecipado acima)
-        // Se arquivo é IPE mas só existem .bins na flash (caso do log), não tenta boot-loader com IPE inexistente
+        // 3. Configuração do Bootloader
         // Revalida flash após possível TFTP (usa flashDirOutput atualizado)
-        var ipeExistsOnFlash = flashDirOutput.Contains(fileName, StringComparison.OrdinalIgnoreCase);
-        var binExtraido = flashDirOutput.Contains(targetNorm, StringComparison.OrdinalIgnoreCase) || flashDirOutput.Contains(targetVersionTag, StringComparison.OrdinalIgnoreCase);
-        if (!ipeExistsOnFlash && isIpe && binExtraido)
+        var ipeExistsOnFlash = ArquivoExisteNaFlash(flashDirOutput, fileName);
+        if (isIpe && !ipeExistsOnFlash)
         {
-            // Só considera concluído se bootloader já estiver na versão alvo; caso contrário precisa gravar boot-loader
-            var bootCheck = string.Empty;
-            try { bootCheck = await session.SendCommandAsync("display boot-loader", TimeSpan.FromSeconds(10), cancellationToken); } catch { }
-            if (bootCheck.Contains(targetVersionTag, StringComparison.OrdinalIgnoreCase) || bootCheck.Contains(targetNorm, StringComparison.OrdinalIgnoreCase))
-            {
-                await ProgressAsync($"[*] Arquivo {fileName} não está na flash, mas os pacotes {targetVersionTag} já estão extraídos e bootloader já configurado.");
-                return true;
-            }
-            await ProgressAsync($"[*] Pacotes {targetVersionTag} já extraídos na flash, mas bootloader ainda não configurado — prosseguindo para gravação do bootloader...");
-            // não retorna, segue para boot-loader file ...
+            try { flashDirOutput = await session.SendCommandAsync("dir flash:", TimeSpan.FromSeconds(10), cancellationToken); } catch { }
+            ipeExistsOnFlash = ArquivoExisteNaFlash(flashDirOutput, fileName);
+        }
+
+        if (isIpe && !ipeExistsOnFlash)
+        {
+            await ProgressAsync($"\n[ERRO CRÍTICO] O arquivo .IPE '{fileName}' não foi encontrado na memória Flash do roteador!");
+            await ProgressAsync("    -> Não é possível registrar o bootloader para uma imagem ausente.");
+            throw new InvalidOperationException($"Arquivo {fileName} ausente na Flash para configuração do bootloader.");
         }
 
         await ProgressAsync($"[*] Liberando imagens de versões diferentes de {targetVersionTag} na Flash...");
@@ -1103,8 +1093,13 @@ public sealed class HpeComwareUpgrader
         foreach (var line in lines)
         {
             var l = line.Trim();
-            if (l.StartsWith("dir", StringComparison.OrdinalIgnoreCase)) continue;
-            if (l.Contains(fileName, StringComparison.OrdinalIgnoreCase))
+            if (l.StartsWith("dir", StringComparison.OrdinalIgnoreCase) || l.StartsWith("Directory", StringComparison.OrdinalIgnoreCase)) continue;
+            var parts = l.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length > 0 && parts[^1].Equals(fileName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+            if (l.EndsWith(fileName, StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
@@ -1424,6 +1419,8 @@ public sealed class HpeComwareUpgrader
                             new StopCondition.Contains("will be used as the main startup", "will be used as the main startup"),
                             new StopCondition.Contains("is not supported", "is not supported"),
                             new StopCondition.Contains("not supported by the device", "not supported by the device"),
+                            new StopCondition.Contains("doesn't exist", "doesn't exist"),
+                            new StopCondition.Contains("does not exist", "does not exist"),
                             new StopCondition.Contains("Wrong parameter", "Wrong parameter"),
                             new StopCondition.Contains("Unrecognized command", "Unrecognized command"),
                             new StopCondition.Contains("No sufficient storage space", "No sufficient storage space"),
@@ -1452,7 +1449,16 @@ public sealed class HpeComwareUpgrader
 
                 var text = res.Output ?? "";
 
-                // 1. Incompatibilidade explícita de hardware/modelo (ex: MSR954P em MSR954 ou IPE legado)
+                // 1. Arquivo não encontrado na flash
+                if (text.Contains("doesn't exist", StringComparison.OrdinalIgnoreCase) ||
+                    text.Contains("does not exist", StringComparison.OrdinalIgnoreCase))
+                {
+                    await ProgressAsync($"[ERRO CRÍTICO] O arquivo '{fileName}' não foi encontrado na Flash pelo Comware:");
+                    await ProgressAsync($"    -> Resposta do roteador: {text.Trim().Split('\n').LastOrDefault()?.Trim()}");
+                    return false;
+                }
+
+                // 2. Incompatibilidade explícita de hardware/modelo (ex: MSR954P em MSR954 ou IPE legado)
                 if (text.Contains("not supported", StringComparison.OrdinalIgnoreCase))
                 {
                     await ProgressAsync($"[ERRO CRÍTICO] A imagem '{fileName}' é INCOMPATÍVEL com o hardware deste equipamento:");
@@ -1462,7 +1468,7 @@ public sealed class HpeComwareUpgrader
                     return false;
                 }
 
-                // 2. Se retornou erro de sintaxe imediato, tenta próxima variação (ex: slot 1 main)
+                // 3. Se retornou erro de sintaxe imediato, tenta próxima variação (ex: slot 1 main)
                 if (text.Contains("Wrong parameter", StringComparison.OrdinalIgnoreCase) ||
                     text.Contains("Unrecognized command", StringComparison.OrdinalIgnoreCase))
                 {
