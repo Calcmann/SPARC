@@ -1619,7 +1619,6 @@ public partial class MainWindow : Window
             var detection = detector.ClassifyPrompt(prompt, userSeries);
 
             var isHpeDetected = detection.Manufacturer == DeviceManufacturer.Hpe
-                             || isBootware
                              || prompt.Contains("choice(0-", StringComparison.OrdinalIgnoreCase)
                              || prompt.Contains("choice (0-", StringComparison.OrdinalIgnoreCase)
                              || prompt.Contains("choice:", StringComparison.OrdinalIgnoreCase)
