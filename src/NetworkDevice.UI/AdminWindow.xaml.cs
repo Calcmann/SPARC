@@ -10,6 +10,7 @@ using System.Windows.Controls;
 using NetworkDevice.Core.Domain;
 using NetworkDevice.Core.Firmware;
 using NetworkDevice.Core.Licensing;
+using NetworkDevice.Core.Provisioning;
 using NetworkDevice.Core.Validation;
 
 namespace NetworkDevice.UI;
@@ -1492,6 +1493,21 @@ public partial class AdminWindow : Window
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
             _updateService.GitHubToken = _firmwareRepoService.GitHubToken;
+
+            // Se a interface Ethernet ainda estiver com IP fixo / Gateway do roteador em teste (bancada),
+            // o Windows direciona api.github.com para o roteador offline, causando timeout.
+            // Restaura automaticamente a placa para DHCP garantindo saída pela Internet/Wi-Fi.
+            try
+            {
+                var (restaurou, msgRestauracao) = await HostNetworkManager.RestoreLastAsync(null, null, cts.Token);
+                if (restaurou)
+                {
+                    sbLog.AppendLine($"[{DateTime.Now:HH:mm:ss}] [REDE] Configuração de rede restaurada para permitir saída à Internet (GitHub).");
+                    TxtLogUpdate.Text = sbLog.ToString();
+                    await Task.Delay(1500, cts.Token);
+                }
+            }
+            catch { }
 
             var (ok, msg, url) = await _updateService.PublishReleaseAsync(
                 platNome,
