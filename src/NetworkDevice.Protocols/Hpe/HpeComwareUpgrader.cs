@@ -229,63 +229,12 @@ public sealed class HpeComwareUpgrader
             await ProgressAsync($"[*] [RELOAD AUTOMÁTICO] Reiniciando roteador HPE para carregar a versão {targetVersionTag}...");
             await ExecutarRebootHpeAsync(session, cancellationToken);
 
-            // Aguarda o HPE voltar a responder após o reboot (2 a 5 min)
-            await Task.Delay(TimeSpan.FromSeconds(15), cancellationToken);
-            var rebootDeadlineB = DateTime.UtcNow.AddMinutes(5);
-            var rebootOkB = false;
-            while (DateTime.UtcNow < rebootDeadlineB && !cancellationToken.IsCancellationRequested)
-            {
-                try
-                {
-                    var probe = await session.WaitForAsync(new StopCondition[]
-                    {
-                        new StopCondition.Contains("Extended BootWare Version is not equal", "Extended BootWare Version is not equal"),
-                        new StopCondition.Contains("updating? [Y/N]", "updating? [Y/N]"),
-                        new StopCondition.Contains("Press Ctrl+B", "Press Ctrl+B"),
-                        new StopCondition.Contains("Validating", "Validating"),
-                        new StopCondition.Contains("Loading file", "Loading file"),
-                        new StopCondition.Contains("Done.", "Done."),
-                        new StopCondition.LineRegex("hpe", new System.Text.RegularExpressions.Regex(@"(?i)<[A-Za-z0-9_\-\.]+>")),
-                        new StopCondition.Prompt()
-                    }, TimeSpan.FromSeconds(15), cancellationToken);
-
-                    var pOut = probe.Output ?? "";
-                    if (pOut.Contains("Extended BootWare Version is not equal", StringComparison.OrdinalIgnoreCase) || pOut.Contains("updating? [Y/N]", StringComparison.OrdinalIgnoreCase))
-                    {
-                        await session.WriteLineAsync("Y", cancellationToken);
-                        await Task.Delay(2000, cancellationToken);
-                        continue;
-                    }
-                    if (pOut.Contains("Press Ctrl+B", StringComparison.OrdinalIgnoreCase))
-                    {
-                        await Task.Delay(2000, cancellationToken);
-                        continue;
-                    }
-                    if (pOut.Contains("Validating", StringComparison.OrdinalIgnoreCase) || pOut.Contains("Loading file", StringComparison.OrdinalIgnoreCase))
-                    {
-                        await Task.Delay(3000, cancellationToken);
-                        continue;
-                    }
-                    if (!string.IsNullOrEmpty(pOut) && (pOut.Trim().EndsWith(">") || pOut.Contains("<HPE", StringComparison.OrdinalIgnoreCase)))
-                    {
-                        rebootOkB = true;
-                        await ProgressAsync($"[*] HPE voltou a responder após o reload: {pOut.Trim().Split('\n').LastOrDefault()?.Trim()}");
-                        break;
-                    }
-                    if (!string.IsNullOrEmpty(pOut))
-                    {
-                        await ProgressAsync($"[*] Boot HPE: {pOut.Trim().Split('\n').LastOrDefault()?.Trim()}");
-                    }
-                }
-                catch { try { await session.WriteLineAsync(string.Empty, cancellationToken); } catch { } }
-                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
-            }
+            var rebootOkB = await AguardarRetornoHpePosRebootAsync(session, targetVersionTag, cancellationToken);
             if (!rebootOkB)
             {
                 await ProgressAsync($"[ERRO] HPE não respondeu após o reload — o firmware pode ser incompatível ou a imagem está corrompida.");
                 return false;
             }
-            await Task.Delay(TimeSpan.FromSeconds(15), cancellationToken);
 
             _onProgress?.Invoke(100, "Fase B Concluída!", $"Roteador reiniciado para carregar a versão {targetVersionTag}.");
             await ProgressAsync($"[OK] Comando de reinicialização enviado com sucesso!");
@@ -700,13 +649,29 @@ public sealed class HpeComwareUpgrader
         await ProgressAsync($"\n[*] [RELOAD AUTOMÁTICO] Reiniciando roteador HPE para carregar a versão {targetVersionTag}...");
         await ExecutarRebootHpeAsync(session, cancellationToken);
 
-        // Aguarda reboot para carregar nova imagem — evita provisionamento SAIP enquanto roteador ainda inicializa (causa falha/console mudo)
+        var rebootOk = await AguardarRetornoHpePosRebootAsync(session, targetVersionTag, cancellationToken);
+        if (!rebootOk)
+        {
+            await ProgressAsync($"[ERRO] HPE não respondeu após o reload — o firmware pode ser incompatível ou a imagem está corrompida. Provisionamento cancelado.");
+            return false;
+        }
+
+        _onProgress?.Invoke(100, "Fase B Concluída!", $"Versão {targetVersionTag} gravada e roteador reiniciado com sucesso.");
+        await ProgressAsync($"[OK] Upgrade de firmware HPE ({fileName} -> {targetVersionTag}) concluído com reload automático!");
+        return true;
+    }
+
+    private async Task<bool> AguardarRetornoHpePosRebootAsync(DeviceSession session, string targetVersionTag, CancellationToken cancellationToken)
+    {
+        // Aguarda reboot para carregar nova imagem — evita provisionamento SAIP enquanto roteador ainda inicializa
         _onProgress?.Invoke(98, "Aguardando reboot HPE...", $"Roteador reiniciando para {targetVersionTag} (2-5 min) — NÃO DESLIGUE!");
         await ProgressAsync($"[*] Reinicialização em andamento — aguardando HPE voltar a responder (2 a 5 min)...");
         await Task.Delay(TimeSpan.FromSeconds(15), cancellationToken); // dá tempo do reboot físico iniciar
-        // Tenta reconectar e aguardar prompt <HPE> por até 5 min
+
         var rebootDeadline = DateTime.UtcNow.AddMinutes(6);
         var rebootOk = false;
+        var rebootRetries = 0;
+
         while (DateTime.UtcNow < rebootDeadline && !cancellationToken.IsCancellationRequested)
         {
             try
@@ -743,9 +708,26 @@ public sealed class HpeComwareUpgrader
                     await Task.Delay(3000, cancellationToken);
                     continue;
                 }
-                if (!string.IsNullOrEmpty(pOut) && (pOut.Trim().EndsWith(">") || pOut.Contains("<HPE", StringComparison.OrdinalIgnoreCase) || pOut.Contains("<", StringComparison.Ordinal) && pOut.Contains(">")))
+                if (!string.IsNullOrEmpty(pOut) && (pOut.Trim().EndsWith(">") || pOut.Contains("<HPE", StringComparison.OrdinalIgnoreCase) || (pOut.Contains("<") && pOut.Contains(">"))))
                 {
-                    // Prompt <HPE> finalmente disponível
+                    // Validação de segurança anti-falso-positivo:
+                    // Verifica se o roteador de fato reiniciou (uptime < 5 min) ou se é apenas o console residual que não reiniciou
+                    try
+                    {
+                        var verProbe = await session.SendCommandAsync("display version", TimeSpan.FromSeconds(10), cancellationToken);
+                        var uptimeMinutes = ExtrairUptimeTotalMinutos(verProbe);
+                        if (uptimeMinutes.HasValue && uptimeMinutes.Value >= 5 && rebootRetries < 2)
+                        {
+                            rebootRetries++;
+                            await ProgressAsync($"\n[AVISO] Terminal <HPE> detectado, porém Uptime ({uptimeMinutes.Value} min) indica que a CPU ainda NÃO reiniciou!");
+                            await ProgressAsync($"    -> Reenviando 'reboot force' imediatamente (tentativa {rebootRetries}/2)...");
+                            await ExecutarRebootHpeAsync(session, cancellationToken);
+                            await Task.Delay(TimeSpan.FromSeconds(15), cancellationToken);
+                            continue;
+                        }
+                    }
+                    catch { }
+
                     rebootOk = true;
                     await ProgressAsync($"[*] HPE voltou a responder: {pOut.Trim().Split('\n').LastOrDefault()?.Trim()}");
                     break;
@@ -761,37 +743,119 @@ public sealed class HpeComwareUpgrader
             }
             await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
         }
-        if (!rebootOk)
-        {
-            await ProgressAsync($"[ERRO] HPE não respondeu após o reload — o firmware pode ser incompatível ou a imagem está corrompida. Provisionamento cancelado.");
-            return false;
-        }
-        await Task.Delay(TimeSpan.FromSeconds(15), cancellationToken); // estabilização pós-boot
 
-        _onProgress?.Invoke(100, "Fase B Concluída!", $"Versão {targetVersionTag} gravada e roteador reiniciado com sucesso.");
-        await ProgressAsync($"[OK] Upgrade de firmware HPE ({fileName} -> {targetVersionTag}) concluído com reload automático!");
-        return true;
+        if (rebootOk)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(15), cancellationToken); // estabilização pós-boot
+        }
+        return rebootOk;
     }
 
     private static async Task ExecutarRebootHpeAsync(DeviceSession session, CancellationToken ct)
     {
         try
         {
+            await EnsureUserViewAsync(session, null, ct);
+
+            // 1. Tenta comando canônico de reinicialização direta Comware 7: 'reboot force'
+            // O modificador 'force' desvia de todos os diálogos interativos ("save configuration?", "input file name", "Continue? [Y/N]").
+            var res = await session.SendExpectAsync(
+                "reboot force",
+                new StopCondition[]
+                {
+                    new StopCondition.Contains("Wrong parameter", "Wrong parameter"),
+                    new StopCondition.Contains("Unrecognized command", "Unrecognized command"),
+                    new StopCondition.Contains("[Y/N]", "[Y/N]"),
+                    new StopCondition.Contains("Continue?", "Continue?"),
+                    new StopCondition.Contains("rebooting", "rebooting"),
+                    new StopCondition.Prompt()
+                },
+                TimeSpan.FromSeconds(6),
+                ct);
+
+            var outText = res.Output ?? "";
+            // Se 'reboot force' foi aceito (sem erro de sintaxe)
+            if (!outText.Contains("Wrong parameter", StringComparison.OrdinalIgnoreCase) &&
+                !outText.Contains("Unrecognized command", StringComparison.OrdinalIgnoreCase))
+            {
+                if (outText.Contains("[Y/N]", StringComparison.OrdinalIgnoreCase) || outText.Contains("Continue?", StringComparison.OrdinalIgnoreCase))
+                {
+                    await session.WriteLineAsync("Y", ct);
+                }
+                return;
+            }
+
+            // 2. Fallback interativo para versões legadas Comware 5 que não suportam 'force':
             await session.WriteLineAsync("reboot", ct);
-            await Task.Delay(1000, ct);
+            var deadline = DateTime.UtcNow.AddSeconds(20);
+            while (DateTime.UtcNow < deadline && !ct.IsCancellationRequested)
+            {
+                DeviceSession.ExpectResult ask;
+                try
+                {
+                    ask = await session.WaitForAsync(
+                        new StopCondition[]
+                        {
+                            new StopCondition.Contains("[Y/N]", "[Y/N]"),
+                            new StopCondition.Contains("Continue?", "Continue?"),
+                            new StopCondition.Contains("save current configuration", "save current configuration"),
+                            new StopCondition.Contains("Please input the file name", "Please input the file name"),
+                            new StopCondition.Contains("reboot", "reboot"),
+                            new StopCondition.Prompt()
+                        },
+                        TimeSpan.FromSeconds(6),
+                        ct);
+                }
+                catch (SessionTimeoutException)
+                {
+                    // Se o console silenciou, o equipamento já desligou
+                    return;
+                }
 
-            // Responde Y imediatamente para confirmar o diálogo "The system will reboot. Continue?[Y/N]:"
-            await session.WriteLineAsync("Y", ct);
-            await Task.Delay(1500, ct);
-
-            // Envia Y adicional para garantir confirmação caso haja diálogo subsequente
-            await session.WriteLineAsync("Y", ct);
-            await Task.Delay(3000, ct);
+                var txt = ask.Output ?? "";
+                if (txt.Contains("save current configuration", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Responde N para não salvar (já salvamos via save force previamente; responder N evita a armadilha do prompt de filename)
+                    await session.WriteLineAsync("N", ct);
+                    await Task.Delay(500, ct);
+                    continue;
+                }
+                if (txt.Contains("Please input the file name", StringComparison.OrdinalIgnoreCase))
+                {
+                    await session.WriteLineAsync(string.Empty, ct);
+                    await Task.Delay(500, ct);
+                    continue;
+                }
+                if (txt.Contains("[Y/N]", StringComparison.OrdinalIgnoreCase) || txt.Contains("Continue", StringComparison.OrdinalIgnoreCase))
+                {
+                    await session.WriteLineAsync("Y", ct);
+                    await Task.Delay(500, ct);
+                    continue;
+                }
+                if (ask.Matched is StopCondition.Prompt)
+                {
+                    break;
+                }
+            }
         }
         catch
         {
             // O equipamento pode reiniciar e fechar a conexão de imediato
         }
+    }
+
+    public static int? ExtrairUptimeTotalMinutos(string versionOutput)
+    {
+        if (string.IsNullOrWhiteSpace(versionOutput)) return null;
+        var match = Regex.Match(versionOutput,
+            @"uptime is\s+(?:(?<weeks>\d+)\s+weeks?,\s*)?(?:(?<days>\d+)\s+days?,\s*)?(?:(?<hours>\d+)\s+hours?,\s*)?(?<mins>\d+)\s+minutes?",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        if (!match.Success) return null;
+        var weeks = int.TryParse(match.Groups["weeks"].Value, out var w) ? w : 0;
+        var days = int.TryParse(match.Groups["days"].Value, out var d) ? d : 0;
+        var hours = int.TryParse(match.Groups["hours"].Value, out var h) ? h : 0;
+        var mins = int.TryParse(match.Groups["mins"].Value, out var m) ? m : 0;
+        return (weeks * 7 * 24 * 60) + (days * 24 * 60) + (hours * 60) + mins;
     }
 
     private static string ExtrairVersaoDeNomeArquivo(string fileName)

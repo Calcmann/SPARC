@@ -85,4 +85,31 @@ The backup boot app is: flash:/msr954-cmw710-system-r6749p20.bin
         Assert.Equal("R6749P43", targetVer);
         Assert.NotEqual(runningVer, targetVer);
     }
+
+    [Fact]
+    public void ExtrairUptimeTotalMinutos_UptimeRecente_RetornaMinutosBaixos()
+    {
+        var rawUptime = "HPE MSR954 uptime is 0 weeks, 0 days, 0 hours, 2 minutes";
+        var minutes = HpeComwareUpgrader.ExtrairUptimeTotalMinutos(rawUptime);
+        Assert.NotNull(minutes);
+        Assert.Equal(2, minutes.Value);
+    }
+
+    [Fact]
+    public void ExtrairUptimeTotalMinutos_UptimeAntigo_RetornaTotalMinutosElevado()
+    {
+        // 0 semanas, 0 dias, 2 horas, 27 minutos = 147 minutos
+        var rawUptime = "HPE MSR954 uptime is 0 weeks, 0 days, 2 hours, 27 minutes";
+        var minutes = HpeComwareUpgrader.ExtrairUptimeTotalMinutos(rawUptime);
+        Assert.NotNull(minutes);
+        Assert.Equal(147, minutes.Value);
+        Assert.True(minutes.Value >= 5); // Comprovadamente não reiniciou recentemente
+    }
+
+    [Fact]
+    public void ExtrairUptimeTotalMinutos_SemUptime_RetornaNull()
+    {
+        var minutes = HpeComwareUpgrader.ExtrairUptimeTotalMinutos("texto aleatório sem uptime");
+        Assert.Null(minutes);
+    }
 }
