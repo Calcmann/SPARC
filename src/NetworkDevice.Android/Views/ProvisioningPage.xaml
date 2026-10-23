@@ -316,7 +316,7 @@
                             <Button Grid.Column="1" Text="🛠️ Quebra Senha" Clicked="OnAbrirRecuperacaoClicked" BackgroundColor="#881337" TextColor="White" CornerRadius="6" FontSize="11" HeightRequest="36" />
                         </Grid>
                         <!-- Botão Nativo: Certidão de Nascimento (Y.1564) -->
-                        <Button x:Name="BtnAnalisadorDados" Text="📜 Emitir Certidão de Nascimento (Y.1564)" Clicked="OnAbrirAnalisadorClicked" BackgroundColor="#0284C7" TextColor="White" CornerRadius="6" FontAttributes="Bold" FontSize="12" HeightRequest="40" Margin="0, 4, 0, 0" IsVisible="True" />
+                        <Button x:Name="BtnAnalisadorDados" Text="📜 Emitir Certidão de Nascimento (Em Desenvolvimento)" Clicked="OnAbrirAnalisadorClicked" BackgroundColor="#0284C7" TextColor="White" CornerRadius="6" FontAttributes="Bold" FontSize="12" HeightRequest="40" Margin="0, 4, 0, 0" IsVisible="True" />
                     </VerticalStackLayout>
                 </Frame>
             </VerticalStackLayout>

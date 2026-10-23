@@ -234,7 +234,7 @@ public partial class CertidaoNascimentoWindow : Window
             if (CmbDuracao != null) CmbDuracao.Visibility = Visibility.Visible;
             if (LblDuracaoTitulo != null) LblDuracaoTitulo.Text = "Duração do Teste:";
 
-            BtnIniciarCertidao.Content = "▶ EMITIR CERTIDÃO DE NASCIMENTO";
+            BtnIniciarCertidao.Content = "▶ EMITIR CERTIDÃO DE NASCIMENTO (Em Desenvolvimento)";
             BtnIniciarCertidao.Background = new SolidColorBrush(Color.FromRgb(220, 38, 38)); // Vermelho Claro
             TxtEtapaProgresso.Text = "Aguardando início do teste automatizado...";
             TxtTempoRestante.Text = "00:00 / 05:00";

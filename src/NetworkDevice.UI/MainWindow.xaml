@@ -388,11 +388,11 @@
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <Button Grid.Column="0" x:Name="BtnCertidaoNascimentoInicial"
-                                    Content="📜 EMITIR CERTIDÃO DE NASCIMENTO (Y.1564)"
-                                    Padding="12,6" Background="#0284C7" Foreground="White" BorderThickness="0"
-                                    FontWeight="Black" FontSize="13" Cursor="Hand"
+                                    Content="📜 EMITIR CERTIDÃO DE NASCIMENTO (Em Desenvolvimento)"
+                                    Padding="10,6" Background="#0284C7" Foreground="White" BorderThickness="0"
+                                    FontWeight="Black" FontSize="12" Cursor="Hand"
                                     HorizontalAlignment="Stretch" Click="BtnCertidaoNascimentoInicial_Click"
-                                    ToolTip="Validação oficial de entrega de circuito segundo padrão ITU-T Y.1564 (requer Ficha SAIP importada)" />
+                                    ToolTip="Validação oficial de entrega de circuito segundo padrão ITU-T Y.1564 (requer Ficha SAIP importada) - Em Desenvolvimento" />
                             <Border Grid.Column="1" Background="#0C4A6E" CornerRadius="5" Padding="8,4" Margin="5,0,0,0" VerticalAlignment="Center">
                                 <TextBlock Text="MTS-5800 / QT-600" FontSize="10.5" FontWeight="Bold" Foreground="#38BDF8" VerticalAlignment="Center" />
                             </Border>
@@ -516,7 +516,7 @@
                         <Button x:Name="BtnAutoRestaurarRede" Content="↩ Restaurar configuração IP do Windows" Padding="12,6" Margin="4,3" Background="#0F766E" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnAutoRestaurarRede_Click" Visibility="Collapsed" ToolTip="Volta a placa de rede ao IP/DHCP anterior ao teste (ou mantém para mais testes)" />
                         <Button x:Name="BtnAutoRetestarBanda" Content="🔄 Re-testar Largura de Banda" Padding="12,6" Margin="4,3" Background="#D97706" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnAutoRetestarBanda_Click" Visibility="Collapsed" ToolTip="Executa novamente o teste de velocidade/largura de banda da Fase 7 e atualiza o relatório técnico" />
                         <Button x:Name="BtnAutoSalvarScript" Content="📝 Salvar script TXT" Padding="12,6" Margin="4,3" Background="#3F3F46" Foreground="White" BorderThickness="0" FontWeight="Bold" Click="BtnAutoSalvarScript_Click" Visibility="Collapsed" ToolTip="Salva em TXT as configurações aplicadas no equipamento (running-config)" />
-                        <Button x:Name="BtnAutoCertidaoY1564" Content="📜 CERTIDÃO DE NASCIMENTO (Y.1564)" Padding="14,6" Margin="4,3" Background="#0284C7" Foreground="White" BorderThickness="0" FontWeight="Black" Click="BtnAutoCertidaoY1564_Click" Visibility="Collapsed" ToolTip="Emissão oficial da Certidão de Nascimento (ITU-T Y.1564) para homologação do circuito" />
+                        <Button x:Name="BtnAutoCertidaoY1564" Content="📜 CERTIDÃO DE NASCIMENTO (Em Desenvolvimento)" Padding="14,6" Margin="4,3" Background="#0284C7" Foreground="White" BorderThickness="0" FontWeight="Black" Click="BtnAutoCertidaoY1564_Click" Visibility="Collapsed" ToolTip="Emissão oficial da Certidão de Nascimento (ITU-T Y.1564) para homologação do circuito (Em Desenvolvimento)" />
                         <Button x:Name="BtnAutoTestarLinkSemRoteador" Content="🔌 TESTAR LINK SEM ROTEADOR" Padding="14,6" Margin="4,3" Background="#059669" Foreground="White" BorderThickness="0" FontWeight="Black" Click="BtnAutoTestarLinkSemRoteador_Click" Visibility="Collapsed" ToolTip="Validação de link direto no acesso (EDD/GPON) sem roteador da operadora" />
                         <Button x:Name="BtnAutoVoltar" Content="← Voltar à Esteira" Padding="14,6" Margin="4,3" Background="#64748B" Foreground="White" BorderThickness="0" Click="BtnAutoVoltar_Click" Visibility="Collapsed" />
                     </WrapPanel>
