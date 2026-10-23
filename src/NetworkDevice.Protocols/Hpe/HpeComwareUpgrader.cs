@@ -1422,6 +1422,8 @@ public sealed class HpeComwareUpgrader
                             new StopCondition.Contains("successfully set", "successfully set"),
                             new StopCondition.Contains("main startup software image", "main startup software image"),
                             new StopCondition.Contains("will be used as the main startup", "will be used as the main startup"),
+                            new StopCondition.Contains("is not supported", "is not supported"),
+                            new StopCondition.Contains("not supported by the device", "not supported by the device"),
                             new StopCondition.Contains("Wrong parameter", "Wrong parameter"),
                             new StopCondition.Contains("Unrecognized command", "Unrecognized command"),
                             new StopCondition.Contains("No sufficient storage space", "No sufficient storage space"),
@@ -1450,7 +1452,17 @@ public sealed class HpeComwareUpgrader
 
                 var text = res.Output ?? "";
 
-                // 1. Se retornou erro de sintaxe imediato, tenta próxima variação (ex: slot 1 main)
+                // 1. Incompatibilidade explícita de hardware/modelo (ex: MSR954P em MSR954 ou IPE legado)
+                if (text.Contains("not supported", StringComparison.OrdinalIgnoreCase))
+                {
+                    await ProgressAsync($"[ERRO CRÍTICO] A imagem '{fileName}' é INCOMPATÍVEL com o hardware deste equipamento:");
+                    await ProgressAsync($"    -> Resposta do roteador: {text.Trim().Split('\n').LastOrDefault()?.Trim()}");
+                    await ProgressAsync("    -> Roteadores HPE validam o modelo e hardware no manifesto interno do arquivo .IPE.");
+                    await ProgressAsync("    -> Utilize o firmware homologado correspondente ao modelo físico exato (ex: MSR954 vs MSR954P / R6749P43).");
+                    return false;
+                }
+
+                // 2. Se retornou erro de sintaxe imediato, tenta próxima variação (ex: slot 1 main)
                 if (text.Contains("Wrong parameter", StringComparison.OrdinalIgnoreCase) ||
                     text.Contains("Unrecognized command", StringComparison.OrdinalIgnoreCase))
                 {
@@ -1459,7 +1471,7 @@ public sealed class HpeComwareUpgrader
                     break;
                 }
 
-                // 2. Erros fatais de flash / corrupção
+                // 3. Erros fatais de flash / corrupção
                 if (text.Contains("No sufficient storage space", StringComparison.OrdinalIgnoreCase))
                 {
                     throw new InvalidOperationException("Espaço insuficiente na Flash para descompactar a nova versão.");
