@@ -1487,6 +1487,25 @@ public sealed class CiscoIOSUpgrader
                                is921Post ? "Porta 5 (GE 5)" :
                                "Porta 1 (GE 0/1)";
 
+            var targetLan = is841Post ? "GigabitEthernet0/5" : is921Post ? "GigabitEthernet 5" : "GigabitEthernet 0/1";
+
+            // Acorda imediatamente a console serial do Cisco IOS e absorve eventuais syslogs de boot
+            try
+            {
+                var postAdapter2 = new CiscoIOSAdapter(enableSecret, candidatePasswords);
+                try { await postAdapter2.EnterPrivilegedExecAsync(session, candidatePasswords, cancellationToken); } catch { }
+                try { await session.SendCommandAsync("terminal length 0", TimeSpan.FromSeconds(5), cancellationToken); } catch { }
+            }
+            catch { }
+
+            // Habilita ativamente a porta LAN antes de solicitar a troca física de cabo, para que os LEDs acendam e o link suba de imediato
+            try
+            {
+                await ProgressAsync($"[*] Habilitando porta LAN ({targetLan}) no Cisco IOS ('no shutdown')...");
+                await CiscoIOSAdapter.EnsureLanInterfaceNoShutdownAsync(session, targetLan, cancellationToken);
+            }
+            catch { }
+
             _onProgress?.Invoke(92, "Fase B: Troca de Cabo de Rede...", $"Aguardando alteração do cabo para a porta {lanPostShort}...");
             await ProgressAsync($"\n[AVISO] Solicitando alteração do cabo de rede da porta WAN para a porta LAN ({lanPostShort})...");
 
@@ -1500,19 +1519,9 @@ public sealed class CiscoIOSUpgrader
                 cancellationToken);
 
             _onProgress?.Invoke(94, "Fase B: Sincronizando Porta LAN...", $"Aguardando link ativo na porta {lanPostShort}...");
-            await ProgressAsync($"[*] Operador confirmou a troca do cabo para a porta LAN ({lanPostShort}). Acordando terminal e sincronizando...");
-
-            // Acorda imediatamente a console serial do Cisco IOS e absorve eventuais syslogs de cabo
-            try
-            {
-                var postAdapter2 = new CiscoIOSAdapter(enableSecret, candidatePasswords);
-                try { await postAdapter2.EnterPrivilegedExecAsync(session, candidatePasswords, cancellationToken); } catch { }
-                try { await session.SendCommandAsync("terminal length 0", TimeSpan.FromSeconds(5), cancellationToken); } catch { }
-            }
-            catch { }
+            await ProgressAsync($"[*] Operador confirmou a troca do cabo para a porta LAN ({lanPostShort}). Sincronizando link...");
 
             // Executa verificação ativa da porta LAN com contagem contínua e status visual para garantir que o link subiu
-            var targetLan = is841Post ? "GigabitEthernet0/5" : is921Post ? "GigabitEthernet 5" : "GigabitEthernet 0/1";
             await CiscoIOSAdapter.EnforceLanPortConnectedAsync(session, targetLan, requestOperatorAction, ProgressAsync, cancellationToken, _onProgress);
         }
 

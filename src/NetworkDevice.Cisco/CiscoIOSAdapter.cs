@@ -379,6 +379,35 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
         return host.TrimEnd('#', '>');
     }
 
+    public static async Task EnsureLanInterfaceNoShutdownAsync(DeviceSession session, string lanInterface, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (!session.IsConnected) return;
+
+            await session.WriteLineAsync(string.Empty, cancellationToken);
+            await Task.Delay(150, cancellationToken);
+
+            if (session.CurrentPrompt?.Trim().EndsWith(">") == true)
+            {
+                await session.WriteLineAsync("enable", cancellationToken);
+                await Task.Delay(250, cancellationToken);
+            }
+
+            await session.WriteLineAsync("end", cancellationToken);
+            await Task.Delay(150, cancellationToken);
+            await session.WriteLineAsync("configure terminal", cancellationToken);
+            await Task.Delay(250, cancellationToken);
+            await session.WriteLineAsync($"interface {lanInterface}", cancellationToken);
+            await Task.Delay(250, cancellationToken);
+            await session.WriteLineAsync("no shutdown", cancellationToken);
+            await Task.Delay(300, cancellationToken);
+            await session.WriteLineAsync("end", cancellationToken);
+            await Task.Delay(200, cancellationToken);
+        }
+        catch { }
+    }
+
     public static async Task<bool> EnforceLanPortConnectedAsync(
         DeviceSession session,
         string lanInterface = "GigabitEthernet 0/1",
@@ -416,6 +445,9 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
         var operatorNotified = false;
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
+        // Garante proativamente que a porta LAN esteja com 'no shutdown' habilitado para subir o link físico
+        await EnsureLanInterfaceNoShutdownAsync(session, lanInterface, cancellationToken);
+
         for (var attempt = 1; attempt <= 60; attempt++)
         {
             var elapsedSec = (int)sw.Elapsed.TotalSeconds;
@@ -433,13 +465,21 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
                 continue;
             }
             
-            var isLanUp = Regex.IsMatch(output, $@"(?im)^\s*{lanPattern}\s+[^\r\n]*\bup\s+up\b");
+            var isLanUp = Regex.IsMatch(output, $@"(?im)^\s*{lanPattern}\s+[^\r\n]*\bup\s+(?:up|down)\b");
             var isWanUp = Regex.IsMatch(output, $@"(?im)^\s*{wanPattern}\s+[^\r\n]*\bup\s+up\b");
+            var isLanAdminDown = Regex.IsMatch(output, $@"(?im)^\s*{lanPattern}\s+[^\r\n]*\badministratively\s+down\b");
+
+            if (isLanAdminDown)
+            {
+                if (progress is not null && (attempt == 1 || attempt % 5 == 0))
+                    await progress($"[*] Porta LAN ({shortLan}) identificada como administratively down. Enviando 'no shutdown' para ativar a porta física...");
+                await EnsureLanInterfaceNoShutdownAsync(session, lanInterface, cancellationToken);
+            }
 
             if (isLanUp)
             {
                 if (progress is not null)
-                    await progress($"[OK] Link físico confirmado na porta LAN ({displayLan}) — status UP/UP ({elapsedSec}s)!");
+                    await progress($"[OK] Link físico confirmado na porta LAN ({displayLan}) — status UP ({elapsedSec}s)!");
                 onProgress?.Invoke(55, "Porta LAN Conectada!", $"Link ativo confirmado na porta {shortLan} ({elapsedSec}s).");
                 return true;
             }
@@ -463,7 +503,8 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
                         $"Clique em OK após conectar na porta {shortLan}.",
                         cancellationToken);
 
-                    // Operador clicou em OK após trocar o cabo: acorda console do Cisco e absorve syslogs
+                    // Operador clicou em OK após trocar o cabo: acorda console do Cisco, envia no shutdown e absorve syslogs
+                    await EnsureLanInterfaceNoShutdownAsync(session, lanInterface, cancellationToken);
                     if (progress is not null)
                         await progress($"[*] Operador confirmou a troca do cabo. Detectando sincronização na porta LAN ({shortLan})...");
                     onProgress?.Invoke(50, "Sincronizando Porta LAN...", $"Aguardando link ativo na porta {shortLan}... ({elapsedSec}s)");
@@ -491,7 +532,8 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
                         $"Clique em OK após conectar o cabo na porta {shortLan}.",
                         cancellationToken);
 
-                    // Operador clicou em OK após conectar o cabo: acorda console do Cisco e absorve syslogs de porta UP
+                    // Operador clicou em OK após conectar o cabo: acorda console do Cisco, envia no shutdown e absorve syslogs de porta UP
+                    await EnsureLanInterfaceNoShutdownAsync(session, lanInterface, cancellationToken);
                     if (progress is not null)
                         await progress($"[*] Operador confirmou conexão do cabo. Detectando sincronização na porta LAN ({shortLan})...");
                     onProgress?.Invoke(50, "Sincronizando Porta LAN...", $"Aguardando link ativo na porta {shortLan}... ({elapsedSec}s)");
