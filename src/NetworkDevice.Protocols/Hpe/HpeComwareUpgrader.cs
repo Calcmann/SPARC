@@ -634,154 +634,25 @@ public sealed class HpeComwareUpgrader
         } catch { }
 
         await EnviarComandoComConfirmacaoAsync(session, "reset recycle-bin", cancellationToken);
-        var bootCmd = $"boot-loader file flash:/{fileName} main";
-        await ProgressAsync($"[*] Gravando imagem no bootloader (user view <HPE>): {bootCmd}...");
-        // Loga resposta imediata do comando para diagnóstico (caso retorne Unrecognized/Wrong parameter)
-        var bootEcho = await session.SendCommandAsync(string.Empty, TimeSpan.FromSeconds(3), cancellationToken);
-        await ProgressAsync($"    Prompt antes do boot-loader: {bootEcho.Trim().Split('\n').LastOrDefault()?.Trim()}");
 
-        _onProgress?.Invoke(85, "⚠️ NÃO DESLIGUE! Gravando Bootloader...", "Extraindo pacotes .bin e atualizando bootloader...");
-        await session.WriteLineAsync(bootCmd, cancellationToken);
-
-        var bootDeadline = DateTime.UtcNow.AddMinutes(4);
-        var bootConfigured = false;
-        var sawVerifyingDone = false;
-
-        while (!bootConfigured && DateTime.UtcNow < bootDeadline && !cancellationToken.IsCancellationRequested)
-        {
-            var next = await session.WaitForAsync(
-                new StopCondition[]
-                {
-                    new StopCondition.Contains("[Y/N]", "[Y/N]"),
-                    new StopCondition.Contains("Continue?", "Continue?"),
-                    new StopCondition.Contains("Overwrite", "Overwrite"),
-                    new StopCondition.Contains("delete the file", "delete the file"),
-                    new StopCondition.Contains("Verifying the file", "Verifying the file"),
-                    new StopCondition.Contains("Decompressing", "Decompressing"),
-                    new StopCondition.Contains("Done.", "Done."),
-                    new StopCondition.Contains("No sufficient storage space", "No sufficient storage space"),
-                    new StopCondition.Contains("File is bad or damaged", "File is bad or damaged"),
-                    new StopCondition.Contains("Failed.", "Failed."),
-                    new StopCondition.Contains("main startup software image", "main startup software image"),
-                    new StopCondition.Contains("successfully set", "successfully set"),
-                    new StopCondition.Prompt()
-                },
-                TimeSpan.FromSeconds(60),
-                cancellationToken);
-
-            var outLC = next.Output;
-            // CRÍTICO: Continue? [Y/N] deve ser respondido com Y antes de qualquer outro tratamento (não confundir Verifying...Done. com sucesso)
-            if (outLC.Contains("[Y/N]", StringComparison.OrdinalIgnoreCase) ||
-                outLC.Contains("Continue?", StringComparison.OrdinalIgnoreCase) ||
-                outLC.Contains("Overwrite", StringComparison.OrdinalIgnoreCase) ||
-                outLC.Contains("delete the file", StringComparison.OrdinalIgnoreCase) ||
-                outLC.Contains("Before pressing ENTER you must choose", StringComparison.OrdinalIgnoreCase))
-            {
-                await ProgressAsync("    -> Confirmando descompactação no Comware (Y)...");
-                await session.WriteLineAsync("Y", cancellationToken);
-                await Task.Delay(1500, cancellationToken);
-                continue;
-            }
-
-            if (outLC.Contains("Verifying the file", StringComparison.OrdinalIgnoreCase))
-            {
-                sawVerifyingDone = outLC.Contains("Done.", StringComparison.OrdinalIgnoreCase);
-                await ProgressAsync($"[*] Verificando .ipe ...{(sawVerifyingDone ? "Done." : "aguardando")} — aguardando Continue? [Y/N]");
-                await Task.Delay(500, cancellationToken);
-                continue; // Não considera Done. de Verifying como sucesso
-            }
-
-            if (outLC.Contains("Decompressing file", StringComparison.OrdinalIgnoreCase) || outLC.Contains("Decompressing", StringComparison.OrdinalIgnoreCase))
-            {
-                _onProgress?.Invoke(90, "⚠️ NÃO DESLIGUE! Descompactando...", "Extraindo pacotes .bin na Flash (pode levar de 2 a 5 min)...");
-                await ProgressAsync("[*] Descompactando pacotes de software na Flash (aguarde de 2 a 5 minutos)...");
-                // Aguarda conclusão da descompactação (pode levar 2-5 min) antes de reavaliar
-                await Task.Delay(2000, cancellationToken);
-                continue;
-            }
-
-            if (outLC.Contains("File is bad or damaged", StringComparison.OrdinalIgnoreCase) ||
-                outLC.Contains("Failed.", StringComparison.OrdinalIgnoreCase))
-            {
-                await ProgressAsync($"\n[ERRO CRÍTICO] Imagem {fileName} corrompida/danificada — não carregável no boot (File is bad or damaged).");
-                await ProgressAsync($"    Saída: {outLC.Trim().Split('\n').LastOrDefault()?.Trim()}");
-                // Limpa imagens corrompidas da flash, esvazia lixeira e reinicia transferência TFTP
-                await ProgressAsync($"[*] Limpando imagem corrompida {fileName} da Flash e esvaziando recycle-bin...");
-                await EnviarComandoComConfirmacaoAsync(session, $"delete /unreserved flash:/{fileName}", cancellationToken);
-                await EnviarComandoComConfirmacaoAsync(session, "reset recycle-bin", cancellationToken);
-                await ProgressAsync($"[*] Flash limpa. Reiniciando transferência TFTP de {fileName}...");
-                // Recursão controlada: re-executa UpgradeAsync para refazer TFTP limpo e setar boot
-                return await UpgradeAsync(session, firmwareFilePath, hostIpAddress, confirmBootLoaderUpdate, requestOperatorAction, cancellationToken);
-            }
-
-            if (outLC.Contains("No sufficient storage space", StringComparison.OrdinalIgnoreCase))
-            {
-                await ProgressAsync("\n[ERRO CRÍTICO] Espaço insuficiente na Flash para descompactar os pacotes .bin!");
-                throw new InvalidOperationException("Espaço insuficiente na Flash para descompactar a nova versão.");
-            }
-
-            // Done. isolado de Verifying não é sucesso — só após Decompressing ou mensagem de startup
-            if (outLC.Contains("main startup software image", StringComparison.OrdinalIgnoreCase) ||
-                outLC.Contains("successfully set", StringComparison.OrdinalIgnoreCase) ||
-                (outLC.Contains("Done.", StringComparison.OrdinalIgnoreCase) && outLC.Contains("Decompressing", StringComparison.OrdinalIgnoreCase)))
-            {
-                await ProgressAsync($"[*] Boot-loader confirmou: {outLC.Trim().Split('\n').LastOrDefault()?.Trim()}");
-                bootConfigured = true;
-                break;
-            }
-            // Done. genérico sem Decompressing => ignora (Verifying Done) e continua aguardando Continue?/Decompressing
-            if (outLC.Contains("Done.", StringComparison.OrdinalIgnoreCase))
-            {
-                await Task.Delay(500, cancellationToken);
-                continue;
-            }
-
-            // Prompt puro sem mensagem de sucesso => verifica explicitamente via display boot-loader como fallback
-            if (next.Matched is StopCondition.Prompt)
-            {
-                await ProgressAsync($"[*] Prompt retornado sem confirmação explícita, revalidando boot-loader...");
-                await Task.Delay(1500, cancellationToken);
-                try
-                {
-                    var probe = await session.SendCommandAsync("display boot-loader", TimeSpan.FromSeconds(10), cancellationToken);
-                    if (probe.Contains(targetVersionTag, StringComparison.OrdinalIgnoreCase) || probe.Contains(targetNorm, StringComparison.OrdinalIgnoreCase))
-                    {
-                        await ProgressAsync($"[*] Boot-loader já aponta para {targetVersionTag} no probe — considerando configurado.");
-                        bootConfigured = true;
-                        break;
-                    }
-                } catch { }
-                // Se ainda não configurado e deadline não expirou, continua tentando
-                if (DateTime.UtcNow < bootDeadline)
-                    continue;
-            }
-        }
-
+        var bootConfigured = await ConfigurarBootLoaderHpeAsync(session, fileName, targetVersionTag, targetNorm, cancellationToken);
         if (!bootConfigured)
         {
-            // Timeout pode indicar imagem P43 corrompida que não conseguiu ser carregada no boot (caso do log: .ipe presente mas boot permanece r0809p33)
-            await ProgressAsync($"\n[ERRO CRÍTICO] Timeout ao configurar boot-loader para {targetVersionTag} após 8 min. Verificando imagem...");
+            await ProgressAsync($"\n[ERRO CRÍTICO] Falha ao configurar boot-loader para {targetVersionTag} ({fileName}). Verificando flash...");
             try
             {
                 var finalProbe = await session.SendCommandAsync("display boot-loader", TimeSpan.FromSeconds(10), cancellationToken);
-                if (finalProbe.Contains(targetVersionTag, StringComparison.OrdinalIgnoreCase) || finalProbe.Contains(targetNorm, StringComparison.OrdinalIgnoreCase))
-                    bootConfigured = true;
-                else
+                if (finalProbe.Contains(targetVersionTag, StringComparison.OrdinalIgnoreCase) ||
+                    (!string.IsNullOrEmpty(targetNorm) && finalProbe.Contains(targetNorm, StringComparison.OrdinalIgnoreCase)))
                 {
-                    // Considera imagem corrompida: limpa flash/recycle e reinicia transferência
-                    await ProgressAsync($"[*] Imagem {fileName} não carregável no boot — provável corrupção. Limpando flash...");
-                    await EnviarComandoComConfirmacaoAsync(session, $"delete /unreserved flash:/{fileName}", cancellationToken);
-                    await EnviarComandoComConfirmacaoAsync(session, "reset recycle-bin", cancellationToken);
-                    await ProgressAsync($"[*] Reiniciando transferência TFTP de {fileName} após limpeza...");
-                    return await UpgradeAsync(session, firmwareFilePath, hostIpAddress, confirmBootLoaderUpdate, requestOperatorAction, cancellationToken);
+                    bootConfigured = true;
                 }
-            } catch (InvalidOperationException) { throw; }
-            catch (Exception ex)
+            }
+            catch { }
+
+            if (!bootConfigured)
             {
-                await ProgressAsync($"[*] Imagem {fileName} suspeita de corrupção. Limpando e retransferindo...");
-                await EnviarComandoComConfirmacaoAsync(session, $"delete /unreserved flash:/{fileName}", cancellationToken);
-                await EnviarComandoComConfirmacaoAsync(session, "reset recycle-bin", cancellationToken);
-                throw new InvalidOperationException($"Timeout ao configurar boot-loader para {targetVersionTag}: {ex.Message}. Imagem limpa da flash — tente novamente.");
+                throw new InvalidOperationException($"Não foi possível configurar o boot-loader do HPE para a imagem {fileName}. Verifique a integridade do pacote.");
             }
         }
 
@@ -1493,6 +1364,183 @@ public sealed class HpeComwareUpgrader
         {
             return false;
         }
+    }
+
+    private async Task<bool> ConfigurarBootLoaderHpeAsync(
+        DeviceSession session,
+        string fileName,
+        string targetVersionTag,
+        string targetNorm,
+        CancellationToken ct)
+    {
+        await EnsureUserViewAsync(session, _progress, ct);
+
+        // Prepara comandos candidatos (com e sem slot 1)
+        var candidates = new[]
+        {
+            $"boot-loader file flash:/{fileName} main",
+            $"boot-loader file flash:/{fileName} slot 1 main"
+        };
+
+        var bootConfigured = false;
+        var deadline = DateTime.UtcNow.AddMinutes(5);
+
+        foreach (var cmd in candidates)
+        {
+            if (bootConfigured || ct.IsCancellationRequested) break;
+
+            await ProgressAsync($"[*] Executando gravação no bootloader: {cmd}...");
+            _onProgress?.Invoke(85, "⚠️ NÃO DESLIGUE! Gravando Bootloader...", "Extraindo pacotes .bin e atualizando bootloader...");
+
+            // Limpa buffer serial antes de enviar o comando para evitar falsos prompts residuais
+            try
+            {
+                await session.SendCommandAsync(string.Empty, TimeSpan.FromSeconds(2), ct);
+            }
+            catch { }
+
+            // Envia o comando com Enter (\r)
+            await session.SendRawAsync(cmd + "\r", ct);
+
+            // Aguarda resposta inicial ou prompts de confirmação
+            var cmdFailed = false;
+            while (!cmdFailed && !bootConfigured && DateTime.UtcNow < deadline && !ct.IsCancellationRequested)
+            {
+                DeviceSession.ExpectResult res;
+                try
+                {
+                    res = await session.WaitForAsync(
+                        new StopCondition[]
+                        {
+                            new StopCondition.Contains("[Y/N]", "[Y/N]"),
+                            new StopCondition.Contains("Continue?", "Continue?"),
+                            new StopCondition.Contains("Overwrite", "Overwrite"),
+                            new StopCondition.Contains("delete the file", "delete the file"),
+                            new StopCondition.Contains("Verifying the file", "Verifying the file"),
+                            new StopCondition.Contains("Decompressing", "Decompressing"),
+                            new StopCondition.Contains("Done.", "Done."),
+                            new StopCondition.Contains("successfully set", "successfully set"),
+                            new StopCondition.Contains("main startup software image", "main startup software image"),
+                            new StopCondition.Contains("will be used as the main startup", "will be used as the main startup"),
+                            new StopCondition.Contains("Wrong parameter", "Wrong parameter"),
+                            new StopCondition.Contains("Unrecognized command", "Unrecognized command"),
+                            new StopCondition.Contains("No sufficient storage space", "No sufficient storage space"),
+                            new StopCondition.Contains("File is bad or damaged", "File is bad or damaged"),
+                            new StopCondition.Contains("Failed.", "Failed."),
+                            new StopCondition.Prompt()
+                        },
+                        TimeSpan.FromSeconds(45),
+                        ct);
+                }
+                catch (SessionTimeoutException)
+                {
+                    // Se der timeout de 45s durante decompressão longa, acorda e verifica progresso
+                    await ProgressAsync("    -> Descompactação em andamento na Flash (processando)...");
+                    try
+                    {
+                        var probeStatus = await session.SendCommandAsync(string.Empty, TimeSpan.FromSeconds(3), ct);
+                        if (probeStatus.Contains("[Y/N]", StringComparison.OrdinalIgnoreCase))
+                        {
+                            await session.SendRawAsync("Y\r", ct);
+                        }
+                    }
+                    catch { }
+                    continue;
+                }
+
+                var text = res.Output ?? "";
+
+                // 1. Se retornou erro de sintaxe imediato, tenta próxima variação (ex: slot 1 main)
+                if (text.Contains("Wrong parameter", StringComparison.OrdinalIgnoreCase) ||
+                    text.Contains("Unrecognized command", StringComparison.OrdinalIgnoreCase))
+                {
+                    await ProgressAsync($"    [AVISO] Sintaxe '{cmd}' não aceita pelo Comware: {text.Trim().Split('\n').LastOrDefault()?.Trim()}. Tentando alternativa...");
+                    cmdFailed = true;
+                    break;
+                }
+
+                // 2. Erros fatais de flash / corrupção
+                if (text.Contains("No sufficient storage space", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException("Espaço insuficiente na Flash para descompactar a nova versão.");
+                }
+                if (text.Contains("File is bad or damaged", StringComparison.OrdinalIgnoreCase) ||
+                    text.Contains("Failed.", StringComparison.OrdinalIgnoreCase))
+                {
+                    await ProgressAsync($"[ERRO CRÍTICO] Imagem {fileName} corrompida na Flash ({text.Trim()}).");
+                    return false;
+                }
+
+                // 3. Prompts de confirmação [Y/N]
+                if (text.Contains("[Y/N]", StringComparison.OrdinalIgnoreCase) ||
+                    text.Contains("Continue?", StringComparison.OrdinalIgnoreCase) ||
+                    text.Contains("Overwrite", StringComparison.OrdinalIgnoreCase) ||
+                    text.Contains("delete the file", StringComparison.OrdinalIgnoreCase))
+                {
+                    await ProgressAsync("    -> Confirmando descompactação no Comware (Y)...");
+                    await session.SendRawAsync("Y\r", ct);
+                    await Task.Delay(1000, ct);
+                    continue;
+                }
+
+                // 4. Progresso de descompactação / verificação
+                if (text.Contains("Verifying the file", StringComparison.OrdinalIgnoreCase) ||
+                    text.Contains("Decompressing", StringComparison.OrdinalIgnoreCase))
+                {
+                    _onProgress?.Invoke(90, "⚠️ NÃO DESLIGUE! Descompactando...", "Extraindo pacotes .bin na Flash (pode levar de 1 a 3 min)...");
+                    var lastLine = text.Trim().Split('\n').LastOrDefault()?.Trim() ?? "";
+                    if (!string.IsNullOrWhiteSpace(lastLine))
+                        await ProgressAsync($"[*] {lastLine}");
+                    continue;
+                }
+
+                // 5. Sucesso explícito
+                if (text.Contains("successfully set", StringComparison.OrdinalIgnoreCase) ||
+                    text.Contains("main startup software image", StringComparison.OrdinalIgnoreCase) ||
+                    text.Contains("will be used as the main startup", StringComparison.OrdinalIgnoreCase))
+                {
+                    await ProgressAsync($"[OK] Boot-loader confirmou gravação de {targetVersionTag}!");
+                    bootConfigured = true;
+                    break;
+                }
+
+                // 6. Prompt retornado: valida se o bootloader foi de fato alterado
+                if (res.Matched is StopCondition.Prompt)
+                {
+                    await Task.Delay(1000, ct);
+                    var check = await session.SendCommandAsync("display boot-loader", TimeSpan.FromSeconds(10), ct);
+                    if (check.Contains(targetVersionTag, StringComparison.OrdinalIgnoreCase) ||
+                        (!string.IsNullOrEmpty(targetNorm) && check.Contains(targetNorm, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        await ProgressAsync($"[OK] Boot-loader confirmado via 'display boot-loader' apontando para {targetVersionTag}!");
+                        bootConfigured = true;
+                        break;
+                    }
+
+                    // Se não configurou e não foi erro explícito, loga e tenta próxima sintaxe
+                    await ProgressAsync($"    [INFO] Prompt retornou sem confirmação do bootloader. Saída: {text.Trim().Replace("\r", "").Replace("\n", " | ")}");
+                    cmdFailed = true;
+                    break;
+                }
+            }
+        }
+
+        // Validação final via display boot-loader
+        if (!bootConfigured)
+        {
+            try
+            {
+                var finalCheck = await session.SendCommandAsync("display boot-loader", TimeSpan.FromSeconds(10), ct);
+                if (finalCheck.Contains(targetVersionTag, StringComparison.OrdinalIgnoreCase) ||
+                    (!string.IsNullOrEmpty(targetNorm) && finalCheck.Contains(targetNorm, StringComparison.OrdinalIgnoreCase)))
+                {
+                    bootConfigured = true;
+                }
+            }
+            catch { }
+        }
+
+        return bootConfigured;
     }
 
     private async Task ProgressAsync(string message)
