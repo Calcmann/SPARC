@@ -4,7 +4,8 @@ public enum BootEventType
 {
     Output,
     RommonDetected,
-    OsBootDetected
+    OsBootDetected,
+    RommonInitialized
 }
 
 public sealed record BootEvent(

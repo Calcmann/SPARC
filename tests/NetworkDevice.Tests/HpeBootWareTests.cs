@@ -1,5 +1,6 @@
 using NetworkDevice.Core.Recovery;
 using NetworkDevice.Core.Session;
+using NetworkDevice.Protocols.Hpe;
 using NetworkDevice.Tests.TestDoubles;
 using Xunit;
 
@@ -65,7 +66,7 @@ public sealed class HpeBootWareTests
     {
         var profile = BootInterruptProfiles.FindById(idOrName);
         Assert.Equal("cisco.c841.break", profile.Id);
-        Assert.Equal(BootInterruptMethod.Dual, profile.Method);
+        Assert.Equal(BootInterruptMethod.Break, profile.Method);
     }
 
     [Fact]
@@ -119,6 +120,24 @@ public sealed class HpeBootWareTests
         var result = detector.ClassifyPrompt(banner);
         Assert.Equal(NetworkDevice.Core.Domain.DeviceManufacturer.Hpe, result.Manufacturer);
         Assert.NotEqual(NetworkDevice.Core.Domain.DeviceOperatingState.BootFailure, result.OperatingState);
+        Assert.Equal(NetworkDevice.Core.Domain.DeviceOperatingState.Ready, result.OperatingState);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_DoesNotClassifyGnuLicenseNoticeAsBootware()
+    {
+        var detector = new NetworkDevice.Core.Detection.DeviceDetector();
+        var licenseNotice = @"
+Thus, it is not the intent of this section to claim rights or contest your
+rights to work written entirely by you; rather, the intent is to exercise the
+right to control the distribution of derivative or collective works based on the
+Library.
+Please enter q/Q to quit,other key continue....";
+
+        var result = detector.ClassifyPrompt(licenseNotice, NetworkDevice.Core.Domain.DeviceSeries.Msr954);
+        Assert.Equal(NetworkDevice.Core.Domain.DeviceManufacturer.Hpe, result.Manufacturer);
+        Assert.NotEqual(NetworkDevice.Core.Domain.DeviceOperatingState.BootFailure, result.OperatingState);
+        Assert.NotEqual(NetworkDevice.Core.Domain.BootState.Bootware, result.BootState);
         Assert.Equal(NetworkDevice.Core.Domain.DeviceOperatingState.Ready, result.OperatingState);
     }
 
@@ -198,6 +217,149 @@ public sealed class HpeBootWareTests
     {
         var (state, _) = HpeBootWareStateMachine.DetectState("|<1> Boot System");
         Assert.NotEqual(HpeMenuState.ComwareCli, state);
+    }
+
+    [Fact]
+    public void HpeBootWareImageRejectedException_InitializesPropertiesCorrectly()
+    {
+        var ex = new HpeBootWareImageRejectedException("MSR954-CMW710-R0605P20.IPE", "R0605P20", "Loading boot image fails.");
+        Assert.Equal("MSR954-CMW710-R0605P20.IPE", ex.RejectedFileName);
+        Assert.Equal("R0605P20", ex.TargetVersion);
+        Assert.Equal("Loading boot image fails.", ex.Reason);
+        Assert.Contains("MSR954-CMW710-R0605P20.IPE", ex.Message);
+    }
+
+    [Fact]
+    public async Task AguardarRetornoHpePosRebootAsync_WhenLoadingBootImageFails_AbortsAndFlagsRejection()
+    {
+        var output = "Loading file: flash:/msr954-cmw710-r0605p20.bin ... fails.\r\nchoice(0-9): ";
+        var transport = new ScriptedTransport(cmd => output, initialOutput: output);
+        var session = new DeviceSession(transport, new SessionOptions());
+        await session.ConnectAsync();
+        var upgrader = new HpeComwareUpgrader();
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var result = await upgrader.AguardarRetornoHpePosRebootAsync(session, "R0605P20", cts.Token, initialDelaySeconds: 0);
+
+        Assert.False(result);
+        Assert.True(upgrader.BootWareRepeatedMenuDetected);
+        Assert.NotNull(upgrader.LastBootWareError);
+        Assert.Contains("fail", upgrader.LastBootWareError, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task AguardarRetornoHpePosRebootAsync_WhenMenuRepeats3Times_AbortsAndFlagsRejection()
+    {
+        var menu = "=======================<EXTENDED-BOOTWARE MENU>=======================\r\n|<1> Boot System\r\nchoice(0-9): ";
+        var transport = new ScriptedTransport(cmd => menu, initialOutput: menu);
+        var session = new DeviceSession(transport, new SessionOptions());
+        await session.ConnectAsync();
+        var upgrader = new HpeComwareUpgrader();
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+        var result = await upgrader.AguardarRetornoHpePosRebootAsync(session, "R0605P20", cts.Token, initialDelaySeconds: 0);
+
+        Assert.False(result);
+        Assert.True(upgrader.BootWareRepeatedMenuDetected);
+        Assert.NotNull(upgrader.LastBootWareError);
+        Assert.Contains("Boot System", upgrader.LastBootWareError);
+    }
+
+    [Fact]
+    public async Task EnsureEthernetSubMenuAsync_WhenInExtendedBootWare_SendsOptionAndEntersSubMenu()
+    {
+        var atMainMenu = true;
+        var transport = new ScriptedTransport(
+            cmd =>
+            {
+                if (cmd == "3")
+                {
+                    atMainMenu = false;
+                    return "<ETHERNET SUBMENU>\r\nEnter your choice(0-5): ";
+                }
+                if (atMainMenu)
+                    return "<EXTENDED-BOOTWARE MENU>\r\nEnter your choice(0-9): ";
+                return "<ETHERNET SUBMENU>\r\nEnter your choice(0-5): ";
+            },
+            initialOutput: "<EXTENDED-BOOTWARE MENU>\r\nEnter your choice(0-9): ");
+
+        var session = new DeviceSession(transport, new SessionOptions());
+        await session.ConnectAsync();
+
+        var result = await HpeBootWareStateMachine.EnsureEthernetSubMenuAsync(session, "3", null, CancellationToken.None);
+        Assert.True(result);
+    }
+
+    [Fact]
+    public async Task EnsureEthernetSubMenuAsync_WhenOptionIsZero_NormalizesToThree()
+    {
+        var sentCommands = new List<string>();
+        var transport = new ScriptedTransport(
+            cmd =>
+            {
+                sentCommands.Add(cmd);
+                if (cmd == "3")
+                {
+                    return "<ETHERNET SUBMENU>\r\nEnter your choice(0-5): ";
+                }
+                return "<EXTENDED-BOOTWARE MENU>\r\nEnter your choice(0-9): ";
+            },
+            initialOutput: "<EXTENDED-BOOTWARE MENU>\r\nEnter your choice(0-9): ");
+
+        var session = new DeviceSession(transport, new SessionOptions());
+        await session.ConnectAsync();
+
+        var result = await HpeBootWareStateMachine.EnsureEthernetSubMenuAsync(session, "0", null, CancellationToken.None);
+        Assert.True(result);
+        Assert.Contains("3", sentCommands);
+        Assert.DoesNotContain("0", sentCommands);
+    }
+
+    [Fact]
+    public async Task UpgradeAsync_WhenRouterInBootWareWithEmptyFlash_InvokesBootWareTftpDownloaderInsteadOfRejecting()
+    {
+        var tempFile = Path.Combine(Path.GetTempPath(), "MSR954-CMW710-R6749P43.ipe");
+        File.WriteAllText(tempFile, "dummy");
+        try
+        {
+            var menu = "<EXTENDED-BOOTWARE MENU>\r\nEnter your choice(0-9): ";
+            var failBoot = "The image does not exist.\r\n<EXTENDED-BOOTWARE MENU>\r\nEnter your choice(0-9): ";
+            var tftpDownloaderCalled = false;
+
+            var transport = new ScriptedTransport(
+                cmd =>
+                {
+                    if (cmd == "1")
+                        return failBoot;
+                    return menu;
+                },
+                initialOutput: menu);
+
+            var session = new DeviceSession(transport, new SessionOptions());
+            await session.ConnectAsync();
+
+            var upgrader = new HpeComwareUpgrader();
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+            var result = await upgrader.UpgradeAsync(
+                session,
+                tempFile,
+                "192.168.1.2",
+                confirmBootLoaderUpdate: null,
+                requestOperatorAction: null,
+                cancellationToken: cts.Token,
+                bootWareTftpDownloader: (s, ethOpt, fwPath, hIp, rIp, mask, token) =>
+                {
+                    tftpDownloaderCalled = true;
+                    return Task.FromResult(false);
+                });
+
+            Assert.True(tftpDownloaderCalled);
+        }
+        finally
+        {
+            if (File.Exists(tempFile)) File.Delete(tempFile);
+        }
     }
 }
 

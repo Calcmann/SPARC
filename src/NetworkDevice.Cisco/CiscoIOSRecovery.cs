@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.RegularExpressions;
 using NetworkDevice.Core.Recovery;
 using NetworkDevice.Core.Session;
@@ -33,6 +34,10 @@ public sealed class CiscoIOSRecovery
 
     private static readonly Regex EraseConfirm = new(
         @"(?i)(?:continue\?|\[confirm\])",
+        RegexOptions.Compiled);
+
+    private static readonly Regex StrictCiscoPromptRegex = new(
+        @"^[A-Za-z0-9_\-\.]+(?:\(config[^\)]*\))?\s*[>#]\s*$",
         RegexOptions.Compiled);
 
     public delegate Task ProgressHandler(string message);
@@ -131,11 +136,13 @@ public sealed class CiscoIOSRecovery
         {
             stateMachine.TransitionTo(RecoveryState.RommonDetected, "Equipamento já está no ROMMON...");
             await ProgressAsync("Equipamento já está no ROMMON (sem firmware na Flash ou em bootloader).", cancellationToken);
-            try { await SendRommonCommandAsync(session, "confreg 0x2142", cancellationToken, requirePromptReturn: false); await Task.Delay(300, cancellationToken); } catch { }
+            await ProgressAsync("[*] Configurando registrador 0x2142 no ROMMON (ignora startup-config e senhas)...", cancellationToken);
+            try { await SendRommonCommandAsync(session, "confreg 0x2142", cancellationToken, requirePromptReturn: true); await Task.Delay(300, cancellationToken); } catch { }
             stateMachine.TransitionTo(RecoveryState.Completed, "Equipamento pronto no ROMMON para carga de firmware TFTP.");
             await ProgressAsync("\n=================================================================", cancellationToken);
             await ProgressAsync("  [OK] ROTEADOR NO MODO ROMMON (SEM FIRMWARE / FLASH VAZIA)", cancellationToken);
-            await ProgressAsync("  • Equipamento já se encontra no ROMMON aguardando gravação de imagem.", cancellationToken);
+            await ProgressAsync("  • Quebra de senha (confreg 0x2142) configurada no ROMMON.", cancellationToken);
+            await ProgressAsync("  • Equipamento aguardando gravação de imagem de firmware via TFTP.", cancellationToken);
             await ProgressAsync("  • Fase 1 concluída: Avançando para Atualização de Firmware via TFTP (Fase 2)...", cancellationToken);
             await ProgressAsync("=================================================================\n", cancellationToken);
             return;
@@ -172,7 +179,7 @@ public sealed class CiscoIOSRecovery
             await ProgressAsync($"Solicitado reload do equipamento. Monitorando boot...", cancellationToken);
         }
 
-        // Limpa buffers residuais do terminal antes de ligar o monitor de boot
+        // Drena buffers residuais da console antes de ligar o monitor de boot
         try
         {
             var drainBuf = new byte[2048];
@@ -474,6 +481,14 @@ public sealed class CiscoIOSRecovery
     {
         stateMachine.TransitionTo(RecoveryState.ExecutingRecovery, "Executando procedimentos de limpeza de senha...");
 
+        // Sincroniza e desobstrui a linha do terminal ROMMON com ENTER limpo antes de executar comandos
+        try
+        {
+            await session.WriteLineAsync(string.Empty, ct);
+            await Task.Delay(300, ct);
+        }
+        catch { }
+
         if (rommon == RommonKind.Switch)
         {
             await ProgressAsync("ROMMON detectado (switch). Preparando filesystem flash...", ct);
@@ -485,23 +500,26 @@ public sealed class CiscoIOSRecovery
         }
         else
         {
-            await ProgressAsync("ROMMON detectado (roteador Cisco 1900 / ISR). Definindo config-register 0x2142 (ignora startup-config)...", ct);
+            await ProgressAsync("ROMMON detectado (roteador Cisco 1900 / ISR / 841 / 921). Definindo config-register 0x2142 (ignora startup-config)...", ct);
             await SendRommonCommandAsync(session, "confreg 0x2142", ct);
             await Task.Delay(500, ct);
             await ProgressAsync("Reiniciando equipamento a partir do ROMMON (reset)...", ct);
             await SendRommonCommandAsync(session, "reset", ct, requirePromptReturn: false);
         }
 
-        await ProgressAsync("Aguardando boot da IOS sem startup-config (isso pode levar ~60-90s)...", ct);
+        // 1. Reseta prompt residual da sessão para nunca reutilizar 'rommon 1 >'
+        session.ResetPrompt();
+
+        // 2. Aguarda a reinicialização e descompressão do Cisco IOS com bypass de configuração (0x2142)
+        await ProgressAsync("Aguardando boot da IOS sem startup-config (isso pode levar ~60-120s)...", ct);
         await SkipInitialDialogAsync(session, ct);
 
-        // Aguarda estabilização do boot
-        await Task.Delay(2000, ct);
+        // 3. Aguarda estabilização do console pós-boot
+        await Task.Delay(1000, ct);
 
+        // 4. Entra em modo privilegiado (enable) - sem senha pois startup-config foi ignorado (0x2142)
         await ProgressAsync("Entrando em modo privilegiado (enable)...", ct);
-        await session.WriteLineAsync(string.Empty, ct);
-        await Task.Delay(200, ct);
-        var recoveryAdapter = new CiscoIOSAdapter(candidatePasswords: new[] { "PRO1AN" });
+        var recoveryAdapter = new CiscoIOSAdapter(candidatePasswords: new[] { "PRO1AN", "" });
         try
         {
             await recoveryAdapter.EnterPrivilegedExecAsync(session, cancellationToken: ct);
@@ -513,17 +531,23 @@ public sealed class CiscoIOSRecovery
             await WaitForPromptAsync(session, ct);
         }
 
+        // 5. Apaga permanentemente configurações e senhas antigas da NVRAM
         await ProgressAsync("Apagando configuração e removendo senha antiga (write erase)...", ct);
         await SendConfirmAsync(session, "write erase", EraseConfirm, waitForPrompt: true, ct);
 
-        await ProgressAsync("Restaurando config-register 0x2102 (boot normal)...", ct);
-        await session.WriteLineAsync("configure terminal", ct);
-        await WaitForPromptAsync(session, ct);
-        await session.WriteLineAsync("config-register 0x2102", ct);
-        await WaitForPromptAsync(session, ct);
-        await session.WriteLineAsync("end", ct);
-        await WaitForPromptAsync(session, ct);
+        // 6. Restaura config-register 0x2102 para que próximos boots carreguem startup-config normal (roteadores)
+        if (rommon == RommonKind.Router)
+        {
+            await ProgressAsync("Restaurando config-register 0x2102 (boot normal)...", ct);
+            await session.WriteLineAsync("configure terminal", ct);
+            await WaitForPromptAsync(session, ct);
+            await session.WriteLineAsync("config-register 0x2102", ct);
+            await WaitForPromptAsync(session, ct);
+            await session.WriteLineAsync("end", ct);
+            await WaitForPromptAsync(session, ct);
+        }
 
+        // 7. Salva a configuração limpa
         await ProgressAsync("Salvando configuração limpa (write memory)...", ct);
         await session.WriteLineAsync("write memory", ct);
         await WaitForPromptAsync(session, ct);
@@ -535,9 +559,13 @@ public sealed class CiscoIOSRecovery
 
     private async Task SkipInitialDialogAsync(DeviceSession session, CancellationToken ct)
     {
-        var bootTimeout = _bootWait; // Timeout amplo para descompressão e boot do IOS (geralmente 1 a 3 min)
+        var bootTimeout = _bootWait; // Timeout amplo para descompressão e boot do IOS (geralmente 3 a 5 min)
         var deadline = DateTime.UtcNow.Add(bootTimeout);
         var sw = System.Diagnostics.Stopwatch.StartNew();
+        bool decompressionCompleted = false;
+        bool decompressionReported = false;
+        bool bootCommandSent = false;
+        var lastKeepAlive = DateTime.UtcNow;
 
         await ProgressAsync("Aguardando inicialização do Cisco IOS e liberação do console (1 a 3 min)...", ct);
 
@@ -545,44 +573,83 @@ public sealed class CiscoIOSRecovery
         {
             var elapsedSec = (int)sw.Elapsed.TotalSeconds;
 
-            // Envia Enter para acordar console e desobstruir mensagens de syslog
-            await session.WriteLineAsync(string.Empty, ct);
+            // Só envia ENTER após 30 segundos ou se descompressão concluída, com intervalo mínimo de 4s
+            // (evita floodar o console serial durante bootstrap e auto-descompressão da DRAM)
+            if ((elapsedSec >= 30 || decompressionCompleted || _bootWait <= TimeSpan.FromSeconds(30)) && (DateTime.UtcNow - lastKeepAlive).TotalSeconds >= 4)
+            {
+                lastKeepAlive = DateTime.UtcNow;
+                await session.SendRawAsync("\r\n", ct);
+            }
 
             try
             {
                 var result = await session.WaitForAsync(
                     new StopCondition[]
                     {
-                        new StopCondition.LineRegex("autoinstall", new Regex(@"(?i)terminate\s+autoinstall|cancel\s+autoinstall")),
-                        new StopCondition.LineRegex("dialog", BootDialogPrompt),
-                        new StopCondition.LineRegex("dialog-fallback", new Regex(@"\?\s*\[yes/no\]")),
+                        new StopCondition.LineRegex("rommon-prompt", RommonRouterPrompt),
+                        new StopCondition.Contains("decompressing", "Self decompressing"),
+                        new StopCondition.Contains("ios_software", "Cisco IOS Software"),
+                        new StopCondition.LineRegex("terminate-autoinstall", new Regex(@"(?i)terminate\s+autoinstall|cancel\s+autoinstall")),
+                        new StopCondition.LineRegex("initial-dialog", BootDialogPrompt),
+                        new StopCondition.LineRegex("yes-no-choice", new Regex(@"\?\s*\[yes/no\]")),
                         new StopCondition.LineRegex("press-return", PressReturnPrompt),
-                        new StopCondition.LineRegex("cisco-prompt", new Regex(@"^[A-Za-z0-9_.-]+[>#]\s*$", RegexOptions.Compiled)),
-                        new StopCondition.Prompt()
+                        new StopCondition.LineRegex("cisco-prompt", StrictCiscoPromptRegex)
                     },
                     TimeSpan.FromSeconds(3),
                     ct);
 
+                if (result.Matched is StopCondition.Contains c)
+                {
+                    if (c.Text.Contains("Self decompressing") && !decompressionReported)
+                    {
+                        decompressionReported = true;
+                        await ProgressAsync("  │ [BOOT] Descompactando imagem Cisco IOS na memória DRAM (Self decompressing)...", ct);
+                    }
+                    else if (c.Text.Contains("Cisco IOS Software"))
+                    {
+                        decompressionCompleted = true;
+                        await ProgressAsync("  │ [BOOT] Kernel Cisco IOS em execução. Aguardando serviços...", ct);
+                    }
+                    continue;
+                }
+
+                if (result.Output.Contains("[OK]") && decompressionReported && !decompressionCompleted)
+                {
+                    decompressionCompleted = true;
+                    await ProgressAsync("  │ [BOOT] Descompressão da imagem IOS concluída com sucesso! [OK]", ct);
+                }
+
                 if (result.Matched is StopCondition.LineRegex lr)
                 {
-                    if (lr.Name == "autoinstall")
+                    if (lr.Name == "rommon-prompt")
+                    {
+                        if (!bootCommandSent)
+                        {
+                            bootCommandSent = true;
+                            await ProgressAsync("[*] Prompt ROMMON pós-reset detectado — iniciando boot ('boot')...", ct);
+                            await session.SendRawAsync("boot\r", ct);
+                            await Task.Delay(300, ct);
+                        }
+                        continue;
+                    }
+                    else if (lr.Name == "terminate-autoinstall")
                     {
                         await ProgressAsync("[*] Diálogo autoinstall detectado — enviando 'yes' para cancelar...", ct);
                         await session.WriteLineAsync("yes", ct);
-                        await Task.Delay(800, ct);
+                        await Task.Delay(500, ct);
                     }
-                    else if (lr.Name == "dialog")
+                    else if (lr.Name == "initial-dialog")
                     {
-                        await ProgressAsync("[*] Diálogo inicial detectado — enviando 'no'...", ct);
+                        await ProgressAsync("[*] Diálogo de configuração inicial detectado — enviando 'no'...", ct);
                         await session.WriteLineAsync("no", ct);
-                        await Task.Delay(800, ct);
+                        await Task.Delay(500, ct);
                     }
-                    else if (lr.Name == "dialog-fallback")
+                    else if (lr.Name == "yes-no-choice")
                     {
                         var answer = result.Output.Contains("autoinstall", StringComparison.OrdinalIgnoreCase) ? "yes" : "no";
                         await ProgressAsync($"[*] Diálogo [yes/no] detectado — enviando '{answer}'...", ct);
                         await session.WriteLineAsync(answer, ct);
-                        await Task.Delay(800, ct);
+                        await Task.Delay(500, ct);
                     }
                     else if (lr.Name == "press-return")
                     {
@@ -590,31 +657,48 @@ public sealed class CiscoIOSRecovery
                         await session.WriteLineAsync(string.Empty, ct);
                         await Task.Delay(500, ct);
                     }
-                    else if (lr.Name == "cisco-prompt" || result.Matched is StopCondition.Prompt)
+                    else if (lr.Name == "cisco-prompt")
                     {
+                        var line = result.Output.Trim();
+                        // Rejeita qualquer falso positivo de rommon ou switch:
+                        if (line.StartsWith("rommon", StringComparison.OrdinalIgnoreCase) ||
+                            line.StartsWith("switch:", StringComparison.OrdinalIgnoreCase) ||
+                            line.StartsWith("common", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
+                        // BLINDAGEM ANTI-ECO PRÉ-BOOT:
+                        // O roteador Cisco não inicializa o IOS completo em menos de 30 segundos (em ambiente real).
+                        if (_bootWait > TimeSpan.FromSeconds(30) && elapsedSec < 30 && !decompressionCompleted)
+                        {
+                            continue;
+                        }
+
                         await ProgressAsync("[OK] Prompt do Cisco IOS detectado. Console pronto.", ct);
                         return;
                     }
                 }
-                else if (result.Matched is StopCondition.Prompt)
-                {
-                    await ProgressAsync("[OK] Prompt do Cisco IOS detectado. Console pronto.", ct);
-                    return;
-                }
             }
             catch (SessionTimeoutException)
             {
-                await ProgressAsync($"Aguardando boot e prontidão do console Cisco IOS... ({elapsedSec}s)", ct);
-                // Envia Enter para renovar prompt
-                await session.WriteLineAsync(string.Empty, ct);
+                var phase = decompressionReported ? "descompactando imagem" : (elapsedSec < 30 ? "reiniciando hardware" : "carregando sistema");
+                await ProgressAsync($"Aguardando boot e prontidão do console Cisco IOS ({phase}... {elapsedSec}s)", ct);
             }
 
-            if (session.CurrentPrompt != null && (session.CurrentPrompt.EndsWith(">") || session.CurrentPrompt.EndsWith("#")))
+            // Checagem segura de CurrentPrompt (somente se não for rommon/switch e já tiver passado tempo de boot)
+            if (session.CurrentPrompt != null &&
+                !session.CurrentPrompt.StartsWith("rommon", StringComparison.OrdinalIgnoreCase) &&
+                !session.CurrentPrompt.StartsWith("switch:", StringComparison.OrdinalIgnoreCase) &&
+                StrictCiscoPromptRegex.IsMatch(session.CurrentPrompt) &&
+                (_bootWait <= TimeSpan.FromSeconds(30) || elapsedSec >= 30 || decompressionCompleted))
             {
                 await ProgressAsync($"[OK] Prompt do IOS detectado ({session.CurrentPrompt}). Console pronto.", ct);
                 return;
             }
         }
+
+        throw new DeviceSessionException("Tempo esgotado aguardando inicialização do Cisco IOS após o reload.");
     }
 
     private async Task WaitForPromptAsync(DeviceSession session, CancellationToken ct)
@@ -628,13 +712,51 @@ public sealed class CiscoIOSRecovery
                 var result = await session.WaitForAsync(
                     new StopCondition[]
                     {
-                        new StopCondition.Prompt(),
-                        new StopCondition.LineRegex("cisco-prompt", new Regex(@"(?i)^[A-Za-z0-9_.+()/-]+[>#]\s*$", RegexOptions.Compiled))
+                        new StopCondition.LineRegex("terminate-autoinstall", new Regex(@"(?i)terminate\s+autoinstall|cancel\s+autoinstall")),
+                        new StopCondition.LineRegex("initial-dialog", BootDialogPrompt),
+                        new StopCondition.LineRegex("yes-no-choice", new Regex(@"\?\s*\[yes/no\]")),
+                        new StopCondition.LineRegex("press-return", PressReturnPrompt),
+                        new StopCondition.LineRegex("cisco-prompt", StrictCiscoPromptRegex)
                     },
                     TimeSpan.FromSeconds(3),
                     ct);
 
-                return;
+                if (result.Matched is StopCondition.LineRegex lr)
+                {
+                    if (lr.Name == "terminate-autoinstall")
+                    {
+                        await session.WriteLineAsync("yes", ct);
+                        await Task.Delay(500, ct);
+                        continue;
+                    }
+                    if (lr.Name == "initial-dialog")
+                    {
+                        await session.WriteLineAsync("no", ct);
+                        await Task.Delay(500, ct);
+                        continue;
+                    }
+                    if (lr.Name == "yes-no-choice")
+                    {
+                        var answer = result.Output.Contains("autoinstall", StringComparison.OrdinalIgnoreCase) ? "yes" : "no";
+                        await session.WriteLineAsync(answer, ct);
+                        await Task.Delay(500, ct);
+                        continue;
+                    }
+                    if (lr.Name == "press-return")
+                    {
+                        await session.WriteLineAsync(string.Empty, ct);
+                        await Task.Delay(500, ct);
+                        continue;
+                    }
+                    if (lr.Name == "cisco-prompt")
+                    {
+                        var last = session.CurrentPrompt ?? result.Output.Trim();
+                        if (!last.StartsWith("rommon", StringComparison.OrdinalIgnoreCase) && !last.StartsWith("switch:", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return;
+                        }
+                    }
+                }
             }
             catch (SessionTimeoutException)
             {
@@ -662,22 +784,29 @@ public sealed class CiscoIOSRecovery
                     new StopCondition[]
                     {
                         new StopCondition.LineRegex("confirm", confirmRegex),
-                        new StopCondition.Prompt()
+                        new StopCondition.LineRegex("cisco-prompt", StrictCiscoPromptRegex)
                     },
                     TimeSpan.FromSeconds(3),
                     ct);
 
-                if (result.Matched is StopCondition.LineRegex)
+                if (result.Matched is StopCondition.LineRegex lr)
                 {
-                    await ProgressAsync("Confirmação solicitada pelo equipamento [confirm] — enviando ENTER...", ct);
-                    await session.WriteLineAsync(string.Empty, ct);
-                    if (waitForPrompt)
-                        await WaitForPromptAsync(session, ct);
-                    return;
-                }
-                else if (result.Matched is StopCondition.Prompt)
-                {
-                    return;
+                    if (lr.Name == "confirm")
+                    {
+                        await ProgressAsync("Confirmação solicitada pelo equipamento [confirm] — enviando ENTER...", ct);
+                        await session.WriteLineAsync(string.Empty, ct);
+                        if (waitForPrompt)
+                            await WaitForPromptAsync(session, ct);
+                        return;
+                    }
+                    else if (lr.Name == "cisco-prompt")
+                    {
+                        var last = session.CurrentPrompt ?? result.Output.Trim();
+                        if (!last.StartsWith("rommon", StringComparison.OrdinalIgnoreCase) && !last.StartsWith("switch:", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return;
+                        }
+                    }
                 }
             }
             catch (SessionTimeoutException)
@@ -721,7 +850,8 @@ public sealed class CiscoIOSRecovery
             }
             catch (SessionTimeoutException)
             {
-                await ProgressAsync($"Comando '{command}' não confirmado — repetindo...", ct);
+                await ProgressAsync($"Comando '{command}' não confirmado — renovando linha com ENTER e repetindo...", ct);
+                try { await session.WriteLineAsync(string.Empty, ct); } catch { }
                 await Task.Delay(500, ct);
             }
         }

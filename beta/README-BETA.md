@@ -1,30 +1,39 @@
-# SPARC Beta - variante de testes (pasta isolada, base intacta)
+# SPARC Beta - Variante de Testes (Pasta Isolada, Base Intacta)
 
-Tudo aqui vive em `C:\SPARC\beta\` + saida em `C:\SPARC\dist-beta\`.
-Nada em `C:\SPARC\src\` e modificado por este fluxo.
+Todo o processo de empacotamento de teste vive em `C:\SPARC\beta\` e gera executáveis em `C:\SPARC\dist-beta\`.
+Nenhum arquivo em `C:\SPARC\src\` é modificado por este fluxo.
 
-## Gerar o exe unico (padrao: autocontido ~168 MB, sem dependencias)
-powershell -ExecutionPolicy Bypass -File C:\SPARC\beta\Build-Beta.ps1 -Dias 30
-Saida: `C:\SPARC\dist-beta\SPARC-Beta-Testes.exe` (single-file, roda em notebook sem .NET).
+## Como Gerar o Executável Único (Autocontido, Sem Dependências)
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\SPARC\beta\Build-Beta.ps1
+```
+Saída gerada exclusivamente em: `C:\SPARC\dist-beta\SPARC-Beta-Testes-<versao>.exe` (executável único, roda diretamente sem requerer instalação do runtime .NET).
 
-## Pular ofuscacao (debug da beta)
-powershell -ExecutionPolicy Bypass -File C:\SPARC\beta\Build-Beta.ps1 -Dias 30 -SemOfuscacao
+## Pular Ofuscação (Debug / Diagnóstico)
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\SPARC\beta\Build-Beta.ps1 -SemOfuscacao
+```
 
-## Ativar num notebook de teste
-1. Rode o exe - a tela mostra ID + dados de ativacao (SPBREQ...).
-2. Tecnico envia o codigo SPBREQ; o gestor gera a chave de liberacao:
-   - **Via SPARC Admin (Recomendado)**: Abra pelo atalho no Desktop `SPARC Admin` ou execute `C:\SPARC\Iniciar_Admin.cmd`. Cole o SPBREQ, escolha os dias e clique em "Gerar Chave" (com opcao de copiar direto formatado para WhatsApp!).
+## Ativação e Governança de Usuários
+1. Ao executar o aplicativo pela primeira vez, a tela exibe o identificador único da máquina e as opções de ativação.
+2. O técnico realiza a solicitação de acesso:
+   - **Online (Recomendado)**: Preenche a ficha na aba *"Cadastro & Ativação Online"* e clica em enviar. O gestor recebe a solicitação em tempo real no **SPARC ADMIN**.
+   - **Manual / Offline**: Copia o código `SPBREQ...` e envia para o gestor.
+3. Liberação pelo Gestor:
+   - **Via SPARC Admin**: Abra pelo atalho no Desktop `SPARC Admin` ou execute `C:\SPARC\Iniciar_Admin.cmd`. Na aba *"Solicitações Pendentes"*, o gestor aprova diretamente pela ficha de cadastro do técnico com 1 clique (ou gera a chave manual para WhatsApp na aba *"Chaves de Ativação"*).
    - **Via CLI PowerShell**:
-     powershell -ExecutionPolicy Bypass -File C:\SPARC\beta\Gerar-ChaveBeta.ps1 -Req "SPBREQ..." -Dias 30
-3. O técnico cola a chave SPB1... na tela - licenca ativada e amarrada a maquina.
+     ```powershell
+     powershell -ExecutionPolicy Bypass -File C:\SPARC\beta\Gerar-ChaveBeta.ps1 -Req "SPBREQ..."
+     ```
+4. A liberação ocorre com a assinatura digital RSA amarrada à máquina do técnico.
 
-## Regras embutidas
-- Time-bomb: build expira (padrao: build + 30 dias) - precisa de novo build.
-- Node-locking: chave amarrada a maquina (MachineGuid + MAC + serial do volume, com tolerancia a troca de dock).
-- Anti-rollback de relogio + NTP oportunista (offline nunca bloqueia por falta de WAN).
-- Ofuscacao Obfuscar (rename + strings) com skip nas 4 classes XAML; resto ofuscado.
-- Licenca em %ProgramData%\SPARC-Beta\license.key.
+## Regras de Governança
+- **Sem Vencimento Nativo de 30 Dias**: O aplicativo não possui expiração forçada por calendário local no cliente. O controle de validade e permissões é governado centralmente pela ficha de cadastro de cada usuário no **SPARC ADMIN**.
+- **Gestão Centralizada**: Suspensões, revogações imediatas e auditorias de cópias em campo são feitas via módulo **SPARC ADMIN**.
+- **Node-locking**: Chave amarrada à identidade criptográfica da máquina (MachineGuid + MAC + serial do volume, com tolerância a docks).
+- **Anti-rollback de Relógio + NTP Oportunista**: Não bloqueia técnicos em campo sem conectividade.
+- **Ofuscação de Código**: Símbolos privados renomeados e strings criptografadas.
+- **Armazenamento de Licença Local**: Em `%ProgramData%\SPARC-Beta\license.key`.
 
-## Avisos
-- beta/keys/private.pem = segredo: nunca envie junto, nunca commite.
-- Protecao nivel beta (ofuscacao basica); suficiente para homologacao.
+## Avisos de Segurança
+- `beta/keys/private.pem` é a chave privada mestra de assinatura: nunca distribuir ou commitar.

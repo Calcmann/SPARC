@@ -29,7 +29,7 @@ The backup boot app is: flash:/msr954-cmw710-system-r6749p20.bin
 
     private static string InvokeExtrairVersaoDeNomeArquivo(string fileName)
     {
-        var method = typeof(HpeComwareUpgrader).GetMethod("ExtrairVersaoDeNomeArquivo", BindingFlags.NonPublic | BindingFlags.Static);
+        var method = typeof(HpeComwareUpgrader).GetMethod("ExtrairVersaoDeNomeArquivo", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(method);
         return (string)method.Invoke(null, new object[] { fileName })!;
     }

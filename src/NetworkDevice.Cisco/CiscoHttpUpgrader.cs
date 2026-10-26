@@ -295,6 +295,7 @@ public sealed class CiscoHttpUpgrader
                     TimeSpan.FromSeconds(15), cancellationToken);
             }
             await session.WriteLineAsync(string.Empty, cancellationToken); // confirma [confirm]
+            session.ResetPrompt();
             await Task.Delay(10000, cancellationToken); // Aguarda reset físico da CPU do roteador
         }
         catch (Exception exReload)

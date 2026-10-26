@@ -121,11 +121,13 @@ public sealed class FirmwareRepositoryService
     public string? GitHubToken { get; set; }
 
     private readonly string _localRepositoryRoot;
+    private readonly bool _isCustomLocalRoot;
 
     public string LocalRepositoryRoot => _localRepositoryRoot;
 
     public FirmwareRepositoryService(string? customLocalRoot = null, string? customToken = null)
     {
+        _isCustomLocalRoot = !string.IsNullOrWhiteSpace(customLocalRoot);
         _localRepositoryRoot = ResolveLocalRoot(customLocalRoot);
         GitHubToken = customToken ?? ResolveGitHubToken();
         EnsureLocalRepositoryStructure();
@@ -290,7 +292,9 @@ public sealed class FirmwareRepositoryService
 
         if (validFiles.Count == 0)
         {
-            // Fallback: varre diretórios comuns de Download e documentos (muito comuns no Android e Windows)
+            if (!_isCustomLocalRoot)
+            {
+                // Fallback: varre diretórios comuns de Download e documentos (muito comuns no Android e Windows)
             var candidateRoots = new List<string>();
             try
             {
@@ -348,6 +352,7 @@ public sealed class FirmwareRepositoryService
                     }
                 }
                 catch { }
+            }
             }
 
             return null;

@@ -100,6 +100,19 @@ public class CiscoIOSRecoveryTests
     }
 
     [Fact]
+    public async Task DiagnoseAccessStateAsync_WhenRommonPrompt_ReturnsAlreadyInRommon()
+    {
+        var transport = new ScriptedTransport(_ => "rommon 1 >\r\n");
+        await using var session = new DeviceSession(transport, new SessionOptions());
+        var recovery = new CiscoIOSRecovery();
+
+        var (state, rommon) = await recovery.DiagnoseAccessStateAsync(session, CancellationToken.None);
+
+        Assert.Equal(DeviceAccessState.AlreadyInRommon, state);
+        Assert.Equal(CiscoIOSRecovery.RommonKind.Router, rommon);
+    }
+
+    [Fact]
     public async Task DiagnoseAccessStateAsync_WhenUserPromptRequiresEnablePassword_ReturnsPasswordLocked()
     {
         var transport = new ScriptedTransport(cmd => cmd == "enable" ? "Password: " : "Router>\r\n");
@@ -480,6 +493,143 @@ public class CiscoIOSRecoveryTests
 
             await Task.Delay(50, cancellationToken);
             return 0;
+        }
+    }
+
+    [Fact]
+    public void Cisco841_BootInterruptProfile_Has170sWindow_AndMatchesRommonPrompt()
+    {
+        var profile = BootInterruptProfiles.Cisco841;
+        Assert.Equal("cisco.c841.break", profile.Id);
+        Assert.Equal(TimeSpan.FromMinutes(2.5), profile.MaxWindow);
+        Assert.Equal(150, profile.MaxTotalTransmissions);
+        Assert.Equal(BootInterruptMethod.Break, profile.Method);
+
+        // Verifica que o prompt clássico do Cisco 841 (rommon 1 >) casa imediatamente
+        var testPrompts = new[] { "rommon 1 >", "rommon 1 > ", "rommon 2 >", "rommon >", "rommon 10 >" };
+        foreach (var prompt in testPrompts)
+        {
+            var matched = profile.RommonPatterns.Any(r => r.IsMatch(prompt));
+            Assert.True(matched, $"Prompt '{prompt}' deve casar com os RommonPatterns do Cisco841");
+        }
+
+        // Garante isolamento: outros modelos não foram modificados e mantêm suas próprias políticas
+        Assert.Equal(BootInterruptMethod.CtrlC, BootInterruptProfiles.Cisco900.Method);
+        Assert.Equal(BootInterruptMethod.CtrlB, BootInterruptProfiles.HpeMsr954.Method);
+        Assert.Equal("fortinet.fgt40f.fortios", BootInterruptProfiles.FortiGate40F.Id);
+    }
+
+    [Fact]
+    public async Task RecoverAndResetAsync_Cisco841_UsesBreakAndCapturesRommonPrompt()
+    {
+        var transport = new RecoverySimTransport(
+            responder: cmd => cmd switch
+            {
+                "confreg 0x2142" => new[] { "rommon 1 >\r\n" },
+                "reset" => new[] { "System Bootstrap...\r\nWould you like to enter the initial configuration dialog? [yes/no]: " },
+                "no" => new[] { "Press RETURN to get started\r\n", "Router>\r\n" },
+                "enable" => new[] { "Router#\r\n" },
+                "write erase" => new[] { "Erasing the nvram filesystem will remove all configuration files! Continue? [confirm]\r\n", "Router#\r\n" },
+                "configure terminal" => new[] { "Router(config)#\r\n" },
+                "config-register 0x2102" => new[] { "Router(config)#\r\n" },
+                "end" => new[] { "Router#\r\n" },
+                "write memory" => new[] { "Building configuration...\r\n[OK]\r\nRouter#\r\n" },
+                _ => Array.Empty<string>()
+            },
+            initialOutput: "User Access Verification\r\nPassword: ",
+            rommonPrompt: "rommon 1 >\r\n",
+            initialSilenceMs: 100);
+
+        await using var session = new DeviceSession(transport, new SessionOptions());
+        var recovery = new CiscoIOSRecovery(
+            bootWait: TimeSpan.FromSeconds(5),
+            commandTimeout: TimeSpan.FromSeconds(2),
+            verifyTimeout: TimeSpan.FromSeconds(2),
+            profile: BootInterruptProfiles.Cisco841);
+
+        await recovery.RecoverAndResetAsync(session, (_, _) => Task.CompletedTask);
+
+        Assert.Equal(BootInterruptMethod.Break, BootInterruptProfiles.Cisco841.Method);
+        Assert.True(transport.BreakCount > 0);
+        Assert.Contains("confreg 0x2142", transport.Commands);
+    }
+
+    [Fact]
+    public async Task Cisco841_BootInterruptScheduler_SwitchesToEnterAfter30Transmissions()
+    {
+        var transport = new TestBreakTrackingTransport();
+        var profile = new BootInterruptProfile
+        {
+            Id = "cisco.c841.break",
+            Name = "Cisco Série 800 / C841M",
+            Family = "ISR 800 / 841",
+            Method = BootInterruptMethod.Break,
+            InitialDelay = TimeSpan.Zero,
+            BurstCount = 1,
+            BurstInterval = TimeSpan.Zero,
+            RetryInterval = TimeSpan.FromMilliseconds(5),
+            MaxWindow = TimeSpan.FromSeconds(5),
+            MaxTotalTransmissions = 31
+        };
+
+        var scheduler = new BootInterruptScheduler(transport, profile);
+        var methods = new List<string>();
+        scheduler.OnBurstSent += (_, m) => methods.Add(m);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        await scheduler.RunAsync(cts.Token);
+
+        Assert.Equal(31, scheduler.TransmissionsCount);
+        Assert.Equal(30, transport.BreakCount);
+        Assert.True(transport.WriteCount > 30);
+        Assert.Contains("Enter @ 1s", methods);
+    }
+
+    private sealed class TestBreakTrackingTransport : ITransport
+    {
+        public int BreakCount { get; private set; }
+        public int WriteCount { get; private set; }
+        public bool IsOpen => true;
+        public Task OpenAsync(CancellationToken ct = default) => Task.CompletedTask;
+        public Task SendBreakAsync(CancellationToken ct = default) { BreakCount++; return Task.CompletedTask; }
+        public ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken ct = default) { WriteCount++; return ValueTask.CompletedTask; }
+        public Task<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default) => Task.FromResult(0);
+        public Task CloseAsync() => Task.CompletedTask;
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    [Fact]
+    public void CiscoAllModels_RommonPromptPatterns_MatchAndRespondToEnter()
+    {
+        var profiles = new[]
+        {
+            BootInterruptProfiles.Cisco900,
+            BootInterruptProfiles.Cisco841,
+            BootInterruptProfiles.Cisco1900,
+            BootInterruptProfiles.Cisco2900,
+            BootInterruptProfiles.CiscoStandardBreak,
+            BootInterruptProfiles.CiscoUniversal,
+            BootInterruptProfiles.CiscoCatalystManualMode
+        };
+
+        var routerPrompts = new[] { "rommon 1 >", "rommon 2 >", "rommon 16 >", "rommon >" };
+
+        foreach (var profile in profiles)
+        {
+            if (profile.Id == "cisco.catalyst.mode")
+            {
+                // Switch Catalyst usa 'switch:'
+                var matched = profile.RommonPatterns.Any(r => r.IsMatch("switch: ") || r.IsMatch("switch:"));
+                Assert.True(matched, $"Switch Catalyst deve casar com o prompt switch:");
+            }
+            else
+            {
+                foreach (var p in routerPrompts)
+                {
+                    var matched = profile.RommonPatterns.Any(r => r.IsMatch(p));
+                    Assert.True(matched, $"Perfil '{profile.Name}' ({profile.Id}) deve casar com o prompt '{p}'");
+                }
+            }
         }
     }
 

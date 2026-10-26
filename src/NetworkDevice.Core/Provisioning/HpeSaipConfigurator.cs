@@ -957,13 +957,27 @@ public sealed class HpeSaipConfigurator
         Func<string, CancellationToken, Task>? requestOperatorAction = null,
         Func<string, Task>? progress = null,
         CancellationToken cancellationToken = default,
-        Action<int, string, string>? onProgress = null)
+        Action<int, string, string>? onProgress = null,
+        int pollDelayMs = 3000)
     {
         var cleanLan = lanInterface.Replace(" ", "");
         var cleanWan = cleanLan.EndsWith("0/1") ? cleanLan.Replace("0/1", "0/0") : "GigabitEthernet0/0";
 
-        // Janela de estabilização pós undo shutdown: evita falso DOWN se verificado logo em sequência
-        await Task.Delay(2000, cancellationToken);
+        // Janela de convergência pós undo shutdown: aguarda 3s para auto-negotiation física e protocolo subirem
+        if (pollDelayMs > 50)
+        {
+            if (progress != null)
+                await progress($"[*] Aguardando convergência do protocolo da porta LAN ({lanInterface}) ({Math.Max(1, pollDelayMs / 1000)}s)...");
+            for (int s = Math.Max(1, pollDelayMs / 1000); s >= 1; s--)
+            {
+                onProgress?.Invoke(50, "Aguardando Conexão LAN...", $"Aguardando protocolo da porta GE1 subir ({s}s)...");
+                await Task.Delay(1000, cancellationToken);
+            }
+        }
+        else if (pollDelayMs > 0)
+        {
+            await Task.Delay(pollDelayMs, cancellationToken);
+        }
 
         var hpeLanPattern = @"(?:GigabitEthernet0/1|GE0/1|GigabitEthernet1|GE1)";
         var hpeWanPattern = @"(?:GigabitEthernet0/0|GE0/0|GigabitEthernet0|GE0)";

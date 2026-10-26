@@ -82,18 +82,18 @@ public static class WanPortInspector
             return new RoteadorPortasInfo(
                 "Cisco Série 800 / C841M",
                 "GE0/4 (Porta 4)",
-                new[] { "gigabitethernet0/4", "gigabitethernet0/5" },
-                "Portas 0 a 3 (GE0/0 a GE0/3 / LAN)",
-                new[] { "gigabitethernet0/0", "gigabitethernet0/1", "gigabitethernet0/2", "gigabitethernet0/3", "vlan1" },
+                new[] { "gigabitethernet0/4", "gigabitethernet 0/4", "ge0/4" },
+                "GE0/5 (Porta 5 / LAN)",
+                new[] { "gigabitethernet0/5", "gigabitethernet 0/5", "ge0/5", "vlan1", "gigabitethernet0/0", "gigabitethernet0/1", "gigabitethernet0/2", "gigabitethernet0/3" },
                 false);
 
         if (t.Contains("c900") || t.Contains("921"))
             return new RoteadorPortasInfo(
                 "Cisco Série 900 / C921-4P",
                 "GE4 (Porta 4)",
-                new[] { "gigabitethernet4", "gigabitethernet 4" },
-                "Portas 0 a 3 (GE0 a GE3 / LAN)",
-                new[] { "gigabitethernet0", "gigabitethernet1", "gigabitethernet2", "gigabitethernet3", "vlan1" },
+                new[] { "gigabitethernet4", "gigabitethernet 4", "ge4" },
+                "GE5 (Porta 5 / LAN)",
+                new[] { "gigabitethernet5", "gigabitethernet 5", "ge5", "vlan1", "gigabitethernet0", "gigabitethernet1", "gigabitethernet2", "gigabitethernet3" },
                 false);
 
         if (t.Contains("1900"))

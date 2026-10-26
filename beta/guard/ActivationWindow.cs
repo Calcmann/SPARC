@@ -824,7 +824,7 @@ internal sealed class ActivationWindow : Window
             File.WriteAllText(BetaConfig.LicensePath, token);
             SalvarPerfil();
             BetaClock.Touch(now);
-            _txtStatusManual.Text = "✅ Chave validada com sucesso! Valida ate " + info.ExpiresUtc.ToString("dd/MM/yyyy") + ". Acesso liberado.";
+            _txtStatusManual.Text = "✅ Chave validada com sucesso! Acesso liberado.";
             _txtStatusManual.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
         }
         catch (Exception ex)

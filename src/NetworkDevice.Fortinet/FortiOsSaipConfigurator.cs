@@ -857,14 +857,26 @@ public sealed class FortiOsSaipConfigurator
         Func<string, CancellationToken, Task>? requestOperatorAction = null,
         Func<string, Task>? progress = null,
         CancellationToken cancellationToken = default,
-        int pollDelayMs = 2000,
+        int pollDelayMs = 3000,
         Action<int, string, string>? onProgress = null)
     {
         ArgumentNullException.ThrowIfNull(session);
 
         // Janela de estabilização pós-configuração (evita falso DOWN inicial)
         if (pollDelayMs > 50)
+        {
+            if (progress is not null)
+                await progress($"[*] Aguardando convergência do protocolo da porta LAN FortiGate ({Math.Max(1, pollDelayMs / 1000)}s)...");
+            for (int s = Math.Max(1, pollDelayMs / 1000); s >= 1; s--)
+            {
+                onProgress?.Invoke(50, "Aguardando Conexão LAN...", $"Aguardando protocolo da Porta 1 (LAN) subir ({s}s)...");
+                await Task.Delay(1000, cancellationToken);
+            }
+        }
+        else if (pollDelayMs > 0)
+        {
             await Task.Delay(pollDelayMs, cancellationToken);
+        }
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
 

@@ -101,7 +101,7 @@ internal static class BetaLicenseGuard
 
             var reason = saved == null
                 ? "Nenhuma chave de ativacao encontrada nesta maquina."
-                : "A chave salva e invalida, expirou ou pertence a outro computador.";
+                : "A chave salva e invalida ou pertence a outro computador.";
 
             var prevMode = app.ShutdownMode;
             app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
@@ -195,22 +195,22 @@ internal static class BetaLicenseGuard
                 && LicenseCrypto.IsAuthorizedForThisMachine(info, now, out var reason))
             {
                 BetaClock.Touch(now);
-                return (true, false, false, $"Licença ativa até {info.ExpiresUtc:dd/MM/yyyy}.");
+                return (true, false, false, "Licença ativa e autorizada para esta máquina.");
             }
 
-            // Expirada
+            // Inválida ou não autorizada
             await Application.Current.Dispatcher.InvokeAsync(() =>
             {
                 MessageBox.Show(
-                    "A licença de uso do SPARC expirou.\n\nEntre em contato com o administrador para renovar o acesso.",
-                    "SPARC - Licença Expirada", MessageBoxButton.OK, MessageBoxImage.Warning);
-                var dlg = new ActivationWindow("A chave expirou ou é inválida.", machine, BetaConfig.ExpiresUtc);
+                    "A licença salva é inválida ou pertence a outro dispositivo.\n\nEntre em contato com o suporte ou realize o cadastro de acesso.",
+                    "SPARC - Licença Não Autorizada", MessageBoxButton.OK, MessageBoxImage.Warning);
+                var dlg = new ActivationWindow("A chave é inválida ou pertence a outro computador.", machine, BetaConfig.ExpiresUtc);
                 if (dlg.ShowDialog() != true)
                 {
                     Application.Current.Shutdown();
                 }
             });
-            return (false, false, true, "Licença expirada.");
+            return (false, false, true, "Licença inválida ou não autorizada.");
         }
         catch (Exception ex)
         {

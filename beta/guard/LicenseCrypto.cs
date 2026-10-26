@@ -38,11 +38,16 @@ internal static class LicenseCrypto
 
     public static bool IsAuthorizedForThisMachine(BetaLicenseInfo info, DateTime now, out string reason)
     {
-        if (now.Date > info.ExpiresUtc.Date) { reason = "Chave expirada em " + info.ExpiresUtc.ToString("dd/MM/yyyy") + "."; return false; }
+        // Expiração nativa por relógio local desativada:
+        // O controle de expiração e acesso é governado pelo login/cadastro do usuário no banco corporativo
+        // e status de revogação/aprovação online, sem prazo de expiração fixo na própria ferramenta.
         var cur = MachineId.Current();
         if (string.Equals(cur.MachineGuid, info.MachineGuid, StringComparison.OrdinalIgnoreCase)
             || string.Equals(cur.Fingerprint, info.Fingerprint, StringComparison.OrdinalIgnoreCase))
-        { reason = ""; return true; }
+        {
+            reason = "";
+            return true;
+        }
         reason = "Chave emitida para outro computador.";
         return false;
     }

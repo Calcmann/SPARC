@@ -156,6 +156,7 @@ public sealed class SerialTransport : ITransport
 
         // Para adaptadores com suporte nativo (FTDI, Prolific, CP210x, portas COM nativas):
         // Usa BreakState nativo (SetCommBreak/ClearCommBreak Win32) a 9600 bps estável
+        _isBreaking = true;
         try
         {
             _port.BreakState = true;
@@ -164,7 +165,6 @@ public sealed class SerialTransport : ITransport
         catch
         {
             // Fallback caso o driver rejeite SetCommBreak
-            _isBreaking = true;
             var origBaud = _port.BaudRate;
             try
             {
@@ -178,12 +178,12 @@ public sealed class SerialTransport : ITransport
             finally
             {
                 try { _port.DiscardInBuffer(); } catch { }
-                _isBreaking = false;
             }
         }
         finally
         {
             try { _port.BreakState = false; } catch { }
+            _isBreaking = false;
         }
     }
 

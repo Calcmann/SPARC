@@ -16,7 +16,7 @@ internal static class BetaConfig
         get
         {
             try { return DateTime.Parse(ExpiresUtcIso, null, System.Globalization.DateTimeStyles.AdjustToUniversal).ToUniversalTime(); }
-            catch { return DateTime.UtcNow.AddDays(30); }
+            catch { return DateTime.UtcNow.AddYears(10); }
         }
     }
 

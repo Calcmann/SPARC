@@ -73,6 +73,16 @@ public sealed class BootMonitor
             var chunk = Encoding.UTF8.GetString(_readBuffer, 0, validBytes);
             chunk = chunk.Replace("\r", "").Replace("\0", "").Replace("\uFFFD", "");
             chunk = AnsiEscape.Replace(chunk, "");
+            var cleanChunk = new StringBuilder(chunk.Length);
+            for (var cIdx = 0; cIdx < chunk.Length; cIdx++)
+            {
+                var ch = chunk[cIdx];
+                if (ch == '\n' || ch == '\t' || (ch >= 0x20 && ch != 0x7F) || ch >= 0xA0)
+                {
+                    cleanChunk.Append(ch);
+                }
+            }
+            chunk = cleanChunk.ToString();
             if (string.IsNullOrEmpty(chunk))
                 continue;
 

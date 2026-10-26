@@ -9,7 +9,7 @@ try
     switch (args[0].ToLowerInvariant())
     {
         case "new-key": return NewKey(GetOpt(args, "--dir") ?? ".", HasFlag(args, "--force"));
-        case "sign": return Sign(GetOpt(args, "--key") ?? "", GetOpt(args, "--req") ?? "", int.Parse(GetOpt(args, "--dias") ?? "30"), GetOpt(args, "--saida") ?? "");
+        case "sign": return Sign(GetOpt(args, "--key") ?? "", GetOpt(args, "--req") ?? "", int.Parse(GetOpt(args, "--dias") ?? "3650"), GetOpt(args, "--saida") ?? "");
         case "verify": return Verify(GetOpt(args, "--key") ?? "", GetOpt(args, "--license") ?? "");
         default: Usage(); return 1;
     }

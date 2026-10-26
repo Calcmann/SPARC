@@ -687,6 +687,7 @@ public sealed class CiscoIOSUpgrader
 
             // Confirma o reload com Enter
             await session.WriteLineAsync(string.Empty, ct);
+            session.ResetPrompt();
             await ProgressAsync("[OK] Comando de reinicialização enviado ao Cisco IOS!");
             await ProgressAsync("[*] Aguardando reset físico da CPU do roteador (10s)...");
             await Task.Delay(10000, ct);
@@ -705,7 +706,8 @@ public sealed class CiscoIOSUpgrader
         TimeSpan baseTimeout,
         CancellationToken ct,
         string? enableSecret = null,
-        IEnumerable<string>? candidatePasswords = null)
+        IEnumerable<string>? candidatePasswords = null,
+        string? binFileName = null)
     {
         var bootStartTime = DateTime.UtcNow;
         var bootTimeout = DateTime.UtcNow.Add(baseTimeout);
@@ -718,6 +720,7 @@ public sealed class CiscoIOSUpgrader
         int noMemoryLicenseCount = 0;
         bool decompressionReported = false;
         bool decompressionCompleted = false;
+        bool bootCommandSent = false;
 
         var loggedBootMilestones = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -893,6 +896,7 @@ public sealed class CiscoIOSUpgrader
                     lastStatusLog = DateTime.UtcNow;
                     var phaseMsg = decompressionReported ? "descompactando imagem" : "carregando kernel";
                     await ProgressAsync($"[*] Aguardando boot do Cisco IOS ({phaseMsg}, ~{remainingSec}s restantes)...");
+                    _onProgress?.Invoke(90, "Fase B: Carregando Cisco IOS...", $"Aguardando boot do Cisco IOS ({phaseMsg}, ~{remainingSec}s restantes)...");
                 }
 
                 // 3. Keep-Alive / Despertador Ativo da Console Serial:
@@ -915,6 +919,7 @@ public sealed class CiscoIOSUpgrader
                     var result = await session.WaitForAsync(
                         new StopCondition[]
                         {
+                            new StopCondition.LineRegex("rommon-prompt", new Regex(@"(?i)rommon\s*\d*\s*>|switch:\s*$")),
                             new StopCondition.LineRegex("mem-upgrade", new Regex(@"(?i)(?:UPGRADING\s+TO\s+\d+MB|RELOADING\.\.\.\.|No\s+memory\s+license.*reboot|memory\s+license.*reboot)")),
                             new StopCondition.LineRegex("invalid-image", new Regex(@"(?i)Invalid\s+image\s+for\s+platform|failed\s+to\s+boot.*unsupported")),
                             // Autoinstall DEVE ser checado ANTES do diálogo inicial e de [yes/no]!
@@ -932,7 +937,19 @@ public sealed class CiscoIOSUpgrader
 
                     if (result.Matched is StopCondition.LineRegex lr)
                     {
-                        if (lr.Name == "mem-upgrade")
+                        if (lr.Name == "rommon-prompt")
+                        {
+                            // Se após o reset o ROMMON não iniciou o autoboot e parou no prompt, envia boot flash:{binFileName}
+                            if (!string.IsNullOrWhiteSpace(binFileName) && !bootCommandSent)
+                            {
+                                bootCommandSent = true;
+                                await ProgressAsync($"[*] Prompt ROMMON pós-reset detectado — iniciando boot da imagem 'boot flash:{binFileName}'...");
+                                await session.SendRawAsync($"boot flash:{binFileName}\r", ct);
+                                await Task.Delay(300, ct);
+                            }
+                            continue;
+                        }
+                        else if (lr.Name == "mem-upgrade")
                         {
                             await Task.Delay(2000, ct);
                         }
@@ -968,6 +985,13 @@ public sealed class CiscoIOSUpgrader
                         else if (lr.Name == "login-user")
                         {
                             usernameAttempt++;
+                            if (usernameAttempt > 6)
+                            {
+                                await ProgressAsync("[AVISO] Limite de tentativas de login de console atingido (evitando loop).");
+                                await session.WriteLineAsync(string.Empty, ct);
+                                await Task.Delay(1000, ct);
+                                continue;
+                            }
                             string u = !string.IsNullOrWhiteSpace(session.Options.Username) && usernameAttempt == 1
                                 ? session.Options.Username
                                 : (usernameAttempt == 2 ? "cisco" : (usernameAttempt == 3 ? "admin" : "EBT"));
@@ -977,6 +1001,13 @@ public sealed class CiscoIOSUpgrader
                         }
                         else if (lr.Name == "login-pass")
                         {
+                            if (passwordAttempt >= Math.Max(6, passList.Count * 2))
+                            {
+                                await ProgressAsync("[AVISO] Limite de tentativas de senha atingido no console (senhas candidatas falharam).");
+                                await session.WriteLineAsync(string.Empty, ct);
+                                await Task.Delay(1000, ct);
+                                continue;
+                            }
                             var passIndex = passwordAttempt % passList.Count;
                             var p = passList[passIndex];
                             passwordAttempt++;
@@ -986,6 +1017,15 @@ public sealed class CiscoIOSUpgrader
                         }
                         else if (lr.Name == "cisco-prompt" || result.Matched is StopCondition.Prompt)
                         {
+                            var promptCandidate = session.CurrentPrompt ?? result.Output.Trim();
+                            if (promptCandidate.StartsWith("rommon", StringComparison.OrdinalIgnoreCase) ||
+                                promptCandidate.StartsWith("switch:", StringComparison.OrdinalIgnoreCase) ||
+                                promptCandidate.StartsWith("common", StringComparison.OrdinalIgnoreCase) ||
+                                result.Output.Contains("rommon ", StringComparison.OrdinalIgnoreCase))
+                            {
+                                continue;
+                            }
+
                             // BLINDAGEM ANTI-ECO PRÉ-RELOAD:
                             // Um roteador Cisco (1900/2900/800/900) NUNCA conclui a reinicialização em menos de 45 segundos.
                             // Se ainda não se passaram 45s e não houve registro de descompressão/kernel pós-reboot,
@@ -1002,6 +1042,15 @@ public sealed class CiscoIOSUpgrader
                     }
                     else if (result.Matched is StopCondition.Prompt)
                     {
+                        var promptCandidate = session.CurrentPrompt ?? result.Output.Trim();
+                        if (promptCandidate.StartsWith("rommon", StringComparison.OrdinalIgnoreCase) ||
+                            promptCandidate.StartsWith("switch:", StringComparison.OrdinalIgnoreCase) ||
+                            promptCandidate.StartsWith("common", StringComparison.OrdinalIgnoreCase) ||
+                            result.Output.Contains("rommon ", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
                         if (elapsedTotal < 45 && !decompressionCompleted)
                         {
                             continue;
@@ -1232,6 +1281,12 @@ public sealed class CiscoIOSUpgrader
 
             // 4. Envia variáveis de ambiente ao ROMMON do Cisco
             await ProgressAsync("[*] Configurando variáveis de ambiente no ROMMON do Cisco...");
+            try
+            {
+                await session.SendRawAsync("\r", cancellationToken);
+                await Task.Delay(300, cancellationToken);
+            }
+            catch { }
             await session.SendRawAsync($"IP_ADDRESS={actualRouterIp}\r", cancellationToken);
             await Task.Delay(300, cancellationToken);
 
@@ -1397,35 +1452,160 @@ public sealed class CiscoIOSUpgrader
         }
 
         // Aguarda o ROMMON concluir a formatação e gravação física dos setores na Flash (pode levar 1 a 2 min em 80MB)
+        _onProgress?.Invoke(81, "Fase B: Gravando na Flash...", $"ROMMON gravando e consolidando {binFileName} na Flash (aguarde ~1-2 min)...");
         await ProgressAsync("[*] Aguardando ROMMON gravar e consolidar a imagem na Flash (isso pode levar ~1-2 minutos)...");
-        try
+
+        var flashWaitTimeout = DateTime.UtcNow.AddMinutes(4);
+        var flashStartTime = DateTime.UtcNow;
+        var lastInteraction = DateTime.UtcNow;
+        var lastKeepAlive = DateTime.UtcNow;
+        bool rommonPromptDetected = false;
+        int interactionStep = 0;
+
+        while (DateTime.UtcNow < flashWaitTimeout && !cancellationToken.IsCancellationRequested)
         {
-            await session.WaitForAsync(
-                new StopCondition[]
+            try
+            {
+                var result = await session.WaitForAsync(
+                    new StopCondition[]
+                    {
+                        new StopCondition.LineRegex("rommon-prompt", new Regex(@"(?i)rommon\s+\d+\s*>"))
+                    },
+                    TimeSpan.FromSeconds(2),
+                    cancellationToken);
+
+                if (result.Matched != null)
                 {
-                    new StopCondition.LineRegex("rommon-prompt", new Regex(@"(?i)rommon\s+\d+\s*>"))
-                },
-                TimeSpan.FromMinutes(4),
-                cancellationToken);
+                    rommonPromptDetected = true;
+                    break;
+                }
+            }
+            catch (SessionTimeoutException)
+            {
+                // Normal durante o período de queima e validação física da Flash pelo ROMMON
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // Ignora exceções transitórias de leitura na porta serial durante gravação
+            }
+
+            var elapsed = (int)(DateTime.UtcNow - flashStartTime).TotalSeconds;
+
+            // A cada 10 segundos sem retorno, emite mensagem dinâmica de acompanhamento para a UI e console
+            if ((DateTime.UtcNow - lastInteraction).TotalSeconds >= 10)
+            {
+                lastInteraction = DateTime.UtcNow;
+                interactionStep++;
+
+                var min = elapsed / 60;
+                var sec = elapsed % 60;
+                var timeStr = min > 0 ? $"{min}m {sec:D2}s" : $"{sec}s";
+
+                int currentPct = Math.Min(84, 81 + (elapsed / 25));
+                string stepDescription;
+                string logMessage;
+
+                switch (interactionStep % 4)
+                {
+                    case 1:
+                        stepDescription = $"ROMMON gravando blocos e setores físicos na Flash ({timeStr})...";
+                        logMessage = $"  ├── [FLASH] Gravando setores de '{binFileName}' na memória Flash... ({timeStr})";
+                        break;
+                    case 2:
+                        stepDescription = $"Programando memória não-volátil e checksum ({timeStr})...";
+                        logMessage = $"  ├── [FLASH] Hardware programando blocos de memória e calculando integridade... ({timeStr})";
+                        break;
+                    case 3:
+                        stepDescription = $"Validando integridade e preparando novo firmware ({timeStr})...";
+                        logMessage = $"  ├── [FLASH] Validando integridade da imagem gravada na Flash... ({timeStr})";
+                        break;
+                    default:
+                        stepDescription = $"Quase concluído — consolidando imagem na Flash ({timeStr})...";
+                        logMessage = $"  ├── [FLASH] Quase pronto! Consolidando arquivo e aguardando retorno do ROMMON... ({timeStr})";
+                        break;
+                }
+
+                _onProgress?.Invoke(currentPct, "Fase B: Gravando na Flash...", stepDescription);
+                await ProgressAsync(logMessage);
+
+                // A partir de 20s de silêncio, envia um '\r' suave a cada 12s para acordar/desenhar o prompt caso o ROMMON já tenha terminado
+                if (elapsed >= 20 && (DateTime.UtcNow - lastKeepAlive).TotalSeconds >= 12)
+                {
+                    lastKeepAlive = DateTime.UtcNow;
+                    try { await session.SendRawAsync("\r", cancellationToken); } catch { }
+                }
+            }
+        }
+
+        if (rommonPromptDetected)
+        {
             await ProgressAsync("[OK] Imagem gravada e validada na Flash com sucesso pelo ROMMON.");
         }
-        catch { }
+        else
+        {
+            // Envia um \r final de confirmação antes de prosseguir
+            try
+            {
+                await session.SendRawAsync("\r", cancellationToken);
+                await Task.Delay(500, cancellationToken);
+            }
+            catch { }
+            await ProgressAsync("[OK] Tempo de gravação da Flash concluído. Prosseguindo com o boot...");
+        }
 
-        // 6. Configura o registrador para ignorar configuração antiga/senha (confreg 0x2142) e inicia a nova imagem
-        _onProgress?.Invoke(85, "Fase B: Inicializando IOS...", "Configurando registrador 0x2142 (ignora senhas residuais) e efetuando boot...");
-        await ProgressAsync("[*] Configurando registrador para ignorar senhas e configurações antigas (confreg 0x2142)...");
-        await session.WriteLineAsync("confreg 0x2142", cancellationToken);
-        await Task.Delay(1000, cancellationToken);
+        // 6. Quebra de Senha no ROMMON: Configura registrador 0x2142 e executa reset para aplicar ao hardware
+        _onProgress?.Invoke(85, "Fase B: Quebra de Senha no ROMMON...", "Configurando registrador 0x2142 (ignora senhas antigas) e reiniciando hardware...");
+        await ProgressAsync("\n=================================================================");
+        await ProgressAsync("   🔑 [ROMMON] EXECUTANDO QUEBRA DE SENHA (CONFREG 0x2142)");
+        await ProgressAsync("=================================================================");
+        await ProgressAsync("  Configurando registrador 0x2142 no ROMMON para ignorar senhas e startup-config...");
 
-        await ProgressAsync($"[*] Executando boot da imagem 'boot flash:{binFileName}' a partir do ROMMON...");
-        await session.WriteLineAsync($"boot flash:{binFileName}", cancellationToken);
-        await Task.Delay(2000, cancellationToken);
+        // Define variáveis do ROMMON para garantir seleção da imagem recém-gravada
+        try { await session.SendRawAsync($"DEFAULT_FILE={binFileName}\r", cancellationToken); await Task.Delay(300, cancellationToken); } catch { }
+        try { await session.SendRawAsync($"BOOT=flash:{binFileName}\r", cancellationToken); await Task.Delay(300, cancellationToken); } catch { }
 
-        // 7. Aguarda a descompressão e inicialização do Cisco IOS
+        // Envia 'confreg 0x2142' com confirmação de prompt
+        for (int a = 1; a <= 4; a++)
+        {
+            await session.SendRawAsync("confreg 0x2142\r", cancellationToken);
+            try
+            {
+                var cfRes = await session.WaitForAsync(
+                    new StopCondition[]
+                    {
+                        new StopCondition.LineRegex("rommon-prompt", new Regex(@"(?i)rommon\s*\d*\s*>")),
+                        new StopCondition.Contains("reset", "reset or power cycle")
+                    },
+                    TimeSpan.FromSeconds(4),
+                    cancellationToken);
+
+                if (cfRes.Matched != null)
+                {
+                    await ProgressAsync("[OK] Registrador 0x2142 aceito pelo ROMMON (startup-config será ignorado no boot).");
+                    break;
+                }
+            }
+            catch (SessionTimeoutException)
+            {
+                await ProgressAsync($"[*] Aguardando confirmação do 'confreg 0x2142' no ROMMON (tentativa {a}/4)...");
+                await session.SendRawAsync("\r", cancellationToken);
+                await Task.Delay(500, cancellationToken);
+            }
+        }
+
+        // CRUCIAL: No Cisco ROMMON, o valor do config-register 0x2142 só é lido pelo hardware durante o RESET da CPU.
+        // Executar 'boot flash:...' diretamente sem reset manteria o registrador 0x2102 ativo, forçando leitura da senha antiga.
+        _onProgress?.Invoke(88, "Fase B: Reiniciando hardware...", "Aplicando 0x2142 via reset do processador...");
+        await ProgressAsync("[*] Aplicando 0x2142 via comando 'reset' no ROMMON (reboot do hardware para carregar novo registrador)...");
+        await session.SendRawAsync("reset\r", cancellationToken);
+        session.ResetPrompt();
+        await Task.Delay(3000, cancellationToken);
+
+        // 7. Aguarda a descompressão e inicialização do Cisco IOS (com suporte a autoboot ou envio de boot pós-reset)
         await ProgressAsync("[*] Aguardando descompressão e inicialização completa do Cisco IOS (isso pode levar ~2-4 minutos)...");
         _onProgress?.Invoke(90, "Fase B: Carregando Cisco IOS...", "Aguardando descompressão e prompt do Cisco IOS...");
 
-        await AguardarBootCiscoIOSAsync(session, TimeSpan.FromMinutes(6), cancellationToken, enableSecret, candidatePasswords);
+        await AguardarBootCiscoIOSAsync(session, TimeSpan.FromMinutes(6), cancellationToken, enableSecret, candidatePasswords, binFileName);
         var booted = true;
 
         // 8. Se entrou no prompt Cisco IOS, limpa NVRAM antiga e garante boot normal persistente (0x2102)
@@ -1439,10 +1619,31 @@ public sealed class CiscoIOSUpgrader
 
                 // Apaga permanentemente configurações e senhas antigas da NVRAM
                 await ProgressAsync("[*] Apagando configurações antigas e senhas residuais da NVRAM (write erase)...");
-                await session.WriteLineAsync("write erase", cancellationToken);
-                await Task.Delay(400, cancellationToken);
-                await session.WriteLineAsync(string.Empty, cancellationToken);
-                await Task.Delay(800, cancellationToken);
+                try
+                {
+                    var weRes = await session.SendExpectAsync(
+                        "write erase",
+                        new StopCondition[]
+                        {
+                            new StopCondition.Contains("confirm", "[confirm]"),
+                            new StopCondition.Prompt()
+                        },
+                        TimeSpan.FromSeconds(10),
+                        cancellationToken);
+
+                    if (weRes.Output.Contains("[confirm]", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await session.WriteLineAsync(string.Empty, cancellationToken);
+                    }
+                    await Task.Delay(1500, cancellationToken);
+                }
+                catch
+                {
+                    await session.WriteLineAsync("write erase", cancellationToken);
+                    await Task.Delay(400, cancellationToken);
+                    await session.WriteLineAsync(string.Empty, cancellationToken);
+                    await Task.Delay(800, cancellationToken);
+                }
 
                 await session.WriteLineAsync("configure terminal", cancellationToken);
                 await Task.Delay(300, cancellationToken);

@@ -6340,22 +6340,22 @@ public partial class MainWindow : Window
         try { await session.WaitForAsync(new StopCondition[] { new StopCondition.LineRegex("choice", new Regex("choice")) }, TimeSpan.FromMilliseconds(500), ct); } catch { }
         await session.WriteLineAsync("5", ct);
 
-        // Ordem real que o BootWare HPE MSR93x apresenta os campos no ETHERNET PARAMETER SET:
+        // Ordem real que o BootWare HPE MSR93x/954 apresenta os campos no ETHERNET PARAMETER SET:
         // Protocol → Load File Name → Target File Name → Server IP → Local IP → Subnet Mask → Gateway → File Name
         var fields = new (string Name, string Label, Regex Pattern, string Value)[]
         {
-            ("protocol", "Protocol", new Regex(@"(?i)protocol\s*\(f(?:tp|rom)\s+or\s+tftp\)\s*[:?]"), "TFTP"),
-            ("loadfile", "Load File Name", new Regex(@"(?i)load\s+file\s+name\s*[:?]"), fileName),
-            ("targetfile", "Target File Name", new Regex(@"(?i)target\s+file\s+name\s*[:?]"), fileName),
-            ("serverip", "Server IP Address", new Regex(@"(?i)server\s+ip\s*(?:address)?\s*[:?]"), hostIp),
-            ("localip", "Router IP Address", new Regex(@"(?i)(?:switch\s*/\s*router|switch|router|local)\s+ip\s*(?:address)?\s*[:?]"), routerIp),
+            ("protocol", "Protocol", new Regex(@"(?i)protocol(?:\s*\(.*?\))?\s*[:?]"), "TFTP"),
+            ("loadfile", "Load File Name", new Regex(@"(?i)load\s+file(?:\s+name)?\s*[:?]"), fileName),
+            ("targetfile", "Target File Name", new Regex(@"(?i)target\s+file(?:\s+name)?\s*[:?]"), fileName),
+            ("serverip", "Server IP Address", new Regex(@"(?i)server\s+ip(?:\s+address)?\s*[:?]"), hostIp),
+            ("localip", "Router IP Address", new Regex(@"(?i)(?:switch\s*/\s*router|switch|router|local)\s+ip(?:\s+address)?\s*[:?]"), routerIp),
             ("subnet", "Subnet Mask", new Regex(@"(?i)(?:subnet\s+mask|mask)\s*[:?]"), subnetMask),
-            ("gateway", "Gateway IP Address", new Regex(@"(?i)gateway\s+ip\s*(?:address)?\s*[:?]"), "0.0.0.0"),
+            ("gateway", "Gateway IP Address", new Regex(@"(?i)gateway(?:\s+ip)?(?:\s+address)?\s*[:?]"), "0.0.0.0"),
             ("filename", "File Name", new Regex(@"(?i)file\s+name\s*[:?]"), fileName)
         };
 
         var choiceRegex = new Regex(@"(?i)(?:enter\s+your\s+choice\s*\(\s*0\s*-\s*5\s*\)|choice\s*\(\s*0\s*-\s*5\s*\)\s*:)");
-        var confirmRegex = new Regex(@"(?i)(?:ensure\s+the\s+parameter\s+be\s+modified|modify\s*\(\s*Y\s*/\s*N\s*\)|\[Y/N\])\s*[:?]");
+        var confirmRegex = new Regex(@"(?i)(?:ensure\s+the\s+parameter\s+be\s+modified|modify\s*\(\s*Y\s*/\s*N\s*\)|\[Y/N\])\s*[:?]?");
 
         var deadline = DateTime.UtcNow.AddSeconds(45);
         var answered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -6402,11 +6402,18 @@ public partial class MainWindow : Window
             {
                 if (lr.Name == "choice")
                 {
-                    if (filledCount >= 4)
+                    if (filledCount >= 3)
                     {
                         AtualizarProgresso(45, "[2/6] Parâmetros Ethernet Configurados!", "Menu Ethernet pronto para gravação.");
                         EscreverLinha("[ETHERNET PARAMETER SET] ✅ Todos os parâmetros configurados com sucesso.");
                         return true;
+                    }
+                    else if (filledCount == 0)
+                    {
+                        EscreverLinha("  [BootWare] Menu choice(0-5) detectado — enviando Opção 5 (Modify Ethernet Parameter)...");
+                        await session.WriteLineAsync("5", ct);
+                        await Task.Delay(300, ct);
+                        continue;
                     }
                     else
                     {
@@ -6449,6 +6456,9 @@ public partial class MainWindow : Window
         string subnetMask,
         CancellationToken ct)
     {
+        if (string.IsNullOrWhiteSpace(ethernetOption) || ethernetOption == "0")
+            ethernetOption = "3";
+
         var fileDir = Path.GetDirectoryName(firmwareFilePath) ?? AppContext.BaseDirectory;
         var fileName = Path.GetFileName(firmwareFilePath);
 
@@ -6541,6 +6551,11 @@ public partial class MainWindow : Window
                 ct);
 
             var (state, _) = HpeBootWareStateMachine.DetectState(probe.Output);
+            var probeEthMatch = Regex.Match(probe.Output, @"(?:<|\b)(\d+)(?:>|\.)\s*(?:Enter\s+)?Ethernet\s+SubMenu", RegexOptions.IgnoreCase);
+            if (probeEthMatch.Success)
+            {
+                ethernetOption = probeEthMatch.Groups[1].Value;
+            }
 
             await InstruirOperadorAsync(
                 "⚠️ CONEXÃO DO CABO DE REDE - BOOTWARE TFTP\n\n" +
@@ -6551,56 +6566,16 @@ public partial class MainWindow : Window
                 "Clique em OK assim que o cabo estiver conectado na porta GE0.",
                 ct);
 
-            if (state == HpeMenuState.ExtendedBootWare)
-            {
-                AtualizarProgresso(30, "[1/6] Entrando no Ethernet SubMenu...", "Selecionando Opção 3 no menu BootWare...");
-                EscreverLinha($"[*] [1/6] Entrando no Ethernet SubMenu (Opção {ethernetOption})...");
-                await session.WriteLineAsync(ethernetOption, ct);
+            AtualizarProgresso(30, "[1/6] Entrando no Ethernet SubMenu...", $"Garantindo entrada no Ethernet SubMenu (Opção {ethernetOption})...");
+            EscreverLinha($"[*] [1/6] Garantindo entrada no Ethernet SubMenu (Opção {ethernetOption})...");
 
-                try
-                {
-                    await session.WaitForAsync(
-                        new StopCondition[]
-                        {
-                            new StopCondition.Contains("choice(0-5)", "choice(0-5)"),
-                            new StopCondition.Contains("<Enter Ethernet SubMenu>", "<Enter Ethernet SubMenu>"),
-                            new StopCondition.Contains("Modify Ethernet Parameter", "Modify Ethernet Parameter")
-                        },
-                        TimeSpan.FromSeconds(5),
-                        ct);
-                }
-                catch
-                {
-                    EscreverLinha("[AVISO] Confirmação de entrada no Ethernet SubMenu não recebida — tentando prosseguir mesmo assim...");
-                }
-            }
-            else if (state == HpeMenuState.EthernetSubMenu)
+            var atEthernetSubMenu = await HpeBootWareStateMachine.EnsureEthernetSubMenuAsync(session, ethernetOption, EscreverLinhaAsync, ct);
+            if (!atEthernetSubMenu)
             {
-                EscreverLinha("[*] Console já posicionado no Ethernet SubMenu — prosseguindo diretamente para configuração de rede...");
+                EscreverLinha("[ERRO BOOTWARE TFTP] Falha ao entrar no Ethernet SubMenu do BootWare — abortando para evitar comandos incorretos no menu principal.");
+                return false;
             }
-            else
-            {
-                EscreverLinha("[*] Sincronizando navegação no BootWare — assegurando menu principal...");
-                var ensured = await HpeBootWareStateMachine.EnsureExtendedBootWareAsync(session, EscreverLinhaAsync, ct);
-                if (!ensured)
-                {
-                    EscreverLinha("[ERRO] Não foi possível retornar ao menu principal do BootWare para configurar o TFTP.");
-                    return false;
-                }
-
-                await session.WriteLineAsync(ethernetOption, ct);
-                try
-                {
-                    await session.WaitForAsync(
-                        new StopCondition[] { new StopCondition.Contains("choice(0-5)", "choice(0-5)"), new StopCondition.Contains("Ethernet", "Ethernet") },
-                        TimeSpan.FromSeconds(4),
-                        ct);
-                }
-                catch
-                {
-                    EscreverLinha("[AVISO] Confirmação de entrada no Ethernet SubMenu não recebida — tentando prosseguir mesmo assim...");
-                }
-            }
+            EscreverLinha("[*] ✅ Posicionado com sucesso no Ethernet SubMenu.");
 
             // [2/6] Modifica Parâmetros de Rede (Opção 5 - Modify Ethernet Parameter)
             var paramsOk = await ConfigurarEthernetParametrosBootWareAsync(session, hostIp, routerIp, subnetMask, fileName, ct);
@@ -6844,6 +6819,158 @@ public partial class MainWindow : Window
         });
 
         return tcs.Task;
+    }
+
+    private async Task<bool> TratarRejeicaoFirmwareHpeAsync(
+        DeviceSession session,
+        HpeComwareUpgrader hpeUpgrader,
+        HpeBootWareImageRejectedException ex,
+        string hostIp,
+        CancellationToken ct)
+    {
+        EscreverLinha("\n=================================================================");
+        EscreverLinha("      ⚠️ FIRMWARE REJEITADO PELO BOOTWARE (HPE MSR 954)        ");
+        EscreverLinha("=================================================================");
+        EscreverLinha($"  Arquivo rejeitado: {ex.RejectedFileName} ({ex.TargetVersion})");
+        EscreverLinha("  O equipamento reiniciou diretamente no menu do BootWare porque");
+        EscreverLinha("  a imagem carregada é incompatível com a placa ou está corrompida.");
+        EscreverLinha("=================================================================\n");
+
+        _isRommonOrBootwareDetected = true;
+        DefinirBadgeStatus("B", "⚠️");
+        AtualizarProgresso(50, "Firmware Rejeitado", $"O firmware {ex.RejectedFileName} não foi aceito pelo BootWare.");
+
+        // Busca se existe versão homologada no repositório local
+        var localHomologado = _firmwareRepoService.GetLocalFirmware(DeviceSeries.Msr954);
+        string? novaImagem = null;
+
+        var userChoice = await Dispatcher.InvokeAsync(() =>
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("⚠️ FIRMWARE NÃO ACEITO PELO BOOTWARE");
+            sb.AppendLine($"O firmware '{ex.RejectedFileName}' foi rejeitado pelo hardware/BootWare do equipamento (não conseguiu inicializar o Comware).");
+            sb.AppendLine();
+            sb.AppendLine("Isso costuma ocorrer ao tentar carregar uma versão antiga em uma revisão de hardware mais recente (ex: BootWare 1.68 / PCB 2.0).");
+            sb.AppendLine();
+
+            if (localHomologado != null &&
+                File.Exists(localHomologado.LocalFilePath) &&
+                !string.Equals(Path.GetFileName(localHomologado.LocalFilePath), ex.RejectedFileName, StringComparison.OrdinalIgnoreCase))
+            {
+                sb.AppendLine("Versão homologada recomendada disponível no repositório:");
+                sb.AppendLine($"📁 {localHomologado.FileName} ({localHomologado.DisplaySize})");
+                sb.AppendLine();
+                sb.AppendLine("Deseja aplicar a versão homologada agora para recuperar o equipamento?");
+                sb.AppendLine("(Clique 'Sim' para a versão homologada, ou 'Não' para selecionar outro arquivo manualmente)");
+
+                return MessageBox.Show(sb.ToString(), "Firmware Rejeitado - Selecionar Alternativa", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning);
+            }
+            else
+            {
+                sb.AppendLine("Deseja selecionar outro arquivo de firmware (.ipe / .bin) para recuperar o equipamento via BootWare TFTP agora?");
+                return MessageBox.Show(sb.ToString(), "Firmware Rejeitado - Selecionar Alternativa", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            }
+        });
+
+        if (userChoice == MessageBoxResult.Cancel || (userChoice == MessageBoxResult.No && (localHomologado == null || !File.Exists(localHomologado.LocalFilePath))))
+        {
+            EscreverLinha("[!] Operação de recuperação cancelada pelo técnico.");
+            return false;
+        }
+
+        if (userChoice == MessageBoxResult.Yes && localHomologado != null && File.Exists(localHomologado.LocalFilePath) &&
+            !string.Equals(Path.GetFileName(localHomologado.LocalFilePath), ex.RejectedFileName, StringComparison.OrdinalIgnoreCase))
+        {
+            novaImagem = localHomologado.LocalFilePath;
+            EscreverLinha($"[*] Técnico selecionou versão homologada do repositório: {localHomologado.FileName}");
+        }
+        else
+        {
+            // Técnico escolheu 'Não' para a homologada -> abre OpenFileDialog para buscar arquivo customizado
+            novaImagem = await Dispatcher.InvokeAsync(() =>
+            {
+                var dlg = new OpenFileDialog
+                {
+                    Title = "Selecione o Firmware Alternativo HPE (.IPE / .BIN) para Recuperação",
+                    Filter = "Pacotes HPE Comware (*.ipe)|*.ipe|Imagens Binárias (*.bin)|*.bin|Todos os Arquivos (*.*)|*.*"
+                };
+
+                if (dlg.ShowDialog() == true)
+                {
+                    if (string.Equals(Path.GetFileName(dlg.FileName), ex.RejectedFileName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        MessageBox.Show("Você selecionou o mesmo arquivo que acabou de ser rejeitado pelo BootWare. Por favor, selecione uma versão diferente.",
+                            "Mesmo Firmware Selecionado", MessageBoxButton.OK, MessageBoxImage.Error);
+                        return null;
+                    }
+
+                    if (!ValidarEBloquearFirmwareIncompativel(dlg.FileName, mostrarAlertaModal: true))
+                    {
+                        return null;
+                    }
+
+                    return dlg.FileName;
+                }
+                return null;
+            });
+        }
+
+        if (string.IsNullOrEmpty(novaImagem) || !File.Exists(novaImagem))
+        {
+            EscreverLinha("[!] Nenhum firmware alternativo válido foi selecionado. Recuperação abortada.");
+            return false;
+        }
+
+        _selectedIosBinPath = novaImagem;
+        var novoFileName = Path.GetFileName(novaImagem);
+        var novoTamanhoMb = (new FileInfo(novaImagem).Length / (1024.0 * 1024.0)).ToString("N1");
+        await Dispatcher.InvokeAsync(() =>
+        {
+            TxtIosImageInfo.Text = $"{novoFileName} ({novoTamanhoMb} MB)";
+            AtualizarEstadoBotoes();
+        });
+
+        EscreverLinha($"\n[*] Iniciando recuperação via BootWare TFTP com novo firmware: {novoFileName} ({novoTamanhoMb} MB)...");
+
+        var routerIp = _loadedSaipCircuit?.LanIp ?? "192.168.1.1";
+        var subnetMask = _loadedSaipCircuit?.LanSubnetMask ?? "255.255.255.0";
+
+        // Executa download TFTP via BootWare
+        var downloadOk = await ExecutarBootWareTftpDownloadAsync(
+            session,
+            "3",
+            novaImagem,
+            hostIp,
+            routerIp,
+            subnetMask,
+            ct);
+
+        if (!downloadOk)
+        {
+            EscreverLinha("[ERRO] Falha no download TFTP via BootWare com o firmware alternativo.");
+            return false;
+        }
+
+        // Após gravação, BootWare está no menu principal (Opção 0 retornou). Dispara boot do sistema (Opção 1)
+        EscreverLinha("[*] Disparando inicialização do Comware com o novo firmware (Opção 1 - Boot System)...");
+        await session.WriteLineAsync("1", ct);
+        await Task.Delay(1000, ct);
+
+        var novaVersaoTag = HpeComwareUpgrader.ExtrairVersaoDeNomeArquivo(novoFileName);
+        EscreverLinha($"[*] Aguardando boot do Comware ({novaVersaoTag}) por 2 a 5 minutos...");
+        var bootOk = await hpeUpgrader.AguardarRetornoHpePosRebootAsync(session, novaVersaoTag, ct);
+
+        if (!bootOk)
+        {
+            EscreverLinha($"[ERRO] O novo firmware ({novoFileName}) também não concluiu a inicialização do Comware.");
+            return false;
+        }
+
+        _isRommonOrBootwareDetected = false;
+        DefinirBadgeStatus("B", "✅");
+        AtualizarProgresso(100, "Fase B Concluída!", $"Equipamento recuperado com sucesso com {novoFileName}.");
+        EscreverLinha($"\n[OK] Equipamento HPE recuperado com sucesso com {novoFileName} e Comware operacional!");
+        return true;
     }
 
     // FASE C · PROVISIONAR EQUIPAMENTO
@@ -7412,7 +7539,7 @@ public partial class MainWindow : Window
                 // Se estiver no BootWare (ou menu), executa recuperação BootWare TFTP
                 var successHpe = await ExecutarBootWareTftpDownloadAsync(
                     session,
-                    "0",
+                    "3",
                     _selectedIosBinPath,
                     hostIp,
                     routerIp,
@@ -8281,16 +8408,32 @@ public partial class MainWindow : Window
             EscreverLinha($"[*] Equipamento identificado como HPE Comware para upgrade de firmware ({fileName}).");
             AtualizarProgresso(20, "Fase B: Gravando firmware HPE...", "Transferindo via TFTP, gravando bootloader e reiniciando...");
             var hpeUpgrader = new HpeComwareUpgrader(EscreverLinhaAsync, AtualizarProgresso);
-            success = await hpeUpgrader.UpgradeAsync(session, _selectedIosBinPath, hostIp,
-                async (msg, ctk) =>
+            var routerIp = _loadedSaipCircuit?.LanIp ?? "192.168.1.1";
+            var subnetMask = _loadedSaipCircuit?.LanSubnetMask ?? "255.255.255.0";
+            try
+            {
+                success = await hpeUpgrader.UpgradeAsync(session, _selectedIosBinPath, hostIp,
+                    async (msg, ctk) =>
+                    {
+                        return await Dispatcher.InvokeAsync(() =>
+                            MessageBox.Show(msg + "\n\nDeseja atualizar o boot-loader agora?", "Boot-loader desatualizado", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes);
+                    },
+                    InstruirOperadorAsync,
+                    ct,
+                    subnetMask,
+                    CbAdaptadorRede?.Text?.Trim(),
+                    bootWareTftpDownloader: (s, ethOpt, fwPath, hIp, rIp, mask, token) => ExecutarBootWareTftpDownloadAsync(s, ethOpt, fwPath, hIp, rIp, mask, token),
+                    routerIpAddress: routerIp);
+            }
+            catch (HpeBootWareImageRejectedException ex)
+            {
+                EscreverLinha($"\n[AVISO CRÍTICO] O BootWare do HPE rejeitou a imagem '{ex.RejectedFileName}'.");
+                if (!string.IsNullOrEmpty(ex.Reason))
                 {
-                    return await Dispatcher.InvokeAsync(() =>
-                        MessageBox.Show(msg + "\n\nDeseja atualizar o boot-loader agora?", "Boot-loader desatualizado", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes);
-                },
-                InstruirOperadorAsync,
-                ct,
-                _loadedSaipCircuit?.LanSubnetMask,
-                CbAdaptadorRede?.Text?.Trim());
+                    EscreverLinha($"    Motivo: {ex.Reason}");
+                }
+                success = await TratarRejeicaoFirmwareHpeAsync(session, hpeUpgrader, ex, hostIp, ct);
+            }
         }
         else
         {

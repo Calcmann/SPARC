@@ -29,6 +29,12 @@ public sealed class DeviceSession : IAsyncDisposable
 
     public ExecMode Mode { get; private set; } = ExecMode.UserExec;
 
+    public void ResetPrompt()
+    {
+        CurrentPrompt = null;
+        Mode = ExecMode.UserExec;
+    }
+
     public event Action<string>? RawOutput;
 
     public void EmitRawOutput(string raw) => RawOutput?.Invoke(raw);
@@ -355,6 +361,19 @@ public sealed class DeviceSession : IAsyncDisposable
                     }
                 }
 
+                // Se caiu em aviso de licença / paginação 'Please enter q/Q to quit,other key continue....'
+                if (Regex.IsMatch(current, @"(?i)Please\s+enter\s+q/Q\s+to\s+quit|quit\s*,\s*other\s+key\s+(?:to\s+)?continue"))
+                {
+                    if ((DateTime.UtcNow - lastWakeup).TotalSeconds >= 1.0)
+                    {
+                        lastWakeup = DateTime.UtcNow;
+                        await _transport.WriteAsync(Text("q"), cancellationToken);
+                        await Task.Delay(200, cancellationToken);
+                        var ext = DateTime.UtcNow.Add(effectiveTimeout);
+                        if (ext > deadline) deadline = ext;
+                    }
+                }
+
                 var lines = current.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
 
                 // Varre as últimas linhas (até 6 linhas recentes) para não ser enganado por logs de syslog
@@ -477,6 +496,19 @@ public sealed class DeviceSession : IAsyncDisposable
                         lastWakeupAttempt = DateTime.UtcNow;
                         await _transport.WriteAsync(Text("\r\n"), ct);
                         await Task.Delay(150, ct);
+                        var ext = DateTime.UtcNow.Add(timeout);
+                        if (ext > deadline) deadline = ext;
+                    }
+                }
+
+                // Se caiu em aviso de licença / paginação 'Please enter q/Q to quit,other key continue....'
+                if (Regex.IsMatch(text, @"(?i)Please\s+enter\s+q/Q\s+to\s+quit|quit\s*,\s*other\s+key\s+(?:to\s+)?continue"))
+                {
+                    if ((DateTime.UtcNow - lastWakeupAttempt).TotalSeconds >= 1.0)
+                    {
+                        lastWakeupAttempt = DateTime.UtcNow;
+                        await _transport.WriteAsync(Text("q"), ct);
+                        await Task.Delay(200, ct);
                         var ext = DateTime.UtcNow.Add(timeout);
                         if (ext > deadline) deadline = ext;
                     }
@@ -638,6 +670,7 @@ public sealed class DeviceSession : IAsyncDisposable
     }
 
     private static readonly Regex MoreRegex = new(@"--+\s*More\s*--+\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex QuitPaginationRegex = new(@"(?:Please\s+enter\s+q/Q\s+to\s+quit|quit\s*,\s*other\s+key\s+(?:to\s+)?continue\.{0,4})\s*$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private async Task HandlePaginationAsync(StringBuilder output, CancellationToken ct)
     {
@@ -650,6 +683,17 @@ public sealed class DeviceSession : IAsyncDisposable
                 output.Length--;
             await _transport.WriteAsync(new ReadOnlyMemory<byte>(new byte[] { 0x20 }), ct);
             await Task.Delay(40, ct);
+            return;
+        }
+
+        var matchQuit = QuitPaginationRegex.Match(text);
+        if (matchQuit.Success)
+        {
+            output.Remove(matchQuit.Index, matchQuit.Length);
+            while (output.Length > 0 && char.IsWhiteSpace(output[^1]))
+                output.Length--;
+            await _transport.WriteAsync(Text("q"), ct);
+            await Task.Delay(100, ct);
         }
     }
 

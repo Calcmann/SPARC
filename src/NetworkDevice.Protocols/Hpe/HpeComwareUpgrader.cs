@@ -6,6 +6,21 @@ using NetworkDevice.Protocols.Tftp;
 
 namespace NetworkDevice.Protocols.Hpe;
 
+public class HpeBootWareImageRejectedException : Exception
+{
+    public string RejectedFileName { get; }
+    public string TargetVersion { get; }
+    public string? Reason { get; }
+
+    public HpeBootWareImageRejectedException(string rejectedFileName, string targetVersion, string? reason = null)
+        : base($"O BootWare do HPE rejeitou a inicialização do firmware '{rejectedFileName}' ({targetVersion}). {reason}".Trim())
+    {
+        RejectedFileName = rejectedFileName;
+        TargetVersion = targetVersion;
+        Reason = reason;
+    }
+}
+
 public sealed class HpeComwareUpgrader
 {
     private static readonly Regex ConfirmPromptRegex = new(
@@ -22,6 +37,10 @@ public sealed class HpeComwareUpgrader
 
     private readonly Func<string, Task>? _progress;
     private readonly Action<int, string, string>? _onProgress;
+
+    public bool BootWareRepeatedMenuDetected { get; private set; }
+    public bool FlashImageMissingDetected { get; private set; }
+    public string? LastBootWareError { get; private set; }
 
     public HpeComwareUpgrader(Func<string, Task>? progress = null, Action<int, string, string>? onProgress = null)
     {
@@ -42,7 +61,9 @@ public sealed class HpeComwareUpgrader
         Func<string, CancellationToken, Task>? requestOperatorAction = null,
         CancellationToken cancellationToken = default,
         string? subnetMask = null,
-        string? localAdapterName = null)
+        string? localAdapterName = null,
+        BootWareTftpDownloader? bootWareTftpDownloader = null,
+        string? routerIpAddress = null)
     {
         if (!File.Exists(firmwareFilePath))
             throw new FileNotFoundException($"Arquivo de firmware HPE não encontrado: {firmwareFilePath}");
@@ -133,12 +154,64 @@ public sealed class HpeComwareUpgrader
             try { await session.WriteLineAsync(string.Empty, cancellationToken); } catch { }
 
             await ProgressAsync("[*] Aguardando o Comware inicializar para prosseguir com o upgrade (2 a 5 min)...");
-            var bootOk = await AguardarRetornoHpePosRebootAsync(session, targetVersionTag, cancellationToken);
+            var bootOk = await AguardarRetornoHpePosRebootAsync(session, targetVersionTag, cancellationToken, initialDelaySeconds: 0);
             if (!bootOk)
             {
-                await ProgressAsync("[AVISO] Comware ainda não confirmou prompt após boot inicial. Enviando Enter para tentar despertar...");
-                await session.WriteLineAsync(string.Empty, cancellationToken);
-                await Task.Delay(1000, cancellationToken);
+                await ProgressAsync("\n[⚠️ AVISO] O Comware não inicializou a partir da Flash (memória Flash vazia ou imagem ausente).");
+                if (bootWareTftpDownloader != null)
+                {
+                    await ProgressAsync($"[*] Roteador em modo de emergência BootWare. Gravando '{fileName}' diretamente via BootWare TFTP (Porta GE0)...");
+                    var tftpOk = await bootWareTftpDownloader(
+                        session,
+                        "3",
+                        firmwareFilePath,
+                        hostIpAddress,
+                        routerIpAddress ?? "192.168.1.1",
+                        subnetMask ?? "255.255.255.0",
+                        cancellationToken);
+
+                    if (tftpOk)
+                    {
+                        await HpeBootWareStateMachine.EnsureExtendedBootWareAsync(session, _progress, cancellationToken);
+                        await ProgressAsync("[*] Disparando inicialização do Comware com o novo firmware gravado (Opção 1 - Boot System)...");
+                        await session.WriteLineAsync("1", cancellationToken);
+                        await Task.Delay(1000, cancellationToken);
+
+                        // Reseta estados para avaliar o boot do firmware recém-gravado
+                        BootWareRepeatedMenuDetected = false;
+                        FlashImageMissingDetected = false;
+                        LastBootWareError = null;
+
+                        var postTftpBootOk = await AguardarRetornoHpePosRebootAsync(session, targetVersionTag, cancellationToken);
+                        if (!postTftpBootOk)
+                        {
+                            if (BootWareRepeatedMenuDetected)
+                            {
+                                throw new HpeBootWareImageRejectedException(fileName, targetVersionTag, LastBootWareError);
+                            }
+                            return false;
+                        }
+
+                        _onProgress?.Invoke(100, "Fase B Concluída!", $"Firmware {fileName} instalado e Comware ativo!");
+                        await ProgressAsync($"[OK] Comware inicializado com sucesso após gravação via BootWare TFTP!");
+                        return true;
+                    }
+                    else
+                    {
+                        await ProgressAsync("[ERRO] Falha na transferência TFTP via BootWare.");
+                        return false;
+                    }
+                }
+                else
+                {
+                    if (BootWareRepeatedMenuDetected)
+                    {
+                        throw new DeviceSessionException($"A memória Flash do HPE não possui firmware funcional (BootWare não inicializou). É necessária a carga do firmware via BootWare TFTP.");
+                    }
+                    await ProgressAsync("[AVISO] Comware ainda não confirmou prompt após boot inicial. Enviando Enter para tentar despertar...");
+                    await session.WriteLineAsync(string.Empty, cancellationToken);
+                    await Task.Delay(1000, cancellationToken);
+                }
             }
         }
         else if ((session.CurrentPrompt != null && session.CurrentPrompt.StartsWith("[")) || initPrompt.Trim().StartsWith("["))
@@ -240,6 +313,10 @@ public sealed class HpeComwareUpgrader
             var rebootOkB = await AguardarRetornoHpePosRebootAsync(session, targetVersionTag, cancellationToken);
             if (!rebootOkB)
             {
+                if (BootWareRepeatedMenuDetected)
+                {
+                    throw new HpeBootWareImageRejectedException(fileName, targetVersionTag, LastBootWareError);
+                }
                 await ProgressAsync($"[ERRO] HPE não respondeu após o reload — o firmware pode ser incompatível ou a imagem está corrompida.");
                 return false;
             }
@@ -660,6 +737,10 @@ public sealed class HpeComwareUpgrader
         var rebootOk = await AguardarRetornoHpePosRebootAsync(session, targetVersionTag, cancellationToken);
         if (!rebootOk)
         {
+            if (BootWareRepeatedMenuDetected)
+            {
+                throw new HpeBootWareImageRejectedException(fileName, targetVersionTag, LastBootWareError);
+            }
             await ProgressAsync($"[ERRO] HPE não respondeu após o reload — o firmware pode ser incompatível ou a imagem está corrompida. Provisionamento cancelado.");
             return false;
         }
@@ -669,13 +750,19 @@ public sealed class HpeComwareUpgrader
         return true;
     }
 
-    private async Task<bool> AguardarRetornoHpePosRebootAsync(DeviceSession session, string targetVersionTag, CancellationToken cancellationToken)
+    public async Task<bool> AguardarRetornoHpePosRebootAsync(DeviceSession session, string targetVersionTag, CancellationToken cancellationToken, int initialDelaySeconds = 15)
     {
         // Aguarda reboot para carregar nova imagem — evita provisionamento SAIP enquanto roteador ainda inicializa
         _onProgress?.Invoke(98, "Aguardando reboot HPE...", $"Roteador reiniciando para {targetVersionTag} (2-5 min) — NÃO DESLIGUE!");
         await ProgressAsync($"[*] Reinicialização em andamento — aguardando HPE voltar a responder (2 a 5 min)...");
-        await Task.Delay(TimeSpan.FromSeconds(15), cancellationToken); // dá tempo do reboot físico iniciar
+        if (initialDelaySeconds > 0)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(initialDelaySeconds), cancellationToken); // dá tempo do reboot físico iniciar
+        }
 
+        BootWareRepeatedMenuDetected = false;
+        LastBootWareError = null;
+        var bootSystemAttempts = 0;
         var rebootDeadline = DateTime.UtcNow.AddMinutes(6);
         var rebootOk = false;
         var rebootRetries = 0;
@@ -695,6 +782,15 @@ public sealed class HpeComwareUpgrader
                     new StopCondition.Contains("Decompressing", "Decompressing"),
                     new StopCondition.Contains("System image is starting", "System image is starting"),
                     new StopCondition.Contains("Cryptographic algorithms tests passed", "Cryptographic algorithms tests passed"),
+                    new StopCondition.Contains("Loading boot image fails", "Loading boot image fails"),
+                    new StopCondition.Contains("Loading images fails", "Loading images fails"),
+                    new StopCondition.Contains("Booting App fails", "Booting App fails"),
+                    new StopCondition.Contains("Image program does not exist", "Image program does not exist"),
+                    new StopCondition.Contains("The image does not exist", "The image does not exist"),
+                    new StopCondition.Contains("Verification failed", "Verification failed"),
+                    new StopCondition.Contains("Image verification failed", "Image verification failed"),
+                    new StopCondition.Contains("Bad magic number", "Bad magic number"),
+                    new StopCondition.Contains("fails.", "fails."),
                     new StopCondition.Contains("Press ENTER to get started", "Press ENTER to get started"),
                     new StopCondition.Contains("Line con0 is available", "Line con0 is available"),
                     new StopCondition.Contains("Auto-Configuration", "Auto-Configuration"),
@@ -704,6 +800,8 @@ public sealed class HpeComwareUpgrader
                     new StopCondition.Contains("choice:", "choice:"),
                     new StopCondition.Contains("Press <Ctrl+C> To Exit", "Press <Ctrl+C> To Exit"),
                     new StopCondition.Contains("Waiting ...", "Waiting ..."),
+                    new StopCondition.Contains("Please enter q/Q to quit", "Please enter q/Q to quit"),
+                    new StopCondition.Contains("quit,other key continue", "quit,other key continue"),
                     new StopCondition.LineRegex("hpe", HpeComwareRecovery.ComwarePrompt)
                 }, TimeSpan.FromSeconds(10), cancellationToken);
 
@@ -719,7 +817,38 @@ public sealed class HpeComwareUpgrader
                     continue;
                 }
 
-                // 2. Contagem do BootWare (Press Ctrl+B)
+                // 2. Falhas explícitas de carga da imagem no BootWare
+                if (pOut.Contains("Loading boot image fails", StringComparison.OrdinalIgnoreCase) ||
+                    pOut.Contains("Loading images fails", StringComparison.OrdinalIgnoreCase) ||
+                    pOut.Contains("Booting App fails", StringComparison.OrdinalIgnoreCase) ||
+                    pOut.Contains("Image program does not exist", StringComparison.OrdinalIgnoreCase) ||
+                    pOut.Contains("The image does not exist", StringComparison.OrdinalIgnoreCase) ||
+                    pOut.Contains("The main application file does not exist", StringComparison.OrdinalIgnoreCase) ||
+                    pOut.Contains("Verification failed", StringComparison.OrdinalIgnoreCase) ||
+                    pOut.Contains("Image verification failed", StringComparison.OrdinalIgnoreCase) ||
+                    pOut.Contains("Bad magic number", StringComparison.OrdinalIgnoreCase) ||
+                    pOut.Contains("fails.", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (pOut.Contains("does not exist", StringComparison.OrdinalIgnoreCase) ||
+                        pOut.Contains("Loading images fails", StringComparison.OrdinalIgnoreCase) ||
+                        pOut.Contains("Loading boot image fails", StringComparison.OrdinalIgnoreCase) ||
+                        pOut.Contains("The main application file does not exist", StringComparison.OrdinalIgnoreCase) ||
+                        pOut.Contains("Booting App fails", StringComparison.OrdinalIgnoreCase))
+                    {
+                        FlashImageMissingDetected = true;
+                    }
+
+                    LastBootWareError = pOut.Trim().Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                                           .LastOrDefault(l => l.Contains("fail", StringComparison.OrdinalIgnoreCase) ||
+                                                               l.Contains("not exist", StringComparison.OrdinalIgnoreCase) ||
+                                                               l.Contains("bad", StringComparison.OrdinalIgnoreCase))
+                                       ?? "Falha reportada pelo BootWare ao carregar o arquivo de firmware.";
+                    await ProgressAsync($"\n[ALERTA CRÍTICO] Falha na carga do firmware detectada no BootWare: {LastBootWareError}");
+                    BootWareRepeatedMenuDetected = true;
+                    return false;
+                }
+
+                // 3. Contagem do BootWare (Press Ctrl+B)
                 if (pOut.Contains("Press Ctrl+B", StringComparison.OrdinalIgnoreCase))
                 {
                     await ProgressAsync($"[*] BootWare menu (Ctrl+B) detectado — aguardando boot automático...");
@@ -727,26 +856,58 @@ public sealed class HpeComwareUpgrader
                     continue;
                 }
 
-                // 3. Etapas de validação e descompactação de imagens Comware
+                // 4. Parado em menu do BootWare (choice) - Processado ANTES de logs de 'Loading' / 'Decompressing'
+                if (pOut.Contains("choice(", StringComparison.OrdinalIgnoreCase) ||
+                    pOut.Contains("choice:", StringComparison.OrdinalIgnoreCase))
+                {
+                    var (bState, _) = HpeBootWareStateMachine.DetectState(pOut);
+                    if (bState == HpeMenuState.ExtendedBootWare || pOut.Contains("choice(0-9)", StringComparison.OrdinalIgnoreCase))
+                    {
+                        bootSystemAttempts++;
+                        if (bootSystemAttempts >= 3)
+                        {
+                            BootWareRepeatedMenuDetected = true;
+                            LastBootWareError = "O BootWare retornou repetidamente ao menu inicial após múltiplas tentativas de 'Boot System'. O firmware não pôde ser iniciado pelo hardware.";
+                            await ProgressAsync($"\n[ALERTA CRÍTICO] {LastBootWareError}");
+                            return false;
+                        }
+
+                        await ProgressAsync($"[*] BootWare menu principal ativo durante o boot (tentativa {bootSystemAttempts}/3). Enviando '1' (Boot System)...");
+                        await session.WriteLineAsync("1", cancellationToken);
+                        if (initialDelaySeconds > 0) await Task.Delay(1500, cancellationToken);
+                    }
+                    else if (bState == HpeMenuState.EthernetSubMenu || bState == HpeMenuState.FileControl || bState == HpeMenuState.SerialSubMenu)
+                    {
+                        await ProgressAsync($"[*] Submenu BootWare ({bState}) detectado. Enviando '0' para retornar ao menu principal...");
+                        await session.WriteLineAsync("0", cancellationToken);
+                        if (initialDelaySeconds > 0) await Task.Delay(1000, cancellationToken);
+                    }
+                    continue;
+                }
+
+                // 5. Etapas de validação e descompactação de imagens Comware (apenas se NÃO estiver em menu BootWare)
                 if (pOut.Contains("BootWare Validating", StringComparison.OrdinalIgnoreCase))
                 {
                     await ProgressAsync($"[*] HPE: BootWare validando hardware e memória Flash...");
-                    await Task.Delay(1000, cancellationToken);
+                    if (initialDelaySeconds > 0) await Task.Delay(1000, cancellationToken);
                     continue;
                 }
 
-                if (pOut.Contains("Decompressing", StringComparison.OrdinalIgnoreCase) ||
-                    pOut.Contains("Loading file", StringComparison.OrdinalIgnoreCase) ||
-                    pOut.Contains("System image is starting", StringComparison.OrdinalIgnoreCase) ||
-                    pOut.Contains("Cryptographic algorithms tests passed", StringComparison.OrdinalIgnoreCase))
+                if (!pOut.Contains("<EXTENDED-BOOTWARE", StringComparison.OrdinalIgnoreCase) &&
+                    !pOut.Contains("<MAIN MENU", StringComparison.OrdinalIgnoreCase) &&
+                    !pOut.Contains("Restore to Factory Default", StringComparison.OrdinalIgnoreCase) &&
+                    (pOut.Contains("Decompressing", StringComparison.OrdinalIgnoreCase) ||
+                     pOut.Contains("Loading file", StringComparison.OrdinalIgnoreCase) ||
+                     pOut.Contains("System image is starting", StringComparison.OrdinalIgnoreCase) ||
+                     pOut.Contains("Cryptographic algorithms tests passed", StringComparison.OrdinalIgnoreCase)))
                 {
                     var lastLineMsg = pOut.Trim().Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.Trim();
                     await ProgressAsync($"[*] HPE inicializando Comware: {lastLineMsg}");
-                    await Task.Delay(1500, cancellationToken);
+                    if (initialDelaySeconds > 0) await Task.Delay(1500, cancellationToken);
                     continue;
                 }
 
-                // 4. Detecção de Auto-Configuration (DHCP) em execução -> cancela com Ctrl+C
+                // 6. Detecção de Auto-Configuration (DHCP) em execução -> cancela com Ctrl+C
                 if (pOut.Contains("automatic configuration", StringComparison.OrdinalIgnoreCase) ||
                     pOut.Contains("CTRL_C", StringComparison.OrdinalIgnoreCase) ||
                     pOut.Contains("Auto-Configuration", StringComparison.OrdinalIgnoreCase))
@@ -760,7 +921,17 @@ public sealed class HpeComwareUpgrader
                     continue;
                 }
 
-                // 5. Linha con0 disponível ou solicitação de ENTER
+                // 7. Notificação de licença GNU/LGPL ou paginação ("Please enter q/Q to quit,other key continue....")
+                if (pOut.Contains("Please enter q/Q to quit", StringComparison.OrdinalIgnoreCase) ||
+                    pOut.Contains("quit,other key continue", StringComparison.OrdinalIgnoreCase))
+                {
+                    await ProgressAsync($"[*] Notificação de licença GNU/LGPL detectada no HPE Comware — enviando 'q' para sair e liberar console...");
+                    await session.SendRawAsync("q", cancellationToken);
+                    await Task.Delay(300, cancellationToken);
+                    continue;
+                }
+
+                // 8. Linha con0 disponível ou solicitação de ENTER
                 if (pOut.Contains("Press ENTER to get started", StringComparison.OrdinalIgnoreCase) ||
                     pOut.Contains("Line con0 is available", StringComparison.OrdinalIgnoreCase))
                 {
@@ -769,7 +940,7 @@ public sealed class HpeComwareUpgrader
                     await Task.Delay(1000, cancellationToken);
                 }
 
-                // 6. XModem / Transferência serial travada no BootWare
+                // 8. XModem / Transferência serial travada no BootWare
                 if (pOut.Contains("Press <Ctrl+C> To Exit", StringComparison.OrdinalIgnoreCase) ||
                     pOut.Contains("Waiting ...", StringComparison.OrdinalIgnoreCase) ||
                     pOut.Contains("CCCC"))
@@ -778,26 +949,6 @@ public sealed class HpeComwareUpgrader
                     await session.SendCtrlCAsync(cancellationToken);
                     await Task.Delay(800, cancellationToken);
                     await session.WriteLineAsync(string.Empty, cancellationToken);
-                    continue;
-                }
-
-                // 7. Parado em menu do BootWare (choice)
-                if (pOut.Contains("choice(", StringComparison.OrdinalIgnoreCase) ||
-                    pOut.Contains("choice:", StringComparison.OrdinalIgnoreCase))
-                {
-                    var (bState, _) = HpeBootWareStateMachine.DetectState(pOut);
-                    if (bState == HpeMenuState.ExtendedBootWare || pOut.Contains("choice(0-9)", StringComparison.OrdinalIgnoreCase))
-                    {
-                        await ProgressAsync("[*] BootWare menu principal ativo durante o boot. Enviando '1' (Boot System)...");
-                        await session.WriteLineAsync("1", cancellationToken);
-                        await Task.Delay(1000, cancellationToken);
-                    }
-                    else if (bState == HpeMenuState.EthernetSubMenu || bState == HpeMenuState.FileControl || bState == HpeMenuState.SerialSubMenu)
-                    {
-                        await ProgressAsync($"[*] Submenu BootWare ({bState}) detectado. Enviando '0' para retornar ao menu principal...");
-                        await session.WriteLineAsync("0", cancellationToken);
-                        await Task.Delay(1000, cancellationToken);
-                    }
                     continue;
                 }
 
@@ -869,7 +1020,7 @@ public sealed class HpeComwareUpgrader
                 if (!string.IsNullOrEmpty(pOut))
                 {
                     var lastClean = pOut.Trim().Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.Trim();
-                    if (!string.IsNullOrEmpty(lastClean) && !lastClean.StartsWith("<1>") && !lastClean.Contains("BootWare Validating"))
+                    if (!string.IsNullOrEmpty(lastClean) && !lastClean.StartsWith("<1>") && !lastClean.Contains("BootWare Validating") && !lastClean.Contains("choice") && !lastClean.Contains("Restore to Factory"))
                     {
                         await ProgressAsync($"[*] Boot HPE: {lastClean}");
                     }
@@ -889,7 +1040,7 @@ public sealed class HpeComwareUpgrader
                 try { await session.WriteLineAsync(string.Empty, cancellationToken); } catch { }
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);
+            if (initialDelaySeconds > 0) await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken);
         }
 
         if (rebootOk)
@@ -930,6 +1081,7 @@ public sealed class HpeComwareUpgrader
                 {
                     await session.WriteLineAsync("Y", ct);
                 }
+                session.ResetPrompt();
                 return;
             }
 
@@ -985,6 +1137,7 @@ public sealed class HpeComwareUpgrader
                     break;
                 }
             }
+            session.ResetPrompt();
         }
         catch
         {
@@ -1006,7 +1159,7 @@ public sealed class HpeComwareUpgrader
         return (weeks * 7 * 24 * 60) + (days * 24 * 60) + (hours * 60) + mins;
     }
 
-    private static string ExtrairVersaoDeNomeArquivo(string fileName)
+    public static string ExtrairVersaoDeNomeArquivo(string fileName)
     {
         if (string.IsNullOrWhiteSpace(fileName))
             return string.Empty;

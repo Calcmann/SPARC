@@ -66,7 +66,7 @@
                             </Border>
                         </DockPanel>
 
-                        <TextBlock x:Name="TxtPortaLanNome" Text="Portas 0 a 3 (GE0 a GE3 / LAN)" FontWeight="SemiBold" FontSize="12.5" Foreground="#FFFFFF" Margin="0,2,0,4" />
+                        <TextBlock x:Name="TxtPortaLanNome" Text="Porta LAN" FontWeight="SemiBold" FontSize="12.5" Foreground="#FFFFFF" Margin="0,2,0,4" />
                         <TextBlock Text="Conexão com o seu notebook / computador para gerência e testes locais."
                                    FontSize="10.5" Foreground="#A1A1AA" TextWrapping="Wrap" LineHeight="14" />
                     </StackPanel>
@@ -82,7 +82,7 @@
                             </Border>
                         </DockPanel>
 
-                        <TextBlock x:Name="TxtPortaWanNome" Text="Porta 4 (GE4 / WAN)" FontWeight="SemiBold" FontSize="12.5" Foreground="#FFFFFF" Margin="0,2,0,4" />
+                        <TextBlock x:Name="TxtPortaWanNome" Text="Porta WAN" FontWeight="SemiBold" FontSize="12.5" Foreground="#FFFFFF" Margin="0,2,0,4" />
                         <TextBlock Text="Conexão com o equipamento da operadora (Modem / NTU / EDD / Fibra)."
                                    FontSize="10.5" Foreground="#A1A1AA" TextWrapping="Wrap" LineHeight="14" />
                     </StackPanel>

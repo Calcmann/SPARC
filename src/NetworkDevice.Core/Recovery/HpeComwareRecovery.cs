@@ -293,6 +293,9 @@ public sealed class HpeComwareRecovery
         string skipAuthOption = "8";
         string bootOption = "1";
         string ethernetOption = "3";
+        var ethMatch = Regex.Match(menuText, @"(?:<|\b)(\d+)(?:>|\.)\s*(?:Enter\s+)?Ethernet\s+SubMenu", RegexOptions.IgnoreCase);
+        if (ethMatch.Success)
+            ethernetOption = ethMatch.Groups[1].Value;
 
         // Se for explicitamente solicitado RECOVERY DE FIRMWARE via BootWare:
         if (forceFirmwareRecovery && tftpDownloader != null && !string.IsNullOrEmpty(firmwareFilePath) && File.Exists(firmwareFilePath))
@@ -359,6 +362,7 @@ public sealed class HpeComwareRecovery
             // 4. Opção 1 (Boot System)
             await ProgressAsync("[*] [4/4] Disparando inicialização do sistema (Opção 1 - Boot System)...");
             await HpeBootWareStateMachine.ExecuteOptionAsync(session, HpeMenuState.ExtendedBootWare, bootOption, "Boot System", _progress, ct);
+            session.ResetPrompt();
             await Task.Delay(500, ct);
         }
 
@@ -374,7 +378,9 @@ public sealed class HpeComwareRecovery
             new StopCondition.Contains("not_exist", "The image does not exist!"),
             new StopCondition.Contains("boot_fail", "Loading boot image fails"),
             new StopCondition.Contains("app_not_exist", "The main application file does not exist"),
-            new StopCondition.Contains("app_boot_fail", "Booting App fails")
+            new StopCondition.Contains("app_boot_fail", "Booting App fails"),
+            new StopCondition.Contains("quit_prompt", "Please enter q/Q to quit"),
+            new StopCondition.Contains("quit_prompt2", "quit,other key continue")
         };
 
         var bootDeadline = DateTime.UtcNow.AddMinutes(7);
@@ -433,6 +439,7 @@ public sealed class HpeComwareRecovery
                             await Task.Delay(1500, ct);
                             try { await session.WaitForAsync(new StopCondition[] { new StopCondition.Contains("enter your choice", "enter your choice") }, TimeSpan.FromMilliseconds(500), ct); } catch { }
                             await HpeBootWareStateMachine.ExecuteOptionAsync(session, HpeMenuState.ExtendedBootWare, bootOption, "Boot System", _progress, ct);
+                            session.ResetPrompt();
                             try
                             {
                                 await session.WaitForAsync(
@@ -492,6 +499,7 @@ public sealed class HpeComwareRecovery
                             await HpeBootWareStateMachine.EnsureExtendedBootWareAsync(session, _progress, ct);
                             await ProgressAsync("[*] Disparando inicialização do sistema pós-gravação (Opção 1 - Boot System)...");
                             await HpeBootWareStateMachine.ExecuteOptionAsync(session, HpeMenuState.ExtendedBootWare, bootOption, "Boot System", _progress, ct);
+                            session.ResetPrompt();
                             bootSw.Restart();
                             continue;
                         }
@@ -559,6 +567,14 @@ public sealed class HpeComwareRecovery
                 await session.WriteLineAsync(string.Empty, ct);
                 await Task.Delay(400, ct);
                 await session.WriteLineAsync(string.Empty, ct);
+            }
+
+            if (outText.Contains("Please enter q/Q to quit", StringComparison.OrdinalIgnoreCase) ||
+                outText.Contains("quit,other key continue", StringComparison.OrdinalIgnoreCase))
+            {
+                await ProgressAsync("[*] Notificação de licença GNU/LGPL detectada no Comware — enviando 'q' para liberar terminal...");
+                await session.SendRawAsync("q", ct);
+                await Task.Delay(300, ct);
             }
 
             if (res.Matched is StopCondition.LineRegex lrPrompt && lrPrompt.Name == "prompt")
@@ -949,7 +965,7 @@ public static class HpeBootWareStateMachine
         if (string.IsNullOrWhiteSpace(text))
             return (HpeMenuState.Unknown, string.Empty);
 
-        var tail = text.Length > 600 ? text.Substring(text.Length - 600) : text;
+        var tail = text.Length > 2500 ? text.Substring(text.Length - 2500) : text;
 
         if (Regex.IsMatch(tail, @"(?i)\[Y/N\]\s*[:?]?\s*$"))
             return (HpeMenuState.ConfirmYesNo, "[Y/N]");
@@ -970,8 +986,7 @@ public static class HpeBootWareStateMachine
         }
 
         // 2. ETHERNET SUBMENU (Submenu Ethernet 0-5)
-        if (tail.Contains("<Enter Ethernet SubMenu>", StringComparison.OrdinalIgnoreCase) ||
-            tail.Contains("<ETHERNET SUBMENU>", StringComparison.OrdinalIgnoreCase) ||
+        if (tail.Contains("<ETHERNET SUBMENU>", StringComparison.OrdinalIgnoreCase) ||
             tail.Contains("choice(0-5)", StringComparison.OrdinalIgnoreCase) ||
             tail.Contains("(0-5):", StringComparison.OrdinalIgnoreCase) ||
             Regex.IsMatch(tail, @"(?i)choice\s*\(\s*0\s*-\s*5\s*\)"))
@@ -1032,7 +1047,11 @@ public static class HpeBootWareStateMachine
                 res = await session.WaitForAsync(
                     new StopCondition[]
                     {
-                        new StopCondition.Contains("choice", "choice"),
+                        new StopCondition.LineRegex("choicePrompt", new Regex(@"(?i)choice\s*\(\s*\d+\s*-\s*\d+\s*\)\s*:")),
+                        new StopCondition.Contains("(0-9):", "(0-9):"),
+                        new StopCondition.Contains("(0-5):", "(0-5):"),
+                        new StopCondition.Contains("(0-6):", "(0-6):"),
+                        new StopCondition.Contains("(0-3):", "(0-3):"),
                         new StopCondition.Contains("BOOTWARE", "BOOTWARE"),
                         new StopCondition.Contains("MENU", "MENU"),
                         new StopCondition.Contains("Enter file No", "Enter file No"),
@@ -1083,6 +1102,97 @@ public static class HpeBootWareStateMachine
                 await session.WriteLineAsync("N", ct);
                 await Task.Delay(400, ct);
             }
+        }
+
+        return false;
+    }
+
+    public static async Task<bool> EnsureEthernetSubMenuAsync(
+        DeviceSession session,
+        string ethernetOption,
+        Func<string, Task>? progress,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(ethernetOption) || ethernetOption == "0")
+            ethernetOption = "3";
+
+        for (int attempt = 1; attempt <= 4; attempt++)
+        {
+            await session.WriteLineAsync(string.Empty, ct);
+            await Task.Delay(250, ct);
+
+            DeviceSession.ExpectResult res;
+            try
+            {
+                res = await session.WaitForAsync(
+                    new StopCondition[]
+                    {
+                        new StopCondition.LineRegex("choicePrompt", new Regex(@"(?i)choice\s*\(\s*\d+\s*-\s*\d+\s*\)\s*:")),
+                        new StopCondition.Contains("(0-5):", "(0-5):"),
+                        new StopCondition.Contains("(0-9):", "(0-9):"),
+                        new StopCondition.Contains("<ETHERNET SUBMENU>", "<ETHERNET SUBMENU>"),
+                        new StopCondition.Contains("<EXTENDED-BOOTWARE MENU>", "<EXTENDED-BOOTWARE MENU>"),
+                        new StopCondition.Contains("BOOTWARE", "BOOTWARE"),
+                        new StopCondition.Contains("MENU", "MENU"),
+                        new StopCondition.Contains("[Y/N]", "[Y/N]"),
+                        new StopCondition.Prompt()
+                    },
+                    TimeSpan.FromSeconds(3),
+                    ct);
+            }
+            catch (SessionTimeoutException)
+            {
+                continue;
+            }
+
+            var (state, prompt) = DetectState(res.Output);
+            if (state == HpeMenuState.EthernetSubMenu)
+            {
+                if (progress != null)
+                    await progress($"[{DateTime.Now:HH:mm:ss}] [STATE: ETHERNET_SUBMENU] [PROMPT: {prompt}] — Submenu Ethernet confirmado.");
+                return true;
+            }
+
+            if (state != HpeMenuState.ExtendedBootWare)
+            {
+                var atMain = await EnsureExtendedBootWareAsync(session, progress, ct);
+                if (!atMain)
+                    continue;
+            }
+
+            if (progress != null)
+                await progress($"[{DateTime.Now:HH:mm:ss}] [STATE: EXTENDED_BOOTWARE] -> TX: '{ethernetOption}' (Entrando no Ethernet SubMenu)...");
+
+            await session.WriteLineAsync(ethernetOption, ct);
+            await Task.Delay(500, ct);
+
+            try
+            {
+                var postRes = await session.WaitForAsync(
+                    new StopCondition[]
+                    {
+                        new StopCondition.LineRegex("choiceEth", new Regex(@"(?i)choice\s*\(\s*0\s*-\s*5\s*\)\s*:")),
+                        new StopCondition.Contains("(0-5):", "(0-5):"),
+                        new StopCondition.Contains("<ETHERNET SUBMENU>", "<ETHERNET SUBMENU>"),
+                        new StopCondition.Contains("Modify Ethernet Parameter", "Modify Ethernet Parameter"),
+                        new StopCondition.Contains("Update Main Application File", "Update Main Application File")
+                    },
+                    TimeSpan.FromSeconds(4),
+                    ct);
+
+                var (pState, pPrompt) = DetectState(postRes.Output);
+                if (pState == HpeMenuState.EthernetSubMenu ||
+                    postRes.Output.Contains("<ETHERNET SUBMENU>", StringComparison.OrdinalIgnoreCase) ||
+                    postRes.Output.Contains("choice(0-5)", StringComparison.OrdinalIgnoreCase) ||
+                    postRes.Output.Contains("(0-5):", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (progress != null)
+                        await progress($"[{DateTime.Now:HH:mm:ss}] [STATE: ETHERNET_SUBMENU] [PROMPT: {pPrompt}] — Submenu Ethernet confirmado.");
+                    return true;
+                }
+            }
+            catch { }
+            await Task.Delay(500, ct);
         }
 
         return false;

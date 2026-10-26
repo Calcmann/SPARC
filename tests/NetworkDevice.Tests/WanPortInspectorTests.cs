@@ -185,6 +185,30 @@ public sealed class WanPortInspectorTests
     }
 
     [Fact]
+    public void Cisco921_AvaliarPortas_Ge4Wan_Ge5Lan_IdentificaCorretamente()
+    {
+        var info = WanPortInspector.ObterRoteadorPortasInfo("921")!;
+        Assert.NotNull(info);
+        Assert.Equal("GE4 (Porta 4)", info.WanInterfaceExibicao);
+        Assert.Equal("GE5 (Porta 5 / LAN)", info.LanInterfaceExibicao);
+
+        const string brief = """
+            Interface                  IP-Address      OK? Method Status                Protocol
+            GigabitEthernet0           unassigned      YES unset  down                  down
+            GigabitEthernet1           unassigned      YES unset  down                  down
+            GigabitEthernet2           unassigned      YES unset  down                  down
+            GigabitEthernet3           unassigned      YES unset  down                  down
+            GigabitEthernet4           201.90.204.22   YES manual up                    up
+            GigabitEthernet5           192.168.1.1     YES manual up                    up
+            """;
+
+        var res = WanPortInspector.AvaliarPortasCisco(brief, info, sourceIp: "192.168.1.2");
+        Assert.True(res.LanUp);
+        Assert.True(res.WanUp);
+        Assert.False(res.PossivelInversaoCabos);
+    }
+
+    [Fact]
     public void Cisco_AvaliarPortas_DetectaInversao_ArpNaWan()
     {
         var info = WanPortInspector.ObterRoteadorPortasInfo("c841")!;

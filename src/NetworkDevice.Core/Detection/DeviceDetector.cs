@@ -134,6 +134,18 @@ public sealed class DeviceDetector : IDeviceDetector
                     continue;
                 }
 
+                if (current.Contains("Please enter q/Q to quit", StringComparison.OrdinalIgnoreCase) ||
+                    current.Contains("quit,other key continue", StringComparison.OrdinalIgnoreCase))
+                {
+                    rxAccumulator.Clear();
+                    await transport.WriteAsync(Encoding.UTF8.GetBytes("q"), ct);
+                    await Task.Delay(300, ct);
+                    await transport.WriteAsync(Encoding.UTF8.GetBytes("\r\n"), ct);
+                    await Task.Delay(300, ct);
+                    silenceDeadline = DateTime.UtcNow.AddSeconds(2.0);
+                    continue;
+                }
+
                 if (CiscoConfigPromptRegex.IsMatch(current) ||
                     Regex.IsMatch(current, @"\([A-Za-z0-9_\-\.\/]*config[A-Za-z0-9_\-\.\/]*\)\s*[>#]\s*$"))
                 {
@@ -154,7 +166,6 @@ public sealed class DeviceDetector : IDeviceDetector
                     current.Contains("choice", StringComparison.OrdinalIgnoreCase) ||
                     current.Contains("rommon", StringComparison.OrdinalIgnoreCase) ||
                     current.Contains("BootWare", StringComparison.OrdinalIgnoreCase) ||
-                    current.Contains("Please enter q/Q to quit", StringComparison.OrdinalIgnoreCase) ||
                     current.Contains("EXTENDED-BOOTWARE", StringComparison.OrdinalIgnoreCase) ||
                     current.Contains("BASIC BOOT MENU", StringComparison.OrdinalIgnoreCase) ||
                     current.Contains("FOS boot failed", StringComparison.OrdinalIgnoreCase) ||
@@ -249,7 +260,9 @@ public sealed class DeviceDetector : IDeviceDetector
 
         var isComwareReady = isOpenPrompt
                           || rawPrompt.Contains("Press ENTER to get started", StringComparison.OrdinalIgnoreCase)
-                          || rawPrompt.Contains("Line con0 is available", StringComparison.OrdinalIgnoreCase);
+                          || rawPrompt.Contains("Line con0 is available", StringComparison.OrdinalIgnoreCase)
+                          || rawPrompt.Contains("Please enter q/Q to quit", StringComparison.OrdinalIgnoreCase)
+                          || rawPrompt.Contains("quit,other key continue", StringComparison.OrdinalIgnoreCase);
 
         var isBootware = rawPrompt.Contains("choice(0-", StringComparison.OrdinalIgnoreCase)
                       || rawPrompt.Contains("choice (0-", StringComparison.OrdinalIgnoreCase)
@@ -260,7 +273,6 @@ public sealed class DeviceDetector : IDeviceDetector
                       || rawPrompt.Contains("<MAIN MENU>", StringComparison.OrdinalIgnoreCase)
                       || rawPrompt.Contains("Enter your choice", StringComparison.OrdinalIgnoreCase)
                       || rawPrompt.Contains("Format File System", StringComparison.OrdinalIgnoreCase)
-                      || rawPrompt.Contains("Please enter q/Q to quit", StringComparison.OrdinalIgnoreCase)
                       || rawPrompt.Contains("Image program does not exist", StringComparison.OrdinalIgnoreCase)
                       || rawPrompt.Contains("Loading images fails", StringComparison.OrdinalIgnoreCase)
                       || rawPrompt.Contains("The image does not exist", StringComparison.OrdinalIgnoreCase)

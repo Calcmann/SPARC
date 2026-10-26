@@ -414,7 +414,8 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
         Func<string, CancellationToken, Task>? requestOperatorAction = null,
         Func<string, Task>? progress = null,
         CancellationToken cancellationToken = default,
-        Action<int, string, string>? onProgress = null)
+        Action<int, string, string>? onProgress = null,
+        int pollDelayMs = 3000)
     {
         var cleanLan = lanInterface.Replace(" ", ""); // ex: GigabitEthernet0/5, GigabitEthernet5, GigabitEthernet0/1
         var cleanWan = cleanLan.Contains("0/5") ? "GigabitEthernet0/4" :
@@ -447,6 +448,22 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
 
         // Garante proativamente que a porta LAN esteja com 'no shutdown' habilitado para subir o link físico
         await EnsureLanInterfaceNoShutdownAsync(session, lanInterface, cancellationToken);
+
+        // Janela de convergência pós no shutdown: aguarda 3s para o protocolo de linha subir
+        if (pollDelayMs > 50)
+        {
+            if (progress is not null)
+                await progress($"[*] Aguardando convergência do protocolo da porta LAN ({shortLan}) ({Math.Max(1, pollDelayMs / 1000)}s)...");
+            for (int s = Math.Max(1, pollDelayMs / 1000); s >= 1; s--)
+            {
+                onProgress?.Invoke(50, "Aguardando Conexão LAN...", $"Aguardando protocolo da porta {shortLan} subir ({s}s)...");
+                await Task.Delay(1000, cancellationToken);
+            }
+        }
+        else if (pollDelayMs > 0)
+        {
+            await Task.Delay(pollDelayMs, cancellationToken);
+        }
 
         for (var attempt = 1; attempt <= 60; attempt++)
         {
@@ -520,7 +537,7 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
 
                 onProgress?.Invoke(50, "Aguardando Conexão LAN...", $"Aguardando sincronização da porta {shortLan}... ({elapsedSec}s)");
 
-                if (requestOperatorAction is not null && (!operatorNotified || attempt == 20 || attempt == 40))
+                if (requestOperatorAction is not null && (!operatorNotified && attempt >= 2 || attempt == 20 || attempt == 40))
                 {
                     operatorNotified = true;
                     await requestOperatorAction(

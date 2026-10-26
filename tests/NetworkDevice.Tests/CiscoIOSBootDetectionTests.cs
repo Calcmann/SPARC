@@ -143,4 +143,117 @@ public sealed class CiscoIOSBootDetectionTests
         // Confirma que enviou a senha PRO1AN no login do console
         Assert.Contains(transport.Commands, c => c == "PRO1AN");
     }
+
+    [Fact]
+    public async Task AguardarBootCiscoIOSAsync_RommonPromptPosReset_SendsBootFlashAndRecovers()
+    {
+        var bootSent = false;
+        var transport = new ScriptedTransport(
+            cmd =>
+            {
+                if (cmd.StartsWith("boot flash:c800-universalk9-mz.SPA.154-3.M3.bin", StringComparison.OrdinalIgnoreCase))
+                {
+                    bootSent = true;
+                    return "Loading c800-universalk9-mz.SPA.154-3.M3.bin ...\r\n" +
+                           "Self decompressing the image : #################### [OK]\r\n" +
+                           "--- System Configuration Dialog ---\r\n" +
+                           "Would you like to enter the initial configuration dialog? [yes/no]: ";
+                }
+                if (cmd == "no")
+                {
+                    return "Press RETURN to get started!\r\n";
+                }
+                if (cmd == string.Empty)
+                {
+                    return "Router>\r\n";
+                }
+                return "";
+            },
+            initialOutput: "System Bootstrap, Version 15.4\r\n" +
+                           "rommon 1 > ");
+
+        await using var session = new DeviceSession(transport, new SessionOptions());
+        await session.ConnectRawAsync();
+
+        var logs = new List<string>();
+        var upgrader = new CiscoIOSUpgrader(msg => { logs.Add(msg); return Task.CompletedTask; });
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        await upgrader.AguardarBootCiscoIOSAsync(
+            session,
+            TimeSpan.FromSeconds(10),
+            cts.Token,
+            binFileName: "c800-universalk9-mz.SPA.154-3.M3.bin");
+
+        Assert.True(bootSent, "Deveria ter enviado boot flash com o nome do bin ao detectar rommon pós-reset.");
+        Assert.Contains(transport.Commands, c => c.StartsWith("boot flash:c800-universalk9-mz.SPA.154-3.M3.bin", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(transport.Commands, c => c.Equals("no", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task BootMonitor_DetectsRommonPrompt_EvenWhenSplitAcrossMultipleChunks()
+    {
+        var chunks = new[]
+        {
+            "ured to 32 bit mode \r\n",
+            "\r\nReadonly ROMMON initialized\r\n",
+            "rom",
+            "mon 1 ",
+            "> "
+        };
+        var chunkIndex = 0;
+        var transport = new ChunkedTransport(() =>
+        {
+            if (chunkIndex < chunks.Length)
+            {
+                return chunks[chunkIndex++];
+            }
+            return null;
+        });
+
+        var profile = NetworkDevice.Core.Recovery.BootInterruptProfiles.Cisco841;
+        var monitor = new NetworkDevice.Core.Recovery.BootMonitor(transport, profile);
+
+        var rommonPromptDetected = false;
+        monitor.EventReceived += evt =>
+        {
+            if (evt.Type == NetworkDevice.Core.Recovery.BootEventType.RommonDetected)
+            {
+                rommonPromptDetected = true;
+            }
+        };
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        var runTask = monitor.RunAsync(cts.Token);
+        await Task.Delay(300);
+        cts.Cancel();
+        try { await runTask; } catch { }
+
+        Assert.True(rommonPromptDetected, "BootMonitor deveria disparar RommonDetected mesmo com chunks fragmentados da serial.");
+    }
+
+    private sealed class ChunkedTransport : ITransport
+    {
+        private readonly Func<string?> _chunkProvider;
+
+        public ChunkedTransport(Func<string?> chunkProvider) => _chunkProvider = chunkProvider;
+
+        public bool IsOpen => true;
+        public Task OpenAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task SendBreakAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+        public Task CloseAsync() => Task.CompletedTask;
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+        public Task<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            var next = _chunkProvider();
+            if (string.IsNullOrEmpty(next))
+                return Task.FromResult(0);
+
+            var bytes = System.Text.Encoding.UTF8.GetBytes(next);
+            bytes.CopyTo(buffer);
+            return Task.FromResult(bytes.Length);
+        }
+    }
 }

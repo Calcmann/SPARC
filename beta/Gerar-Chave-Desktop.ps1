@@ -1,4 +1,4 @@
-# Duplo-clique (atalho no Desktop): cola o SPBREQ, gera a chave de 30 dias e copia.
+# Duplo-clique (atalho no Desktop): cola o SPBREQ, gera a chave de ativacao e copia.
 # Texto 100% ASCII de proposito. Tolera quebra de linha do WhatsApp e texto extra colado junto.
 param([string]$Req = "")
 $ErrorActionPreference = "Stop"
@@ -6,7 +6,7 @@ $betaRoot = "C:\SPARC\beta"
 $tool = Join-Path $betaRoot "tools\LicenseTool\LicenseTool.csproj"
 $key = Join-Path $betaRoot "keys\private.pem"
 if ([string]::IsNullOrWhiteSpace($Req)) {
-    Write-Host "=== Gerador de chave SPARC Beta (30 dias) ==="
+    Write-Host "=== Gerador de Chave de Ativacao SPARC ==="
     Write-Host ""
     $Req = Read-Host "Cole o pedido SPBREQ do notebook e tecle Enter"
 }
@@ -27,14 +27,14 @@ try {
     Write-Host ""
     Write-Host ("Pedido da maquina: " + $js)
 } catch { }
-$out = & dotnet run --project $tool -- sign --key $key --req $Req --dias 30 2>&1
+$out = & dotnet run --project $tool -- sign --key $key --req $Req --dias 3650 2>&1
 if ($LASTEXITCODE -ne 0) { Write-Host ""; Write-Host ($out -join "`r`n"); Write-Host ""; pause; exit 1 }
 $token = @($out | Where-Object { $_ -match "^SPB1\." })[0]
 $exp = @($out | Where-Object { $_ -match "Valida ate" })[0]
 if (-not $token) { Write-Host ""; Write-Host ($out -join "`r`n"); Write-Host ""; pause; exit 1 }
 try { Set-Clipboard -Value $token } catch { }
 Write-Host ""
-Write-Host $exp
+Write-Host "Acesso liberado com assinatura RSA amarrada a maquina."
 Write-Host ""
 Write-Host "CHAVE (copiada para a area de transferencia):"
 Write-Host $token

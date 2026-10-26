@@ -1,5 +1,5 @@
 # Gera chave de 30d (ou N dias) para um pedido SPBREQ... copiado da tela de ativacao.
-param([Parameter(Mandatory = $true)][string]$Req, [int]$Dias = 30)
+param([Parameter(Mandatory = $true)][string]$Req, [int]$Dias = 3650)
 $ErrorActionPreference = "Stop"
 $Req = $Req -replace "\s+", ""
 if ($Req -match "(SPBREQ\.[A-Za-z0-9\-_=]+)") { $Req = $Matches[1] }

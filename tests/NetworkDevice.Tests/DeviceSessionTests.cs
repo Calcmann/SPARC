@@ -63,6 +63,29 @@ public class DeviceSessionTests
     }
 
     [Fact]
+    public async Task SendCommandAsync_WithHpeQuitPagination_SendsQAndCapturesPrompt()
+    {
+        var transport = new ScriptedTransport(
+            command => command switch
+            {
+                "display license" =>
+                    "This option is useful when you wish to copy part of the code of the Library into a program.\r\n" +
+                    "Please enter q/Q to quit,other key continue....\r\n",
+                "q" => "!\r\n<HPE>\r\n",
+                _ => "<HPE>\r\n"
+            },
+            initialOutput: null);
+
+        await using var session = new DeviceSession(transport, new SessionOptions());
+        await session.ConnectAsync();
+
+        var output = await session.SendCommandAsync("display license");
+
+        Assert.Contains("This option is useful", output);
+        Assert.Contains("q", transport.Commands);
+    }
+
+    [Fact]
     public async Task SendCommandAsync_TimesOut_WhenDeviceDoesNotRespond()
     {
         var transport = new ScriptedTransport(_ => "", initialOutput: "SW-01#\r\n");

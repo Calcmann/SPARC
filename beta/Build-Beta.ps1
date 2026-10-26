@@ -1,7 +1,7 @@
 # Gera a variante BETA (node-locking + chave RSA + sincronizacao online + ofuscacao) em EXE UNICO,
 # a partir de uma COPIA isolada em TEMP. Nao altera C:\SPARC\src.
 # Padrao: framework-dependent single-file (~20 MB, exige .NET 8 instalado - igual ao exe padrao).
-param([int]$Dias = 365, [string]$Tag = "", [string]$Versao = "", [switch]$FrameworkDependent, [switch]$SemOfuscacao)
+param([int]$Dias = 3650, [string]$Tag = "", [string]$Versao = "", [switch]$FrameworkDependent, [switch]$SemOfuscacao)
 
 $ErrorActionPreference = "Stop"
 
