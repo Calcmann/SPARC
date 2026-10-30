@@ -24,7 +24,8 @@ public static class FirmwareHomologationChecker
         [DeviceSeries.FortiGate40F] = "FGT_40F-v7.2.11.M-build1740-FORTINET.out",
         [DeviceSeries.Msr954]     = "MSR954-CMW710-R6749P43.ipe",
         [DeviceSeries.Msr930]     = "MSR93X-CMW520-R2512P04.BIN",
-        [DeviceSeries.Msr1002]    = "MSR100X-CMW710-R6749P43.ipe"
+        [DeviceSeries.Msr1002]    = "MSR100X-CMW710-R6749P43.ipe",
+        [DeviceSeries.Isr1100]    = "c1100-universalk9.17.09.04a.SPA.bin"
     };
 
     /// <summary>

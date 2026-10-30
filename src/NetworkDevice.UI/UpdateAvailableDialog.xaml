@@ -14,11 +14,11 @@
         <StackPanel>
             <!-- CABEÇALHO -->
             <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
-                <Border Background="#065F46" CornerRadius="8" Width="44" Height="44" Margin="0,0,12,0">
-                    <TextBlock Text="🚀" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <Border x:Name="BorderHeaderIcon" Background="#065F46" CornerRadius="8" Width="44" Height="44" Margin="0,0,12,0">
+                    <TextBlock x:Name="TxtHeaderIcon" Text="🚀" FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Border>
                 <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="Nova Versão Homologada Disponível" FontWeight="Black" FontSize="15" Foreground="#34D399" />
+                    <TextBlock x:Name="TxtHeaderTitle" Text="Nova Versão Homologada Disponível" FontWeight="Black" FontSize="15" Foreground="#34D399" />
                     <TextBlock x:Name="TxtSubHeader" Text="Existe uma versão mais recente do SPARC no repositório oficial." FontSize="11" Foreground="#A1A1AA" />
                 </StackPanel>
             </StackPanel>
@@ -40,7 +40,7 @@
                     <TextBlock Grid.Column="1" Text="➜" FontSize="18" Foreground="#38BDF8" VerticalAlignment="Center" Margin="12,0" />
 
                     <StackPanel Grid.Column="2">
-                        <TextBlock Text="Versão Homologada" FontSize="11" Foreground="#A1A1AA" FontWeight="SemiBold" />
+                        <TextBlock x:Name="TxtLabelVersaoNova" Text="Versão Homologada" FontSize="11" Foreground="#A1A1AA" FontWeight="SemiBold" />
                         <TextBlock x:Name="TxtVersaoNova" Text="v0.8.34" FontSize="15" FontWeight="Black" Foreground="#4ADE80" Margin="0,2,0,0" />
                     </StackPanel>
                 </Grid>

@@ -173,4 +173,80 @@ public static class FortiOsFirmwareVersionInspector
 
         return IsSameVersion(deviceVer, targetVer);
     }
+
+    /// <summary>
+    /// Compara duas versões do FortiOS baseando-se em major.minor.patch e build.
+    /// Retorna:
+    ///   &lt; 0 se versionA for anterior a versionB (mais antiga)
+    ///   0 se versionA for equivalente a versionB
+    ///   &gt; 0 se versionA for posterior a versionB (mais nova)
+    /// </summary>
+    public static int CompareVersions(FortiOsVersionInfo? versionA, FortiOsVersionInfo? versionB)
+    {
+        if (versionA is null && versionB is null) return 0;
+        if (versionA is null) return -1;
+        if (versionB is null) return 1;
+
+        if (versionA.HasVersion && versionB.HasVersion)
+        {
+            var partsA = versionA.Version!.Split('.').Select(p => int.TryParse(p, out var v) ? v : 0).ToArray();
+            var partsB = versionB.Version!.Split('.').Select(p => int.TryParse(p, out var v) ? v : 0).ToArray();
+            var maxLen = Math.Max(partsA.Length, partsB.Length);
+            for (int i = 0; i < maxLen; i++)
+            {
+                var valA = i < partsA.Length ? partsA[i] : 0;
+                var valB = i < partsB.Length ? partsB[i] : 0;
+                if (valA != valB)
+                    return valA.CompareTo(valB);
+            }
+        }
+        else if (versionA.HasVersion && !versionB.HasVersion)
+        {
+            return 1;
+        }
+        else if (!versionA.HasVersion && versionB.HasVersion)
+        {
+            return -1;
+        }
+
+        if (versionA.HasBuild && versionB.HasBuild)
+        {
+            if (int.TryParse(versionA.Build, out var bldA) && int.TryParse(versionB.Build, out var bldB))
+            {
+                return bldA.CompareTo(bldB);
+            }
+            return string.Compare(versionA.Build, versionB.Build, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return 0;
+    }
+
+    /// <summary>
+    /// Retorna true se a versão alvo representar um downgrade em relação à versão em execução no equipamento.
+    /// </summary>
+    public static bool IsDowngrade(FortiOsVersionInfo currentVer, FortiOsVersionInfo targetVer)
+    {
+        if (currentVer is null || targetVer is null || !currentVer.HasVersion || !targetVer.HasVersion)
+            return false;
+
+        return CompareVersions(targetVer, currentVer) < 0;
+    }
+
+    /// <summary>
+    /// Avalia se a imagem de firmware alvo é um downgrade em relação à versão reportada em 'get system status'.
+    /// </summary>
+    public static bool IsDowngrade(
+        string? statusOutput,
+        string? filePathOrName,
+        out string currentVersionDisplay,
+        out string targetVersionDisplay)
+    {
+        var deviceVer = ExtractFromStatus(statusOutput);
+        var targetVer = ExtractFromFileName(filePathOrName);
+
+        currentVersionDisplay = deviceVer.DisplayString;
+        targetVersionDisplay = targetVer.DisplayString;
+
+        return IsDowngrade(deviceVer, targetVer);
+    }
 }

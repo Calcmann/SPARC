@@ -20,7 +20,8 @@ public enum DeviceSeries
     Isr921,
     Isr841,
     Generic,
-    FortiGate40F
+    FortiGate40F,
+    Isr1100
 }
 
 public enum DeviceOperatingState

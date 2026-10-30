@@ -96,6 +96,7 @@ public partial class ProvisioningPage : ContentPage
             {
                 DeviceSeries.Series1900,
                 DeviceSeries.Series2900,
+                DeviceSeries.Isr1100,
                 DeviceSeries.Isr841,
                 DeviceSeries.Isr921,
                 DeviceSeries.Msr954,
@@ -463,6 +464,7 @@ public partial class ProvisioningPage : ContentPage
             if (series == DeviceSeries.Msr1002 && item.Contains("1002")) { ModelPicker.SelectedIndex = i; return; }
             if (series == DeviceSeries.Series1900 && item.Contains("1900")) { ModelPicker.SelectedIndex = i; return; }
             if (series == DeviceSeries.Series2900 && item.Contains("2900")) { ModelPicker.SelectedIndex = i; return; }
+            if (series == DeviceSeries.Isr1100 && (item.Contains("1100") || item.Contains("1111"))) { ModelPicker.SelectedIndex = i; return; }
             if (series == DeviceSeries.Isr921 && (item.Contains("900") || item.Contains("921"))) { ModelPicker.SelectedIndex = i; return; }
             if (series == DeviceSeries.Isr841 && (item.Contains("800") || item.Contains("841"))) { ModelPicker.SelectedIndex = i; return; }
             if (series == DeviceSeries.FortiGate40F && item.Contains("40F")) { ModelPicker.SelectedIndex = i; return; }
@@ -476,6 +478,7 @@ public partial class ProvisioningPage : ContentPage
             var activeBaud = (_connManager.CurrentTransport as AndroidUsbSerialTransport)?.BaudRate ?? 9600;
             var modelDisplay = res.Series switch
             {
+                DeviceSeries.Isr1100 => "Cisco Série 1100 / C1111-4P",
                 DeviceSeries.Isr841 => "Cisco Série 800 / C841M",
                 DeviceSeries.Isr921 => "Cisco Série 900 / C921-4P",
                 DeviceSeries.Series1900 => "Cisco Série 1900 / G2",
@@ -552,6 +555,7 @@ public partial class ProvisioningPage : ContentPage
             {
                 var x when x.Contains("1900") => DeviceSeries.Series1900,
                 var x when x.Contains("2900") => DeviceSeries.Series2900,
+                var x when x.Contains("1100") || x.Contains("1111") => DeviceSeries.Isr1100,
                 var x when x.Contains("921") => DeviceSeries.Isr921,
                 var x when x.Contains("841") || x.Contains("800") => DeviceSeries.Isr841,
                 var x when x.Contains("954") => DeviceSeries.Msr954,
@@ -977,6 +981,7 @@ public partial class ProvisioningPage : ContentPage
                     {
                         var s when s.Contains("1900") => DeviceSeries.Series1900,
                         var s when s.Contains("2900") => DeviceSeries.Series2900,
+                        var s when s.Contains("1100") || s.Contains("1111") => DeviceSeries.Isr1100,
                         var s when s.Contains("921") => DeviceSeries.Isr921,
                         var s when s.Contains("841") || s.Contains("800") => DeviceSeries.Isr841,
                         var s when s.Contains("954") => DeviceSeries.Msr954,

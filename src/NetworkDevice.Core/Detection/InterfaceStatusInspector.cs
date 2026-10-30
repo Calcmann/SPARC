@@ -32,6 +32,7 @@ public static class InterfaceStatusInspector
     /// </summary>
     public static (string WanIface, string LanIface) ResolveExpectedInterfaces(DeviceSeries series) => series switch
     {
+        DeviceSeries.Isr1100 => ("GigabitEthernet0/0/0", "Vlan1"),
         DeviceSeries.Isr841 => ("GigabitEthernet0/4", "GigabitEthernet0/5"),
         DeviceSeries.Isr921 => ("GigabitEthernet4", "Vlan1"),
         DeviceSeries.Series1900 => ("GigabitEthernet0/0", "GigabitEthernet0/1"),

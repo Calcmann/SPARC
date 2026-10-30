@@ -43,13 +43,14 @@ public static class CiscoIOSFirmwareVersionInspector
 
     // Ex.: Cisco IOS Software, C1900 Software (C1900-UNIVERSALK9-M), Version 15.7(3)M9, RELEASE SOFTWARE (fc2)
     // ou: Cisco IOS Software, C900 Software (C900-UNIVERSALK9-M), Version 15.9(3)M4, RELEASE SOFTWARE (fc2)
+    // ou: Cisco IOS XE Software, Version 17.09.04a
     private static readonly Regex ShowVersionLineRegex = new(
-        @"(?im)(?:Cisco\s+IOS\s+Software|C[0-9]+\s+Software)[^\r\n]*(?:\r?\n[^\r\n]*)?(?:Version\s+|,\s*Version\s*)(?<ver>[0-9]+\.[0-9]+\([0-9]+\)[A-Za-z0-9]+)",
+        @"(?im)(?:Cisco\s+IOS(?:\s+XE)?\s+Software|C[0-9]+\s+Software)[^\r\n]*(?:\r?\n[^\r\n]*)?(?:Version\s+|,\s*Version\s*)(?<ver>[0-9]+\.[0-9]+(?:\([0-9]+\)[A-Za-z0-9]+|\.[0-9]+[A-Za-z0-9]*))",
         RegexOptions.Compiled);
 
-    // Fallback para linha genérica 'Version 15.9(3)M4' (ignora linha de ROM Bootstrap)
+    // Fallback para linha genérica 'Version 15.9(3)M4' ou 'Version 17.09.04a' (ignora linha de ROM Bootstrap)
     private static readonly Regex GenericVersionRegex = new(
-        @"(?im)^(?!\s*ROM:).*?\bVersion\s+(?<ver>[0-9]+\.[0-9]+\([0-9]+\)[A-Za-z0-9]+)",
+        @"(?im)^(?!\s*ROM:).*?\bVersion\s+(?<ver>[0-9]+\.[0-9]+(?:\([0-9]+\)[A-Za-z0-9]+|\.[0-9]+[A-Za-z0-9]*))",
         RegexOptions.Compiled);
 
     // Padrão 1 de arquivo binário: c900-universalk9-mz.SPA.159-3.M4.bin -> major=159, minor=3, train=M4
@@ -60,6 +61,11 @@ public static class CiscoIOSFirmwareVersionInspector
     // Padrão 2 de arquivo binário: c900-universalk9-mz.SPA.15.9-3.M4.bin -> major=15, submajor=9, minor=3, train=M4
     private static readonly Regex BinPatternWithDotRegex = new(
         @"(?i)(?<major>\d+)\.(?<submajor>\d+)-(?<minor>\d+)\.(?<train>[A-Za-z0-9]+)",
+        RegexOptions.Compiled);
+
+    // Padrão 3 de arquivo binário IOS-XE: c1100-universalk9.17.09.04a.SPA.bin -> 17.09.04a
+    private static readonly Regex BinPatternIosXeRegex = new(
+        @"(?i)(?:c1100|c11[0-9]{2}|c4[0-9]{3}|isr)[^\r\n]*?\.(?<ver>\d{2}\.\d{1,2}\.\d{1,2}[a-zA-Z]?)\b",
         RegexOptions.Compiled);
 
     /// <summary>
@@ -137,6 +143,14 @@ public static class CiscoIOSFirmwareVersionInspector
             }
         }
 
+        // 3. Tenta formato IOS-XE (ex: c1100-universalk9.17.09.04a.SPA.bin -> 17.09.04a)
+        var xeMatch = BinPatternIosXeRegex.Match(cleanBin);
+        if (xeMatch.Success)
+        {
+            var canonical = xeMatch.Groups["ver"].Value;
+            return new CiscoIOSVersionInfo(NormalizeCanonicalVersion(canonical), cleanBin, cleanBin);
+        }
+
         return new CiscoIOSVersionInfo(null, cleanBin, cleanBin);
     }
 
@@ -149,7 +163,20 @@ public static class CiscoIOSFirmwareVersionInspector
         if (string.IsNullOrWhiteSpace(version))
             return string.Empty;
 
-        return Regex.Replace(version, @"\s+", "").Trim().ToUpperInvariant();
+        var clean = Regex.Replace(version, @"\s+", "").Trim().ToUpperInvariant();
+
+        // Se for versão decimal IOS-XE pontuada (ex: 17.09.04A ou 17.06.01A), normaliza os dígitos removendo zeros à esquerda nos segmentos
+        var m = Regex.Match(clean, @"^(?<maj>\d+)\.(?<min>\d+)\.(?<maint>\d+)(?<train>[A-Z]*)$");
+        if (m.Success &&
+            int.TryParse(m.Groups["maj"].Value, out var maj) &&
+            int.TryParse(m.Groups["min"].Value, out var min) &&
+            int.TryParse(m.Groups["maint"].Value, out var maint))
+        {
+            var train = m.Groups["train"].Value;
+            return $"{maj}.{min}.{maint}{train}";
+        }
+
+        return clean;
     }
 
     /// <summary>

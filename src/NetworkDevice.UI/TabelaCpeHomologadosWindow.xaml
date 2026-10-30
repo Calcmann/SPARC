@@ -266,8 +266,8 @@
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                                    <TextBlock Text="{Binding BldFormatado}" FontWeight="Black" FontSize="12" HorizontalAlignment="Center" Foreground="#38BDF8"/>
-                                    <ProgressBar Maximum="10000" Value="{Binding BldMaxMbps}" Height="4" Width="90" Background="#1E293B" Foreground="#0284C7" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding BldFormatado, Mode=OneWay}" FontWeight="Black" FontSize="12" HorizontalAlignment="Center" Foreground="#38BDF8"/>
+                                    <ProgressBar Maximum="10000" Value="{Binding BldMaxMbps, Mode=OneWay}" Height="4" Width="90" Background="#1E293B" Foreground="#0284C7" Margin="0,2,0,0"/>
                                 </StackPanel>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
@@ -278,19 +278,19 @@
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                                    <TextBlock Text="{Binding MplsFormatado}" FontWeight="Bold" FontSize="11.5" HorizontalAlignment="Center" Foreground="#A78BFA"/>
-                                    <ProgressBar Maximum="10000" Value="{Binding MplsMaxMbps}" Height="3" Width="70" Background="#1E293B" Foreground="#7C3AED" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding MplsFormatado, Mode=OneWay}" FontWeight="Bold" FontSize="11.5" HorizontalAlignment="Center" Foreground="#A78BFA"/>
+                                    <ProgressBar Maximum="10000" Value="{Binding MplsMaxMbps, Mode=OneWay}" Height="3" Width="70" Background="#1E293B" Foreground="#7C3AED" Margin="0,2,0,0"/>
                                 </StackPanel>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
 
                     <!-- Descrição resumida -->
-                    <DataGridTextColumn Header="Descrição e Composição do Kit" Width="*" Binding="{Binding Descricao}">
+                    <DataGridTextColumn Header="Descrição e Composição do Kit" Width="*" Binding="{Binding Descricao, Mode=OneWay}" IsReadOnly="True">
                         <DataGridTextColumn.ElementStyle>
                             <Style TargetType="TextBlock">
                                 <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
-                                <Setter Property="ToolTip" Value="{Binding Descricao}"/>
+                                <Setter Property="ToolTip" Value="{Binding Descricao, Mode=OneWay}"/>
                                 <Setter Property="FontSize" Value="11"/>
                                 <Setter Property="Foreground" Value="#94A3B8"/>
                                 <Setter Property="VerticalAlignment" Value="Center"/>

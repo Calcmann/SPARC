@@ -20,7 +20,7 @@ public sealed class HpeSaipConfigurator
         RegexOptions.Compiled | RegexOptions.Multiline | RegexOptions.IgnoreCase);
 
     private static readonly Regex StaticRouteRegex = new(
-        @"(?im)^\s*(?<route>ip\s+route-static\s+\S+\s+\S+.*)$",
+        @"(?im)^\s*(?<route>(?:ip|ipv6)\s+route-static\s+\S+\s+\S+.*)$",
         RegexOptions.Compiled);
 
     public const string BannerMotd =
@@ -587,10 +587,10 @@ public sealed class HpeSaipConfigurator
         catch { }
 
         // 2. Limpeza pré-provisionamento determinística
-        await ProgressAsync("[*] [FASE C] Limpando vestígios HPE (rotas existentes + interfaces)...");
+        await ProgressAsync("[*] [FASE C] Limpando vestígios HPE (rotas existentes + interfaces + DHCP + subinterfaces)...");
         try
         {
-            // 2a. Interpreta e remove exatamente as rotas existentes
+            // 2a. Interpreta e remove exatamente as rotas existentes (IPv4 e IPv6)
             var curRoutes = await session.SendCommandAsync("display current-configuration | include route-static", TimeSpan.FromSeconds(10), cancellationToken);
             var existingRoutes = ParseStaticRoutes(curRoutes);
             var undos = GenerateUndoStaticRoutes(existingRoutes);
@@ -601,7 +601,35 @@ public sealed class HpeSaipConfigurator
                 await session.SendCommandAsync(undoCmd, TimeSpan.FromSeconds(5), cancellationToken);
             }
 
-            // 2b. Limpa IPs residuais em Vlan-interface1 se houver conflito
+            // 2b. Remove subinterfaces residuais (ex: GigabitEthernet0/0.100, GE0/1.200)
+            try
+            {
+                var briefOut = await session.SendCommandAsync("display interface brief", TimeSpan.FromSeconds(8), cancellationToken);
+                var subMatches = Regex.Matches(briefOut, @"(?im)^\s*(?<subif>(?:GigabitEthernet|GE)\S*\.\d+)");
+                foreach (Match m in subMatches)
+                {
+                    var subif = m.Groups["subif"].Value.Trim();
+                    await ProgressAsync($"    [-] Removendo subinterface residual: undo interface {subif}");
+                    await session.SendCommandAsync($"undo interface {subif}", TimeSpan.FromSeconds(5), cancellationToken);
+                }
+            }
+            catch { }
+
+            // 2c. Remove pools DHCP residuais no HPE
+            try
+            {
+                var dhcpCfg = await session.SendCommandAsync("display current-configuration | include dhcp server ip-pool", TimeSpan.FromSeconds(8), cancellationToken);
+                var dhcpMatches = Regex.Matches(dhcpCfg, @"(?im)^\s*dhcp\s+server\s+ip-pool\s+(\S+)");
+                foreach (Match m in dhcpMatches)
+                {
+                    var poolName = m.Groups[1].Value.Trim();
+                    await ProgressAsync($"    [-] Removendo pool DHCP residual: undo dhcp server ip-pool {poolName}");
+                    await session.SendCommandAsync($"undo dhcp server ip-pool {poolName}", TimeSpan.FromSeconds(5), cancellationToken);
+                }
+            }
+            catch { }
+
+            // 2d. Limpa IPs residuais em Vlan-interface 1 se houver conflito
             var vlanCfg = await session.SendCommandAsync("display current-configuration interface Vlan-interface 1", TimeSpan.FromSeconds(5), cancellationToken);
             if (vlanCfg.Contains("ip address", StringComparison.OrdinalIgnoreCase) &&
                 (vlanCfg.Contains(circuit.WanIp ?? "---") || vlanCfg.Contains(circuit.LanIp ?? "---")))
@@ -609,10 +637,11 @@ public sealed class HpeSaipConfigurator
                 await ProgressAsync("    [-] Limpando IP conflitante em Vlan-interface 1...");
                 await session.SendCommandAsync("interface Vlan-interface 1", TimeSpan.FromSeconds(5), cancellationToken);
                 await session.SendCommandAsync("undo ip address", TimeSpan.FromSeconds(5), cancellationToken);
+                await session.SendCommandAsync("undo description", TimeSpan.FromSeconds(5), cancellationToken);
                 await session.SendCommandAsync("quit", TimeSpan.FromSeconds(3), cancellationToken);
             }
 
-            // 2c. Reseta interfaces WAN e LAN
+            // 2e. Reseta interfaces WAN e LAN (remove IPs e descrições/labels)
             foreach (var iface in new[] { wanInterface, lanInterface })
             {
                 await session.SendCommandAsync($"interface {iface}", TimeSpan.FromSeconds(5), cancellationToken);
@@ -1093,7 +1122,7 @@ public sealed class HpeSaipConfigurator
         try
         {
             await EnsureSystemViewAsync(session, ct: ct);
-            var displayCfg = await session.SendCommandAsync("display current-configuration | include sysname|route-static|ip address", TimeSpan.FromSeconds(10), ct);
+            var displayCfg = await session.SendCommandAsync("display current-configuration | include sysname|route-static|ip address|dhcp server", TimeSpan.FromSeconds(10), ct);
 
             // 1. Hostname / sysname
             var matchSysname = Regex.Match(displayCfg, @"(?im)^\s*sysname\s+(\S+)");
@@ -1109,12 +1138,18 @@ public sealed class HpeSaipConfigurator
                 }
             }
 
-            // 2. Rotas estáticas residuais
+            // 2. Rotas estáticas residuais (IPv4 e IPv6)
             var routes = ParseStaticRoutes(displayCfg);
             if (routes.Count > 0)
             {
                 hasStaleRoutes = true;
                 findings.Add($"{routes.Count} rota(s) estática(s) residual(is)");
+            }
+
+            // 2b. Servidores DHCP residuais
+            if (displayCfg.Contains("dhcp server ip-pool", StringComparison.OrdinalIgnoreCase))
+            {
+                findings.Add("Pool(s) DHCP residual(is)");
             }
 
             // 3. IPs atribuídos em interfaces além de default

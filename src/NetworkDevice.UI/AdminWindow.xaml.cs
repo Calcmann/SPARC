@@ -11,6 +11,7 @@ using NetworkDevice.Core.Domain;
 using NetworkDevice.Core.Firmware;
 using NetworkDevice.Core.Licensing;
 using NetworkDevice.Core.Provisioning;
+using NetworkDevice.Core.Logging;
 using NetworkDevice.Core.Validation;
 
 namespace NetworkDevice.UI;
@@ -50,6 +51,7 @@ public partial class AdminWindow : Window
         CarregarHistoricoChaves();
         CarregarCopiasCampo();
         CarregarModelosFirmware();
+        CarregarAtividades();
 
         // Sincroniza cópias e licenças da nuvem em segundo plano
         _ = _cloudLicenseService.SyncDevicesFromRemoteAsync().ContinueWith(_ =>
@@ -1598,6 +1600,240 @@ public partial class AdminWindow : Window
             TxtStatusPublicacaoUpdate.Text = $"Erro: {ex.Message}";
             TxtStatusPublicacaoUpdate.Foreground = UiBrushes.Get("#F87171");
             TxtLogUpdate.Text = $"[Erro ao consultar version.json]: {ex.Message}";
+        }
+    }
+
+    #endregion
+
+    #region Aba 4: Telemetria de Atividades & Auditoria
+
+    public sealed class ActivitySummaryRow
+    {
+        public string ActivityId { get; set; } = string.Empty;
+        public string DataHoraFormatada { get; set; } = string.Empty;
+        public DateTime DataHora { get; set; }
+        public string Designacao { get; set; } = string.Empty;
+        public string Ots { get; set; } = string.Empty;
+        public string Cliente { get; set; } = string.Empty;
+        public string TecnicoNome { get; set; } = string.Empty;
+        public string TecnicoEmpresa { get; set; } = string.Empty;
+        public string Modelo { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public System.Windows.Media.Brush StatusBadgeBackground { get; set; } = UiBrushes.Get("#14532D");
+        public System.Windows.Media.Brush StatusBadgeForeground { get; set; } = UiBrushes.Get("#4ADE80");
+        public string Duracao { get; set; } = string.Empty;
+        public string? JsonPath { get; set; }
+        public string? TxtPath { get; set; }
+        public string? LogPath { get; set; }
+        public string? PdfPath { get; set; }
+        public string? ZipPath { get; set; }
+    }
+
+    private List<ActivitySummaryRow> _todasAtividades = new();
+
+    private void CarregarAtividades()
+    {
+        try
+        {
+            var dir = ActivityReportService.Instance.ActivitiesDirectory;
+            if (!Directory.Exists(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            var jsonFiles = Directory.GetFiles(dir, "Atividade-*.json");
+            var lista = new List<ActivitySummaryRow>();
+
+            foreach (var jf in jsonFiles)
+            {
+                try
+                {
+                    var raw = File.ReadAllText(jf);
+                    var rep = System.Text.Json.JsonSerializer.Deserialize<ActivityReport>(raw);
+                    if (rep == null) continue;
+
+                    var isSuccess = rep.StatusFinal.Equals("Sucesso", StringComparison.OrdinalIgnoreCase);
+                    var txtFile = Path.ChangeExtension(jf, ".txt");
+                    var zipFile = Path.Combine(dir, Path.GetFileNameWithoutExtension(jf) + "-FALHA.zip");
+
+                    var row = new ActivitySummaryRow
+                    {
+                        ActivityId = rep.ActivityId,
+                        DataHora = rep.IniciadoEm,
+                        DataHoraFormatada = rep.IniciadoEm.ToString("dd/MM/yyyy HH:mm"),
+                        Designacao = rep.DesignacaoIp ?? "-",
+                        Ots = rep.NumeroOts ?? "-",
+                        Cliente = rep.ClienteRazaoSocial ?? "-",
+                        TecnicoNome = rep.Tecnico?.FullName ?? "Técnico Não Identificado",
+                        TecnicoEmpresa = rep.Tecnico?.Company ?? "-",
+                        Modelo = rep.ModeloEquipamento ?? "-",
+                        Status = isSuccess ? "🟢 Sucesso" : "🔴 Falha",
+                        StatusBadgeBackground = isSuccess ? UiBrushes.Get("#14532D") : UiBrushes.Get("#7F1D1D"),
+                        StatusBadgeForeground = isSuccess ? UiBrushes.Get("#4ADE80") : UiBrushes.Get("#F87171"),
+                        Duracao = rep.DuracaoTotal.TotalSeconds > 0 ? rep.DuracaoTotal.ToString(@"mm\:ss") : "--:--",
+                        JsonPath = jf,
+                        TxtPath = File.Exists(txtFile) ? txtFile : null,
+                        LogPath = !string.IsNullOrWhiteSpace(rep.SessionLogPath) && File.Exists(rep.SessionLogPath) ? rep.SessionLogPath : null,
+                        PdfPath = !string.IsNullOrWhiteSpace(rep.PdfReportPath) && File.Exists(rep.PdfReportPath) ? rep.PdfReportPath : null,
+                        ZipPath = File.Exists(zipFile) ? zipFile : null
+                    };
+
+                    lista.Add(row);
+                }
+                catch { }
+            }
+
+            _todasAtividades = lista.OrderByDescending(a => a.DataHora).ToList();
+            AtualizarMetricasAtividades(_todasAtividades);
+            FiltrarAtividades();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[CarregarAtividades] Erro: {ex.Message}");
+        }
+    }
+
+    private void AtualizarMetricasAtividades(List<ActivitySummaryRow> lista)
+    {
+        var total = lista.Count;
+        var sucessos = lista.Count(a => a.Status.Contains("Sucesso"));
+        var falhas = total - sucessos;
+        var pctSucesso = total > 0 ? (sucessos * 100.0 / total) : 100.0;
+        var tecnicosUnicos = lista.Select(a => a.TecnicoNome).Where(n => !string.IsNullOrWhiteSpace(n)).Distinct().Count();
+
+        TxtTotalAtividades.Text = $"📋 Total: {total} atividades";
+        TxtAtividadesSucesso.Text = $"🟢 Homologadas: {sucessos} ({pctSucesso:F1}%)";
+        TxtAtividadesFalhas.Text = $"🔴 Falhas: {falhas}";
+        TxtTecnicosAtivos.Text = $"👨‍💻 Técnicos: {tecnicosUnicos}";
+    }
+
+    private void FiltrarAtividades()
+    {
+        var q = TxtFiltroAtividades?.Text?.Trim().ToLowerInvariant() ?? "";
+        var statusFilter = CbFiltroStatusAtividades?.SelectedIndex ?? 0;
+
+        var filtradas = _todasAtividades.Where(a =>
+        {
+            if (statusFilter == 1 && !a.Status.Contains("Sucesso")) return false;
+            if (statusFilter == 2 && !a.Status.Contains("Falha")) return false;
+
+            if (!string.IsNullOrEmpty(q))
+            {
+                var match = a.Designacao.ToLowerInvariant().Contains(q)
+                         || a.Cliente.ToLowerInvariant().Contains(q)
+                         || a.Ots.ToLowerInvariant().Contains(q)
+                         || a.TecnicoNome.ToLowerInvariant().Contains(q)
+                         || a.TecnicoEmpresa.ToLowerInvariant().Contains(q)
+                         || a.Modelo.ToLowerInvariant().Contains(q);
+                if (!match) return false;
+            }
+
+            return true;
+        }).ToList();
+
+        DgAtividades.ItemsSource = filtradas;
+        TxtContadorAtividadesFiltradas.Text = $"Exibindo {filtradas.Count} de {_todasAtividades.Count} atividades registradas";
+    }
+
+    private void TxtFiltroAtividades_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        FiltrarAtividades();
+    }
+
+    private void CbFiltroStatusAtividades_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_isInitialized) FiltrarAtividades();
+    }
+
+    private void BtnRecarregarAtividades_Click(object sender, RoutedEventArgs e)
+    {
+        CarregarAtividades();
+    }
+
+    private void BtnAbrirPastaAtividadesAdmin_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var dir = ActivityReportService.Instance.ActivitiesDirectory;
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            Process.Start(new ProcessStartInfo { FileName = dir, UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Erro ao abrir pasta: {ex.Message}", "Erro", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    private void DgAtividades_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        var sel = DgAtividades.SelectedItem as ActivitySummaryRow;
+        BtnAbrirRelatorioTxt.IsEnabled = sel?.TxtPath != null;
+        BtnAbrirLogSerial.IsEnabled = sel?.LogPath != null;
+        BtnAbrirPacoteZip.IsEnabled = sel?.ZipPath != null;
+        BtnAbrirPdfHomologado.IsEnabled = sel?.PdfPath != null;
+    }
+
+    private void BtnAbrirRelatorioTxt_Click(object sender, RoutedEventArgs e)
+    {
+        var sel = DgAtividades.SelectedItem as ActivitySummaryRow;
+        if (sel?.TxtPath != null && File.Exists(sel.TxtPath))
+        {
+            try { Process.Start(new ProcessStartInfo { FileName = sel.TxtPath, UseShellExecute = true }); } catch { }
+        }
+    }
+
+    private void BtnAbrirLogSerial_Click(object sender, RoutedEventArgs e)
+    {
+        var sel = DgAtividades.SelectedItem as ActivitySummaryRow;
+        if (sel?.LogPath != null && File.Exists(sel.LogPath))
+        {
+            try { Process.Start(new ProcessStartInfo { FileName = sel.LogPath, UseShellExecute = true }); } catch { }
+        }
+    }
+
+    private void BtnAbrirPacoteZip_Click(object sender, RoutedEventArgs e)
+    {
+        var sel = DgAtividades.SelectedItem as ActivitySummaryRow;
+        if (sel?.ZipPath != null && File.Exists(sel.ZipPath))
+        {
+            try { Process.Start(new ProcessStartInfo { FileName = "explorer.exe", Arguments = $"/select,\"{sel.ZipPath}\"", UseShellExecute = true }); } catch { }
+        }
+    }
+
+    private void BtnAbrirPdfHomologado_Click(object sender, RoutedEventArgs e)
+    {
+        var sel = DgAtividades.SelectedItem as ActivitySummaryRow;
+        if (sel?.PdfPath != null && File.Exists(sel.PdfPath))
+        {
+            try { Process.Start(new ProcessStartInfo { FileName = sel.PdfPath, UseShellExecute = true }); } catch { }
+        }
+    }
+
+    private void BtnExportarCsvAtividades_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var dir = ActivityReportService.Instance.ActivitiesDirectory;
+            var csvPath = Path.Combine(dir, $"Exportacao_Atividades_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
+            var sb = new StringBuilder();
+            sb.AppendLine("DataHora;Designacao;OTS;Cliente;Tecnico;Empresa;Modelo;Status;Duracao");
+
+            foreach (var a in _todasAtividades)
+            {
+                sb.AppendLine($"{a.DataHoraFormatada};{a.Designacao};{a.Ots};{a.Cliente};{a.TecnicoNome};{a.TecnicoEmpresa};{a.Modelo};{a.Status};{a.Duracao}");
+            }
+
+            File.WriteAllText(csvPath, sb.ToString(), Encoding.UTF8);
+            var msg = $"Arquivo CSV exportado com sucesso em:\n{csvPath}\n\nDeseja abrir o arquivo agora?";
+            var res = MessageBox.Show(msg, "Exportação Concluída", MessageBoxButton.YesNo, MessageBoxImage.Information);
+            if (res == MessageBoxResult.Yes)
+            {
+                Process.Start(new ProcessStartInfo { FileName = csvPath, UseShellExecute = true });
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Erro ao exportar CSV: {ex.Message}", "Erro", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 

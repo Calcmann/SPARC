@@ -67,8 +67,12 @@ public sealed class FortiOsBootLoaderRecovery
         @"(?i)(?:Neither\s+DEFAULT\s+nor\s+BACKUP|System\s+halted|FOS\s+boot\s+failed|Please\s+power\s+cycle|boot\s+failed)",
         RegexOptions.Compiled);
 
+    public static readonly Regex CableDisconnectedRegex = new(
+        @"(?i)(?:failed\s+to\s+complete\s+copper\s+auto-nego|copper\s+auto-nego|no\s+link\s+on\s+wan|link\s+is\s+down|no\s+carrier|failed\s+to\s+complete\s+auto-nego)",
+        RegexOptions.Compiled);
+
     private static readonly Regex TransferErrorRegex = new(
-        @"(?i)(?:TFTP\s+transfer\s+failed|TFTP\s+timeout|bad\s+checksum|Reading\s+boot\s+image\s+\.\.\.\s+failed|Loading\s+failed|Cannot\s+load|ARP\s+timeout|Retry\s+count\s+exceeded|No\s+link\s+on\s+WAN|Link\s+is\s+down|failed\s+to\s+send|No\s+carrier|cannot\s+find\s+host|host\s+unreachable|Error:)",
+        @"(?i)(?:TFTP\s+transfer\s+failed|TFTP\s+timeout|bad\s+checksum|Reading\s+boot\s+image\s+\.\.\.\s+failed|Loading\s+failed|Cannot\s+load|ARP\s+timeout|Retry\s+count\s+exceeded|failed\s+to\s+send|cannot\s+find\s+host|host\s+unreachable|Error:)",
         RegexOptions.Compiled);
 
     public event Action<int, string, string>? ProgressUpdated;
@@ -84,7 +88,8 @@ public sealed class FortiOsBootLoaderRecovery
         Action<int, string, string>? progress = null,
         Func<string, Task>? log = null,
         CancellationToken ct = default,
-        string? subnetMask = null)
+        string? subnetMask = null,
+        Func<string, CancellationToken, Task>? instructOperator = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         if (string.IsNullOrWhiteSpace(firmwareFilePath) || !File.Exists(firmwareFilePath))
@@ -163,7 +168,7 @@ public sealed class FortiOsBootLoaderRecovery
         {
             // 2. Interceptar / Entrar no Menu da BIOS
             SafeProgress(10, "Acessando Menu BIOS...", "Aguardando prompt de seleção do FortiBootLoader...");
-            var menuText = await ObterMenuBiosAsync(session, SafeLog, ct);
+            var menuText = await ObterMenuBiosAsync(session, SafeLog, ct, instructOperator, SafeProgress);
             await SafeLog("[OK] Menu de inicialização da BIOS / FortiBootLoader ativo.");
 
             // 3. Escolher Opção de TFTP e Configurar Parâmetros de Rede
@@ -197,7 +202,8 @@ public sealed class FortiOsBootLoaderRecovery
                 SafeLog, 
                 ct, 
                 () => Interlocked.Read(ref lastSentBytes), 
-                () => tftpCompleted);
+                () => tftpCompleted,
+                instructOperator);
             if (!transferSuccess)
             {
                 await SafeLog("[ERRO] Falha na transferência TFTP indicada pela BIOS.");
@@ -246,11 +252,14 @@ public sealed class FortiOsBootLoaderRecovery
     private static async Task<string> ObterMenuBiosAsync(
         DeviceSession session,
         Func<string, Task> log,
-        CancellationToken ct)
+        CancellationToken ct,
+        Func<string, CancellationToken, Task>? instructOperator = null,
+        Action<int, string, string>? progress = null)
     {
         var buffer = new byte[1024];
         var accumulator = new StringBuilder();
-        var deadline = DateTime.UtcNow.AddSeconds(45);
+        var deadline = DateTime.UtcNow.AddSeconds(60);
+        bool rebootSent = false;
 
         // Tenta enviar Enter/espaços para acordar o prompt de menu
         await session.Transport.WriteAsync(Encoding.ASCII.GetBytes("   \r\n"), ct);
@@ -270,31 +279,131 @@ public sealed class FortiOsBootLoaderRecovery
                     return full;
                 }
 
+                // Se o console estiver parado em disclaimer/termo de uso
+                if (!rebootSent && full.Contains("(Press 'a' to accept)", StringComparison.OrdinalIgnoreCase))
+                {
+                    await log("[*] Detectado aviso legal (disclaimer). Enviando 'a'...");
+                    await session.Transport.WriteAsync(new byte[] { 0x61 }, ct);
+                    await Task.Delay(500, ct);
+                    accumulator.Clear();
+                    continue;
+                }
+
+                // Se o console estiver parado no prompt de login
+                if (!rebootSent && (full.EndsWith("login: ") || full.EndsWith("login:") || full.Contains("login:")))
+                {
+                    await log("[*] Detectado prompt de login FortiOS. Enviando 'admin'...");
+                    await session.Transport.WriteAsync(Encoding.ASCII.GetBytes("admin\r"), ct);
+                    await Task.Delay(500, ct);
+                    accumulator.Clear();
+                    continue;
+                }
+
+                // Se o console estiver pedindo senha
+                if (!rebootSent && (full.EndsWith("Password: ") || full.EndsWith("Password:") || full.Contains("Password:")))
+                {
+                    await log("[*] Detectado prompt de senha FortiOS. Enviando Enter...");
+                    await session.Transport.WriteAsync(Encoding.ASCII.GetBytes("\r"), ct);
+                    await Task.Delay(1000, ct);
+                    accumulator.Clear();
+                    continue;
+                }
+
+                // Se o equipamento estiver rodando o FortiOS CLI operacional (# ou $) e precisamos da BIOS
+                if (!rebootSent && (Regex.IsMatch(full, @"(?m)[A-Za-z0-9_\-\.]+\s*(?:\([^\r\n]+\))?\s*[#$]\s*$") ||
+                                    full.EndsWith("# ") || full.EndsWith("#") || full.EndsWith("$ ") || full.EndsWith("$")))
+                {
+                    await log("[*] Equipamento em execução no FortiOS CLI. Verificando link físico da porta WAN antes do reload...");
+                    progress?.Invoke(12, "Verificando Porta WAN...", "Validando link físico na porta WAN antes de reiniciar para a BIOS...");
+
+                    var wanOk = await FortiOsSaipConfigurator.EnforceWanPortConnectedAsync(
+                        session,
+                        instructOperator,
+                        log,
+                        ct,
+                        pollDelayMs: 0,
+                        onProgress: progress);
+
+                    if (!wanOk)
+                    {
+                        await log("\n🚨 [RELOAD ABORTADO] A porta WAN do FortiGate 40F não possui link físico (down).");
+                        await log("   O comando 'execute reboot' NÃO foi enviado para evitar falha de TFTP e boot indevido na BIOS.\n");
+                        throw new InvalidOperationException("Porta WAN do FortiGate 40F sem link físico (down). Conecte o cabo na porta WAN e reinicie o procedimento.");
+                    }
+
+                    rebootSent = true;
+                    await log("[OK] Link físico Ethernet confirmado na porta WAN! Enviando 'execute reboot' para reiniciar e acessar a BIOS...");
+                    await session.Transport.WriteAsync(Encoding.ASCII.GetBytes("execute reboot\r"), ct);
+                    await Task.Delay(500, ct);
+                    await session.Transport.WriteAsync(Encoding.ASCII.GetBytes("y\r"), ct);
+                    deadline = DateTime.UtcNow.AddSeconds(90); // expande deadline para o ciclo de reboot do hardware
+                    accumulator.Clear();
+                    continue;
+                }
+
+                // Confirmação de reboot caso ainda esteja pendente
+                if (rebootSent && full.Contains("Do you want to continue? (y/n)", StringComparison.OrdinalIgnoreCase))
+                {
+                    await session.Transport.WriteAsync(Encoding.ASCII.GetBytes("y\r"), ct);
+                    accumulator.Clear();
+                    continue;
+                }
+
                 if (full.Contains("CTRL+D", StringComparison.OrdinalIgnoreCase) ||
                     full.Contains("Neither DEFAULT nor BACKUP", StringComparison.OrdinalIgnoreCase) ||
                     full.Contains("FOS boot failed", StringComparison.OrdinalIgnoreCase) ||
                     full.Contains("System halted", StringComparison.OrdinalIgnoreCase) ||
                     full.Contains("power cycle", StringComparison.OrdinalIgnoreCase))
                 {
-                    await log("[*] Equipamento sem firmware em halt. Enviando CTRL+D para reiniciar e acessar a BIOS...");
+                    await log("[*] Equipamento FortiGate sem firmware em halt ('Neither DEFAULT nor BACKUP FOS works').");
+                    await log("[*] Enviando sinal CTRL+D (0x04) para reiniciar o equipamento e capturar o menu da BIOS...");
                     await session.Transport.WriteAsync(new byte[] { 0x04 }, ct);
-                    await Task.Delay(600, ct);
-                    await session.Transport.WriteAsync(Encoding.ASCII.GetBytes("   \r"), ct);
+                    rebootSent = true;
                     accumulator.Clear();
+
+                    // Após enviar CTRL+D, o hardware do FortiGate 40F leva de 2 a 4 segundos para reiniciar o SoC
+                    // e iniciar a contagem regressiva da BIOS / U-Boot ("Press any key to display configuration menu...").
+                    // Enviamos pulsos periódicos de espaço durante 8 segundos para garantir a captura imediata do menu da BIOS.
+                    var catchDeadline = DateTime.UtcNow.AddSeconds(8);
+                    while (DateTime.UtcNow < catchDeadline && !ct.IsCancellationRequested)
+                    {
+                        var r = await session.Transport.ReadAsync(buffer, ct);
+                        if (r > 0)
+                        {
+                            var t = Encoding.ASCII.GetString(buffer, 0, r);
+                            accumulator.Append(t);
+                            session.EmitRawOutput(t);
+                            var cur = accumulator.ToString();
+                            if (BiosMenuPromptRegex.IsMatch(cur))
+                            {
+                                await log("\n[OK] Menu da BIOS / FortiBootLoader interceptado com sucesso após CTRL+D!");
+                                return cur;
+                            }
+                        }
+
+                        // Pulso de espaço para interceptar o menu da BIOS
+                        await session.Transport.WriteAsync(Encoding.ASCII.GetBytes(" "), ct);
+                        await Task.Delay(120, ct);
+                    }
                     continue;
                 }
 
                 if (BiosInterruptPromptRegex.IsMatch(full))
                 {
-                    await log("[*] Detectado prompt de interrupção da BIOS. Enviando espaços...");
-                    await session.Transport.WriteAsync(Encoding.ASCII.GetBytes("   \r"), ct);
+                    await log("[*] Detectado prompt de interrupção da BIOS. Enviando espaços para acessar o menu...");
+                    for (int i = 0; i < 5; i++)
+                    {
+                        await session.Transport.WriteAsync(Encoding.ASCII.GetBytes(" "), ct);
+                        await Task.Delay(50, ct);
+                    }
+                    await session.Transport.WriteAsync(Encoding.ASCII.GetBytes("\r"), ct);
                     await Task.Delay(200, ct);
                 }
             }
             else
             {
                 await Task.Delay(100, ct);
-                await session.Transport.WriteAsync(Encoding.ASCII.GetBytes("\r"), ct);
+                await session.Transport.WriteAsync(Encoding.ASCII.GetBytes(" "), ct);
             }
         }
 
@@ -480,13 +589,14 @@ public sealed class FortiOsBootLoaderRecovery
         }
     }
 
-    private static async Task<bool> MonitorarTransferenciaBiosAsync(
+    internal static async Task<bool> MonitorarTransferenciaBiosAsync(
         DeviceSession session,
         Action<int, string, string> progress,
         Func<string, Task> log,
         CancellationToken ct,
         Func<long>? tftpBytesSentProvider = null,
-        Func<bool>? isTftpFinishedProvider = null)
+        Func<bool>? isTftpFinishedProvider = null,
+        Func<string, CancellationToken, Task>? instructOperator = null)
     {
         var buffer = new byte[2048];
         var accumulator = new StringBuilder();
@@ -496,6 +606,9 @@ public sealed class FortiOsBootLoaderRecovery
         var hashCount = 0;
         var receivedAnyTftpData = false;
         var sawTftpPrompt = false;
+        var cableDisconnectedDetected = false;
+        var cableRetryCount = 0;
+        const int maxCableRetries = 3;
 
         while (DateTime.UtcNow < deadline && !ct.IsCancellationRequested)
         {
@@ -503,10 +616,8 @@ public sealed class FortiOsBootLoaderRecovery
             if (read > 0)
             {
                 var text = Encoding.ASCII.GetString(buffer, 0, read);
-                accumulator.Append(text);
-                session.EmitRawOutput(text);
 
-                // Ao detectar início do TFTP, limpa o buffer histórico para descartar restos do menu anterior
+                // Ao detectar início do TFTP, limpa o buffer histórico anterior para descartar restos do menu
                 if (!sawTftpPrompt && (text.Contains("TFTP", StringComparison.OrdinalIgnoreCase) ||
                     text.Contains("Ethernet port", StringComparison.OrdinalIgnoreCase) ||
                     text.Contains("Connect to", StringComparison.OrdinalIgnoreCase) ||
@@ -514,6 +625,22 @@ public sealed class FortiOsBootLoaderRecovery
                 {
                     sawTftpPrompt = true;
                     accumulator.Clear();
+                }
+
+                accumulator.Append(text);
+                session.EmitRawOutput(text);
+
+                // Detecta desconexão do cabo de rede / falha de auto-negociação Ethernet na porta WAN
+                if (!cableDisconnectedDetected && (CableDisconnectedRegex.IsMatch(text) || CableDisconnectedRegex.IsMatch(accumulator.ToString())))
+                {
+                    cableDisconnectedDetected = true;
+                    await log("\n🚨 [CABO DE REDE DESCONECTADO NA PORTA WAN]");
+                    await log("   A BIOS do FortiGate 40F acusou falha física Ethernet: 'Failed to complete copper auto-nego'.");
+                    await log("   Não foi detectado sinal de rede na porta WAN (cabo desconectado ou computador sem link).\n");
+                    progress(20, "Cabo Desconectado na WAN!", "Verifique o cabo Ethernet na porta WAN do FortiGate 40F...");
+
+                    // Envia Ctrl+C para acelerar a interrupção e retorno ao menu principal da BIOS
+                    try { await session.Transport.WriteAsync(new byte[] { 0x03 }, ct); } catch { }
                 }
 
                 // Stream de linhas da BIOS para o console
@@ -551,8 +678,82 @@ public sealed class FortiOsBootLoaderRecovery
 
                 var current = accumulator.ToString();
 
-                // 1. Detecção de Erros explícitos da BIOS
-                if (TransferErrorRegex.IsMatch(current))
+                // 1. Sucesso! Imagem recebida e verificada pela BIOS
+                var tftpBytes = tftpBytesSentProvider?.Invoke() ?? 0;
+                var isTftpDone = isTftpFinishedProvider?.Invoke() ?? false;
+                var isActivelyTransferring = tftpBytes > 0 && !isTftpDone;
+
+                if (SaveDefaultPromptRegex.IsMatch(current) || (isTftpDone && (current.Contains("Verification OK", StringComparison.OrdinalIgnoreCase) || current.Contains("Image Received", StringComparison.OrdinalIgnoreCase))))
+                {
+                    await log("[OK] Imagem transferida e verificada pela BIOS com sucesso!");
+                    return true;
+                }
+
+                // 2. Se a BIOS retornou ao menu principal ou prompt de seleção
+                var isAtMenu = current.Contains("Enter C,R,T,F,I,B,Q,or H:", StringComparison.OrdinalIgnoreCase) ||
+                               current.Contains("Enter P,D,I,S,G,V,T,F,E,R,N,Q,or H:", StringComparison.OrdinalIgnoreCase) ||
+                               (sawTftpPrompt && !isActivelyTransferring && !isTftpDone && (DateTime.UtcNow - startTime).TotalSeconds > 8 && BiosMenuPromptRegex.IsMatch(current));
+
+                if (isAtMenu)
+                {
+                    // Se acusou cabo desconectado ou falha de auto-negociação
+                    if (cableDisconnectedDetected || CableDisconnectedRegex.IsMatch(current))
+                    {
+                        if (cableRetryCount < maxCableRetries && instructOperator != null)
+                        {
+                            cableRetryCount++;
+                            await log($"\n📢 [INTERVENÇÃO OPERACIONAL {cableRetryCount}/{maxCableRetries}] Aguardando averiguação do cabo na porta WAN...");
+                            progress(20, "Aguardando Operador...", $"Conecte o cabo de rede na porta WAN ({cableRetryCount}/{maxCableRetries})...");
+
+                            var promptMsg =
+                                "⚠️ CABO DE REDE ETHERNET DESCONECTADO NA PORTA WAN DO FORTIGATE 40F\n\n" +
+                                "A BIOS do FortiGate 40F detectou que a porta física Ethernet WAN está SEM LINK:\n" +
+                                "'Failed to complete copper auto-nego' (auto-negociação física Ethernet falhou).\n\n" +
+                                "👉 AÇÃO NECESSÁRIA:\n" +
+                                "1. Conecte o cabo de rede Ethernet do computador EXCLUSIVAMENTE na porta WAN do FortiGate 40F.\n" +
+                                "2. Verifique se a outra extremidade está conectada e ativada na placa de rede do seu computador.\n" +
+                                "3. Certifique-se de que o LED da porta WAN está ACESO (verde/laranja).\n\n" +
+                                $"Tentativa {cableRetryCount} de {maxCableRetries}. Clique em OK após conectar o cabo para reiniciar o download TFTP na BIOS.";
+
+                            await instructOperator(promptMsg, ct);
+
+                            await log("[*] Operador confirmou conexão física do cabo na porta WAN. Reenviando opção [T] para reiniciar download TFTP na BIOS...");
+                            progress(25, "Reiniciando TFTP...", "Disparando novo download TFTP após conexão do cabo...");
+
+                            accumulator.Clear();
+                            lineBuffer.Clear();
+                            cableDisconnectedDetected = false;
+                            sawTftpPrompt = false;
+                            receivedAnyTftpData = false;
+                            hashCount = 0;
+                            startTime = DateTime.UtcNow;
+                            deadline = DateTime.UtcNow.AddMinutes(5);
+
+                            await session.Transport.WriteAsync(Encoding.ASCII.GetBytes("T\r"), ct);
+                            await Task.Delay(500, ct);
+                            continue;
+                        }
+                        else
+                        {
+                            await log("\n🚨 [FALHA CRÍTICA: CABO DE REDE DESCONECTADO NA PORTA WAN]");
+                            await log("   A BIOS encerrou a tentativa por ausência de link físico Ethernet na porta WAN (Failed to complete copper auto-nego).");
+                            await log("   Certifique-se de conectar o cabo na porta WAN (com LED aceso) e reinicie o procedimento.\n");
+                            return false;
+                        }
+                    }
+
+                    // Se retornou ao menu por outro motivo sem transferir
+                    var elapsedSec = (DateTime.UtcNow - startTime).TotalSeconds;
+                    if (!isActivelyTransferring && !isTftpDone && elapsedSec > 25 && sawTftpPrompt)
+                    {
+                        await log("\n🚨 [FALHA TFTP NA BIOS] A BIOS tentou o download e retornou ao menu principal sem carregar a imagem.");
+                        await log("   Certifique-se de que o cabo de rede Ethernet está conectado na porta WAN física do FortiGate 40F.\n");
+                        return false;
+                    }
+                }
+
+                // 3. Detecção de Erros explícitos da BIOS (outros que não cabo)
+                if (TransferErrorRegex.IsMatch(current) && !cableDisconnectedDetected && !CableDisconnectedRegex.IsMatch(current))
                 {
                     await log("\n🚨 [FALHA TFTP NA BIOS]");
                     await log("   A BIOS do FortiGate indicou falha na transferência TFTP.");
@@ -561,27 +762,6 @@ public sealed class FortiOsBootLoaderRecovery
                     await log("   - Conecte o cabo de rede Ethernet do computador EXCLUSIVAMENTE na porta WAN do FortiGate 40F.");
                     await log("   - Verifique se o LED da porta WAN está aceso com link ativo.");
                     await log("   - Não utilize as portas LAN (1, 2, 3) nem a porta A para recuperação na BIOS.\n");
-                    return false;
-                }
-
-                var tftpBytes = tftpBytesSentProvider?.Invoke() ?? 0;
-                var isTftpDone = isTftpFinishedProvider?.Invoke() ?? false;
-                var isActivelyTransferring = tftpBytes > 0 && !isTftpDone;
-
-                // 2. Sucesso! Imagem recebida e verificada pela BIOS
-                if (SaveDefaultPromptRegex.IsMatch(current) || (isTftpDone && (current.Contains("Verification OK", StringComparison.OrdinalIgnoreCase) || current.Contains("Image Received", StringComparison.OrdinalIgnoreCase))))
-                {
-                    await log("[OK] Imagem transferida e verificada pela BIOS com sucesso!");
-                    return true;
-                }
-
-                // 3. Se a BIOS retornou ao menu principal sem sucesso (abort ou timeout da BIOS)
-                // Se o servidor TFTP estiver transmitindo bytes ou já tiver terminado o envio, NUNCA abortar!
-                var elapsedSec = (DateTime.UtcNow - startTime).TotalSeconds;
-                if (!isActivelyTransferring && !isTftpDone && elapsedSec > 25 && sawTftpPrompt && current.Contains("Enter C,R,T,F,I,B,Q,or H:", StringComparison.OrdinalIgnoreCase))
-                {
-                    await log("\n🚨 [FALHA TFTP NA BIOS] A BIOS tentou o download e retornou ao menu principal sem carregar a imagem.");
-                    await log("   Certifique-se de que o cabo de rede Ethernet está conectado na porta WAN física do FortiGate 40F.\n");
                     return false;
                 }
             }
@@ -593,6 +773,14 @@ public sealed class FortiOsBootLoaderRecovery
                 var check = accumulator.ToString();
                 if (check.Contains("TFTP", StringComparison.OrdinalIgnoreCase) || check.Contains("Connect to", StringComparison.OrdinalIgnoreCase))
                 {
+                    if (cableDisconnectedDetected || CableDisconnectedRegex.IsMatch(check))
+                    {
+                        await log("\n🚨 [ERRO CRÍTICO: CABO DE REDE DESCONECTADO]");
+                        await log("   A BIOS acusou ausência de link na porta WAN (Failed to complete copper auto-nego).");
+                        await log("   Verifique a conexão física do cabo Ethernet na porta WAN do FortiGate 40F.\n");
+                        return false;
+                    }
+
                     await log("\n🚨 [TIMEOUT TFTP NA BIOS]");
                     await log("   Passaram 45 segundos sem resposta de pacotes TFTP entre a BIOS do 40F e o servidor.");
                     await log("   Certifique-se de conectar o cabo Ethernet na porta WAN do FortiGate 40F (com LED aceso).\n");
@@ -691,16 +879,28 @@ public sealed class FortiOsBootLoaderRecovery
         return false;
     }
 
-    private static async Task<bool> AguardarBootFortiOsAsync(
+    public static async Task<bool> AguardarBootFortiOsAsync(
         DeviceSession session,
         Action<int, string, string> progress,
         Func<string, Task> log,
-        CancellationToken ct)
+        CancellationToken ct,
+        string defaultPassword = "CQMR")
     {
         var buffer = new byte[2048];
         var accumulator = new StringBuilder();
         var deadline = DateTime.UtcNow.AddMinutes(5);
+        var bootStart = DateTime.UtcNow;
+        var lastOutputTime = DateTime.UtcNow;
         var lastWakeup = DateTime.UtcNow;
+
+        var loginSent = false;
+        var passwordSent = false;
+        var newPassSent = false;
+        var confirmPassSent = false;
+        var lastBiosQuitSent = DateTime.MinValue;
+        var rebootDetected = false;
+
+        await log("[*] Acompanhando inicialização do FortiOS (aguardando carregamento e liberação do console)...");
 
         while (DateTime.UtcNow < deadline && !ct.IsCancellationRequested)
         {
@@ -710,10 +910,33 @@ public sealed class FortiOsBootLoaderRecovery
                 var text = Encoding.ASCII.GetString(buffer, 0, read);
                 accumulator.Append(text);
                 session.EmitRawOutput(text);
+                lastOutputTime = DateTime.UtcNow;
 
                 var current = accumulator.ToString();
 
-                // Detecção de falha de boot / halt precoce
+                // Marca que o processo de reinicialização foi efetivamente observado na console
+                if (!rebootDetected)
+                {
+                    if (current.Contains("System is resetting", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("resetting to factory", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("rebooting", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("Restarting system", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("FortiGate-40F (", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("FortiBootLoader", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("Verifying SHA256", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("Press any key to display configuration menu", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("Booting OS", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("Reading boot image", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("Initializing", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("Starting OS", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("Enter C,R,T,F,I,B,Q,or H", StringComparison.OrdinalIgnoreCase) ||
+                        current.Contains("login:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        rebootDetected = true;
+                    }
+                }
+
+                // 1. Detecção de falha de boot / halt precoce
                 if (FortiOsBootFailureRegex.IsMatch(current) ||
                     current.Contains("System halted", StringComparison.OrdinalIgnoreCase) ||
                     current.Contains("Neither DEFAULT nor BACKUP", StringComparison.OrdinalIgnoreCase))
@@ -722,36 +945,154 @@ public sealed class FortiOsBootLoaderRecovery
                     return false;
                 }
 
-                // Detecção de diálogo de aviso prévio pós-recuperação (PRE WARNING: ... Press 'a' to accept)
+                // 2. Detecção de Menu BIOS/Bootloader interrompido (Enter C,R,T,F,I,B,Q,or H: ou Enter Selection:)
+                if (current.Contains("Enter C,R,T,F,I,B,Q,or H:", StringComparison.OrdinalIgnoreCase) ||
+                    current.Contains("Enter Selection:", StringComparison.OrdinalIgnoreCase))
+                {
+                    rebootDetected = true;
+                    if ((DateTime.UtcNow - lastBiosQuitSent).TotalSeconds >= 3)
+                    {
+                        lastBiosQuitSent = DateTime.UtcNow;
+                        await log("\n[>] Menu BIOS/BootLoader detectado durante o boot do FortiGate. Enviando 'Q' para sair do menu e carregar o FortiOS...");
+                        accumulator.Clear();
+                        await session.Transport.WriteAsync(Encoding.ASCII.GetBytes("Q\r"), ct);
+                        await Task.Delay(500, ct);
+                        continue;
+                    }
+                }
+
+                // 3. Detecção de diálogo de aviso prévio pós-recuperação (PRE WARNING: ... Press 'a' to accept)
                 if (NetworkDevice.Core.Detection.DeviceDetector.IsDisclaimerPrompt(current))
                 {
-                    await log("\n[>] Diálogo de aviso prévio pós-recuperação FortiGate detectado (PRE WARNING). Aceitando com 'a' e continuando CLI...");
+                    rebootDetected = true;
+                    await log("\n[>] Diálogo de aviso prévio pós-boot FortiGate detectado (PRE WARNING). Aceitando termo com 'a'...");
                     accumulator.Clear();
-                    await session.Transport.WriteAsync(Encoding.ASCII.GetBytes("a\r\n"), ct);
+                    await session.Transport.WriteAsync(new byte[] { 0x61 }, ct);
                     await Task.Delay(400, ct);
-                    await session.Transport.WriteAsync(Encoding.ASCII.GetBytes("\r\n"), ct);
                     continue;
                 }
 
-                // Detecção de login FortiOS ou prompt CLI pós-aceite (# / $)
-                if (FortiOsLoginRegex.IsMatch(current) || current.Contains("login:", StringComparison.OrdinalIgnoreCase) ||
-                    Regex.IsMatch(current, @"(?i)(?:FortiGate|FGT|FG)[A-Za-z0-9_\-]*\s*(?:\([^()\r\n]*\))?\s*[#$]\s*$"))
+                // 4. Detecção de troca forçada de nova senha pós-reset (New Password: / Please input a new password)
+                if (Regex.IsMatch(current, @"(?i)(?:new\s+password\s*[:?]|please\s+input\s+a\s+new\s+password|change\s+your\s+password)") && !newPassSent)
                 {
-                    await log("[OK] Prompt/Login do FortiOS pós-recuperação detectado!");
+                    rebootDetected = true;
+                    newPassSent = true;
+                    accumulator.Clear();
+                    await log($"\n[>] Troca obrigatória de nova senha pós-reset detectada. Definindo nova senha ({defaultPassword})...");
+                    await Task.Delay(150, ct);
+                    await session.Transport.WriteAsync(Encoding.ASCII.GetBytes(defaultPassword + "\r"), ct);
+                    await Task.Delay(400, ct);
+                    continue;
+                }
+
+                // 5. Confirmação da nova senha (Confirm Password:)
+                if (Regex.IsMatch(current, @"(?i)(?:confirm|verify|re-?enter)\s+(?:new\s+)?password\s*[:?]") && !confirmPassSent)
+                {
+                    rebootDetected = true;
+                    confirmPassSent = true;
+                    accumulator.Clear();
+                    await log($"\n[>] Confirmando nova senha ({defaultPassword})...");
+                    await Task.Delay(150, ct);
+                    await session.Transport.WriteAsync(Encoding.ASCII.GetBytes(defaultPassword + "\r"), ct);
+                    await Task.Delay(400, ct);
+                    continue;
+                }
+
+                // 6. Detecção de Login FortiOS (login:)
+                var isLoginPrompt = Regex.IsMatch(current, @"(?i)(?:FortiGate|FGT|FG|[A-Za-z0-9_\-]{3,30})\s+login\s*[:?]") ||
+                                    (current.Contains("login:", StringComparison.OrdinalIgnoreCase) && !current.Contains("Password:"));
+                if (isLoginPrompt && !loginSent)
+                {
+                    rebootDetected = true;
+                    loginSent = true;
+                    accumulator.Clear();
+                    await log("\n[>] Prompt de login FortiOS pós-boot detectado. Autenticando com 'admin'...");
+                    await Task.Delay(150, ct);
+                    await session.Transport.WriteAsync(Encoding.ASCII.GetBytes("admin\r"), ct);
+                    await Task.Delay(350, ct);
+                    continue;
+                }
+
+                // 7. Detecção de Senha após Login (Password:)
+                var isPasswordPrompt = loginSent && !passwordSent &&
+                    Regex.IsMatch(current, @"(?i)(?:^|[\s\b])(?:Password|Login\s+password)\s*[:?]") &&
+                    !Regex.IsMatch(current, @"(?i)(?:new|confirm)\s+password");
+                if (isPasswordPrompt)
+                {
+                    rebootDetected = true;
+                    passwordSent = true;
+                    accumulator.Clear();
+                    await log("\n[>] Prompt de senha detectado. Enviando senha em branco de fábrica...");
+                    await Task.Delay(150, ct);
+                    await session.Transport.WriteAsync(Encoding.ASCII.GetBytes("\r"), ct);
+                    await Task.Delay(450, ct);
+                    continue;
+                }
+
+                // 8. Se a senha em branco for rejeitada (Login incorrect), tenta com a senha padrão defaultPassword
+                if (loginSent && passwordSent && !newPassSent &&
+                    (current.Contains("Login incorrect", StringComparison.OrdinalIgnoreCase) || current.Contains("Login failed", StringComparison.OrdinalIgnoreCase)))
+                {
+                    rebootDetected = true;
+                    await log($"\n[>] Senha em branco não aceita. Tentando senha padrão ({defaultPassword})...");
+                    loginSent = false;
+                    passwordSent = false;
+                    accumulator.Clear();
+                    await Task.Delay(300, ct);
+                    await session.Transport.WriteAsync(Encoding.ASCII.GetBytes("admin\r"), ct);
+                    await Task.Delay(300, ct);
+                    await session.Transport.WriteAsync(Encoding.ASCII.GetBytes(defaultPassword + "\r"), ct);
+                    await Task.Delay(450, ct);
+                    continue;
+                }
+
+                // 9. Detecção de Prompt CLI operacional (# ou $)
+                var lastCleanLine = current.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.Trim() ?? "";
+                var isOperationalCliPrompt = !lastCleanLine.Contains("login:", StringComparison.OrdinalIgnoreCase) &&
+                                             !lastCleanLine.Contains("Password:", StringComparison.OrdinalIgnoreCase) &&
+                                             !lastCleanLine.Contains("C,R,T,F,I,B,Q,or H", StringComparison.OrdinalIgnoreCase) &&
+                                             !lastCleanLine.Contains("Enter Selection:", StringComparison.OrdinalIgnoreCase) &&
+                                             !lastCleanLine.Contains("NP6XLITE", StringComparison.OrdinalIgnoreCase) &&
+                                             !lastCleanLine.Contains("Press any key", StringComparison.OrdinalIgnoreCase) &&
+                                             !lastCleanLine.Contains("Booting OS", StringComparison.OrdinalIgnoreCase) &&
+                                             !lastCleanLine.Contains("Initializing", StringComparison.OrdinalIgnoreCase) &&
+                                             (Regex.IsMatch(lastCleanLine, @"(?i)(?:FortiGate|FGT|FG)[A-Za-z0-9_\-]*\s*(?:\([^()\r\n]*\))?\s*[#$]\s*$") ||
+                                              Regex.IsMatch(lastCleanLine, @"(?i)[A-Za-z0-9_\-\.]+\s*(?:\([^()\r\n]*\))?\s*#\s*$"));
+
+                // Cláusula de proteção estrita anti-falso-positivo:
+                // O prompt CLI operacional pós-reset SOMENTE é aceito se o login já tiver sido enviado.
+                // NUNCA aceitar prompt se o login não foi enviado, pois FortiOS reiniciado SEMPRE exige login: admin.
+                if (isOperationalCliPrompt && loginSent)
+                {
+                    await log($"\n[OK] FortiOS inicializado e autenticado com sucesso! Prompt operacional liberado: '{lastCleanLine}'");
+                    session.SetAuthenticatedState("admin", (newPassSent || confirmPassSent) ? defaultPassword : "", lastCleanLine, ExecMode.PrivilegedExec);
                     return true;
                 }
             }
 
-            if ((DateTime.UtcNow - lastWakeup).TotalSeconds >= 8)
+            // Envio cauteloso de CRLF apenas se o boot estiver demorando e SILENCIOSO
+            // NUNCA enviar nos primeiros 65 segundos para não acionar o menu da BIOS ("Press Any Key...")
+            var elapsedTotal = (DateTime.UtcNow - bootStart).TotalSeconds;
+            var quietTime = (DateTime.UtcNow - lastOutputTime).TotalSeconds;
+            var timeSinceWakeup = (DateTime.UtcNow - lastWakeup).TotalSeconds;
+
+            if (elapsedTotal >= 65 && quietTime >= 10 && timeSinceWakeup >= 8)
             {
-                lastWakeup = DateTime.UtcNow;
-                // Envia CRLF suave para acordar prompt caso o sistema já tenha subido silenciosamente
-                try { await session.Transport.WriteAsync(Encoding.ASCII.GetBytes("\r\n"), ct); } catch { }
+                var cur = accumulator.ToString();
+                if (!cur.Contains("Enter C,R,T,F,I,B,Q,or H:", StringComparison.OrdinalIgnoreCase) &&
+                    !cur.Contains("Press Any Key", StringComparison.OrdinalIgnoreCase) &&
+                    !cur.Contains("Verifying password", StringComparison.OrdinalIgnoreCase) &&
+                    !Regex.IsMatch(cur, @"(?i)(?:new|confirm)\s+password"))
+                {
+                    lastWakeup = DateTime.UtcNow;
+                    try { await session.Transport.WriteAsync(Encoding.ASCII.GetBytes("\r\n"), ct); } catch { }
+                }
             }
 
-            await Task.Delay(120, ct);
+            await Task.Delay(100, ct);
         }
 
+        await log("\n[ERRO] Tempo limite de 5 minutos esgotado aguardando o boot completo e autenticação do FortiOS.");
         return false;
     }
 }

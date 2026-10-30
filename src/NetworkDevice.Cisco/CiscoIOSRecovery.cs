@@ -86,7 +86,8 @@ public sealed class CiscoIOSRecovery
     public async Task RecoverAndResetAsync(
         DeviceSession session,
         Func<string, CancellationToken, Task>? requestReload = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool forceReload = false)
     {
         var stateMachine = new RecoveryStateMachine(session.Transport, _profile);
         stateMachine.StateChanged += (state, msg) =>
@@ -151,8 +152,8 @@ public sealed class CiscoIOSRecovery
         if (accessState == DeviceAccessState.UnlockedPrompt)
         {
             stateMachine.TransitionTo(RecoveryState.ExecutingRecovery, "Equipamento acessível sem senha. Executando zeramento direto via CLI...");
-            await ProgressAsync("Equipamento acessível sem senha (prompt aberto). Zeramento direto via CLI (sem ROMMON)...", cancellationToken);
-            await ExecuteDirectCliResetAsync(session, cancellationToken);
+            await ProgressAsync("Equipamento acessível sem senha (prompt aberto). Zeramento direto via CLI...", cancellationToken);
+            await ExecuteDirectCliResetAsync(session, forceReload, cancellationToken);
             stateMachine.TransitionTo(RecoveryState.Completed, "Procedimento de zeramento concluído diretamente via CLI.");
             await ProgressAsync("Equipamento zerado e registrador 0x2102 garantido. Pronto para provisionamento!", cancellationToken);
             return;
@@ -452,7 +453,7 @@ public sealed class CiscoIOSRecovery
         return false;
     }
 
-    private async Task ExecuteDirectCliResetAsync(DeviceSession session, CancellationToken ct)
+    private async Task ExecuteDirectCliResetAsync(DeviceSession session, bool forceReload, CancellationToken ct)
     {
         // Garante que o equipamento está no modo privilegiado raiz (#)
         await EnsurePrivilegedExecViewAsync(session, _progress, ct);
@@ -467,8 +468,48 @@ public sealed class CiscoIOSRecovery
         await session.WriteLineAsync("end", ct);
         await WaitForPromptAsync(session, ct);
 
+        // Apaga base de dados de VLANs residuais (vlan.dat)
+        await ProgressAsync("Removendo base de dados de VLANs residuais (vlan.dat)...", ct);
+        try { await session.SendCommandAsync("delete /force flash:vlan.dat", TimeSpan.FromSeconds(5), ct); } catch { }
+        try { await session.SendCommandAsync("delete /force bootflash:vlan.dat", TimeSpan.FromSeconds(5), ct); } catch { }
+        try { await session.SendCommandAsync("delete /force nvram:vlan.dat", TimeSpan.FromSeconds(5), ct); } catch { }
+
         await ProgressAsync("Apagando configuração e removendo senha antiga (write erase)...", ct);
         await SendConfirmAsync(session, "write erase", EraseConfirm, waitForPrompt: true, ct);
+
+        if (forceReload)
+        {
+            await ProgressAsync("Reiniciando equipamento para aplicar o padrão de fábrica limpo (reload)...", ct);
+            session.ResetPrompt();
+            var reloadConditions = new StopCondition[]
+            {
+                new StopCondition.Contains("SaveConfirm", "[yes/no]"),
+                new StopCondition.Contains("ProceedConfirm", "[confirm]"),
+                new StopCondition.LineRegex("prompt", StrictCiscoPromptRegex)
+            };
+            var reloadRes = await session.SendExpectAsync("reload", reloadConditions, TimeSpan.FromSeconds(15), ct);
+            if (reloadRes.Output.Contains("[yes/no]", StringComparison.OrdinalIgnoreCase))
+            {
+                await session.SendRawAsync("no\r", ct);
+                await Task.Delay(500, ct);
+            }
+            await session.SendRawAsync("\r", ct);
+
+            await ProgressAsync("Aguardando reinicialização do Cisco IOS após reload...", ct);
+            await SkipInitialDialogAsync(session, ct);
+
+            try
+            {
+                var recoveryAdapter = new CiscoIOSAdapter(candidatePasswords: new[] { "PRO1AN", "" });
+                await recoveryAdapter.EnterPrivilegedExecAsync(session, cancellationToken: ct);
+            }
+            catch
+            {
+                await session.WriteLineAsync("enable", ct);
+                await Task.Delay(300, ct);
+                await WaitForPromptAsync(session, ct);
+            }
+        }
 
         await ProgressAsync("Configuração limpa e registrador 0x2102 garantido.", ct);
     }

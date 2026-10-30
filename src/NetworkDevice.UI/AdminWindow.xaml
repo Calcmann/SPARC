@@ -420,6 +420,132 @@
                 </Grid>
             </TabItem>
 
+            <!-- ABA 4: TELEMETRIA & ATIVIDADES DE CAMPO -->
+            <TabItem Header="📊 Telemetria de Atividades">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <!-- BARRA SUPERIOR COM MÉTRICAS E BUSCA -->
+                    <Border Grid.Row="0" Background="#18181B" BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="8" Padding="12,10" Margin="0,0,0,10">
+                        <DockPanel>
+                            <!-- Métricas Rápidas -->
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Border Background="#27272A" BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="6" Padding="8,4" Margin="0,0,6,0">
+                                    <TextBlock x:Name="TxtTotalAtividades" Text="📋 Total: 0 atividades" FontWeight="Bold" FontSize="11.5" Foreground="#E4E4E7" />
+                                </Border>
+                                <Border Background="#14532D" CornerRadius="6" Padding="8,4" Margin="0,0,6,0">
+                                    <TextBlock x:Name="TxtAtividadesSucesso" Text="🟢 Homologadas: 0 (100%)" FontWeight="Bold" FontSize="11.5" Foreground="#4ADE80" />
+                                </Border>
+                                <Border Background="#7F1D1D" CornerRadius="6" Padding="8,4" Margin="0,0,6,0">
+                                    <TextBlock x:Name="TxtAtividadesFalhas" Text="🔴 Falhas: 0" FontWeight="Bold" FontSize="11.5" Foreground="#F87171" />
+                                </Border>
+                                <Border Background="#1E293B" CornerRadius="6" Padding="8,4" Margin="0,0,8,0">
+                                    <TextBlock x:Name="TxtTecnicosAtivos" Text="👨‍💻 Técnicos: 0" FontWeight="Bold" FontSize="11.5" Foreground="#38BDF8" />
+                                </Border>
+                            </StackPanel>
+
+                            <!-- Busca e Ações -->
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <TextBlock Text="🔍 Filtrar:" Foreground="#A1A1AA" VerticalAlignment="Center" Margin="0,0,6,0" FontSize="11.5" />
+                                <TextBox x:Name="TxtFiltroAtividades" Width="140" Height="28" Padding="6,4" Background="#27272A" Foreground="White" BorderBrush="#52525B" FontSize="11.5" TextChanged="TxtFiltroAtividades_TextChanged" />
+                                <ComboBox x:Name="CbFiltroStatusAtividades" SelectedIndex="0" Height="28" Width="120" Margin="6,0,0,0" FontSize="11" SelectionChanged="CbFiltroStatusAtividades_SelectionChanged">
+                                    <ComboBoxItem Content="🌐 Todos Status" />
+                                    <ComboBoxItem Content="🟢 Homologados" />
+                                    <ComboBoxItem Content="🔴 Falhas" />
+                                </ComboBox>
+                                <Button Content="🔄 Atualizar" Padding="10,5" Margin="8,0,0,0" Background="#0D9488" Foreground="White" FontWeight="Bold" FontSize="11.5" BorderThickness="0" Cursor="Hand" Click="BtnRecarregarAtividades_Click" />
+                                <Button Content="📁 Pasta" Padding="10,5" Margin="6,0,0,0" Background="#3F3F46" Foreground="White" FontWeight="Bold" FontSize="11.5" BorderThickness="0" Cursor="Hand" Click="BtnAbrirPastaAtividadesAdmin_Click" />
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+
+                    <!-- TABELA DE ATIVIDADES -->
+                    <Border Grid.Row="1" Background="#18181B" BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <DockPanel Grid.Row="0" Margin="0,0,0,8">
+                                <TextBlock Text="Registro Operacional de Intervenções e Ativações de Roteadores" FontWeight="Bold" FontSize="12.5" Foreground="#38BDF8" VerticalAlignment="Center" />
+                                <TextBlock x:Name="TxtContadorAtividadesFiltradas" Text="Exibindo 0 registros" FontSize="11" Foreground="#A1A1AA" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                            </DockPanel>
+
+                            <DataGrid x:Name="DgAtividades" Grid.Row="1" AutoGenerateColumns="False" IsReadOnly="True"
+                                      Background="#18181B" RowBackground="#27272A" AlternatingRowBackground="#202023"
+                                      Foreground="#E4E4E7" BorderBrush="#3F3F46" BorderThickness="1"
+                                      GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#3F3F46"
+                                      SelectionMode="Single" SelectionUnit="FullRow" CanUserSortColumns="True"
+                                      FontSize="11.5" SelectionChanged="DgAtividades_SelectionChanged">
+                                <DataGrid.Resources>
+                                    <Style TargetType="DataGridColumnHeader">
+                                        <Setter Property="Background" Value="#18181B" />
+                                        <Setter Property="Foreground" Value="#94A3B8" />
+                                        <Setter Property="FontWeight" Value="SemiBold" />
+                                        <Setter Property="Padding" Value="8,6" />
+                                        <Setter Property="BorderBrush" Value="#3F3F46" />
+                                        <Setter Property="BorderThickness" Value="0,0,1,1" />
+                                    </Style>
+                                    <Style TargetType="DataGridCell">
+                                        <Setter Property="Padding" Value="8,5" />
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="DataGridCell">
+                                                    <Border Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}">
+                                                        <ContentPresenter VerticalAlignment="Center" />
+                                                    </Border>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </DataGrid.Resources>
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Data / Hora" Binding="{Binding DataHoraFormatada}" Width="125" />
+                                    <DataGridTextColumn Header="Designação IP" Binding="{Binding Designacao}" Width="120" FontWeight="Bold" />
+                                    <DataGridTextColumn Header="Número OTS" Binding="{Binding Ots}" Width="110" />
+                                    <DataGridTextColumn Header="Cliente / Razão Social" Binding="{Binding Cliente}" Width="*" />
+                                    <DataGridTextColumn Header="Técnico em Campo" Binding="{Binding TecnicoNome}" Width="130" />
+                                    <DataGridTextColumn Header="Empresa" Binding="{Binding TecnicoEmpresa}" Width="95" />
+                                    <DataGridTextColumn Header="Modelo" Binding="{Binding Modelo}" Width="130" />
+                                    <DataGridTemplateColumn Header="Status" Width="95">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Border Background="{Binding StatusBadgeBackground}" CornerRadius="4" Padding="6,2" HorizontalAlignment="Left">
+                                                    <TextBlock Text="{Binding Status}" Foreground="{Binding StatusBadgeForeground}" FontWeight="Bold" FontSize="11" />
+                                                </Border>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="Duração" Binding="{Binding Duracao}" Width="75" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+
+                            <!-- BARRA DE AÇÕES DA ATIVIDADE SELECIONADA -->
+                            <Border Grid.Row="2" Background="#27272A" BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="6" Padding="10,8" Margin="0,8,0,0">
+                                <DockPanel>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="Ações para o Circuito:" Foreground="#A1A1AA" FontSize="11.5" VerticalAlignment="Center" Margin="0,0,10,0" />
+                                        <Button x:Name="BtnAbrirRelatorioTxt" Content="📄 Ver Relatório (TXT)" Padding="10,5" Margin="0,0,6,0" Background="#1E3A8A" Foreground="White" FontWeight="Bold" FontSize="11.5" BorderThickness="0" Cursor="Hand" Click="BtnAbrirRelatorioTxt_Click" IsEnabled="False" />
+                                        <Button x:Name="BtnAbrirLogSerial" Content="📋 Log da Sessão (.log)" Padding="10,5" Margin="0,0,6,0" Background="#3F3F46" Foreground="White" FontWeight="Bold" FontSize="11.5" BorderThickness="0" Cursor="Hand" Click="BtnAbrirLogSerial_Click" IsEnabled="False" />
+                                        <Button x:Name="BtnAbrirPacoteZip" Content="📦 Pacote Diagnóstico (.zip)" Padding="10,5" Margin="0,0,6,0" Background="#991B1B" Foreground="White" FontWeight="Bold" FontSize="11.5" BorderThickness="0" Cursor="Hand" Click="BtnAbrirPacoteZip_Click" IsEnabled="False" />
+                                        <Button x:Name="BtnAbrirPdfHomologado" Content="📑 PDF Homologado" Padding="10,5" Background="#14532D" Foreground="White" FontWeight="Bold" FontSize="11.5" BorderThickness="0" Cursor="Hand" Click="BtnAbrirPdfHomologado_Click" IsEnabled="False" />
+                                    </StackPanel>
+
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                        <Button Content="📊 Exportar Relatório Geral (CSV)" Padding="10,5" Background="#27272A" BorderBrush="#52525B" BorderThickness="1" Foreground="#38BDF8" FontWeight="SemiBold" FontSize="11" Cursor="Hand" Click="BtnExportarCsvAtividades_Click" />
+                                    </StackPanel>
+                                </DockPanel>
+                            </Border>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </TabItem>
+
             <!-- ABA 3: GESTÃO DO REPOSITÓRIO DE FIRMWARES -->
             <TabItem Header="🌐 Gestão do Repositório de Firmwares">
                 <Grid>

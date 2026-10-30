@@ -23,6 +23,47 @@ public class SparcAppUpdateServiceTests
         Assert.Equal(expected, result);
     }
 
+    [Theory]
+    [InlineData("0.8.33", "0.8.34", true)]
+    [InlineData("0.8.175", "0.8.176", true)]
+    [InlineData("0.8.34", "0.8.34", false)]
+    [InlineData("0.8.35", "0.8.34", false)]
+    [InlineData("v0.8.30", "0.8.31", true)]
+    [InlineData("0.8.30", "v0.8.31", true)]
+    [InlineData("0.7.99", "0.8.0", true)]
+    public void IsOlderVersion_DetectsDowngradeCorrectly(string remote, string current, bool expected)
+    {
+        var result = SparcAppUpdateService.IsOlderVersion(remote, current);
+        Assert.Equal(expected, result);
+    }
+
+    [Theory]
+    [InlineData("0.8.176", "0.8.175", 1)]
+    [InlineData("0.8.175", "0.8.176", -1)]
+    [InlineData("0.8.176", "0.8.176", 0)]
+    [InlineData("v0.8.176", "0.8.176", 0)]
+    [InlineData("0.9.0", "0.8.176", 1)]
+    [InlineData("0.8.0", "0.9.0", -1)]
+    public void CompareVersions_ComparesNumerically(string vA, string vB, int expectedSign)
+    {
+        var comp = SparcAppUpdateService.CompareVersions(vA, vB);
+        var sign = Math.Sign(comp);
+        Assert.Equal(expectedSign, sign);
+    }
+
+    [Fact]
+    public void SparcPlatformRelease_SupportsIsDowngradeFlag()
+    {
+        var rel = new SparcPlatformRelease
+        {
+            Version = "0.8.175",
+            DownloadUrl = "https://example.com/sparc.exe",
+            IsDowngrade = true
+        };
+        Assert.True(rel.IsDowngrade);
+        Assert.Equal("0.8.175", rel.Version);
+    }
+
     [Fact]
     public void SparcTextSanitizer_FormatsNamesAndCompaniesCorrectly()
     {

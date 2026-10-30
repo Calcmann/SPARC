@@ -57,18 +57,24 @@ public sealed class CiscoSaipConfigurator
 
         // WAN (Porta 4 / GE0/4 / GE4 ou GE0/0 ou GE0/0/0)
         string resolvedWan = preferredWan;
-        if (ifaces.Any(i => i.Equals("GigabitEthernet0/4", StringComparison.OrdinalIgnoreCase) || i.Equals("GigabitEthernet 0/4", StringComparison.OrdinalIgnoreCase)))
+        if (ifaces.Any(i => i.Equals("GigabitEthernet0/0/0", StringComparison.OrdinalIgnoreCase) || i.Equals("GigabitEthernet 0/0/0", StringComparison.OrdinalIgnoreCase)))
+            resolvedWan = "GigabitEthernet0/0/0";
+        else if (ifaces.Any(i => i.Equals("GigabitEthernet0/4", StringComparison.OrdinalIgnoreCase) || i.Equals("GigabitEthernet 0/4", StringComparison.OrdinalIgnoreCase)))
             resolvedWan = "GigabitEthernet0/4";
         else if (ifaces.Any(i => i.Equals("GigabitEthernet4", StringComparison.OrdinalIgnoreCase) || i.Equals("GigabitEthernet 4", StringComparison.OrdinalIgnoreCase)))
             resolvedWan = "GigabitEthernet 4";
-        else if (ifaces.Any(i => i.Equals("GigabitEthernet0/0/0", StringComparison.OrdinalIgnoreCase)))
-            resolvedWan = "GigabitEthernet0/0/0";
         else if (ifaces.Any(i => i.Equals("GigabitEthernet0/0", StringComparison.OrdinalIgnoreCase) || i.Equals("GigabitEthernet 0/0", StringComparison.OrdinalIgnoreCase)))
             resolvedWan = "GigabitEthernet 0/0";
 
-        // LAN (Porta 5 / GE0/5 / GE5 ou GE0/1 ou GE0/0/1)
+        // LAN (Porta 5 / GE0/5 / GE5 ou GE0/1 ou Vlan1 / GE0/1/0)
         string resolvedLan = preferredLan;
-        if (ifaces.Any(i => i.Equals("GigabitEthernet0/5", StringComparison.OrdinalIgnoreCase) || i.Equals("GigabitEthernet 0/5", StringComparison.OrdinalIgnoreCase)))
+        if (resolvedWan.Equals("GigabitEthernet0/0/0", StringComparison.OrdinalIgnoreCase) ||
+            ifaces.Any(i => i.Equals("GigabitEthernet0/1/0", StringComparison.OrdinalIgnoreCase) || i.Equals("GigabitEthernet 0/1/0", StringComparison.OrdinalIgnoreCase)))
+        {
+            // Cisco 1100: LAN lógica é Vlan1 (portas físicas são switchports 0/1/0 a 0/1/3)
+            resolvedLan = "Vlan1";
+        }
+        else if (ifaces.Any(i => i.Equals("GigabitEthernet0/5", StringComparison.OrdinalIgnoreCase) || i.Equals("GigabitEthernet 0/5", StringComparison.OrdinalIgnoreCase)))
             resolvedLan = "GigabitEthernet0/5";
         else if (ifaces.Any(i => i.Equals("GigabitEthernet5", StringComparison.OrdinalIgnoreCase) || i.Equals("GigabitEthernet 5", StringComparison.OrdinalIgnoreCase)))
             resolvedLan = "GigabitEthernet 5";
@@ -168,7 +174,16 @@ public sealed class CiscoSaipConfigurator
         string resolvedBoot = circuit.BootImage ?? bootImage ?? string.Empty;
         if (string.IsNullOrWhiteSpace(resolvedBoot))
         {
-            if (cleanWan.Equals("GigabitEthernet4", StringComparison.OrdinalIgnoreCase) ||
+            if (cleanWan.Contains("0/0/0", StringComparison.OrdinalIgnoreCase) ||
+                cleanWan.Contains("0/1/0", StringComparison.OrdinalIgnoreCase) ||
+                cleanWan.Contains("1111", StringComparison.OrdinalIgnoreCase) ||
+                cleanWan.Contains("1100", StringComparison.OrdinalIgnoreCase) ||
+                circuit.RawSource.Contains("1111", StringComparison.OrdinalIgnoreCase) ||
+                circuit.RawSource.Contains("1100", StringComparison.OrdinalIgnoreCase))
+            {
+                resolvedBoot = "c1100-universalk9.17.09.04a.SPA.bin";
+            }
+            else if (cleanWan.Equals("GigabitEthernet4", StringComparison.OrdinalIgnoreCase) ||
                 cleanWan.Equals("GigabitEthernet5", StringComparison.OrdinalIgnoreCase))
             {
                 resolvedBoot = "c900-universalk9-mz.SPA.159-3.M12.bin";
@@ -205,7 +220,11 @@ public sealed class CiscoSaipConfigurator
             $"boot system flash:{resolvedBoot}",
         };
 
-        if (resolvedBoot.Contains("c1900", StringComparison.OrdinalIgnoreCase))
+        if (resolvedBoot.Contains("c1100", StringComparison.OrdinalIgnoreCase))
+        {
+            cmds.Add($"boot system bootflash:{resolvedBoot}");
+        }
+        else if (resolvedBoot.Contains("c1900", StringComparison.OrdinalIgnoreCase))
         {
             cmds.Add($"boot system usbflash0:{resolvedBoot}");
         }
@@ -286,18 +305,23 @@ public sealed class CiscoSaipConfigurator
             cmds.AddRange(new[]
             {
                 "interface GigabitEthernet0",
+                " no description",
                 " no ip address",
                 " shutdown",
                 "interface GigabitEthernet1",
+                " no description",
                 " no ip address",
                 " shutdown",
                 "interface GigabitEthernet2",
+                " no description",
                 " no ip address",
                 " shutdown",
                 "interface GigabitEthernet3",
+                " no description",
                 " no ip address",
                 " shutdown",
                 "interface Vlan1",
+                " no description",
                 " no ip address",
                 " shutdown",
             });
@@ -309,19 +333,52 @@ public sealed class CiscoSaipConfigurator
             cmds.AddRange(new[]
             {
                 "interface GigabitEthernet0/0",
+                " no description",
                 " no ip address",
                 " shutdown",
                 "interface GigabitEthernet0/1",
+                " no description",
                 " no ip address",
                 " shutdown",
                 "interface GigabitEthernet0/2",
+                " no description",
                 " no ip address",
                 " shutdown",
                 "interface GigabitEthernet0/3",
+                " no description",
                 " no ip address",
                 " shutdown",
                 "interface Vlan1",
+                " no description",
                 " no ip address",
+                " shutdown",
+            });
+        }
+        else if (cleanWan.Contains("0/0/0", StringComparison.OrdinalIgnoreCase) ||
+                 cleanWan.Contains("0/1/0", StringComparison.OrdinalIgnoreCase) ||
+                 cleanWan.Contains("1111", StringComparison.OrdinalIgnoreCase) ||
+                 cleanWan.Contains("1100", StringComparison.OrdinalIgnoreCase))
+        {
+            // Cisco Série 1100 (C1111-4P)
+            cmds.AddRange(new[]
+            {
+                "interface GigabitEthernet0/0/1",
+                " no description",
+                " no ip address",
+                " shutdown",
+                "interface GigabitEthernet0/1/0",
+                " description * LAN ACCESS *",
+                " switchport mode access",
+                " switchport access vlan 1",
+                " no shutdown",
+                "interface GigabitEthernet0/1/1",
+                " no description",
+                " shutdown",
+                "interface GigabitEthernet0/1/2",
+                " no description",
+                " shutdown",
+                "interface GigabitEthernet0/1/3",
+                " no description",
                 " shutdown",
             });
         }
@@ -366,8 +423,11 @@ public sealed class CiscoSaipConfigurator
             cmds.Add(" no ip redirects");
             cmds.Add(" no ip unreachables");
             cmds.Add(" no ip proxy-arp");
-            cmds.Add(" duplex auto");
-            cmds.Add(" speed auto");
+            if (!lanInterface.StartsWith("Vlan", StringComparison.OrdinalIgnoreCase))
+            {
+                cmds.Add(" duplex auto");
+                cmds.Add(" speed auto");
+            }
             cmds.Add(" no cdp enable");
             if (!string.IsNullOrWhiteSpace(circuit.LanIpv6) && circuit.LanIpv6Prefix.HasValue)
             {
@@ -623,22 +683,91 @@ public sealed class CiscoSaipConfigurator
             await session.SendCommandAsync("no ip domain-lookup", TimeSpan.FromSeconds(5), cancellationToken);
             await session.SendCommandAsync("no ip domain lookup", TimeSpan.FromSeconds(5), cancellationToken);
             await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
-            // 4a. Remove todas as rotas default antigas (qualquer gateway)
-            var showRoutes = await SendShowAsync(session, "show running-config | include ip route", TimeSpan.FromSeconds(10), cancellationToken);
-            var routeMatches = Regex.Matches(showRoutes, @"(?im)^\s*ip\s+route\s+0\.0\.0\.0\s+0\.0\.0\.0\s+(\S+)(?:\s+\S+)*");
-            foreach (Match m in routeMatches)
+            // 4a. Remove todas as rotas estáticas IPv4 e IPv6 antigas (qualquer destino, gateway ou sub-rede)
+            try
             {
-                var oldGw = m.Groups[1].Value.Trim();
-                await ProgressAsync($"[*] Removendo rota default antiga -> gateway '{oldGw}'...");
-                await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(5), cancellationToken);
-                await session.SendCommandAsync($"no ip route 0.0.0.0 0.0.0.0 {oldGw}", TimeSpan.FromSeconds(5), cancellationToken);
-                await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
+                var showRoutes = await SendShowAsync(session, "show running-config | include ^ip route |^ipv6 route ", TimeSpan.FromSeconds(10), cancellationToken);
+                var routeLines = showRoutes.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(l => l.Trim())
+                    .Where(l => l.StartsWith("ip route ", StringComparison.OrdinalIgnoreCase) || l.StartsWith("ipv6 route ", StringComparison.OrdinalIgnoreCase))
+                    .Distinct();
+
+                foreach (var r in routeLines)
+                {
+                    await ProgressAsync($"[*] Removendo rota residual antiga -> '{r}'...");
+                    await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(5), cancellationToken);
+                    await session.SendCommandAsync($"no {r}", TimeSpan.FromSeconds(5), cancellationToken);
+                    await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                await ProgressAsync($"    [AVISO] Limpeza de rotas residuais: {ex.Message}");
             }
 
-            // 4b. Limpa IPs/descrições antigas das interfaces WAN/LAN (default interface = estado limpo Cisco)
+            // 4b. Remove subinterfaces residuais (ex: GigabitEthernet0/4.100, FastEthernet0/0.1)
+            try
+            {
+                var subifMatches = Regex.Matches(briefOutput, @"(?im)^(?<subif>(?:GigabitEthernet|FastEthernet|Ethernet|TenGigabitEthernet)\S*\.\d+)");
+                foreach (Match m in subifMatches)
+                {
+                    var subif = m.Groups["subif"].Value.Trim();
+                    await ProgressAsync($"[*] Removendo subinterface residual antiga -> '{subif}'...");
+                    await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(5), cancellationToken);
+                    await session.SendCommandAsync($"no interface {subif}", TimeSpan.FromSeconds(5), cancellationToken);
+                    await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                await ProgressAsync($"    [AVISO] Limpeza de subinterfaces residuais: {ex.Message}");
+            }
+
+            // 4b2. Remove interfaces VLAN residuais (ex: Vlan10, Vlan100) preservando apenas Vlan1 se for a LAN
+            try
+            {
+                var vlanMatches = Regex.Matches(briefOutput, @"(?im)^(?<vlan>Vlan(?<num>\d+))\b");
+                foreach (Match m in vlanMatches)
+                {
+                    var vlanName = m.Groups["vlan"].Value.Trim();
+                    var vlanNum = m.Groups["num"].Value.Trim();
+                    if (vlanNum != "1" && !string.Equals(vlanName, lanInterface, StringComparison.OrdinalIgnoreCase))
+                    {
+                        await ProgressAsync($"[*] Removendo interface VLAN residual antiga -> '{vlanName}'...");
+                        await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(5), cancellationToken);
+                        await session.SendCommandAsync($"no interface {vlanName}", TimeSpan.FromSeconds(5), cancellationToken);
+                        await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                await ProgressAsync($"    [AVISO] Limpeza de interfaces VLAN residuais: {ex.Message}");
+            }
+
+            // 4c. Remove pools DHCP residuais de clientes anteriores
+            try
+            {
+                var showDhcp = await SendShowAsync(session, "show running-config | include ^ip dhcp pool ", TimeSpan.FromSeconds(8), cancellationToken);
+                var poolMatches = Regex.Matches(showDhcp, @"(?im)^\s*ip\s+dhcp\s+pool\s+(\S+)");
+                foreach (Match m in poolMatches)
+                {
+                    var poolName = m.Groups[1].Value.Trim();
+                    await ProgressAsync($"[*] Removendo pool DHCP residual antigo -> '{poolName}'...");
+                    await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(5), cancellationToken);
+                    await session.SendCommandAsync($"no ip dhcp pool {poolName}", TimeSpan.FromSeconds(5), cancellationToken);
+                    await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                await ProgressAsync($"    [AVISO] Limpeza de pools DHCP: {ex.Message}");
+            }
+
+            // 4d. Limpa IPs/descrições antigas das interfaces WAN/LAN (default interface = estado limpo Cisco)
             foreach (var iface in new[] { wanInterface, lanInterface })
             {
-                await ProgressAsync($"[*] Resetando interface {iface} (default + no ip address)...");
+                await ProgressAsync($"[*] Resetando interface {iface} (default + no ip address + no description)...");
                 await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(5), cancellationToken);
                 // 'default interface' restaura ao padrão; fallback 'no ip address' + 'no description' se não suportado
                 var defRes = await session.SendCommandAsync($"default interface {iface}", TimeSpan.FromSeconds(8), cancellationToken);
@@ -656,7 +785,7 @@ public sealed class CiscoSaipConfigurator
                 await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
             }
 
-            // 4c. Remove usuários/credenciais residuais que conflitam com EBT/PRO1AN
+            // 4e. Remove usuários/credenciais residuais que conflitam com EBT/PRO1AN
             await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(5), cancellationToken);
             await session.SendCommandAsync("no username admin", TimeSpan.FromSeconds(5), cancellationToken);
             await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
@@ -1019,7 +1148,7 @@ public sealed class CiscoSaipConfigurator
         try
         {
             await EnsurePrivilegedExecAsync(session, cancellationToken: ct);
-            var runningCfg = await SendShowAsync(session, "show running-config | include ^hostname|^ip route|^crypto map", TimeSpan.FromSeconds(10), ct);
+            var runningCfg = await SendShowAsync(session, "show running-config | include ^hostname|^ip route|^ipv6 route|^crypto map|^ip dhcp pool", TimeSpan.FromSeconds(10), ct);
 
             // 1. Hostname
             var matchHost = Regex.Match(runningCfg, @"(?im)^\s*hostname\s+(\S+)");
@@ -1034,18 +1163,24 @@ public sealed class CiscoSaipConfigurator
                 }
             }
 
-            // 2. Rotas residuais
-            var routeMatches = Regex.Matches(runningCfg, @"(?im)^\s*ip\s+route\s+0\.0\.0\.0\s+0\.0\.0\.0\s+(\S+)");
+            // 2. Rotas residuais (IPv4 e IPv6)
+            var routeMatches = Regex.Matches(runningCfg, @"(?im)^\s*(?:ip|ipv6)\s+route\s+\S+");
             if (routeMatches.Count > 0)
             {
                 hasStaleRoutes = true;
-                findings.Add($"{routeMatches.Count} rota(s) default residual(is)");
+                findings.Add($"{routeMatches.Count} rota(s) residual(is)");
             }
 
             // 3. Crypto maps / IPsec de cliente anterior
             if (runningCfg.Contains("crypto map", StringComparison.OrdinalIgnoreCase))
             {
                 findings.Add("Políticas crypto/IPsec residuais de cliente anterior");
+            }
+
+            // 3b. Pools DHCP residuais
+            if (runningCfg.Contains("ip dhcp pool", StringComparison.OrdinalIgnoreCase))
+            {
+                findings.Add("Pool(s) DHCP residual(is)");
             }
 
             // 4. Interfaces com IP configurado além do padrão

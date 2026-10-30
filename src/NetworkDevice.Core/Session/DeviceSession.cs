@@ -27,7 +27,20 @@ public sealed class DeviceSession : IAsyncDisposable
 
     public string? CurrentPrompt { get; private set; }
 
+    public string? AuthenticatedUser { get; private set; }
+
+    public string? AuthenticatedPassword { get; private set; }
+
     public ExecMode Mode { get; private set; } = ExecMode.UserExec;
+
+    public void SetAuthenticatedState(string user, string? password, string? prompt = null, ExecMode? mode = null)
+    {
+        AuthenticatedUser = user;
+        AuthenticatedPassword = password;
+        if (prompt != null) CurrentPrompt = prompt;
+        if (mode.HasValue) Mode = mode.Value;
+        _connected = true;
+    }
 
     public void ResetPrompt()
     {
@@ -58,9 +71,11 @@ public sealed class DeviceSession : IAsyncDisposable
             var maxAttempts = Math.Max(25, (int)(_options.ConnectTimeout.TotalSeconds / 1.2));
             var attempts = 0;
             var needWakeup = false;
-            var passwordAttemptCount = 0;
+            var totalPasswordAttempts = 0;
+            var userPasswordAttemptCount = 0;
             var usernameAttemptCount = 0;
-            var triedConfiguredPassword = false;
+            string? currentUserForPassword = null;
+            string? lastPasswordSent = null;
             var lastUserSent = _options.Username ?? "EBT";
 
             while (attempts++ < maxAttempts && DateTime.UtcNow < deadline)
@@ -90,6 +105,8 @@ public sealed class DeviceSession : IAsyncDisposable
                     // BootWare menu é estado conectado válido — preserva o banner como CurrentPrompt para detecção na UI
                     if (stage.Kind == LoginStageKind.BootWareMenu)
                         CurrentPrompt = stage.Full;
+                    AuthenticatedUser = lastUserSent;
+                    AuthenticatedPassword = lastPasswordSent;
                     _connected = true;
                     return;
                 }
@@ -115,11 +132,11 @@ public sealed class DeviceSession : IAsyncDisposable
                         }
                         else if (_options.Username.Equals("EBT", StringComparison.OrdinalIgnoreCase))
                         {
-                            userToSend = usernameAttemptCount == 2 ? "EBT" : (usernameAttemptCount == 3 ? "admin" : "cisco");
+                            userToSend = usernameAttemptCount == 2 ? "EBT" : (usernameAttemptCount == 3 ? "admin" : (usernameAttemptCount == 4 ? "admin" : "cisco"));
                         }
                         else if (_options.Username.Equals("admin", StringComparison.OrdinalIgnoreCase))
                         {
-                            userToSend = usernameAttemptCount == 2 ? "admin" : (usernameAttemptCount == 3 ? "EBT" : "cisco");
+                            userToSend = usernameAttemptCount == 2 ? "admin" : (usernameAttemptCount == 3 ? "EBT" : (usernameAttemptCount == 4 ? "EBT" : "cisco"));
                         }
                         else if (_options.Username.Equals("cisco", StringComparison.OrdinalIgnoreCase))
                         {
@@ -140,6 +157,8 @@ public sealed class DeviceSession : IAsyncDisposable
                         else if (usernameAttemptCount == 3)
                             userToSend = "admin";
                         else if (usernameAttemptCount == 4)
+                            userToSend = "admin";
+                        else if (usernameAttemptCount == 5)
                             userToSend = "cisco";
                         else
                             throw new LoginException("Dispositivo pediu usuário, mas nenhuma credencial foi fornecida ou aceita.");
@@ -151,51 +170,67 @@ public sealed class DeviceSession : IAsyncDisposable
                 }
                 else if (stage.Kind == LoginStageKind.Password)
                 {
-                    passwordAttemptCount++;
-                    string pass;
-                    if (!triedConfiguredPassword && _options.Password != null)
+                    totalPasswordAttempts++;
+                    if (!string.Equals(currentUserForPassword, lastUserSent, StringComparison.OrdinalIgnoreCase))
                     {
-                        pass = _options.Password;
-                        triedConfiguredPassword = true;
+                        currentUserForPassword = lastUserSent;
+                        userPasswordAttemptCount = 0;
+                    }
+                    userPasswordAttemptCount++;
+
+                    string pass;
+                    if (lastUserSent.Equals("admin", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var list = new List<string>();
+                        if (_options.Password != null) list.Add(_options.Password);
+                        if (!list.Contains("CQMR")) list.Add("CQMR");
+                        if (!list.Contains("")) list.Add("");
+                        if (!list.Contains("admin")) list.Add("admin");
+                        if (!list.Contains("cisco")) list.Add("cisco");
+                        if (!list.Contains("PRO1AN")) list.Add("PRO1AN");
+
+                        var idx = Math.Clamp(userPasswordAttemptCount - 1, 0, list.Count - 1);
+                        pass = list[idx];
+                    }
+                    else if (lastUserSent.Equals("EBT", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var list = new List<string>();
+                        if (_options.Password != null) list.Add(_options.Password);
+                        if (!list.Contains("CQMR")) list.Add("CQMR");
+                        if (!list.Contains("PRO1AN")) list.Add("PRO1AN");
+                        if (!list.Contains("cisco")) list.Add("cisco");
+                        if (!list.Contains("")) list.Add("");
+
+                        var idx = Math.Clamp(userPasswordAttemptCount - 1, 0, list.Count - 1);
+                        pass = list[idx];
+                    }
+                    else if (lastUserSent.Equals("cisco", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var list = new List<string>();
+                        if (_options.Password != null) list.Add(_options.Password);
+                        if (!list.Contains("cisco")) list.Add("cisco");
+                        if (!list.Contains("CQMR")) list.Add("CQMR");
+                        if (!list.Contains("PRO1AN")) list.Add("PRO1AN");
+                        if (!list.Contains("")) list.Add("");
+
+                        var idx = Math.Clamp(userPasswordAttemptCount - 1, 0, list.Count - 1);
+                        pass = list[idx];
                     }
                     else
                     {
-                        // Alterna entre senhas padrão conhecidas em sincronia com os usuários tentados:
-                        if (lastUserSent.Equals("EBT", StringComparison.OrdinalIgnoreCase))
-                        {
-                            // Cisco Claro padrão: CQMR; HPE Claro padrão & Cisco enable: PRO1AN
-                            if (passwordAttemptCount == 1) pass = "CQMR";
-                            else if (passwordAttemptCount == 2) pass = "PRO1AN";
-                            else if (passwordAttemptCount == 3) pass = "cisco";
-                            else pass = "";
-                        }
-                        else if (lastUserSent.Equals("admin", StringComparison.OrdinalIgnoreCase))
-                        {
-                            // Fortinet Claro: CQMR; Fortinet fábrica: em branco; HPE fábrica: admin; Cisco: cisco
-                            if (passwordAttemptCount == 1) pass = "CQMR";
-                            else if (passwordAttemptCount == 2) pass = "";
-                            else if (passwordAttemptCount == 3) pass = "admin";
-                            else if (passwordAttemptCount == 4) pass = "cisco";
-                            else pass = "PRO1AN";
-                        }
-                        else if (lastUserSent.Equals("cisco", StringComparison.OrdinalIgnoreCase))
-                        {
-                            // Cisco fábrica: cisco; Claro: CQMR, PRO1AN
-                            if (passwordAttemptCount == 1) pass = "cisco";
-                            else if (passwordAttemptCount == 2) pass = "CQMR";
-                            else if (passwordAttemptCount == 3) pass = "PRO1AN";
-                            else pass = "";
-                        }
-                        else
-                        {
-                            if (passwordAttemptCount == 1) pass = "CQMR";
-                            else if (passwordAttemptCount == 2) pass = "PRO1AN";
-                            else if (passwordAttemptCount == 3) pass = "cisco";
-                            else if (passwordAttemptCount == 4) pass = "admin";
-                            else pass = "";
-                        }
+                        var list = new List<string>();
+                        if (_options.Password != null) list.Add(_options.Password);
+                        if (!list.Contains("CQMR")) list.Add("CQMR");
+                        if (!list.Contains("PRO1AN")) list.Add("PRO1AN");
+                        if (!list.Contains("cisco")) list.Add("cisco");
+                        if (!list.Contains("admin")) list.Add("admin");
+                        if (!list.Contains("")) list.Add("");
+
+                        var idx = Math.Clamp(userPasswordAttemptCount - 1, 0, list.Count - 1);
+                        pass = list[idx];
                     }
 
+                    lastPasswordSent = pass;
                     await _transport.WriteAsync(Text(pass + "\r"), cancellationToken);
                     await Task.Delay(300, cancellationToken);
                 }
@@ -223,8 +258,15 @@ public sealed class DeviceSession : IAsyncDisposable
                 }
                 else if (stage.Kind == LoginStageKind.FortiDisclaimerAccept)
                 {
-                    await _transport.WriteAsync(Text("a\r\n"), cancellationToken);
+                    await _transport.WriteAsync(new byte[] { (byte)'a' }, cancellationToken);
                     await Task.Delay(350, cancellationToken);
+                }
+                else if (stage.Kind == LoginStageKind.FortiBiosMenu)
+                {
+                    // FortiGate retido no menu da BIOS/BootLoader ("Enter C,R,T,F,I,B,Q,or H:").
+                    // Envia 'Q' para sair do menu e prosseguir com a inicialização normal do FortiOS.
+                    await _transport.WriteAsync(Text("Q\r"), cancellationToken);
+                    await Task.Delay(1000, cancellationToken);
                 }
                 else if (stage.Kind == LoginStageKind.PressEnter)
                 {
@@ -240,6 +282,8 @@ public sealed class DeviceSession : IAsyncDisposable
 
             if (CurrentPrompt != null && (CurrentPrompt.EndsWith(">") || CurrentPrompt.EndsWith("#") || CurrentPrompt.StartsWith("<") || CurrentPrompt.StartsWith("[")))
             {
+                AuthenticatedUser = lastUserSent;
+                AuthenticatedPassword = lastPasswordSent;
                 _connected = true;
                 return;
             }
@@ -381,6 +425,18 @@ public sealed class DeviceSession : IAsyncDisposable
                 {
                     var line = lines[i].Trim();
                     if (string.IsNullOrEmpty(line)) continue;
+
+                    // Ignora linhas de bootloader/BIOS que possam conter falso-positivos de prompt (#)
+                    if (line.Contains("NP6XLITE", StringComparison.OrdinalIgnoreCase) ||
+                        line.Contains("Initializing", StringComparison.OrdinalIgnoreCase) ||
+                        line.Contains("Booting OS", StringComparison.OrdinalIgnoreCase) ||
+                        line.Contains("resetting", StringComparison.OrdinalIgnoreCase) ||
+                        line.Contains("time out", StringComparison.OrdinalIgnoreCase) ||
+                        line.Contains("Enter C,R,T,F,I,B,Q,or H", StringComparison.OrdinalIgnoreCase) ||
+                        line.Contains("display configuration menu", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
 
                     foreach (var cond in effectiveConditions)
                     {
@@ -657,8 +713,13 @@ public sealed class DeviceSession : IAsyncDisposable
             return LoginStageKind.PressEnter;
         if (Regex.IsMatch(lastLine, @"(?i)\[Y/N\]\s*[:?]?\s*$"))
             return LoginStageKind.InteractiveYesNo;
-        if (Regex.IsMatch(lastLine, @"(?i)(?:press\s+['""]?a['""]?\s+to\s+accept|\(press\s+['""]?a['""]?\s+to\s+accept.*?\)|pre\s+warning\s*:.*accept)"))
+        if (Regex.IsMatch(lastLine, @"(?i)(?:press\s+['""]?a['""]?\s+to\s+accept|\(press\s+['""]?a['""]?\s+to\s+accept.*?\)|\bto\s+accept\s*\):?|pre\s+warning\s*:.*accept)") ||
+            lastLine.Contains("to accept):", StringComparison.OrdinalIgnoreCase))
             return LoginStageKind.FortiDisclaimerAccept;
+        // Fortinet BIOS / BootLoader menu (Enter C,R,T,F,I,B,Q,or H: ou Enter Selection:)
+        if (Regex.IsMatch(lastLine, @"(?i)(?:Enter\s+C\s*,\s*R\s*,\s*T\s*,\s*F\s*,\s*I\s*,\s*B\s*,\s*Q\s*,\s*or\s+H|Enter\s+Selection\s*:|FortiBootLoader\s+Menu)") ||
+            lastLine.Contains("C,R,T,F,I,B,Q,or H", StringComparison.OrdinalIgnoreCase))
+            return LoginStageKind.FortiBiosMenu;
         // HPE 954 BootWare menu / contagem regressiva / senha / mensagens de boot sem firmware
         if (Regex.IsMatch(lastLine, @"(?i)(?:Press\s+Ctrl\+[BD]\s+to\s+enter|Press\s+Ctrl\+B\s+to\s+access|Press\s+Ctrl\+B\s+to\s+stop)"))
             return LoginStageKind.BootWareCountdown;
@@ -780,7 +841,8 @@ public sealed class DeviceSession : IAsyncDisposable
         BootWareMenu,
         BootWareCountdown,
         BootWarePassword,
-        FortiDisclaimerAccept
+        FortiDisclaimerAccept,
+        FortiBiosMenu
     }
 
     public sealed record ExpectResult(string Output, StopCondition? Matched);

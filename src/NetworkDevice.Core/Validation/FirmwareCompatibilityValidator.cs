@@ -32,6 +32,10 @@ public static class FirmwareCompatibilityValidator
         @"(?i)^c29[0-9]{2}",
         RegexOptions.Compiled);
 
+    private static readonly Regex Cisco1100FirmwareRegex = new(
+        @"(?i)^c1100|^c1111|^c11[0-9]{2}",
+        RegexOptions.Compiled);
+
     private static readonly Regex Hpe954FirmwareRegex = new(
         @"(?i)msr95[0-9]|msr954",
         RegexOptions.Compiled);
@@ -67,6 +71,7 @@ public static class FirmwareCompatibilityValidator
 
                 if (Cisco1900FirmwareRegex.IsMatch(fileName) ||
                     Cisco900FirmwareRegex.IsMatch(fileName) ||
+                    Cisco1100FirmwareRegex.IsMatch(fileName) ||
                     fileName.StartsWith("c2900", StringComparison.OrdinalIgnoreCase) ||
                     fileName.StartsWith("c3900", StringComparison.OrdinalIgnoreCase) ||
                     fileName.Contains("msr", StringComparison.OrdinalIgnoreCase) ||
@@ -91,6 +96,7 @@ public static class FirmwareCompatibilityValidator
 
                 if (Cisco1900FirmwareRegex.IsMatch(fileName) ||
                     Cisco841FirmwareRegex.IsMatch(fileName) ||
+                    Cisco1100FirmwareRegex.IsMatch(fileName) ||
                     fileName.StartsWith("c2900", StringComparison.OrdinalIgnoreCase) ||
                     fileName.StartsWith("c3900", StringComparison.OrdinalIgnoreCase) ||
                     fileName.Contains("msr", StringComparison.OrdinalIgnoreCase) ||
@@ -116,6 +122,7 @@ public static class FirmwareCompatibilityValidator
                 if (Cisco900FirmwareRegex.IsMatch(fileName) ||
                     Cisco841FirmwareRegex.IsMatch(fileName) ||
                     Cisco2900FirmwareRegex.IsMatch(fileName) ||
+                    Cisco1100FirmwareRegex.IsMatch(fileName) ||
                     fileName.StartsWith("c2900", StringComparison.OrdinalIgnoreCase) ||
                     fileName.StartsWith("c3900", StringComparison.OrdinalIgnoreCase) ||
                     fileName.Contains("msr", StringComparison.OrdinalIgnoreCase) ||
@@ -141,6 +148,7 @@ public static class FirmwareCompatibilityValidator
                 if (Cisco900FirmwareRegex.IsMatch(fileName) ||
                     Cisco841FirmwareRegex.IsMatch(fileName) ||
                     Cisco1900FirmwareRegex.IsMatch(fileName) ||
+                    Cisco1100FirmwareRegex.IsMatch(fileName) ||
                     fileName.StartsWith("c3900", StringComparison.OrdinalIgnoreCase) ||
                     fileName.Contains("msr", StringComparison.OrdinalIgnoreCase) ||
                     fileName.Contains("cmw", StringComparison.OrdinalIgnoreCase) ||
@@ -152,6 +160,31 @@ public static class FirmwareCompatibilityValidator
                         "c2900-universalk9-mz.*.bin");
                 }
                 return new FirmwareValidationResult(true, string.Empty, "c2900-universalk9-mz.*.bin");
+
+            case DeviceSeries.Isr1100:
+                if (ext != ".bin")
+                {
+                    return new FirmwareValidationResult(
+                        false,
+                        $"O arquivo '{fileName}' possui extensão '{ext}'. Roteadores Cisco Série 1100 / C1111-4P aceitam exclusivamente imagens executáveis no formato .BIN.",
+                        "c1100-universalk9.*.bin");
+                }
+
+                if (Cisco900FirmwareRegex.IsMatch(fileName) ||
+                    Cisco841FirmwareRegex.IsMatch(fileName) ||
+                    Cisco1900FirmwareRegex.IsMatch(fileName) ||
+                    Cisco2900FirmwareRegex.IsMatch(fileName) ||
+                    fileName.StartsWith("c3900", StringComparison.OrdinalIgnoreCase) ||
+                    fileName.Contains("msr", StringComparison.OrdinalIgnoreCase) ||
+                    fileName.Contains("cmw", StringComparison.OrdinalIgnoreCase) ||
+                    ext == ".ipe" || ext == ".out")
+                {
+                    return new FirmwareValidationResult(
+                        false,
+                        $"O firmware '{fileName}' é incompatível com o Cisco Série 1100 / C1111-4P (arquivo destinado a outro modelo como Série 1900, Série 900, Série 800 ou HPE).",
+                        "c1100-universalk9.*.bin");
+                }
+                return new FirmwareValidationResult(true, string.Empty, "c1100-universalk9.*.bin");
 
             case DeviceSeries.Msr954:
                 if (ext != ".ipe" && ext != ".bin")

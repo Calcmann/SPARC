@@ -21,11 +21,11 @@ public sealed class DeviceDetector : IDeviceDetector
         @"(?i)(?:\bPassword\b|\bUsername\b|\blogin\b|\bUser Access Verification\b)\s*[:?]",
         RegexOptions.Compiled);
 
-    private static readonly Regex HpePromptRegex = new(
+    public static readonly Regex HpePromptRegex = new(
         @"^[ \t]*(?!\<[0-9]\>)(?!\<EXTEND)(?!\<BASIC)(?!\<MAIN)(?!\<BOOT)(?!\<ETHERNET)(?!\<FILE)(?!\<SERIAL)(?!\<Storage)[\<\[][A-Za-z][A-Za-z0-9_\-\.\/]*[\>\]]\s*$",
         RegexOptions.Compiled | RegexOptions.Multiline | RegexOptions.IgnoreCase);
 
-    private static readonly Regex CiscoPromptRegex = new(
+    public static readonly Regex CiscoPromptRegex = new(
         @"^[ \t]*[A-Za-z0-9_\-\.\/]+(?:\([A-Za-z0-9_\-\.\/]+\))?[>#]\s*$",
         RegexOptions.Compiled | RegexOptions.Multiline);
 
@@ -34,7 +34,7 @@ public sealed class DeviceDetector : IDeviceDetector
         RegexOptions.Compiled | RegexOptions.Multiline);
 
     public static readonly Regex FortiPromptRegex = new(
-        @"(?i)(?:FortiGate|FGT|FG)[A-Za-z0-9_\-]*\s*(?:\([^()\r\n]*\))?\s*[#$]\s*$",
+        @"(?im)^[ \t]*(?:(?:FortiGate|FGT|FG)[A-Za-z0-9_\-]*\s*(?:\([^()\r\n]*\))?|[A-Za-z0-9_\-\.]+\s*\((?!(?:config|cfg))[A-Za-z0-9_\-]+\)|[A-Za-z0-9_\-\.]+)\s+[#$]\s*$",
         RegexOptions.Compiled);
 
     public static readonly Regex Cisco1900ModelRegex = new(
@@ -53,16 +53,20 @@ public sealed class DeviceDetector : IDeviceDetector
         @"(?i)(?:\bC841[A-Za-z0-9\-]*\b|\bCISCO\s*841[A-Za-z0-9\-]*\b|\bC800M\b|\bcisco\s+C?841\b|\b(?:C841|841|800M)\s*(?:BR|[A-Z]{2})?\s*(?:platform|Series|with|Integrated|Software)\b|\bISR\s*841\b|\bc841-|\bc800-universalk9|\bc800m-|\bc841m-)",
         RegexOptions.Compiled);
 
+    public static readonly Regex Cisco1100ModelRegex = new(
+        @"(?i)(?:\bC1111[A-Za-z0-9\-]*\b|\bCISCO\s*1111[A-Za-z0-9\-]*\b|\bC1100[A-Za-z0-9\-]*\b|\bcisco\s+C?1111\b|\b(?:C1111|1111|C1100|1100)\s*(?:BR|[A-Z]{2})?\s*(?:platform|Series|with|Integrated|Software|router)\b|\bISR\s*11[0-9]{2}\b|\bc1100-universalk9|\bc1100-|\bc1111-)",
+        RegexOptions.Compiled);
+
     public static readonly Regex Hpe1002ModelRegex = new(
-        @"(?i)(?:\bMSR\s*100[0-9](?:-[0-9A-Za-z]+)?\b|\bMSR100[0-9](?:-[0-9A-Za-z]+)?\b|\b1002\b|\b1003\b|\b1004\b|\b1000\b|\bmsr100[0-9]|\bmsr100x)",
+        @"(?i)(?:\bMSR[-_\s]*100[0-9Xx](?:-[0-9A-Za-z]+)?\b|\b100[0-9]-[0-9A-Za-z]+\b|\b1002\b|\b1003\b|\b1004\b|\b1000\b|\bmsr100[0-9Xx]\b)",
         RegexOptions.Compiled);
 
     public static readonly Regex Hpe930ModelRegex = new(
-        @"(?i)(?:\bMSR\s*93[0-9](?:-[0-9A-Za-z]+)?\b|\bMSR93[0-9](?:-[0-9A-Za-z]+)?\b|\b930\b|\b931\b|\b935\b|\bmsr93[0-9])",
+        @"(?i)(?:\bMSR[-_\s]*93[0-9](?:-[0-9A-Za-z]+)?\b|\b93[0-9]-[0-9A-Za-z]+\b|\b930\b|\b931\b|\b935\b|\bmsr93[0-9]\b)",
         RegexOptions.Compiled);
 
     public static readonly Regex Hpe954ModelRegex = new(
-        @"(?i)(?:\bMSR\s*95[0-9](?:-[0-9A-Za-z]+)?\b|\bMSR95[0-9](?:-[0-9A-Za-z]+)?\b|\b954\b|\b958\b|\bmsr95[0-9])",
+        @"(?i)(?:\bMSR[-_\s]*95[0-9](?:-[0-9A-Za-z]+)?\b|\b95[0-9]-[0-9A-Za-z]+\b|\b954\b|\b958\b|\bmsr95[0-9]\b)",
         RegexOptions.Compiled);
 
     // Fortinet FortiGate 40F (aditivo — não altera os padrões Cisco/HPE acima).
@@ -71,7 +75,7 @@ public sealed class DeviceDetector : IDeviceDetector
         RegexOptions.Compiled);
 
     public static readonly Regex FortiDisclaimerRegex = new(
-        @"(?i)(?:\(Press\s+['""]?a['""]?\s+to\s+accept.*?\)|Press\s+['""]?a['""]?\s+to\s+accept|PRE\s+WARNING:.*?(?:\(Press|Press)\s+['""]?a['""]?)",
+        @"(?i)(?:\(Press\s+['""]?a['""]?\s+to\s+accept.*?\)|Press\s+['""]?a['""]?\s+to\s+accept|\bto\s+accept\s*\):?|PRE\s+WARNING:.*?(?:\(Press|Press)\s+['""]?a['""]?)",
         RegexOptions.Compiled | RegexOptions.Singleline);
 
     public static bool IsDisclaimerPrompt(string? text)
@@ -82,6 +86,8 @@ public sealed class DeviceDetector : IDeviceDetector
                text.Contains("press 'a' to accept", StringComparison.OrdinalIgnoreCase) ||
                text.Contains("Press \"a\" to accept", StringComparison.OrdinalIgnoreCase) ||
                text.Contains("Press a to accept", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("to accept):", StringComparison.OrdinalIgnoreCase) ||
+               text.Contains("to accept:", StringComparison.OrdinalIgnoreCase) ||
                (text.Contains("PRE WARNING", StringComparison.OrdinalIgnoreCase) && text.Contains("accept", StringComparison.OrdinalIgnoreCase)) ||
                Regex.IsMatch(text, @"(?i)press\s+['""]?a['""]?\s+to\s+accept");
     }
@@ -112,13 +118,12 @@ public sealed class DeviceDetector : IDeviceDetector
 
                 var current = rxAccumulator.ToString();
 
-                // Termo de uso / PRE WARNING FortiGate ((Press 'a' to accept):): aceita imediatamente
+                // Termo de uso / PRE WARNING FortiGate ((Press 'a' to accept):): aceita imediatamente com 'a' puro
                 if (IsDisclaimerPrompt(current))
                 {
                     rxAccumulator.Clear();
-                    await transport.WriteAsync(Encoding.UTF8.GetBytes("a\r\n"), ct);
+                    await transport.WriteAsync(new byte[] { 0x61 }, ct);
                     await Task.Delay(350, ct);
-                    await transport.WriteAsync(Encoding.UTF8.GetBytes("\r\n"), ct);
                     silenceDeadline = DateTime.UtcNow.AddSeconds(2.5);
                     continue;
                 }
@@ -235,7 +240,15 @@ public sealed class DeviceDetector : IDeviceDetector
         // 2. Detecção de Senha / Bloqueio / Prompt Aberto (PasswordProtected / OpenPrompt)
         var lines = rawPrompt.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
         var lastLine = lines.LastOrDefault()?.Trim() ?? rawPrompt;
-        var isDisclaimer = IsDisclaimerPrompt(rawPrompt) || IsDisclaimerPrompt(lastLine);
+        var hasLoginOrPasswordAfterDisclaimer = PasswordPromptRegex.IsMatch(lastLine)
+                                             || UserAuthPromptRegex.IsMatch(lastLine)
+                                             || PasswordOnlyPromptRegex.IsMatch(lastLine)
+                                             || rawPrompt.Contains("Login incorrect", StringComparison.OrdinalIgnoreCase)
+                                             || rawPrompt.Contains("Login failed", StringComparison.OrdinalIgnoreCase)
+                                             || rawPrompt.Contains("Authentication failed", StringComparison.OrdinalIgnoreCase)
+                                             || rawPrompt.Contains("Verifying password", StringComparison.OrdinalIgnoreCase);
+
+        var isDisclaimer = IsDisclaimerPrompt(lastLine) && !hasLoginOrPasswordAfterDisclaimer;
 
         // Se a última linha de saída do console for um prompt de autenticação, tem precedência absoluta (exceto disclaimer 'Press a to accept')
         var isAuthAtEnd = (PasswordPromptRegex.IsMatch(lastLine)
@@ -300,21 +313,23 @@ public sealed class DeviceDetector : IDeviceDetector
                        || (rawPrompt.Contains("FortiBootLoader", StringComparison.OrdinalIgnoreCase) && !isOpenPrompt)
                        || (rawPrompt.Contains("Verifying image", StringComparison.OrdinalIgnoreCase) && rawPrompt.Contains("bad checksum", StringComparison.OrdinalIgnoreCase));
 
-        // 3. Detecção de Fabricante
-        var isHpe = isBootware
+        // 3. Detecção de Fabricante com Precedência Absoluta para Hardware Físico
+        var isHpePhysical = isBootware
+            || HpePromptRegex.IsMatch(rawPrompt)
+            || HpePromptRegex.IsMatch(promptLine)
             || rawPrompt.Contains("HPE", StringComparison.OrdinalIgnoreCase)
             || rawPrompt.Contains("Comware", StringComparison.OrdinalIgnoreCase)
             || rawPrompt.Contains("Hewlett Packard", StringComparison.OrdinalIgnoreCase)
             || rawPrompt.Contains("SubMenu", StringComparison.OrdinalIgnoreCase)
             || rawPrompt.Contains("<HPE", StringComparison.OrdinalIgnoreCase)
             || rawPrompt.Contains("[HPE", StringComparison.OrdinalIgnoreCase)
-            || userSelectedSeries == DeviceSeries.Msr954
-            || userSelectedSeries == DeviceSeries.Msr930
-            || userSelectedSeries == DeviceSeries.Msr1002;
+            || (promptLine.StartsWith("<") && promptLine.EndsWith(">"))
+            || (promptLine.StartsWith("[") && promptLine.EndsWith("]"));
 
         // Bloco Fortinet (aditivo — assinaturas exclusivas FortiOS/FGT/Fortinet; não colidem com HPE/Cisco).
-        var isFortinet = isFortiBios
+        var isFortiPhysical = !isHpePhysical && (isFortiBios
             || isDisclaimer
+            || IsDisclaimerPrompt(rawPrompt)
             || FortiGate40FModelRegex.IsMatch(rawPrompt)
             || rawPrompt.Contains("FortiGate", StringComparison.OrdinalIgnoreCase)
             || rawPrompt.Contains("Fortinet", StringComparison.OrdinalIgnoreCase)
@@ -328,9 +343,9 @@ public sealed class DeviceDetector : IDeviceDetector
             || rawPrompt.Contains("FOS", StringComparison.OrdinalIgnoreCase)
             || rawPrompt.Contains("Verifying password", StringComparison.OrdinalIgnoreCase)
             || Regex.IsMatch(rawPrompt, @"(?i)(?:FortiGate|FGT|FG)[A-Za-z0-9_\-]*\s+login\s*[:?]")
-            || userSelectedSeries == DeviceSeries.FortiGate40F;
+            || FortiPromptRegex.IsMatch(rawPrompt));
 
-        var isCisco = !isFortinet && !isHpe && (isRommon
+        var isCiscoPhysical = !isHpePhysical && !isFortiPhysical && (isRommon
             || rawPrompt.Contains("User Access Verification", StringComparison.OrdinalIgnoreCase)
             || rawPrompt.Contains("Bad passwords", StringComparison.OrdinalIgnoreCase)
             || rawPrompt.Contains("Bad secrets", StringComparison.OrdinalIgnoreCase)
@@ -343,12 +358,23 @@ public sealed class DeviceDetector : IDeviceDetector
             || CiscoConfigPromptRegex.IsMatch(rawPrompt)
             || Cisco841ModelRegex.IsMatch(rawPrompt)
             || Cisco900ModelRegex.IsMatch(rawPrompt)
+            || Cisco1100ModelRegex.IsMatch(rawPrompt)
             || Cisco1900ModelRegex.IsMatch(rawPrompt)
-            || Cisco2900ModelRegex.IsMatch(rawPrompt)
-            || userSelectedSeries == DeviceSeries.Series1900
-            || userSelectedSeries == DeviceSeries.Series2900
-            || userSelectedSeries == DeviceSeries.Isr921
-            || userSelectedSeries == DeviceSeries.Isr841);
+            || Cisco2900ModelRegex.IsMatch(rawPrompt));
+
+        var isHpe = isHpePhysical || (!isFortiPhysical && !isCiscoPhysical && (
+            userSelectedSeries == DeviceSeries.Msr954 ||
+            userSelectedSeries == DeviceSeries.Msr930 ||
+            userSelectedSeries == DeviceSeries.Msr1002));
+
+        var isFortinet = isFortiPhysical || (!isHpePhysical && !isCiscoPhysical && userSelectedSeries == DeviceSeries.FortiGate40F);
+
+        var isCisco = isCiscoPhysical || (!isHpePhysical && !isFortiPhysical && (
+            userSelectedSeries == DeviceSeries.Series1900 ||
+            userSelectedSeries == DeviceSeries.Series2900 ||
+            userSelectedSeries == DeviceSeries.Isr921 ||
+            userSelectedSeries == DeviceSeries.Isr841 ||
+            userSelectedSeries == DeviceSeries.Isr1100));
 
         var manufacturer = isFortinet ? DeviceManufacturer.Fortinet :
                            isHpe ? DeviceManufacturer.Hpe :
@@ -356,52 +382,68 @@ public sealed class DeviceDetector : IDeviceDetector
                            DeviceManufacturer.Generic;
 
         // 4. Detecção de Série
-        var series = userSelectedSeries;
-        if (series == DeviceSeries.Unknown)
+        var series = DeviceSeries.Unknown;
+        if (isFortinet)
         {
-            if (isFortinet)
+            series = DeviceSeries.FortiGate40F;
+        }
+        else if (isHpe)
+        {
+            if (Hpe1002ModelRegex.IsMatch(rawPrompt))
             {
-                series = DeviceSeries.FortiGate40F;
+                series = DeviceSeries.Msr1002;
             }
-            else if (isHpe)
+            else if (Hpe930ModelRegex.IsMatch(rawPrompt))
             {
-                if (Hpe1002ModelRegex.IsMatch(rawPrompt))
-                {
-                    series = DeviceSeries.Msr1002;
-                }
-                else if (Hpe930ModelRegex.IsMatch(rawPrompt))
-                {
-                    series = DeviceSeries.Msr930;
-                }
-                else if (Hpe954ModelRegex.IsMatch(rawPrompt))
-                {
-                    series = DeviceSeries.Msr954;
-                }
-                else
-                {
-                    series = DeviceSeries.Unknown;
-                }
+                series = DeviceSeries.Msr930;
             }
-            else if (Cisco841ModelRegex.IsMatch(rawPrompt))
+            else if (Hpe954ModelRegex.IsMatch(rawPrompt))
             {
-                series = DeviceSeries.Isr841;
+                series = DeviceSeries.Msr954;
             }
-            else if (Cisco900ModelRegex.IsMatch(rawPrompt))
+            else if (userSelectedSeries == DeviceSeries.Msr954 || userSelectedSeries == DeviceSeries.Msr930 || userSelectedSeries == DeviceSeries.Msr1002)
             {
-                series = DeviceSeries.Isr921;
+                series = userSelectedSeries;
             }
-            else if (Cisco2900ModelRegex.IsMatch(rawPrompt))
-            {
-                series = DeviceSeries.Series2900;
-            }
-            else if (Cisco1900ModelRegex.IsMatch(rawPrompt))
-            {
-                series = DeviceSeries.Series1900;
-            }
-            else if (isCisco)
+            else
             {
                 series = DeviceSeries.Unknown;
             }
+        }
+        else if (Cisco1100ModelRegex.IsMatch(rawPrompt))
+        {
+            series = DeviceSeries.Isr1100;
+        }
+        else if (Cisco841ModelRegex.IsMatch(rawPrompt))
+        {
+            series = DeviceSeries.Isr841;
+        }
+        else if (Cisco900ModelRegex.IsMatch(rawPrompt))
+        {
+            series = DeviceSeries.Isr921;
+        }
+        else if (Cisco2900ModelRegex.IsMatch(rawPrompt))
+        {
+            series = DeviceSeries.Series2900;
+        }
+        else if (Cisco1900ModelRegex.IsMatch(rawPrompt))
+        {
+            series = DeviceSeries.Series1900;
+        }
+        else if (isCisco)
+        {
+            if (userSelectedSeries == DeviceSeries.Isr1100 || userSelectedSeries == DeviceSeries.Isr841 || userSelectedSeries == DeviceSeries.Isr921 || userSelectedSeries == DeviceSeries.Series2900 || userSelectedSeries == DeviceSeries.Series1900)
+            {
+                series = userSelectedSeries;
+            }
+            else
+            {
+                series = DeviceSeries.Unknown;
+            }
+        }
+        else
+        {
+            series = userSelectedSeries;
         }
 
         // 5. Determinação de Estado Operacional
@@ -439,7 +481,7 @@ public sealed class DeviceDetector : IDeviceDetector
             bootState = BootState.Normal;
             fwState = FirmwareState.Ready;
         }
-        else if (isFortinet && !FortiPromptRegex.IsMatch(promptLine))
+        else if (isFortinet && !FortiPromptRegex.IsMatch(promptLine) && !Regex.IsMatch(promptLine, @"[#$]\s*$"))
         {
             // Fortinet sem prompt autenticado (# ou $) está categoricamente protegido por senha
             opState = DeviceOperatingState.PasswordProtected;

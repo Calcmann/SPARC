@@ -13,7 +13,7 @@ public partial class App : Application
 		// Pluga os inspetores canônicos de firmware para auditoria estrita em qualquer fluxo
 		NetworkDevice.Core.Firmware.RouterDirectFirmwareUpdater.ExternalComplianceEvaluator = (series, rawOutput, targetFileName) =>
 		{
-			if (series is NetworkDevice.Core.Domain.DeviceSeries.Isr841 or NetworkDevice.Core.Domain.DeviceSeries.Isr921 or NetworkDevice.Core.Domain.DeviceSeries.Series1900 or NetworkDevice.Core.Domain.DeviceSeries.Series2900)
+			if (series is NetworkDevice.Core.Domain.DeviceSeries.Isr1100 or NetworkDevice.Core.Domain.DeviceSeries.Isr841 or NetworkDevice.Core.Domain.DeviceSeries.Isr921 or NetworkDevice.Core.Domain.DeviceSeries.Series1900 or NetworkDevice.Core.Domain.DeviceSeries.Series2900)
 			{
 				return NetworkDevice.Cisco.CiscoIOSFirmwareVersionInspector.IsSameVersion(rawOutput, targetFileName, out _, out _);
 			}

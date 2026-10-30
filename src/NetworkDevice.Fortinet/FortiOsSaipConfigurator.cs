@@ -151,8 +151,8 @@ public sealed class FortiOsSaipConfigurator
             var prompt = (session.CurrentPrompt ?? output?.Trim().Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.Trim() ?? string.Empty).Trim();
 
             // Termo de uso / PRE WARNING FortiOS: aceita com 'a'
-            if (prompt.Contains("Press 'a' to accept", StringComparison.OrdinalIgnoreCase) ||
-                output?.Contains("Press 'a' to accept", StringComparison.OrdinalIgnoreCase) == true)
+            if (NetworkDevice.Core.Detection.DeviceDetector.IsDisclaimerPrompt(prompt) ||
+                NetworkDevice.Core.Detection.DeviceDetector.IsDisclaimerPrompt(output))
             {
                 await session.SendCommandAsync("a", TimeSpan.FromSeconds(5), cancellationToken);
                 await Task.Delay(250, cancellationToken);
@@ -211,10 +211,8 @@ public sealed class FortiOsSaipConfigurator
                 "set remoteauthtimeout 5",
                 "set pre-login-banner enable",
                 "end",
-                "config system replacemsg admin",
-                "edit \"pre_login\"",
-                "set message \"||========================================||\r\n||========== CLARO Brasil S.A. ===========||\r\n||========================================||\r\n\r\nSOMENTE USUARIOS AUTORIZADOS\r\nAUTHORIZED USERS ONLY\r\n\r\nOS ACESSOS SERAO MONITORADOS\r\nACCESSES WILL BE MONITORED\r\n\r\n||========================================||\"",
-                "next",
+                "config system replacemsg admin \"pre_admin-disclaimer-text\"",
+                "set buffer \"||================== CLARO Brasil S.A. ==================|| SOMENTE USUARIOS AUTORIZADOS - ACESSOS MONITORADOS ||========================================================||\"",
                 "end",
             });
         }
@@ -497,7 +495,10 @@ public sealed class FortiOsSaipConfigurator
         if (session.Mode == ExecMode.Rommon ||
             prompt.Contains("FortiBootLoader", StringComparison.OrdinalIgnoreCase) ||
             prompt.Contains("Enter C,R,T,F,I,B,Q,or H:", StringComparison.OrdinalIgnoreCase) ||
-            prompt.Contains("Enter Selection:", StringComparison.OrdinalIgnoreCase))
+            prompt.Contains("Enter Selection:", StringComparison.OrdinalIgnoreCase) ||
+            prompt.Contains("Neither DEFAULT nor BACKUP", StringComparison.OrdinalIgnoreCase) ||
+            prompt.Contains("System halted", StringComparison.OrdinalIgnoreCase) ||
+            prompt.Contains("CTRL+D", StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException("O equipamento se encontra em modo BIOS/FortiBootLoader (sem sistema operacional carregado). É OBRIGATÓRIO executar a recuperação de firmware antes de provisionar.");
         }
@@ -507,11 +508,9 @@ public sealed class FortiOsSaipConfigurator
         else
             await ProgressAsync("[*] Provisionamento corporativo padrão Claro: NAT de laboratório desativado (modo roteamento direto).");
 
-        // 1. Acorda o terminal (Ctrl+C + Enter, best-effort).
+        // 1. Acorda o terminal (Enter puro, best-effort; nunca envia Ctrl+C no Fortinet para não quebrar o prompt ou bootloader).
         try
         {
-            await session.Transport.WriteAsync(new byte[] { 0x03 }, cancellationToken);
-            await Task.Delay(100, cancellationToken);
             await session.WriteLineAsync(string.Empty, cancellationToken);
             await Task.Delay(200, cancellationToken);
         }
@@ -797,12 +796,45 @@ public sealed class FortiOsSaipConfigurator
             await ProgressAsync($"    [AVISO] Limpeza de políticas de firewall: {ex.Message}");
         }
 
-        // d) Limpa aliases e descrições anteriores nas interfaces WAN e LAN
+        // c2) Remove subinterfaces e VLANs residuais de clientes anteriores em config system interface
         try
         {
-            foreach (var iface in new[] { wanInterface, lanInterface })
+            var intOutput = await session.SendCommandAsync("show system interface", TimeSpan.FromSeconds(10), cancellationToken);
+            var vlanBlocks = Regex.Matches(intOutput, @"(?ims)^\s*edit\s+[""]?([^""\r\n]+)[""]?\s*$(.*?)(?=^\s*edit\s+|\z)");
+            foreach (Match m in vlanBlocks)
             {
-                if (string.IsNullOrWhiteSpace(iface)) continue;
+                var ifName = m.Groups[1].Value.Trim();
+                var blockBody = m.Groups[2].Value;
+                if (Regex.IsMatch(blockBody, @"(?i)set\s+(?:type\s+vlan|vlanid\s+\d+)"))
+                {
+                    if (!string.Equals(ifName, wanInterface, StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(ifName, lanInterface, StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(ifName, "lan", StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(ifName, "wan", StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(ifName, "internal", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await ProgressAsync($"    [-] Removendo subinterface VLAN residual anterior -> '{ifName}'...");
+                        await session.SendCommandAsync("config system interface", TimeSpan.FromSeconds(5), cancellationToken);
+                        await session.SendCommandAsync($"delete \"{ifName}\"", TimeSpan.FromSeconds(5), cancellationToken);
+                        await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            await ProgressAsync($"    [AVISO] Limpeza de interfaces VLAN residuais: {ex.Message}");
+        }
+
+        // d) Limpa aliases e descrições anteriores nas interfaces roteadas principais (WAN e LAN)
+        try
+        {
+            var targetInterfaces = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrWhiteSpace(wanInterface)) targetInterfaces.Add(wanInterface);
+            if (!string.IsNullOrWhiteSpace(lanInterface)) targetInterfaces.Add(lanInterface);
+
+            foreach (var iface in targetInterfaces)
+            {
                 await session.SendCommandAsync("config system interface", TimeSpan.FromSeconds(5), cancellationToken);
                 await session.SendCommandAsync($"edit \"{iface}\"", TimeSpan.FromSeconds(5), cancellationToken);
                 await session.SendCommandAsync("set mode static", TimeSpan.FromSeconds(5), cancellationToken);
@@ -815,8 +847,48 @@ public sealed class FortiOsSaipConfigurator
         }
         catch (Exception ex)
         {
-            await ProgressAsync($"    [AVISO] Limpeza de interfaces WAN/LAN: {ex.Message}");
+            await ProgressAsync($"    [AVISO] Limpeza de interfaces: {ex.Message}");
         }
+
+        // e) Remove VIPs (Virtual IPs / Port Forwarding) residuais de clientes anteriores
+        try
+        {
+            var vipOutput = await session.SendCommandAsync("show firewall vip", TimeSpan.FromSeconds(8), cancellationToken);
+            var vipMatches = Regex.Matches(vipOutput, @"(?im)^\s*edit\s+[""]?([^""\r\n]+)[""]?");
+            if (vipMatches.Count > 0)
+            {
+                await ProgressAsync($"    [-] Removendo {vipMatches.Count} VIP(s) de firewall anterior(es)...");
+                foreach (Match m in vipMatches)
+                {
+                    var vipName = m.Groups[1].Value.Trim();
+                    await session.SendCommandAsync("config firewall vip", TimeSpan.FromSeconds(5), cancellationToken);
+                    await session.SendCommandAsync($"delete \"{vipName}\"", TimeSpan.FromSeconds(5), cancellationToken);
+                    await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            await ProgressAsync($"    [AVISO] Limpeza de firewall VIP: {ex.Message}");
+        }
+
+        // f) Remove rotas estáticas IPv6 anteriores se existirem
+        try
+        {
+            var routes6Output = await session.SendCommandAsync("show router static6", TimeSpan.FromSeconds(8), cancellationToken);
+            var route6Ids = ExtractTableEntryIds(routes6Output);
+            if (route6Ids.Count > 0)
+            {
+                await ProgressAsync($"    [-] Removendo {route6Ids.Count} rota(s) estática(s) IPv6 anterior(es)...");
+                foreach (var id in route6Ids)
+                {
+                    await session.SendCommandAsync("config router static6", TimeSpan.FromSeconds(5), cancellationToken);
+                    await session.SendCommandAsync($"delete {id}", TimeSpan.FromSeconds(5), cancellationToken);
+                    await session.SendCommandAsync("end", TimeSpan.FromSeconds(5), cancellationToken);
+                }
+            }
+        }
+        catch { }
 
         await ProgressAsync("[OK] Vestígios de configuração anterior limpos com sucesso.");
     }
@@ -829,7 +901,9 @@ public sealed class FortiOsSaipConfigurator
         var ids = new List<int>();
         if (string.IsNullOrWhiteSpace(output)) return ids;
 
-        var matches = Regex.Matches(output, @"(?im)^\s*edit\s+(\d+)");
+        // Apenas 'edit <id>' de primeiro nível (com 1 a 4 espaços ou 1 tab),
+        // ignorando sub-tabelas filhas como 'config ip-range' (indentadas com 8 ou 12 espaços).
+        var matches = Regex.Matches(output, @"(?im)^[ \t]{1,4}edit\s+(\d+)");
         foreach (Match m in matches)
         {
             if (int.TryParse(m.Groups[1].Value, out var id) && !ids.Contains(id))
@@ -1021,6 +1095,159 @@ public sealed class FortiOsSaipConfigurator
         return false;
     }
 
+    /// <summary>
+    /// Verifica e assegura que a porta física WAN do FortiGate 40F possui link ativo (status: up)
+    /// ANTES de enviar o comando de reinício/reload para acesso à BIOS / FortiBootLoader.
+    /// Evita que o equipamento reinicie sem conexão física e cause falha de TFTP/auto-boot na BIOS.
+    /// </summary>
+    public static async Task<bool> EnforceWanPortConnectedAsync(
+        DeviceSession session,
+        Func<string, CancellationToken, Task>? requestOperatorAction = null,
+        Func<string, Task>? progress = null,
+        CancellationToken cancellationToken = default,
+        int pollDelayMs = 0,
+        Action<int, string, string>? onProgress = null)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+
+        if (pollDelayMs > 0)
+        {
+            await Task.Delay(pollDelayMs, cancellationToken);
+        }
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        for (var attempt = 1; attempt <= 20; attempt++)
+        {
+            var elapsedSec = (int)sw.Elapsed.TotalSeconds;
+            string output = string.Empty;
+            try
+            {
+                output = await session.SendCommandAsync("get system interface physical", TimeSpan.FromSeconds(12), cancellationToken);
+            }
+            catch (SessionTimeoutException)
+            {
+                try { await session.WriteLineAsync(string.Empty, cancellationToken); } catch { }
+                await Task.Delay(1000, cancellationToken);
+                continue;
+            }
+            catch (Exception)
+            {
+                try { await session.WriteLineAsync(string.Empty, cancellationToken); } catch { }
+            }
+
+            var isWanUp = IsPhysicalInterfaceUp(output, "wan") || IsPhysicalInterfaceUp(output, "wan1") || IsPhysicalInterfaceUp(output, "port4");
+            var isLan1Up = IsPhysicalInterfaceUp(output, "lan1") || IsPhysicalInterfaceUp(output, "port1") || IsPhysicalInterfaceUp(output, "internal1");
+            var isLan2Up = IsPhysicalInterfaceUp(output, "lan2") || IsPhysicalInterfaceUp(output, "port2") || IsPhysicalInterfaceUp(output, "internal2");
+            var isLan3Up = IsPhysicalInterfaceUp(output, "lan3") || IsPhysicalInterfaceUp(output, "port3") || IsPhysicalInterfaceUp(output, "internal3");
+            var isAnyLanUp = isLan1Up || isLan2Up || isLan3Up;
+
+            if (!isWanUp && !isAnyLanUp)
+            {
+                string diagNet = string.Empty;
+                try
+                {
+                    diagNet = await session.SendCommandAsync("diagnose netlink interface list", TimeSpan.FromSeconds(12), cancellationToken);
+                }
+                catch
+                {
+                    try { await session.WriteLineAsync(string.Empty, cancellationToken); } catch { }
+                }
+
+                isWanUp = IsNetlinkInterfaceUp(diagNet, "wan") || IsNetlinkInterfaceUp(diagNet, "wan1");
+                isLan1Up = IsNetlinkInterfaceUp(diagNet, "lan1") || IsNetlinkInterfaceUp(diagNet, "port1");
+                isLan2Up = IsNetlinkInterfaceUp(diagNet, "lan2") || IsNetlinkInterfaceUp(diagNet, "port2");
+                isLan3Up = IsNetlinkInterfaceUp(diagNet, "lan3") || IsNetlinkInterfaceUp(diagNet, "port3");
+                isAnyLanUp = isLan1Up || isLan2Up || isLan3Up || IsNetlinkInterfaceUp(diagNet, "lan") || IsNetlinkInterfaceUp(diagNet, "internal");
+            }
+
+            // 1. Porta WAN com link físico confirmado UP!
+            if (isWanUp)
+            {
+                if (progress is not null)
+                    await progress($"[OK] Link físico Ethernet confirmado na porta WAN do FortiGate 40F ({elapsedSec}s).");
+                onProgress?.Invoke(25, "Porta WAN Conectada!", $"Link ativo confirmado na porta WAN ({elapsedSec}s).");
+                return true;
+            }
+
+            // 2. Cabo conectado na porta incorreta (LAN em vez de WAN)
+            if (isAnyLanUp && !isWanUp)
+            {
+                var portaLanAtiva = isLan1Up ? "Porta 1 (lan1)" : isLan2Up ? "Porta 2 (lan2)" : "Porta 3 (lan3)";
+                if (progress is not null && (attempt == 1 || attempt % 3 == 0))
+                    await progress($"[AVISO FÍSICO] Cabo detectado na {portaLanAtiva} ao invés da porta WAN... {elapsedSec}s decorridos (Tentativa {attempt}/20)");
+                onProgress?.Invoke(20, "Cabo na Porta Errada...", $"Cabo na {portaLanAtiva}. Conecte na porta WAN ({elapsedSec}s)...");
+
+                if (requestOperatorAction is not null && (attempt == 1 || attempt % 4 == 0))
+                {
+                    await requestOperatorAction(
+                        "⚠️ CABO DE REDE CONECTADO NA PORTA INCORRETA (LAN)!\n\n" +
+                        $"O cabo Ethernet está conectado na {portaLanAtiva} do FortiGate 40F.\n\n" +
+                        "A BIOS do FortiGate 40F realiza transferência TFTP EXCLUSIVAMENTE pela porta física WAN.\n" +
+                        "Reiniciar com o cabo na porta LAN causará falha de auto-negociação e timeout na BIOS!\n\n" +
+                        "👉 AÇÃO NECESSÁRIA:\n" +
+                        "1. Desconecte o cabo da porta LAN.\n" +
+                        "2. Conecte o cabo de rede Ethernet EXCLUSIVAMENTE na porta WAN do FortiGate 40F.\n" +
+                        "3. Verifique se o LED da porta WAN acendeu (verde/laranja).\n\n" +
+                        "Clique em OK após conectar na porta WAN para validar o link físico antes do reload.",
+                        cancellationToken);
+
+                    if (progress is not null)
+                        await progress($"[*] Operador confirmou conexão. Sincronizando link da porta WAN...");
+                    onProgress?.Invoke(20, "Sincronizando Porta WAN...", $"Aguardando link ativo na porta WAN... ({elapsedSec}s)");
+
+                    try
+                    {
+                        await session.WriteLineAsync(string.Empty, cancellationToken);
+                        await Task.Delay(500, cancellationToken);
+                        await session.WriteLineAsync(string.Empty, cancellationToken);
+                    }
+                    catch { }
+                }
+            }
+            // 3. Cabo totalmente desconectado
+            else
+            {
+                if (progress is not null && (attempt == 1 || attempt % 3 == 0))
+                    await progress($"[AVISO FÍSICO] Porta WAN está SEM LINK (down)... {elapsedSec}s decorridos (Tentativa {attempt}/20)");
+                onProgress?.Invoke(20, "Porta WAN Sem Link...", $"Conecte o cabo de rede na porta WAN ({elapsedSec}s)...");
+
+                if (requestOperatorAction is not null && (attempt == 1 || attempt % 4 == 0))
+                {
+                    await requestOperatorAction(
+                        "⚠️ CABO DE REDE DESCONECTADO DA PORTA WAN (FORTIGATE 40F)\n\n" +
+                        "A porta WAN do FortiGate 40F está SEM LINK físico (down).\n" +
+                        "A gravação de firmware via BIOS TFTP exige conexão física ativa na porta WAN.\n" +
+                        "Reiniciar o equipamento sem link fará a BIOS falhar e auto-iniciar o firmware antigo!\n\n" +
+                        "👉 AÇÃO NECESSÁRIA:\n" +
+                        "1. Conecte o cabo de rede Ethernet do computador EXCLUSIVAMENTE na porta WAN do FortiGate 40F.\n" +
+                        "2. Certifique-se de que a outra ponta está conectada na placa de rede do seu computador.\n" +
+                        "3. Verifique se o LED da porta WAN acendeu (verde/laranja).\n\n" +
+                        "Clique em OK após conectar o cabo para validar o link antes de enviar o reload para a BIOS.",
+                        cancellationToken);
+
+                    if (progress is not null)
+                        await progress($"[*] Operador confirmou conexão. Sincronizando link da porta WAN...");
+                    onProgress?.Invoke(20, "Sincronizando Porta WAN...", $"Aguardando link ativo na porta WAN... ({elapsedSec}s)");
+
+                    try
+                    {
+                        await session.WriteLineAsync(string.Empty, cancellationToken);
+                        await Task.Delay(500, cancellationToken);
+                        await session.WriteLineAsync(string.Empty, cancellationToken);
+                    }
+                    catch { }
+                }
+            }
+
+            await Task.Delay(1500, cancellationToken);
+        }
+
+        if (progress is not null)
+            await progress($"[ERRO CRÍTICO] Timeout aguardando link físico na porta WAN do FortiGate 40F ({(int)sw.Elapsed.TotalSeconds}s). O comando de reload/BIOS NÃO será enviado.");
+        return false;
+    }
+
     internal static bool IsPhysicalInterfaceUp(string output, string ifName)
     {
         if (string.IsNullOrWhiteSpace(output)) return false;
@@ -1091,11 +1318,21 @@ public sealed class FortiOsSaipConfigurator
 
             var routesOut = await session.SendCommandAsync("show router static", TimeSpan.FromSeconds(10), ct);
             var routeIds = ExtractTableEntryIds(routesOut);
-            if (routeIds.Count > 1)
+            if (routeIds.Count > 0)
             {
                 hasStaleRoutes = true;
                 findings.Add($"{routeIds.Count} rota(s) estática(s) residual(is)");
             }
+
+            try
+            {
+                var vipOut = await session.SendCommandAsync("show firewall vip", TimeSpan.FromSeconds(5), ct);
+                if (vipOut.Contains("edit ", StringComparison.OrdinalIgnoreCase))
+                {
+                    findings.Add("VIP(s) de firewall residual(is)");
+                }
+            }
+            catch { }
         }
         catch (Exception ex)
         {

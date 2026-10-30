@@ -50,6 +50,7 @@ public class DigitalLoopbackService : IDisposable
     private string _bindAddress = "0.0.0.0";
 
     public bool IsRunning => _socket != null && _cts != null && !_cts.IsCancellationRequested;
+    public int BoundPort => (_socket?.LocalEndPoint as IPEndPoint)?.Port ?? _port;
 
     public event Action<DigitalLoopbackStats>? StatsUpdated;
     public event Action<string>? LogMessage;

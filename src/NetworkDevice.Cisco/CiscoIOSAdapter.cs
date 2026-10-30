@@ -402,6 +402,13 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
             await Task.Delay(250, cancellationToken);
             await session.WriteLineAsync("no shutdown", cancellationToken);
             await Task.Delay(300, cancellationToken);
+            if (lanInterface.StartsWith("Vlan", StringComparison.OrdinalIgnoreCase) || lanInterface.Contains("0/1/0"))
+            {
+                await session.WriteLineAsync("interface GigabitEthernet0/1/0", cancellationToken);
+                await Task.Delay(250, cancellationToken);
+                await session.WriteLineAsync("no shutdown", cancellationToken);
+                await Task.Delay(300, cancellationToken);
+            }
             await session.WriteLineAsync("end", cancellationToken);
             await Task.Delay(200, cancellationToken);
         }
@@ -417,28 +424,32 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
         Action<int, string, string>? onProgress = null,
         int pollDelayMs = 3000)
     {
-        var cleanLan = lanInterface.Replace(" ", ""); // ex: GigabitEthernet0/5, GigabitEthernet5, GigabitEthernet0/1
-        var cleanWan = cleanLan.Contains("0/5") ? "GigabitEthernet0/4" :
+        var cleanLan = lanInterface.Replace(" ", ""); // ex: GigabitEthernet0/5, GigabitEthernet5, GigabitEthernet0/1, GigabitEthernet0/1/0, Vlan1
+        var is1100 = cleanLan.Contains("0/1/0") || cleanLan.Contains("Vlan1") || cleanLan.Contains("0/0/0");
+        var is841 = !is1100 && (cleanLan.Contains("0/5") || cleanLan.Contains("0/4"));
+        var is921 = !is1100 && !is841 && (cleanLan.Contains("5") || cleanLan.Contains("4"));
+
+        var cleanWan = is1100 ? "GigabitEthernet0/0/0" :
+                       cleanLan.Contains("0/5") ? "GigabitEthernet0/4" :
                        cleanLan.Contains("5") ? "GigabitEthernet4" :
                        cleanLan.Contains("0/4") ? "GigabitEthernet0/5" :
                        cleanLan.Contains("4") ? "GigabitEthernet5" :
                        cleanLan.EndsWith("0/1") ? cleanLan.Replace("0/1", "0/0") : "GigabitEthernet0/0";
 
-        var is841 = cleanLan.Contains("0/5") || cleanLan.Contains("0/4");
-        var is921 = !is841 && (cleanLan.Contains("5") || cleanLan.Contains("4"));
-
-        var displayLan = is841 ? "GigabitEthernet0/5 (Porta 5 / GE 0/5 - LAN do Cliente)" :
+        var displayLan = is1100 ? "GigabitEthernet0/1/0 (Porta GE 0/1/0 - LAN do Cliente / Switchport 0)" :
+                         is841 ? "GigabitEthernet0/5 (Porta 5 / GE 0/5 - LAN do Cliente)" :
                          is921 ? "GigabitEthernet 5 (Porta 5 / GE 5 - LAN do Cliente)" :
                          cleanLan.Contains("0/1") ? "GigabitEthernet 0/1 (Porta 1 / GE 0/1 - LAN do Cliente)" :
                          $"{lanInterface} (LAN)";
 
-        var displayWan = is841 ? "GigabitEthernet0/4 (Porta 4 / GE 0/4 - WAN / Uplink)" :
+        var displayWan = is1100 ? "GigabitEthernet0/0/0 (Porta GE 0/0/0 - WAN / Uplink)" :
+                         is841 ? "GigabitEthernet0/4 (Porta 4 / GE 0/4 - WAN / Uplink)" :
                          is921 ? "GigabitEthernet 4 (Porta 4 / GE 4 - WAN / Uplink)" :
                          cleanWan.Contains("0/0") ? "GigabitEthernet 0/0 (Porta 0 / GE 0/0 - WAN / Uplink)" :
                          $"{cleanWan} (WAN)";
 
-        var shortLan = is841 ? "Porta 5 (GE 0/5)" : is921 ? "Porta 5 (GE 5)" : cleanLan.Contains("0/1") ? "Porta 1 (GE 0/1)" : cleanLan;
-        var shortWan = is841 ? "Porta 4 (GE 0/4)" : is921 ? "Porta 4 (GE 4)" : cleanWan.Contains("0/0") ? "Porta 0 (GE 0/0)" : cleanWan;
+        var shortLan = is1100 ? "Porta GE 0/1/0" : is841 ? "Porta 5 (GE 0/5)" : is921 ? "Porta 5 (GE 5)" : cleanLan.Contains("0/1") ? "Porta 1 (GE 0/1)" : cleanLan;
+        var shortWan = is1100 ? "Porta GE 0/0/0" : is841 ? "Porta 4 (GE 0/4)" : is921 ? "Porta 4 (GE 4)" : cleanWan.Contains("0/0") ? "Porta 0 (GE 0/0)" : cleanWan;
 
         var lanPattern = BuildInterfaceRegex(cleanLan);
         var wanPattern = BuildInterfaceRegex(cleanWan);
@@ -482,7 +493,7 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
                 continue;
             }
             
-            var isLanUp = Regex.IsMatch(output, $@"(?im)^\s*{lanPattern}\s+[^\r\n]*\bup\s+(?:up|down)\b");
+            var isLanUp = Regex.IsMatch(output, $@"(?im)^\s*{lanPattern}\s+[^\r\n]*\bup\s+up\b");
             var isWanUp = Regex.IsMatch(output, $@"(?im)^\s*{wanPattern}\s+[^\r\n]*\bup\s+up\b");
             var isLanAdminDown = Regex.IsMatch(output, $@"(?im)^\s*{lanPattern}\s+[^\r\n]*\badministratively\s+down\b");
 
@@ -496,7 +507,7 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
             if (isLanUp)
             {
                 if (progress is not null)
-                    await progress($"[OK] Link físico confirmado na porta LAN ({displayLan}) — status UP ({elapsedSec}s)!");
+                    await progress($"[OK] Link físico confirmado na porta LAN ({displayLan}) — status UP/UP ({elapsedSec}s)!");
                 onProgress?.Invoke(55, "Porta LAN Conectada!", $"Link ativo confirmado na porta {shortLan} ({elapsedSec}s).");
                 return true;
             }
@@ -584,6 +595,12 @@ public sealed class CiscoIOSAdapter : IDeviceAdapter
     private static string BuildInterfaceRegex(string iface)
     {
         var clean = iface.Replace(" ", "");
+        if (clean.Contains("0/1/0"))
+            return @"(?:GigabitEthernet0/1/[0-3]|Gi0/1/[0-3]|GE0/1/[0-3]|GigabitEthernet\s*0/1/[0-3]|Vlan1|Vlan\s*1)";
+        if (clean.Contains("0/0/0"))
+            return @"(?:GigabitEthernet0/0/0|Gi0/0/0|GE0/0/0|GigabitEthernet\s*0/0/0)";
+        if (clean.Equals("Vlan1", StringComparison.OrdinalIgnoreCase) || clean.Contains("Vlan"))
+            return @"(?:Vlan1|Vlan\s*1|GigabitEthernet0/1/[0-3]|Gi0/1/[0-3]|GE0/1/[0-3]|GigabitEthernet\s*0/1/[0-3])";
         if (clean.Contains("0/5"))
             return @"(?:GigabitEthernet0/5|Gi0/5|GE0/5|FastEthernet0/5|Fa0/5|GigabitEthernet\s*0/5)";
         if (clean.Contains("0/4"))

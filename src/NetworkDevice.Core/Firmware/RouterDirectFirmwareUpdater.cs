@@ -37,6 +37,7 @@ public sealed class RouterDirectFirmwareUpdater
         {
             DeviceSeries.Isr841 => "c841",
             DeviceSeries.Isr921 => "c921",
+            DeviceSeries.Isr1100 => "c1100",
             DeviceSeries.Series1900 => "c1900",
             DeviceSeries.Series2900 => "c2900",
             DeviceSeries.FortiGate40F => "fgt40f",
@@ -111,7 +112,7 @@ public sealed class RouterDirectFirmwareUpdater
         var currentVer = ExtractDisplayVersion(series, rawOutput);
 
         // Fallback para Cisco IOS: se não detectou a imagem em execução, consulta 'dir flash0:' ou 'dir flash:'
-        if (series is DeviceSeries.Isr841 or DeviceSeries.Isr921 or DeviceSeries.Series1900 or DeviceSeries.Series2900)
+        if (series is DeviceSeries.Isr841 or DeviceSeries.Isr921 or DeviceSeries.Series1900 or DeviceSeries.Series2900 or DeviceSeries.Isr1100)
         {
             if (string.IsNullOrWhiteSpace(currentVer) || currentVer == "Não identificado" || currentVer == "Cisco IOS")
             {
@@ -122,6 +123,10 @@ public sealed class RouterDirectFirmwareUpdater
                     if (string.IsNullOrWhiteSpace(dirResp) || dirResp.Contains("Invalid") || dirResp.Contains("Error"))
                     {
                         try { dirResp = await session.SendCommandAsync("dir flash:", TimeSpan.FromSeconds(10), ct).ConfigureAwait(false); } catch { }
+                    }
+                    if (string.IsNullOrWhiteSpace(dirResp) || dirResp.Contains("Invalid") || dirResp.Contains("Error"))
+                    {
+                        try { dirResp = await session.SendCommandAsync("dir bootflash:", TimeSpan.FromSeconds(10), ct).ConfigureAwait(false); } catch { }
                     }
 
                     var binMatch = Regex.Match(dirResp, @"(?im)\b(?<file>[a-zA-Z0-9_\.\-]+\.bin)\b");
@@ -191,8 +196,8 @@ public sealed class RouterDirectFirmwareUpdater
             }
         }
 
-        // 2. Cisco IOS (ISR 841, ISR 921, 1900, 2900, etc.)
-        if (series is DeviceSeries.Isr841 or DeviceSeries.Isr921 or DeviceSeries.Series1900 or DeviceSeries.Series2900)
+        // 2. Cisco IOS (ISR 841, ISR 921, 1100, 1900, 2900, etc.)
+        if (series is DeviceSeries.Isr841 or DeviceSeries.Isr921 or DeviceSeries.Series1900 or DeviceSeries.Series2900 or DeviceSeries.Isr1100)
         {
             return EvaluateCiscoStrict(rawDeviceOutput, currentVer, cleanTarget);
         }
@@ -273,6 +278,13 @@ public sealed class RouterDirectFirmwareUpdater
         if (m3.Success)
         {
             return $"{m3.Groups["maj"].Value}.{m3.Groups["submaj"].Value}({m3.Groups["min"].Value}){m3.Groups["trn"].Value}".ToUpperInvariant();
+        }
+
+        // Formato IOS-XE: 17.09.04a ou 17.6.1a
+        var m4 = Regex.Match(text, @"(?im)\b(?<ver>1[67]\.\d{1,2}\.\d{1,2}[a-zA-Z]?)\b");
+        if (m4.Success)
+        {
+            return m4.Groups["ver"].Value.ToUpperInvariant();
         }
 
         return null;
@@ -404,14 +416,14 @@ public sealed class RouterDirectFirmwareUpdater
             }
 
             string? ver = null;
-            var verMatch = Regex.Match(rawOutput, @"(?im)(?:Cisco\s+IOS\s+Software|C[0-9]+\s+Software)[^\r\n]*(?:\r?\n[^\r\n]*)?(?:Version\s+|,\s*Version\s*)(?<ver>[0-9]+\.[0-9]+\([0-9]+\)[A-Za-z0-9]+)");
+            var verMatch = Regex.Match(rawOutput, @"(?im)(?:Cisco\s+IOS(?:\s+XE)?\s+Software|C[0-9]+\s+Software)[^\r\n]*(?:\r?\n[^\r\n]*)?(?:Version\s+|,\s*Version\s*)(?<ver>[0-9]+\.[0-9]+(?:\([0-9]+\)[A-Za-z0-9]+|\.[0-9]+[A-Za-z0-9]*))");
             if (verMatch.Success)
             {
                 ver = verMatch.Groups["ver"].Value.Trim();
             }
             else
             {
-                var genMatch = Regex.Match(rawOutput, @"(?im)^(?!\s*ROM:).*?\bVersion\s+(?<ver>[0-9]+\.[0-9]+\([0-9]+\)[A-Za-z0-9]+)");
+                var genMatch = Regex.Match(rawOutput, @"(?im)^(?!\s*ROM:).*?\bVersion\s+(?<ver>[0-9]+\.[0-9]+(?:\([0-9]+\)[A-Za-z0-9]+|\.[0-9]+[A-Za-z0-9]*))");
                 if (genMatch.Success) ver = genMatch.Groups["ver"].Value.Trim();
             }
 
@@ -672,9 +684,13 @@ public sealed class RouterDirectFirmwareUpdater
         var cmd = $"execute restore image tftp {firmwareFileName} {firmwareUrl}";
         var resp = await session.SendCommandAsync(cmd, TimeSpan.FromSeconds(30), ct).ConfigureAwait(false);
 
-        if (resp.Contains("Do you want to continue? (y/n)"))
+        if (resp.Contains("(y/n)") || resp.Contains("continue", StringComparison.OrdinalIgnoreCase))
         {
             resp = await session.SendCommandAsync("y", TimeSpan.FromMinutes(8), ct).ConfigureAwait(false);
+            if (resp.Contains("(y/n)") || resp.Contains("continue", StringComparison.OrdinalIgnoreCase) || resp.Contains("downgrade", StringComparison.OrdinalIgnoreCase))
+            {
+                resp = await session.SendCommandAsync("y", TimeSpan.FromMinutes(8), ct).ConfigureAwait(false);
+            }
         }
 
         await _logger($"[*] Resposta do FortiGate: {resp.Trim()}");

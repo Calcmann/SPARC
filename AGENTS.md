@@ -15,3 +15,9 @@
 
 ## 2. Modos de Operação
 - **Modo Agente / Piloto Automático**: Tomar decisões técnicas completas de arquitetura, testes e código, reportando os resultados ao final de cada ciclo através do terminal e dos artefatos de walkthrough.
+
+## 3. Constituição de Proteção ao Código e Isolamento de Modelos (Cláusulas Pétreas)
+- **Não-Regressão**: Código e testes homologados são estáveis. 100% de aprovação em `dotnet test` é pré-requisito mandatório antes de qualquer liberação.
+- **Divisão Multiplataforma (Windows vs Android)**: Modificações no ecossistema Android (.NET MAUI) jamais devem afetar o Windows (WPF .NET 8) e vice-versa. Bibliotecas compartilhadas (`Core`, `Cisco`, `Fortinet`, `Protocols`) devem ser rigorosamente neutras.
+- **Isolamento de Modelos / Perfis de Hardware**: Alterações em detecção, provisionamento ou recuperação de um modelo (ex: Cisco 1100, 841, 921, 1900, 2900, HPE MSR ou FortiGate 40F) devem ser estritamente encapsuladas no respectivo perfil. Jamais generalizar regexes de prompt ou comandos de modo que afetem negativamente outros modelos.
+- **Consulta Integral**: Consulte os termos completos da [Constituição de Desenvolvimento](file:///C:/SPARC/CONSTITUICAO.md) e `.agents/rules/constitution.md`.

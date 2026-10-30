@@ -81,6 +81,7 @@ public partial class FirmwareRepoPage : ContentPage
         {
             DeviceSeries.Series1900,
             DeviceSeries.Series2900,
+            DeviceSeries.Isr1100,
             DeviceSeries.Isr841,
             DeviceSeries.Isr921,
             DeviceSeries.Msr954,
@@ -118,6 +119,7 @@ public partial class FirmwareRepoPage : ContentPage
         {
             DeviceSeries.Series1900 => "Cisco Série 1900 / 1905 / 1921 / 1941",
             DeviceSeries.Series2900 => "Cisco Série 2900 / 2911 / 2921 / 2951",
+            DeviceSeries.Isr1100 => "Cisco Série 1100 / C1111-4P",
             DeviceSeries.Isr841 => "Cisco Série 800 / C841M",
             DeviceSeries.Isr921 => "Cisco Série 900 / C921-4P",
             DeviceSeries.Msr954 => "HPE MSR 954 / 958 Comware 7",
@@ -298,6 +300,7 @@ public partial class FirmwareRepoPage : ContentPage
         {
             DeviceSeries.Series1900,
             DeviceSeries.Series2900,
+            DeviceSeries.Isr1100,
             DeviceSeries.Isr841,
             DeviceSeries.Isr921,
             DeviceSeries.Msr954,

@@ -1,5 +1,7 @@
 using NetworkDevice.Core.Detection;
 using NetworkDevice.Core.Domain;
+using NetworkDevice.Core.Session;
+using NetworkDevice.Tests.TestDoubles;
 using Xunit;
 
 namespace NetworkDevice.Tests;
@@ -218,6 +220,10 @@ disciplinary action.
     [InlineData("Press 'a' to accept")]
     [InlineData("(Press 'a' to accept, 'd' to decline):")]
     [InlineData("PRE WARNING:\r\nSome text\r\n(Press 'a' to accept):")]
+    [InlineData("to accept):")]
+    [InlineData("to accept): ")]
+    [InlineData("to accept:")]
+    [InlineData("disciplinary action.\r\n(Press 'a' to accept): ")]
     public void DeviceDetector_IsDisclaimerPrompt_MatchesAllVariants(string input)
     {
         Assert.True(DeviceDetector.IsDisclaimerPrompt(input));
@@ -245,6 +251,76 @@ disciplinary action.
         Assert.Equal(DeviceSeries.FortiGate40F, result.Series);
         Assert.Equal(DeviceOperatingState.PasswordProtected, result.OperatingState);
         Assert.Equal(AccessState.UserAndPasswordRequired, result.AccessState);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_DetectFortiGateDisclaimerFollowedByLogin_AsPasswordProtected()
+    {
+        var prompt = 
+            "PRE WARNING:\r\n" +
+            "This is a private computer system.\r\n" +
+            "(Press 'a' to accept):\r\n" +
+            "LDA-IP-02580 login: ";
+        var result = _detector.ClassifyPrompt(prompt);
+
+        Assert.Equal(DeviceManufacturer.Fortinet, result.Manufacturer);
+        Assert.Equal(DeviceSeries.FortiGate40F, result.Series);
+        Assert.Equal(DeviceOperatingState.PasswordProtected, result.OperatingState);
+        Assert.Equal(AccessState.UserAndPasswordRequired, result.AccessState);
+        Assert.True(result.RequiresUserAndPassword);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_DetectFortiGateDisclaimerFollowedByLoginIncorrect_AsPasswordProtected()
+    {
+        var prompt = 
+            "PRE WARNING:\r\n" +
+            "This is a private computer system.\r\n" +
+            "(Press 'a' to accept):\r\n" +
+            "LDA-IP-02580 login: admin\r\n" +
+            "Password:\r\n" +
+            "Login incorrect\r\n";
+        var result = _detector.ClassifyPrompt(prompt);
+
+        Assert.Equal(DeviceManufacturer.Fortinet, result.Manufacturer);
+        Assert.Equal(DeviceSeries.FortiGate40F, result.Series);
+        Assert.Equal(DeviceOperatingState.PasswordProtected, result.OperatingState);
+        Assert.Equal(AccessState.UserAndPasswordRequired, result.AccessState);
+        Assert.True(result.RequiresUserAndPassword);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_DetectFortiGateCustomHostnameWithFortiSelected_AsPasswordProtected()
+    {
+        var prompt = "LDA-IP-02580 login: ";
+        var result = _detector.ClassifyPrompt(prompt, DeviceSeries.FortiGate40F);
+
+        Assert.Equal(DeviceManufacturer.Fortinet, result.Manufacturer);
+        Assert.Equal(DeviceSeries.FortiGate40F, result.Series);
+        Assert.Equal(DeviceOperatingState.PasswordProtected, result.OperatingState);
+        Assert.Equal(AccessState.UserAndPasswordRequired, result.AccessState);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_HpePrompt_WithFortiGateSelectedInUserSeries_PrioritizesPhysicalHpePrompt()
+    {
+        var prompt = "<HPE>";
+        var result = _detector.ClassifyPrompt(prompt, DeviceSeries.FortiGate40F);
+
+        Assert.Equal(DeviceManufacturer.Hpe, result.Manufacturer);
+        Assert.Equal(DeviceOperatingState.Ready, result.OperatingState);
+        Assert.Equal(AccessState.Open, result.AccessState);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_CiscoPrompt_WithFortiGateSelectedInUserSeries_PrioritizesPhysicalCiscoPrompt()
+    {
+        var prompt = "Router#";
+        var result = _detector.ClassifyPrompt(prompt, DeviceSeries.FortiGate40F);
+
+        Assert.Equal(DeviceManufacturer.Cisco, result.Manufacturer);
+        Assert.Equal(DeviceOperatingState.Ready, result.OperatingState);
+        Assert.Equal(AccessState.Open, result.AccessState);
     }
 
     [Fact]
@@ -477,5 +553,146 @@ Enter your choice(0-9): ";
         Assert.Equal(DeviceManufacturer.Hpe, result.Manufacturer);
         Assert.Equal(DeviceOperatingState.BootFailure, result.OperatingState);
         Assert.Equal(BootState.Bootware, result.BootState);
+    }
+
+    [Fact]
+    public void Test_FortiGateBiosOutput_Lines()
+    {
+        var matcher = RegexPromptMatcher.Universal();
+        var lines = new[]
+        {
+            "Enter C,R,T,F,I,B,Q,or H:",
+            "60s time out, rebooting...",
+            "resetting ...",
+            "FortiGate-40F (03:00-06.02.2023)",
+            "Ver:05000100",
+            "Serial number: FGT40FTK2409C36Z",
+            "CPU: 1200MHz",
+            "Total RAM: 2 GB",
+            "Initializing boot device...",
+            "Initializing MAC... NP6XLITE#0",
+            "Initializing MAC... NP6XLITE#",
+            "NP6XLITE#",
+            "NP6XLITE#0",
+            "Please wait for OS to boot, or press any key to display configuration menu......",
+            "Booting OS...",
+            "Initializing firewall..."
+        };
+
+        foreach (var line in lines)
+        {
+            var match = matcher.TryMatch(line);
+            Assert.True(match == null, $"Line '{line}' matched prompt unexpectedly: '{match?.Prompt}'");
+        }
+    }
+
+    [Fact]
+    public async Task Test_WaitForAsync_DoesNotMatchBiosOutputAsPrompt()
+    {
+        var biosStream = 
+            "Enter C,R,T,F,I,B,Q,or H:\r\n" +
+            "60s time out, rebooting... resetting ...\r\n" +
+            "FortiGate-40F (03:00-06.02.2023)\r\n" +
+            "Initializing boot device...\r\n" +
+            "Initializing MAC... NP6XLITE#0\r\n" +
+            "Please wait for OS to boot, or press any key to display configuration menu......\r\n" +
+            "Booting OS... Initializing firewall...\r\n" +
+            "FortiGate-40F login: ";
+
+        var transport = new ScriptedTransport(
+            _ => string.Empty,
+            initialOutput: biosStream);
+
+        await using var session = new DeviceSession(transport, new SessionOptions
+        {
+            PromptMatcher = RegexPromptMatcher.Universal(),
+            ConnectTimeout = TimeSpan.FromSeconds(2),
+            CommandTimeout = TimeSpan.FromSeconds(2)
+        });
+
+        await session.ConnectRawAsync();
+
+        var bootCheck = await session.WaitForAsync(
+            new StopCondition[]
+            {
+                new StopCondition.Prompt(),
+                new StopCondition.Contains("LoginPrompt", "login:"),
+            },
+            TimeSpan.FromSeconds(2));
+
+        Assert.NotNull(bootCheck.Matched);
+        Assert.IsType<StopCondition.Contains>(bootCheck.Matched);
+        Assert.Equal("LoginPrompt", ((StopCondition.Contains)bootCheck.Matched).Name);
+    }
+
+    [Theory]
+    [InlineData("FortiGate-40F (console) # ")]
+    [InlineData("FortiGate-40F (console) #")]
+    [InlineData("FortiGate-40F (root) #")]
+    [InlineData("FortiGate-40F (global) #")]
+    [InlineData("FortiGate-40F (interface) #")]
+    [InlineData("FortiGate-40F #")]
+    [InlineData("FortiGate-40F $")]
+    public void ClassifyPrompt_FortiGateShellPrompts_ClassifiesAsReadyAndOpen(string prompt)
+    {
+        var result = _detector.ClassifyPrompt(prompt);
+
+        Assert.Equal(DeviceManufacturer.Fortinet, result.Manufacturer);
+        Assert.Equal(DeviceSeries.FortiGate40F, result.Series);
+        Assert.Equal(DeviceOperatingState.Ready, result.OperatingState);
+        Assert.Equal(AccessState.Open, result.AccessState);
+        Assert.False(result.RequiresPasswordOnly);
+        Assert.False(result.RequiresUserAndPassword);
+    }
+
+    [Theory]
+    [InlineData("FortiGate-40F (console) #", ExecMode.PrivilegedExec)]
+    [InlineData("FortiGate-40F (global) #", ExecMode.PrivilegedExec)]
+    [InlineData("FortiGate-40F (interface) #", ExecMode.PrivilegedExec)]
+    [InlineData("FortiGate-40F #", ExecMode.PrivilegedExec)]
+    [InlineData("FortiGate-40F (console) $", ExecMode.UserExec)]
+    [InlineData("FortiGate-40F $", ExecMode.UserExec)]
+    public void UniversalPromptMatcher_MatchesFortiOSPromptsWithSubmodes(string prompt, ExecMode expectedMode)
+    {
+        var matcher = RegexPromptMatcher.Universal();
+        var match = matcher.TryMatch(prompt);
+
+        Assert.NotNull(match);
+        Assert.Equal(expectedMode, match.Mode);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_Cisco1111_DetectsIsr1100FromPrompt()
+    {
+        var prompt = "C1111#";
+        var result = _detector.ClassifyPrompt(prompt);
+
+        Assert.Equal(DeviceManufacturer.Cisco, result.Manufacturer);
+        Assert.Equal(DeviceSeries.Isr1100, result.Series);
+        Assert.Equal(DeviceOperatingState.Ready, result.OperatingState);
+        Assert.Equal(AccessState.Open, result.AccessState);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_Cisco1111_DetectsIsr1100FromShowVersion()
+    {
+        var output = @"Router#show version
+Cisco IOS XE Software, Version 17.06.01a
+Cisco IOS Software [Cupertino], C1100 Software (ARM64_LINUX_IOSD-UNIVERSALK9-M), Version 17.6.1a, RELEASE SOFTWARE (fc3)
+Technical Support: http://www.cisco.com/techsupport
+Copyright (c) 1986-2021 by Cisco Systems, Inc.
+
+cisco C1111-4P (1RU) processor with 1795791K/6147K bytes of memory.
+Processor board ID FGL23450000
+1 Gigabit Ethernet interface
+4 FastEthernet interfaces
+Configuration register is 0x2102
+Router#";
+
+        var result = _detector.ClassifyPrompt(output);
+
+        Assert.Equal(DeviceManufacturer.Cisco, result.Manufacturer);
+        Assert.Equal(DeviceSeries.Isr1100, result.Series);
+        Assert.Equal(DeviceOperatingState.Ready, result.OperatingState);
     }
 }

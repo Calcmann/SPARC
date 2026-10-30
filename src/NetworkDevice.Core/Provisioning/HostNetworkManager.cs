@@ -31,7 +31,9 @@ public sealed record EthernetAdapterDetails(
     bool IsPhysicalEthernet,
     string? IPv4Address,
     string? SubnetMask,
-    string? Gateway);
+    string? Gateway,
+    string? SpeedDisplay = null,
+    bool IsWireless = false);
 
 public class WindowsHostNetworkService : IHostNetworkService
 {
@@ -134,6 +136,122 @@ public static class HostNetworkManager
         if (list.Count == 0) return new List<string> { "Ethernet" };
         // Prioriza: Ethernet cabeada (Up > Down) > Wi-Fi (Up > Down)
         return list.OrderByDescending(x => x.isEthernet).ThenByDescending(x => x.isUp).Select(x => x.name).ToList();
+    }
+
+    /// <summary>
+    /// Lista e detalha todos os adaptadores de rede físicos Ethernet disponíveis no sistema,
+    /// com suporte a diferentes placas (onboard, dongles USB, PCIe, USB-C/Thunderbolt docks).
+    /// Prioriza interfaces com link físico ativo (cabo conectado), seguidas pelas desconectadas e Wi-Fi.
+    /// </summary>
+    public static IReadOnlyList<EthernetAdapterDetails> GetAllPhysicalEthernetAdapters(bool includeWirelessAsFallback = true)
+    {
+        var result = new List<EthernetAdapterDetails>();
+        try
+        {
+            var interfaces = NetworkInterface.GetAllNetworkInterfaces();
+            var physicalList = new List<EthernetAdapterDetails>();
+            var wirelessList = new List<EthernetAdapterDetails>();
+
+            foreach (var ni in interfaces)
+            {
+                // Ignora interfaces virtuais, túneis, VPN, loopback, WSL, Hyper-V, Bluetooth
+                if (ni.Description.Contains("Loopback", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Description.Contains("Virtual", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Description.Contains("Hyper-V", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Description.Contains("WSL", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Description.Contains("VPN", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Description.Contains("WireGuard", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Description.Contains("Tailscale", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Description.Contains("Bluetooth", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Name.Contains("Loopback", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Name.Contains("vEthernet", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Name.Contains("WSL", StringComparison.OrdinalIgnoreCase) ||
+                    ni.Name.Contains("Bluetooth", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var isWireless = ni.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 ||
+                                 ni.NetworkInterfaceType == NetworkInterfaceType.Wwanpp ||
+                                 ni.NetworkInterfaceType == NetworkInterfaceType.Wwanpp2 ||
+                                 ni.Description.Contains("Wireless", StringComparison.OrdinalIgnoreCase) ||
+                                 ni.Description.Contains("Wi-Fi", StringComparison.OrdinalIgnoreCase) ||
+                                 ni.Description.Contains("802.11", StringComparison.OrdinalIgnoreCase) ||
+                                 ni.Name.Contains("Wi-Fi", StringComparison.OrdinalIgnoreCase);
+
+                var isEthernet = ni.NetworkInterfaceType == NetworkInterfaceType.Ethernet ||
+                                 ni.NetworkInterfaceType == NetworkInterfaceType.GigabitEthernet ||
+                                 ni.NetworkInterfaceType == NetworkInterfaceType.FastEthernetFx ||
+                                 ni.NetworkInterfaceType == NetworkInterfaceType.FastEthernetT;
+
+                if (!isEthernet && !isWireless)
+                    continue;
+
+                var isUp = ni.OperationalStatus == OperationalStatus.Up;
+                string? ipv4 = null;
+                string? mask = null;
+                string? gw = null;
+                try
+                {
+                    var ipProps = ni.GetIPProperties();
+                    var unicast = ipProps.UnicastAddresses
+                        .FirstOrDefault(u => u.Address.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(u.Address));
+                    ipv4 = unicast?.Address.ToString();
+                    mask = unicast?.IPv4Mask?.ToString();
+                    gw = ipProps.GatewayAddresses
+                        .FirstOrDefault(g => g.Address.AddressFamily == AddressFamily.InterNetwork)?
+                        .Address.ToString();
+                }
+                catch { }
+
+                string? speedStr = null;
+                try
+                {
+                    var sp = ni.Speed;
+                    if (sp >= 1_000_000_000)
+                    {
+                        var gb = sp / 1_000_000_000.0;
+                        speedStr = gb == Math.Floor(gb) ? $"{(long)gb} Gbps" : $"{gb:0.#} Gbps";
+                    }
+                    else if (sp >= 1_000_000)
+                    {
+                        speedStr = $"{sp / 1_000_000} Mbps";
+                    }
+                }
+                catch { }
+
+                var item = new EthernetAdapterDetails(
+                    Name: ni.Name,
+                    Description: ni.Description,
+                    IsUp: isUp,
+                    IsPhysicalEthernet: !isWireless,
+                    IPv4Address: ipv4,
+                    SubnetMask: mask,
+                    Gateway: gw,
+                    SpeedDisplay: speedStr,
+                    IsWireless: isWireless);
+
+                if (!isWireless)
+                {
+                    physicalList.Add(item);
+                }
+                else if (includeWirelessAsFallback)
+                {
+                    wirelessList.Add(item);
+                }
+            }
+
+            result.AddRange(physicalList.OrderByDescending(x => x.IsUp).ThenBy(x => x.Name));
+            result.AddRange(wirelessList.OrderByDescending(x => x.IsUp).ThenBy(x => x.Name));
+        }
+        catch { }
+
+        if (result.Count == 0)
+        {
+            result.Add(new EthernetAdapterDetails("Ethernet", "Placa de Rede Ethernet Padrão", false, true, null, null, null, null, false));
+        }
+
+        return result;
     }
 
     /// <summary>

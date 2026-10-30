@@ -54,7 +54,11 @@ public sealed record ActivationReportData(
     double? BandaMbpsNominal = null,
     string? TipoServicoDescricao = null,
     string? MediaGatewayIp = null,
-    string? PeLoopbackIp = null);
+    string? PeLoopbackIp = null,
+    string? TecnicoNome = null,
+    string? TecnicoEmpresa = null,
+    string? TecnicoMatricula = null,
+    string? TecnicoCluster = null);
 
 public sealed record DirectAccessReportData(
     DateTime DataHora,
@@ -73,7 +77,11 @@ public sealed record DirectAccessReportData(
     ConnectivityTestResult? CloudflareResult,
     BandwidthTestResult? BandResult,
     IReadOnlyList<string>? DiagnosticAlerts = null,
-    string? Observacoes = null);
+    string? Observacoes = null,
+    string? TecnicoNome = null,
+    string? TecnicoEmpresa = null,
+    string? TecnicoMatricula = null,
+    string? TecnicoCluster = null);
 
 public static class ActivationPdfReportService
 {
@@ -174,6 +182,9 @@ public static class ActivationPdfReportService
         var lanBlock = d.LanBlockNetwork ?? "—";
         var lanMask = d.LanSubnetMask ?? "—";
         var adapterName = d.AdaptadorRedeLocal ?? "Placa de Rede Ethernet";
+        var tecInfo = !string.IsNullOrWhiteSpace(d.TecnicoNome)
+            ? $"{d.TecnicoNome}" + (!string.IsNullOrWhiteSpace(d.TecnicoEmpresa) ? $" ({d.TecnicoEmpresa})" : "") + (!string.IsNullOrWhiteSpace(d.TecnicoMatricula) ? $" - Mat. {d.TecnicoMatricula}" : "")
+            : "Técnico em Campo Claro";
 
         var is5a = d.IcmpResult?.IsLanOk == true;
         var is5b = d.IcmpResult?.IsWanOk == true;
@@ -291,6 +302,7 @@ public static class ActivationPdfReportService
     <div class=""field-row""><span class=""field-label"">Porta Serial:</span><span class=""field-val"">{d.PortaSerial} @ {d.BaudRate} bps</span></div>
     <div class=""field-row""><span class=""field-label"">Data / Hora:</span><span class=""field-val"">{d.DataHora:dd/MM/yyyy HH:mm:ss}</span></div>
     <div class=""field-row""><span class=""field-label"">Firmware / SO:</span><span class=""field-val"">{fw}</span></div>
+    <div class=""field-row""><span class=""field-label"">Técnico Resp.:</span><span class=""field-val"">{tecInfo}</span></div>
   </div>
 </div>
 
@@ -391,12 +403,14 @@ public static class ActivationPdfReportService
             sb.Append("</div>");
         }
 
-        sb.Append(@"
+        sb.Append($@"
 <div class=""footer-sign"">
   <div>
+    <div style=""text-align: center; font-size: 11px; color: #1E293B; font-weight: 700; margin-bottom: 2px;"">{tecInfo}</div>
     <div class=""sign-line"">TÉCNICO RESPONSÁVEL / HOMOLOGAÇÃO</div>
   </div>
   <div>
+    <div style=""text-align: center; font-size: 11px; color: #1E293B; font-weight: 700; margin-bottom: 2px;"">Operadora Claro S.A.</div>
     <div class=""sign-line"">CONTROLE DE QUALIDADE / ATIVAÇÃO CLARO</div>
   </div>
 </div>
@@ -476,6 +490,9 @@ public static class ActivationPdfReportService
         var wanGw = d.WanGateway ?? "—";
         var wanMask = d.WanSubnetMask ?? "—";
         var adapterName = d.AdaptadorRedeLocal ?? "Placa de Rede Ethernet";
+        var tecInfo = !string.IsNullOrWhiteSpace(d.TecnicoNome)
+            ? $"{d.TecnicoNome}" + (!string.IsNullOrWhiteSpace(d.TecnicoEmpresa) ? $" ({d.TecnicoEmpresa})" : "") + (!string.IsNullOrWhiteSpace(d.TecnicoMatricula) ? $" - Mat. {d.TecnicoMatricula}" : "")
+            : "Técnico em Campo Claro";
 
         var isPeOk = d.PeResult?.IsSuccess == true;
         var isGoogleOk = d.GoogleResult?.IsSuccess == true;
@@ -640,12 +657,14 @@ public static class ActivationPdfReportService
             sb.Append("</div>");
         }
 
-        sb.Append(@"
+        sb.Append($@"
 <div class=""footer-sign"">
   <div>
+    <div style=""text-align: center; font-size: 11px; color: #1E293B; font-weight: 700; margin-bottom: 2px;"">{tecInfo}</div>
     <div class=""sign-line"">TÉCNICO RESPONSÁVEL / HOMOLOGAÇÃO</div>
   </div>
   <div>
+    <div style=""text-align: center; font-size: 11px; color: #1E293B; font-weight: 700; margin-bottom: 2px;"">Operadora Claro S.A.</div>
     <div class=""sign-line"">RECEBIDO / CLIENTE OU FISCAL CLARO</div>
   </div>
 </div>

@@ -122,6 +122,7 @@
                                 <x:String>🖧 Cisco Série 2900 / 2911 / 2921 / 2951 (Break @ 9600 - ROMMON)</x:String>
                                 <x:String>🖧 Cisco Série 900 / C921-4P (Ctrl+C Puro @ 9600)</x:String>
                                 <x:String>🖧 Cisco Série 800 / C841M (Break @ 9600 - ROMMON)</x:String>
+                                <x:String>🖧 Cisco Série 1100 / C1111-4P (Break @ 9600 - ROMMON)</x:String>
                                 <x:String>🛡️ Fortinet FortiGate 40F (FortiOS @ 9600 - Console)</x:String>
                             </Picker.Items>
                         </Picker>

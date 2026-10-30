@@ -282,4 +282,49 @@ Cisco C841M-4X-JIS (revision 1.0) with 508928K/15360K bytes of memory.
         Assert.Equal("15.5(3)M4", curVer.CanonicalVersion);
         Assert.Equal("15.5(3)M4", tgtVer.CanonicalVersion);
     }
+
+    [Fact]
+    public void Cisco1100_ExtractFromFileName_ExtraiVersaoCorreta()
+    {
+        var info = CiscoIOSFirmwareVersionInspector.ExtractFromFileName("c1100-universalk9.17.09.04a.SPA.bin");
+        Assert.Equal("17.9.4A", info.CanonicalVersion);
+        Assert.Equal("c1100-universalk9.17.09.04a.SPA.bin", info.RunningImageFileName);
+    }
+
+    [Fact]
+    public void Cisco1100_ExtractFromShowVersion_ExtraiImagemEVersaoCanonica()
+    {
+        const string showVersion1100 = @"
+Cisco IOS XE Software, Version 17.09.04a
+Cisco IOS Software [Cupertino], C1100 Software (ARM64_LINUX_IOSD-UNIVERSALK9-M), Version 17.9.4a, RELEASE SOFTWARE (fc3)
+Technical Support: http://www.cisco.com/techsupport
+Copyright (c) 1986-2023 by Cisco Systems, Inc.
+
+System image file is ""bootflash:c1100-universalk9.17.09.04a.SPA.bin""
+Last reload type: Normal Reload
+
+cisco C1111-4P (1RU) processor with 1795791K/6147K bytes of memory.
+Processor board ID FGL23450000
+";
+        var info = CiscoIOSFirmwareVersionInspector.ExtractFromShowVersion(showVersion1100);
+        Assert.Equal("17.9.4A", info.CanonicalVersion);
+        Assert.Equal("c1100-universalk9.17.09.04a.SPA.bin", info.RunningImageFileName);
+    }
+
+    [Fact]
+    public void Cisco1100_VersaoIdenticaExata_RetornaTrue()
+    {
+        const string showVersion1100 = @"
+Cisco IOS XE Software, Version 17.09.04a
+System image file is ""bootflash:c1100-universalk9.17.09.04a.SPA.bin""
+cisco C1111-4P (1RU) processor with 1795791K/6147K bytes of memory.
+";
+        Assert.True(CiscoIOSFirmwareVersionInspector.IsSameVersion(
+            showVersion1100,
+            "c1100-universalk9.17.09.04a.SPA.bin",
+            out var curVer,
+            out var tgtVer));
+        Assert.Equal("17.9.4A", curVer.CanonicalVersion);
+        Assert.Equal("17.9.4A", tgtVer.CanonicalVersion);
+    }
 }

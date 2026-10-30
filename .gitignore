@@ -52,4 +52,5 @@ screen_a01.png
 __pycache__/
 *.pyc
 tools/
+backups/Atividades/
 

@@ -234,7 +234,7 @@ public sealed class FortiGate40FTests
                 if (step == 1 && string.IsNullOrEmpty(cmd))
                 {
                     step = 2;
-                    return "You are forced to change your password. Please input a new password.\r\nNew Password: ";
+                    return "Verifying password...\r\n\r\nYou are forced to change your password. Please input a new password.\r\nNew Password: ";
                 }
                 if (step == 2 && cmd == "CQMR")
                 {
@@ -553,6 +553,101 @@ public sealed class FortiGate40FTests
         Assert.False(isSame);
     }
 
+    [Theory]
+    [InlineData("FGT_40F-v7.2.6.F-build1575-FORTINET.out", true)] // 7.2.6 < 7.2.11 -> downgrade
+    [InlineData("FGT_40F-v7.0.14.M-build0583-FORTINET.out", true)] // 7.0.14 < 7.2.11 -> downgrade
+    [InlineData("FGT_40F-v7.2.11.M-build1740-FORTINET.out", false)] // mesma versão -> não é downgrade
+    [InlineData("FGT_40F-v7.4.1.F-build2463-FORTINET.out", false)] // 7.4.1 > 7.2.11 -> upgrade (não é downgrade)
+    public void Inspector_DetectaDowngradeCorretamente(string fileName, bool expectedDowngrade)
+    {
+        var statusOut = """
+            Version: FortiGate-40F v7.2.11,build1740,250210 (GA.M)
+            Branch point: 1740
+            """;
+
+        var isDowngrade = FortiOsFirmwareVersionInspector.IsDowngrade(
+            statusOut, fileName, out var curVer, out var tgtVer);
+
+        Assert.Equal(expectedDowngrade, isDowngrade);
+        Assert.Contains("7.2.11", curVer);
+    }
+
+    [Fact]
+    public void Inspector_CompareVersions_ComparaBuildECamposNumericos()
+    {
+        var v726 = FortiOsFirmwareVersionInspector.ExtractFromFileName("FGT_40F-v7.2.6.F-build1575-FORTINET.out");
+        var v7211 = FortiOsFirmwareVersionInspector.ExtractFromFileName("FGT_40F-v7.2.11.M-build1740-FORTINET.out");
+        var v7211OlderBuild = new FortiOsVersionInfo("7.2.11", "1700", "");
+
+        Assert.True(FortiOsFirmwareVersionInspector.CompareVersions(v726, v7211) < 0);
+        Assert.True(FortiOsFirmwareVersionInspector.CompareVersions(v7211, v726) > 0);
+        Assert.Equal(0, FortiOsFirmwareVersionInspector.CompareVersions(v7211, v7211));
+        Assert.True(FortiOsFirmwareVersionInspector.CompareVersions(v7211OlderBuild, v7211) < 0);
+        Assert.True(FortiOsFirmwareVersionInspector.IsDowngrade(v7211, v7211OlderBuild));
+    }
+
+    [Fact]
+    public void Inspector_DowngradePrompt7211to7210_ContemLossOfConfigEProceed()
+    {
+        var terminalOutput = """
+            Get image from tftp server OK.
+            Verifying the signature of the firmware image.
+            Image verification OK!
+            Warning: Installing image v7.2.10 from v7.2.11 may result a loss of config, proceed?
+            Do you want to continue? (y/n)
+            """;
+
+        var isImageOk = terminalOutput.Contains("Image verification OK", StringComparison.OrdinalIgnoreCase) ||
+                        terminalOutput.Contains("Check image OK", StringComparison.OrdinalIgnoreCase);
+        var isDowngradePrompt = terminalOutput.Contains("Do you want to continue", StringComparison.OrdinalIgnoreCase) ||
+                                terminalOutput.Contains("loss of config", StringComparison.OrdinalIgnoreCase) ||
+                                terminalOutput.Contains("proceed?", StringComparison.OrdinalIgnoreCase);
+
+        Assert.True(isImageOk);
+        Assert.True(isDowngradePrompt);
+    }
+
+    [Fact]
+    public void TftpDowngrade_QuandoFalhaComReturnCode28_DetectaErroComPrioridade()
+    {
+        var terminalOutput = """
+            Image verification OK!
+            Warning: Installing image v7.2.10 from v7.2.11 may result a loss of config, proceed?
+            Do you want to continue? (y/n)
+
+            Command fail. Return code -28
+
+            LDA-IP-02580 #
+            """;
+
+        var isErrorCode28 = terminalOutput.Contains("Return code -28", StringComparison.OrdinalIgnoreCase) ||
+                            terminalOutput.Contains("Check image error", StringComparison.OrdinalIgnoreCase);
+        var isCommandFail = terminalOutput.Contains("Command fail", StringComparison.OrdinalIgnoreCase);
+
+        Assert.True(isErrorCode28);
+        Assert.True(isCommandFail);
+    }
+
+    [Fact]
+    public void Inspector_IsDowngrade_7211para7210_DetectaDowngradeCorretamente()
+    {
+        var statusOut = """
+            Version: FortiGate-40F v7.2.11,build1740,250210 (GA.M)
+            Security Level: High
+            Branch point: 1740
+            """;
+        var fileName = "FGT_40F-v7.2.10.M-build1706-FORTINET.out";
+
+        var isDown = FortiOsFirmwareVersionInspector.IsDowngrade(
+            statusOut, fileName, out var curDisplay, out var tgtDisplay);
+
+        Assert.True(isDown);
+        Assert.Contains("7.2.11", curDisplay);
+        Assert.Contains("1740", curDisplay);
+        Assert.Contains("7.2.10", tgtDisplay);
+        Assert.Contains("1706", tgtDisplay);
+    }
+
     [Fact]
     public void ExtractTableEntryIds_ExtraiCorretamenteIdsNumericos()
     {
@@ -577,6 +672,32 @@ public sealed class FortiGate40FTests
 
         Assert.Equal(3, ids.Count);
         Assert.Equal(new[] { 1, 3, 10 }, ids);
+    }
+
+    [Fact]
+    public void ExtractTableEntryIds_IgnoraSubTabelasFilhasComoIpRange()
+    {
+        var output = """
+            config system dhcp server
+                edit 999
+                    set dns-service default
+                    set default-gateway 200.250.163.41
+                    set netmask 255.255.255.248
+                    set interface "lan"
+                    config ip-range
+                        edit 1
+                            set start-ip 200.250.163.42
+                            set end-ip 200.250.163.42
+                        next
+                    end
+                next
+            end
+            """;
+
+        var ids = FortiOsSaipConfigurator.ExtractTableEntryIds(output);
+
+        Assert.Single(ids);
+        Assert.Equal(999, ids[0]);
     }
 
     [Fact]
@@ -738,6 +859,27 @@ public sealed class FortiGate40FTests
     }
 
     [Fact]
+    public void DeviceDetector_DetectaFortiGate40F_NeitherDefaultNorBackupHalt_PuTTYExactMatch()
+    {
+        // Texto exato exibido na console PuTTY fornecida pelo operador em campo:
+        var puTtyOutput = """
+            Neither DEFAULT nor BACKUP FOS works. Please install valid FOS through BIOS immediately!
+              Please power cycle. System halted. (Press 'CTRL+D' to reboot)
+            Neither DEFAULT nor BACKUP FOS works. Please install valid FOS through BIOS immediately!
+              Please power cycle. System halted. (Press 'CTRL+D' to reboot)
+            """;
+
+        var detector = new DeviceDetector();
+        var result = detector.ClassifyPrompt(puTtyOutput, DeviceSeries.Unknown);
+
+        Assert.Equal(DeviceManufacturer.Fortinet, result.Manufacturer);
+        Assert.Equal(DeviceSeries.FortiGate40F, result.Series);
+        Assert.Equal(DeviceOperatingState.BootFailure, result.OperatingState);
+        Assert.Equal(FirmwareState.CorruptedOrMissing, result.FirmwareState);
+        Assert.Equal(WorkflowType.FirmwareRecovery, result.RecommendedWorkflow);
+    }
+
+    [Fact]
     public void FirmwareVersionInspector_VersaoExataDoUsuario7211_EvitaUpgrade()
     {
         var statusOut = """
@@ -808,8 +950,8 @@ public sealed class FortiGate40FTests
 
         // Banner Claro
         Assert.Contains("set pre-login-banner enable", joined);
-        Assert.Contains("config system replacemsg admin", joined);
-        Assert.Contains("edit \"pre_login\"", joined);
+        Assert.Contains("config system replacemsg admin \"pre_admin-disclaimer-text\"", joined);
+        Assert.Contains("set buffer", joined);
         Assert.Contains("CLARO Brasil S.A.", joined);
         Assert.Contains("SOMENTE USUARIOS AUTORIZADOS", joined);
 
@@ -914,6 +1056,429 @@ public sealed class FortiGate40FTests
         var iface = FortiOsSaipConfigurator.DetectConnectedPhysicalInterface("");
         Assert.Null(iface);
     }
+
+    [Fact]
+    public void ClassifyPrompt_CustomCircuitHostnamePrompt_ClassifiesAsFortiGate40FReadyAndOpen()
+    {
+        var detector = new DeviceDetector();
+        // Prompt típico de FortiGate já provisionado com hostname de designação de circuito
+        var result = detector.ClassifyPrompt("LDA-IP-02580 # ", DeviceSeries.Unknown);
+
+        Assert.Equal(DeviceManufacturer.Fortinet, result.Manufacturer);
+        Assert.Equal(DeviceSeries.FortiGate40F, result.Series);
+        Assert.Equal(DeviceOperatingState.Ready, result.OperatingState);
+        Assert.Equal(AccessState.Open, result.AccessState);
+        Assert.Equal(WorkflowType.Provisioning, result.RecommendedWorkflow);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_CustomCircuitHostnameWithDollarPrompt_ClassifiesAsFortiGate40FReadyAndOpen()
+    {
+        var detector = new DeviceDetector();
+        var result = detector.ClassifyPrompt("LDA-IP-02580 $ ", DeviceSeries.Unknown);
+
+        Assert.Equal(DeviceManufacturer.Fortinet, result.Manufacturer);
+        Assert.Equal(DeviceSeries.FortiGate40F, result.Series);
+        Assert.Equal(DeviceOperatingState.Ready, result.OperatingState);
+        Assert.Equal(AccessState.Open, result.AccessState);
+    }
+
+    [Fact]
+    public void ClassifyPrompt_CiscoStandardPromptWithoutSpace_DoesNotClassifyAsFortinet()
+    {
+        var detector = new DeviceDetector();
+        var result = detector.ClassifyPrompt("Router#", DeviceSeries.Unknown);
+
+        Assert.NotEqual(DeviceManufacturer.Fortinet, result.Manufacturer);
+        Assert.Equal(DeviceManufacturer.Cisco, result.Manufacturer);
+    }
+
+    [Fact]
+    public void GenerateCommands_BldDisclaimer_EncerraConfigSystemGlobalComEndAntesDeReplacemsg()
+    {
+        var circuit = new SaipCircuitData
+        {
+            NumeroOts = "OTS-123456",
+            DesignacaoIp = "CIRCUITO-DISCLAIMER-TEST",
+            ClienteRazaoSocial = "TESTE S.A.",
+            WanIp = "200.200.200.2",
+            WanSubnetMask = "255.255.255.252",
+            WanGateway = "200.200.200.1",
+            LanIp = "10.10.10.1",
+            LanSubnetMask = "255.255.255.0",
+            BandaMbpsNominal = 50,
+        };
+
+        var cmds = FortiOsSaipConfigurator.GenerateCommands(circuit, "wan", "lan", incluirBldClaro: true).ToList();
+
+        var bannerIdx = cmds.IndexOf("set pre-login-banner enable");
+        Assert.True(bannerIdx >= 0, "Deveria conter 'set pre-login-banner enable'");
+
+        var endIdx = cmds.IndexOf("end");
+        Assert.True(endIdx > bannerIdx, "Deveria conter 'end' após 'set pre-login-banner enable'");
+
+        var replacemsgIdx = cmds.FindIndex(c => c.StartsWith("config system replacemsg admin"));
+        Assert.True(replacemsgIdx > endIdx, "O bloco 'config system replacemsg admin' deve iniciar APÓS o 'end' que fecha 'config system global'");
+
+        // Valida a ordem imediata: set pre-login-banner enable -> end -> config system replacemsg admin
+        Assert.Equal("end", cmds[bannerIdx + 1]);
+        Assert.StartsWith("config system replacemsg admin", cmds[bannerIdx + 2]);
+    }
+
+    [Theory]
+    [InlineData("Failed to complete copper auto-nego.1514", true)]
+    [InlineData("Failed to complete copper auto-nego", true)]
+    [InlineData("copper auto-nego", true)]
+    [InlineData("No link on WAN", true)]
+    [InlineData("Link is down", true)]
+    [InlineData("No carrier", true)]
+    [InlineData("failed to complete auto-nego", true)]
+    [InlineData("TFTP transfer failed", false)]
+    [InlineData("bad checksum", false)]
+    [InlineData("ARP timeout", false)]
+    public void CableDisconnectedRegex_IdentificaFalhaAutoNegoEFalhasFisicasEthernet(string biosOutput, bool expectedMatch)
+    {
+        var matched = FortiOsBootLoaderRecovery.CableDisconnectedRegex.IsMatch(biosOutput);
+        Assert.Equal(expectedMatch, matched);
+    }
+
+    [Fact]
+    public async Task MonitorarTransferenciaBiosAsync_CaboDesconectado_SolicitaIntervencaoOperadorEReexecutaComSucesso()
+    {
+        var attempt = 0;
+        var operatorInstructionReceived = "";
+        var sentCommands = new List<string>();
+
+        var transport = new ScriptedTransport(
+            cmd =>
+            {
+                if (!string.IsNullOrEmpty(cmd))
+                {
+                    sentCommands.Add(cmd.Trim());
+                }
+
+                if (cmd.Trim() == "T")
+                {
+                    attempt++;
+                    // Tentativa pós-intervenção do operador com cabo conectado:
+                    return "Please connect TFTP server to Ethernet port 'WAN'.\r\n" +
+                           "Connect to tftp server 192.168.1.100 ...\r\n" +
+                           "Loading: ##############################\r\n" +
+                           "Image Received\r\n" +
+                           "Save as Default firmware/Backup firmware [D/B/R]? ";
+                }
+
+                return "";
+            },
+            initialOutput: "Please connect TFTP server to Ethernet port 'WAN'.\r\n" +
+                           "Failed to complete copper auto-nego.1514\r\n" +
+                           "Connect to tftp server 192.168.1.100 ...\r\n" +
+                           "Loading: T T T T\r\n" +
+                           "Enter C,R,T,F,I,B,Q,or H: ");
+
+        var options = new SessionOptions
+        {
+            PromptMatcher = RegexPromptMatcher.Universal()
+        };
+
+        await using var session = new DeviceSession(transport, options);
+        await session.ConnectRawAsync();
+
+        var logMessages = new List<string>();
+        var ok = await FortiOsBootLoaderRecovery.MonitorarTransferenciaBiosAsync(
+            session,
+            progress: (pct, tit, det) => { },
+            log: msg => { logMessages.Add(msg); return Task.CompletedTask; },
+            ct: CancellationToken.None,
+            tftpBytesSentProvider: () => 1024,
+            isTftpFinishedProvider: () => false,
+            instructOperator: (msg, ct) =>
+            {
+                operatorInstructionReceived = msg;
+                return Task.CompletedTask;
+            });
+
+        Assert.True(ok, "A transferência deveria concluir com sucesso após o operador reconectar o cabo.");
+        Assert.Contains("Failed to complete copper auto-nego", operatorInstructionReceived);
+        Assert.Contains("WAN", operatorInstructionReceived);
+        Assert.Contains("LED", operatorInstructionReceived);
+        Assert.Contains("T", sentCommands);
+        Assert.Contains(logMessages, m => m.Contains("CABO DE REDE DESCONECTADO"));
+    }
+
+    [Fact]
+    public async Task EnforceWanPortConnectedAsync_PortaWanUp_RetornaTrueSemAlertar()
+    {
+        var transport = new ScriptedTransport(
+            cmd =>
+            {
+                if (cmd.Contains("get system interface physical"))
+                {
+                    return "== [onboard]\r\n" +
+                           "\t==[wan]\r\n\t\tstatus: up\r\n\t\tspeed: 1000Mbps\r\n" +
+                           "\t==[lan1]\r\n\t\tstatus: down\r\n" +
+                           "FortiGate-40F # ";
+                }
+                return "";
+            },
+            initialOutput: "FortiGate-40F # ");
+
+        var options = new SessionOptions
+        {
+            PromptMatcher = RegexPromptMatcher.Universal()
+        };
+
+        await using var session = new DeviceSession(transport, options);
+        await session.ConnectAsync();
+
+        var operatorAlerted = false;
+        var result = await FortiOsSaipConfigurator.EnforceWanPortConnectedAsync(
+            session,
+            (msg, ct) => { operatorAlerted = true; return Task.CompletedTask; },
+            pollDelayMs: 0);
+
+        Assert.True(result);
+        Assert.False(operatorAlerted);
+    }
+
+    [Fact]
+    public async Task EnforceWanPortConnectedAsync_PortaLanUpEPortaWanDown_AlertaCaboNaPortaErradaEValidaAposTroca()
+    {
+        var attempt = 0;
+        var operatorAlertMessage = "";
+        var transport = new ScriptedTransport(
+            cmd =>
+            {
+                if (cmd.Contains("get system interface physical"))
+                {
+                    attempt++;
+                    if (attempt == 1)
+                    {
+                        // Cabo na porta LAN (lan1 UP, wan DOWN)
+                        return "== [onboard]\r\n" +
+                               "\t==[wan]\r\n\t\tstatus: down\r\n" +
+                               "\t==[lan1]\r\n\t\tstatus: up\r\n" +
+                               "FortiGate-40F # ";
+                    }
+                    else
+                    {
+                        // Operador trocou para a porta WAN (wan UP, lan1 DOWN)
+                        return "== [onboard]\r\n" +
+                               "\t==[wan]\r\n\t\tstatus: up\r\n" +
+                               "\t==[lan1]\r\n\t\tstatus: down\r\n" +
+                               "FortiGate-40F # ";
+                    }
+                }
+                return "";
+            },
+            initialOutput: "FortiGate-40F # ");
+
+        var options = new SessionOptions
+        {
+            PromptMatcher = RegexPromptMatcher.Universal()
+        };
+
+        await using var session = new DeviceSession(transport, options);
+        await session.ConnectAsync();
+
+        var result = await FortiOsSaipConfigurator.EnforceWanPortConnectedAsync(
+            session,
+            (msg, ct) => { operatorAlertMessage = msg; return Task.CompletedTask; },
+            pollDelayMs: 0);
+
+        Assert.True(result);
+        Assert.Contains("CABO DE REDE CONECTADO NA PORTA INCORRETA (LAN)", operatorAlertMessage);
+        Assert.Contains("WAN", operatorAlertMessage);
+    }
+
+    [Fact]
+    public async Task EnforceWanPortConnectedAsync_NenhumaPortaConectada_AlertaCaboDesconectadoEValidaAposConectar()
+    {
+        var attempt = 0;
+        var operatorAlertMessage = "";
+        var transport = new ScriptedTransport(
+            cmd =>
+            {
+                if (cmd.Contains("get system interface physical"))
+                {
+                    attempt++;
+                    if (attempt == 1)
+                    {
+                        // Nenhuma porta conectada (todas DOWN)
+                        return "== [onboard]\r\n" +
+                               "\t==[wan]\r\n\t\tstatus: down\r\n" +
+                               "\t==[lan1]\r\n\t\tstatus: down\r\n" +
+                               "FortiGate-40F # ";
+                    }
+                    else
+                    {
+                        // Operador conectou na porta WAN
+                        return "== [onboard]\r\n" +
+                               "\t==[wan]\r\n\t\tstatus: up\r\n" +
+                               "\t==[lan1]\r\n\t\tstatus: down\r\n" +
+                               "FortiGate-40F # ";
+                    }
+                }
+                return "";
+            },
+            initialOutput: "FortiGate-40F # ");
+
+        var options = new SessionOptions
+        {
+            PromptMatcher = RegexPromptMatcher.Universal()
+        };
+
+        await using var session = new DeviceSession(transport, options);
+        await session.ConnectAsync();
+
+        var result = await FortiOsSaipConfigurator.EnforceWanPortConnectedAsync(
+            session,
+            (msg, ct) => { operatorAlertMessage = msg; return Task.CompletedTask; },
+            pollDelayMs: 0);
+
+        Assert.True(result);
+        Assert.Contains("CABO DE REDE DESCONECTADO DA PORTA WAN", operatorAlertMessage);
+        Assert.Contains("WAN", operatorAlertMessage);
+    }
+
+    [Fact]
+    public void PromptMatcher_NaoConfundeMenuBiosFortiGateComPromptOperacional()
+    {
+        var matcher = RegexPromptMatcher.Universal();
+
+        // Linhas típicas do menu BIOS / Bootloader do FortiGate 40F
+        string[] biosLines =
+        {
+            "[C]: Set up TFTP parameters",
+            "[R]: Review TFTP parameters",
+            "[T]: Initiate TFTP firmware test",
+            "[F]: Format boot device",
+            "[I]: Configuration Image",
+            "[B]: Boot with default firmware",
+            "[Q]: Configuration and Quit",
+            "[H]: Help",
+            "Enter C,R,T,F,I,B,Q,or H:",
+            "Enter C,R,T,F,I,B,Q,or H: ",
+            "Please accept the terms and conditions",
+            "FortiBootLoader v1.2.3",
+            "Enter Selection:",
+            "[C]",
+            "[T]",
+            "[B]"
+        };
+
+        foreach (var line in biosLines)
+        {
+            var matched = matcher.TryMatch(line);
+            Assert.True(matched == null, $"Linha do BIOS Fortinet '{line}' NÃO deve ser reconhecida como prompt, mas retornou '{matched}'");
+        }
+    }
+
+    [Fact]
+    public void PromptMatcher_ReconhecePromptsOperacionaisFortiOS()
+    {
+        var matcher = RegexPromptMatcher.Universal();
+
+        string[] validPrompts =
+        {
+            "FortiGate-40F #",
+            "FortiGate-40F # ",
+            "FortiGate-40F (console) #",
+            "FortiGate-40F (root) #",
+            "FortiGate-40F (global) #",
+            "FGT40F1234567890 #",
+            "LDA-IP-02580 #",
+            "FortiGate-40F $"
+        };
+
+        foreach (var p in validPrompts)
+        {
+            var matched = matcher.TryMatch(p);
+            Assert.True(matched != null, $"Prompt legítimo do FortiOS '{p}' deve ser reconhecido.");
+        }
+    }
+
+    [Fact]
+    public void DeviceSession_SetAuthenticatedState_AtualizaPropriedadesEConexao()
+    {
+        var transport = new ScriptedTransport(_ => "");
+        var options = new SessionOptions();
+        var session = new DeviceSession(transport, options);
+
+        session.SetAuthenticatedState("admin", "CQMR", "FortiGate-40F #", ExecMode.PrivilegedExec);
+
+        Assert.Equal("admin", session.AuthenticatedUser);
+        Assert.Equal("CQMR", session.AuthenticatedPassword);
+        Assert.Equal("FortiGate-40F #", session.CurrentPrompt);
+        Assert.Equal(ExecMode.PrivilegedExec, session.Mode);
+    }
+
+    [Fact]
+    public void ClassifyLogin_DetectsFortiGateBiosMenu()
+    {
+        var transport = new ScriptedTransport(_ => "");
+        var session = new DeviceSession(transport, new SessionOptions());
+
+        var stage1 = session.ClassifyLogin("Enter C,R,T,F,I,B,Q,or H:");
+        var stage2 = session.ClassifyLogin("Please Enter Selection: ");
+        var stage3 = session.ClassifyLogin("[C,R,T,F,I,B,Q,or H]");
+
+        Assert.Equal(DeviceSession.LoginStageKind.FortiBiosMenu, stage1);
+        Assert.Equal(DeviceSession.LoginStageKind.FortiBiosMenu, stage2);
+        Assert.Equal(DeviceSession.LoginStageKind.FortiBiosMenu, stage3);
+    }
+
+    [Fact]
+    public async Task AguardarBootFortiOsAsync_WhenBiosMenuEncountered_SendsQAndCompletesLogin()
+    {
+        int newPassCount = 0;
+        var sentData = new List<string>();
+
+        var transport = new ScriptedTransport(
+            cmd =>
+            {
+                sentData.Add(cmd);
+                if (cmd.Equals("Q", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "\r\nBooting OS...\r\nReading boot image...\r\nInitializing...\r\nStarting OS...\r\nFortiGate-40F login: ";
+                }
+                if (cmd.Equals("admin", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "Password: ";
+                }
+                if (cmd == string.Empty)
+                {
+                    return "You are forced to change your password. Please input a new password.\r\nNew Password: ";
+                }
+                if (cmd.Equals("CQMR", StringComparison.OrdinalIgnoreCase))
+                {
+                    newPassCount++;
+                    if (newPassCount == 1)
+                        return "Confirm Password: ";
+                    return "\r\nWelcome!\r\nFortiGate-40F # ";
+                }
+                return "";
+            },
+            initialOutput: "FortiGate-40F (14:14-04.09.2020)\r\nVerifying SHA256 checksum... [OK]\r\nEnter C,R,T,F,I,B,Q,or H: ");
+
+        var session = new DeviceSession(transport, new SessionOptions());
+        var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        var ok = await FortiOsBootLoaderRecovery.AguardarBootFortiOsAsync(
+            session,
+            (_, _, _) => { },
+            _ => Task.CompletedTask,
+            cts.Token,
+            defaultPassword: "CQMR");
+
+        Assert.True(ok);
+        Assert.Contains(sentData, s => s.Equals("Q", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(sentData, s => s.Equals("admin", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(sentData, s => s.Equals("CQMR", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("admin", session.AuthenticatedUser);
+        Assert.Equal("CQMR", session.AuthenticatedPassword);
+    }
 }
+
 
 

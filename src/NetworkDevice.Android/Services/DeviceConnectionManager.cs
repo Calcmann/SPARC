@@ -1502,7 +1502,7 @@ public sealed class DeviceConnectionManager
                     await progress($"[*] Aguardando boot do FortiGate (~{remaining}s restantes)...");
                 }
 
-                if (elapsed >= 20 && (DateTime.UtcNow - lastEnter).TotalSeconds >= 4)
+                if (elapsed >= 65 && (DateTime.UtcNow - lastEnter).TotalSeconds >= 5)
                 {
                     lastEnter = DateTime.UtcNow;
                     await session.SendRawAsync("\r\n", ct);
@@ -1513,6 +1513,7 @@ public sealed class DeviceConnectionManager
                     var res = await session.WaitForAsync(
                         new StopCondition[]
                         {
+                            new StopCondition.Contains("bios", "Enter C,R,T,F,I,B,Q,or H:"),
                             new StopCondition.LineRegex("disclaimer", DeviceDetector.FortiDisclaimerRegex),
                             new StopCondition.Contains("login", "login:"),
                             new StopCondition.Contains("password", "Password:"),
@@ -1521,7 +1522,15 @@ public sealed class DeviceConnectionManager
                         },
                         TimeSpan.FromSeconds(2), ct);
 
-                    if (elapsed < 15) continue;
+                    if (elapsed < 60) continue;
+
+                    if (res.Output.Contains("Enter C,R,T,F,I,B,Q,or H:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await progress("[*] Menu FortiBootLoader detectado na console — enviando comando 'B' para iniciar o FortiOS...");
+                        await session.SendRawAsync("B\r\n", ct);
+                        await Task.Delay(3000, ct);
+                        continue;
+                    }
 
                     if ((res.Matched is StopCondition.LineRegex lr && lr.Name == "disclaimer") || DeviceDetector.IsDisclaimerPrompt(res.Output))
                     {
@@ -1545,7 +1554,10 @@ public sealed class DeviceConnectionManager
                         await session.WriteLineAsync(pass, ct);
                         await Task.Delay(500, ct);
                     }
-                    else
+                    else if (!res.Output.Contains("NP6XLITE", StringComparison.OrdinalIgnoreCase) &&
+                             !res.Output.Contains("Initializing", StringComparison.OrdinalIgnoreCase) &&
+                             !res.Output.Contains("Booting OS", StringComparison.OrdinalIgnoreCase) &&
+                             !res.Output.Contains("resetting", StringComparison.OrdinalIgnoreCase))
                     {
                         await progress("[OK] FortiGate reinicializado e pronto para operação!");
                         return true;
@@ -1571,6 +1583,7 @@ public sealed class DeviceConnectionManager
     {
         DeviceSeries.Series1900 => ("GigabitEthernet 0/0", "GigabitEthernet 0/1"),
         DeviceSeries.Series2900 => ("GigabitEthernet 0/0", "GigabitEthernet 0/1"),
+        DeviceSeries.Isr1100 => ("GigabitEthernet0/0/0", "Vlan1"),
         DeviceSeries.Isr921 => ("GigabitEthernet 4", "GigabitEthernet 5"),
         DeviceSeries.Isr841 => ("GigabitEthernet0/4", "GigabitEthernet0/5"),
         _ => (null, null),
@@ -1723,9 +1736,7 @@ public sealed class DeviceConnectionManager
                     rxAccumulator.Clear();
                     await Task.Delay(100, ct);
                     await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes(standardPassToSet + "\r"), ct);
-                    await Task.Delay(200, ct);
-                    await _transport.WriteAsync(System.Text.Encoding.UTF8.GetBytes("\r"), ct);
-                    await Task.Delay(200, ct);
+                    await Task.Delay(250, ct);
                     continue;
                 }
 
@@ -1995,6 +2006,7 @@ public sealed class DeviceConnectionManager
                 {
                     DeviceSeries.Series1900 => BootInterruptProfiles.Cisco1900,
                     DeviceSeries.Series2900 => BootInterruptProfiles.Cisco2900,
+                    DeviceSeries.Isr1100 => BootInterruptProfiles.Cisco1100,
                     DeviceSeries.Isr921 => BootInterruptProfiles.Cisco900,
                     DeviceSeries.Isr841 => BootInterruptProfiles.Cisco841,
                     _ => BootInterruptProfiles.CiscoUniversal,
@@ -2256,6 +2268,12 @@ public sealed class DeviceConnectionManager
                 {
                     try { await _session.SendCommandAsync("interface range GigabitEthernet 0 - 3", TimeSpan.FromSeconds(10), ct); await _session.SendCommandAsync("no shutdown", TimeSpan.FromSeconds(10), ct); await _session.SendCommandAsync("exit", TimeSpan.FromSeconds(10), ct); } catch { }
                 }
+                else if (series == DeviceSeries.Isr1100)
+                {
+                    try { await _session.SendCommandAsync("interface GigabitEthernet0/0/0", TimeSpan.FromSeconds(10), ct); await _session.SendCommandAsync("no shutdown", TimeSpan.FromSeconds(10), ct); await _session.SendCommandAsync("exit", TimeSpan.FromSeconds(10), ct); } catch { }
+                    try { await _session.SendCommandAsync("interface GigabitEthernet0/1/0", TimeSpan.FromSeconds(10), ct); await _session.SendCommandAsync("no shutdown", TimeSpan.FromSeconds(10), ct); await _session.SendCommandAsync("exit", TimeSpan.FromSeconds(10), ct); } catch { }
+                    try { await _session.SendCommandAsync("interface Vlan1", TimeSpan.FromSeconds(10), ct); await _session.SendCommandAsync("no shutdown", TimeSpan.FromSeconds(10), ct); await _session.SendCommandAsync("exit", TimeSpan.FromSeconds(10), ct); } catch { }
+                }
                 await _session.SendCommandAsync("end", TimeSpan.FromSeconds(10), ct);
                 await Task.Delay(2000, ct); // Aguarda enlace físico estabilizar
 
@@ -2273,7 +2291,7 @@ public sealed class DeviceConnectionManager
                     else
                     {
                         var (_, detLan) = CiscoSaipConfigurator.DetectInterfaces(brief);
-                        iface = !string.IsNullOrWhiteSpace(detLan) ? detLan : ((series == DeviceSeries.Isr841 || series == DeviceSeries.Isr921) ? "Vlan1" : "GigabitEthernet0/1");
+                        iface = !string.IsNullOrWhiteSpace(detLan) ? detLan : ((series == DeviceSeries.Isr841 || series == DeviceSeries.Isr921 || series == DeviceSeries.Isr1100) ? "Vlan1" : "GigabitEthernet0/1");
                     }
                 }
                 await progress($"[*] Interface LAN selecionada para staging: '{iface}'");
@@ -2283,6 +2301,17 @@ public sealed class DeviceConnectionManager
                 if (series == DeviceSeries.Series1900 || series == DeviceSeries.Series2900 || series == DeviceSeries.Unknown)
                 {
                     var otherPort = iface.Contains("0/0", StringComparison.OrdinalIgnoreCase) ? "GigabitEthernet0/1" : "GigabitEthernet0/0";
+                    try
+                    {
+                        await _session.SendCommandAsync($"interface {otherPort}", TimeSpan.FromSeconds(10), ct);
+                        await _session.SendCommandAsync("no ip address", TimeSpan.FromSeconds(10), ct);
+                        await _session.SendCommandAsync("exit", TimeSpan.FromSeconds(10), ct);
+                    }
+                    catch { }
+                }
+                else if (series == DeviceSeries.Isr1100)
+                {
+                    var otherPort = iface.Contains("0/0/0", StringComparison.OrdinalIgnoreCase) ? "Vlan1" : "GigabitEthernet0/0/0";
                     try
                     {
                         await _session.SendCommandAsync($"interface {otherPort}", TimeSpan.FromSeconds(10), ct);

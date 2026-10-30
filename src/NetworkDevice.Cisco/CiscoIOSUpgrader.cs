@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.RegularExpressions;
 using NetworkDevice.Core.Provisioning;
 using NetworkDevice.Core.Session;
@@ -286,14 +286,26 @@ public sealed class CiscoIOSUpgrader
                     await ProgressAsync($"[*] Configurando temporariamente {lanIf} ({rIp} {mask}) no Cisco para viabilizar transferência TFTP...");
                     await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(10), cancellationToken);
                     await session.SendCommandAsync($"interface {lanIf}", TimeSpan.FromSeconds(10), cancellationToken);
-                    await session.SendCommandAsync("no switchport", TimeSpan.FromSeconds(5), cancellationToken);
+                    if (!lanIf.StartsWith("Vlan", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await session.SendCommandAsync("no switchport", TimeSpan.FromSeconds(5), cancellationToken);
+                    }
                     await session.SendCommandAsync($"ip address {rIp} {mask}", TimeSpan.FromSeconds(10), cancellationToken);
                     await session.SendCommandAsync("no shutdown", TimeSpan.FromSeconds(10), cancellationToken);
+                    if (lanIf.StartsWith("Vlan", StringComparison.OrdinalIgnoreCase) || lanIf.Contains("0/1/0"))
+                    {
+                        await session.SendCommandAsync("interface GigabitEthernet0/1/0", TimeSpan.FromSeconds(5), cancellationToken);
+                        await session.SendCommandAsync("no shutdown", TimeSpan.FromSeconds(5), cancellationToken);
+                    }
                     await session.SendCommandAsync("end", TimeSpan.FromSeconds(10), cancellationToken);
                     await Task.Delay(1500, cancellationToken);
 
                     // Valida se o técnico conectou o cabo na porta LAN (GE 0/1 / GE 5 / GE 0/5)
-                    await CiscoIOSAdapter.EnforceLanPortConnectedAsync(session, lanIf, requestOperatorAction, ProgressAsync, cancellationToken);
+                    var lanOk = await CiscoIOSAdapter.EnforceLanPortConnectedAsync(session, lanIf, requestOperatorAction, ProgressAsync, cancellationToken);
+                    if (!lanOk)
+                    {
+                        throw new InvalidOperationException($"[ERRO DE CONEXÃO FÍSICA] Não foi detectado link físico ativo na porta LAN ({lanIf}). Conecte o cabo de rede Ethernet para realizar a transferência TFTP.");
+                    }
 
                     // Testa conectividade IP com o PC (ping)
                     await ProgressAsync($"[*] Testando conectividade de rede com o PC ({hostIpAddress})...");
@@ -944,7 +956,10 @@ public sealed class CiscoIOSUpgrader
                             {
                                 bootCommandSent = true;
                                 await ProgressAsync($"[*] Prompt ROMMON pós-reset detectado — iniciando boot da imagem 'boot flash:{binFileName}'...");
-                                await session.SendRawAsync($"boot flash:{binFileName}\r", ct);
+                                var fsBootPrefix = (binFileName.Contains("1100", StringComparison.OrdinalIgnoreCase) || binFileName.Contains("1111", StringComparison.OrdinalIgnoreCase))
+                                    ? "bootflash:"
+                                    : "flash:";
+                                await session.SendRawAsync($"boot {fsBootPrefix}{binFileName}\r", ct);
                                 await Task.Delay(300, ct);
                             }
                             continue;
@@ -1223,9 +1238,11 @@ public sealed class CiscoIOSUpgrader
             await ProgressAsync($"[AVISO] Nenhum adaptador Ethernet especificado. Certifique-se de que sua placa de rede está com IP {actualHostIp} e máscara {actualMask}.");
         }
 
-        var is921 = (lanInterface?.Contains("5") == true || lanInterface?.Contains("4") == true || binFileName.StartsWith("c900", StringComparison.OrdinalIgnoreCase) || binFileName.StartsWith("c8", StringComparison.OrdinalIgnoreCase));
-        var rommonPort = is921 ? "GigabitEthernet 4 (GE 4 / Porta 4)" : "GigabitEthernet 0/0 (GE 0/0 / Porta 0)";
-        var rommonShort = is921 ? "GE 4" : "GE 0/0";
+        var is1100 = (lanInterface?.Contains("0/1/0") == true || lanInterface?.Contains("0/0/0") == true || binFileName.StartsWith("c1100", StringComparison.OrdinalIgnoreCase) || binFileName.Contains("1111"));
+        var is921 = !is1100 && (lanInterface?.Contains("5") == true || lanInterface?.Contains("4") == true || binFileName.StartsWith("c900", StringComparison.OrdinalIgnoreCase) || binFileName.StartsWith("c8", StringComparison.OrdinalIgnoreCase));
+        var rommonPort = is1100 ? "GigabitEthernet 0/0/0 (GE 0/0/0 / Porta WAN)" :
+                         is921 ? "GigabitEthernet 4 (GE 4 / Porta 4)" : "GigabitEthernet 0/0 (GE 0/0 / Porta 0)";
+        var rommonShort = is1100 ? "GE 0/0/0" : is921 ? "GE 4" : "GE 0/0";
 
         await ProgressAsync($"[*] [DICA FÍSICA] No modo ROMMON, conecte o cabo de rede Ethernet na porta {rommonPort} do roteador Cisco.");
 
@@ -1312,6 +1329,31 @@ public sealed class CiscoIOSUpgrader
             await ProgressAsync("[*] Verificando variáveis do ROMMON (set)...");
             var setOut = await session.SendCommandAsync("set", TimeSpan.FromSeconds(5), cancellationToken);
             await ProgressAsync($"[ROMMON ENV]\n{setOut.Trim()}");
+
+            if (!is1100 && (setOut.Contains("c1100", StringComparison.OrdinalIgnoreCase) ||
+                            setOut.Contains("c1111", StringComparison.OrdinalIgnoreCase) ||
+                            setOut.Contains("ETHER_PORT", StringComparison.OrdinalIgnoreCase)))
+            {
+                is1100 = true;
+            }
+
+            if (is1100)
+            {
+                return await ExecutarRecuperacaoRommonCisco1100Async(
+                    session,
+                    tftpServer,
+                    () => tftpCompleted,
+                    imageFilePath,
+                    binFileName,
+                    actualHostIp,
+                    actualRouterIp,
+                    actualMask,
+                    targetAdapter,
+                    requestOperatorAction,
+                    cancellationToken,
+                    enableSecret,
+                    candidatePasswords);
+            }
 
             // 5. Executa comando de download TFTP no ROMMON (tftpdnld)
             await ProgressAsync("\n[*] [ROMMON TFTP] Executando comando 'tftpdnld' para gravação na Flash...");
@@ -1677,18 +1719,21 @@ public sealed class CiscoIOSUpgrader
 
         if (requestOperatorAction is not null)
         {
-            var is841Post = (lanInterface?.Contains("0/5") == true || lanInterface?.Contains("0/4") == true || binFileName.StartsWith("c8", StringComparison.OrdinalIgnoreCase));
-            var is921Post = !is841Post && (lanInterface?.Contains("5") == true || lanInterface?.Contains("4") == true || binFileName.StartsWith("c900", StringComparison.OrdinalIgnoreCase));
+            var is1100Post = (lanInterface?.Contains("0/1/0") == true || lanInterface?.Contains("0/0/0") == true || binFileName.StartsWith("c1100", StringComparison.OrdinalIgnoreCase) || binFileName.Contains("1111"));
+            var is841Post = !is1100Post && (lanInterface?.Contains("0/5") == true || lanInterface?.Contains("0/4") == true || binFileName.StartsWith("c8", StringComparison.OrdinalIgnoreCase));
+            var is921Post = !is1100Post && !is841Post && (lanInterface?.Contains("5") == true || lanInterface?.Contains("4") == true || binFileName.StartsWith("c900", StringComparison.OrdinalIgnoreCase));
 
-            var lanPostDisplay = is841Post ? "GigabitEthernet0/5 (Porta 5 / GE 0/5 - LAN do Cliente)" :
+            var lanPostDisplay = is1100Post ? "GigabitEthernet0/1/0 (Porta GE 0/1/0 - LAN do Cliente / Switchport 0)" :
+                                 is841Post ? "GigabitEthernet0/5 (Porta 5 / GE 0/5 - LAN do Cliente)" :
                                  is921Post ? "GigabitEthernet 5 (Porta 5 / GE 5 - LAN do Cliente)" :
                                  "GigabitEthernet 0/1 (Porta 1 / GE 0/1 - LAN do Cliente)";
 
-            var lanPostShort = is841Post ? "Porta 5 (GE 0/5)" :
+            var lanPostShort = is1100Post ? "Porta GE 0/1/0" :
+                               is841Post ? "Porta 5 (GE 0/5)" :
                                is921Post ? "Porta 5 (GE 5)" :
                                "Porta 1 (GE 0/1)";
 
-            var targetLan = is841Post ? "GigabitEthernet0/5" : is921Post ? "GigabitEthernet 5" : "GigabitEthernet 0/1";
+            var targetLan = is1100Post ? "GigabitEthernet0/1/0" : is841Post ? "GigabitEthernet0/5" : is921Post ? "GigabitEthernet 5" : "GigabitEthernet 0/1";
 
             // Acorda imediatamente a console serial do Cisco IOS e absorve eventuais syslogs de boot
             try
@@ -1727,6 +1772,341 @@ public sealed class CiscoIOSUpgrader
         }
 
         _onProgress?.Invoke(100, "Fase B Concluída!", $"Roteador recuperado e porta LAN sincronizada com sucesso ({binFileName}).");
+        return true;
+    }
+
+    /// <summary>
+    /// RecuperaÃ§Ã£o de emergÃªncia especÃ­fica para a SÃ©rie Cisco 1100 (ISR 1100 / C1111-4P / IOS-XE) em modo ROMMON.
+    /// Diferente do Cisco IOS clÃ¡ssico, no ROMMON do IOS-XE o comando 'tftpdnld' inexiste.
+    /// O procedimento executa boot direto via TFTP ('boot tftp://...') ou bootflash: ('boot bootflash:...'),
+    /// aguarda a inicializaÃ§Ã£o do IOS-XE, grava a imagem permanentemente na bootflash: e prepara o roteador.
+    /// </summary>
+    private async Task<bool> ExecutarRecuperacaoRommonCisco1100Async(
+        DeviceSession session,
+        EmbeddedTftpServer tftpServer,
+        Func<bool> isTftpCompleted,
+        string imageFilePath,
+        string binFileName,
+        string actualHostIp,
+        string actualRouterIp,
+        string actualMask,
+        string? targetAdapter,
+        Func<string, CancellationToken, Task>? requestOperatorAction,
+        CancellationToken cancellationToken,
+        string? enableSecret,
+        IEnumerable<string>? candidatePasswords)
+    {
+        await ProgressAsync("\n=================================================================");
+        await ProgressAsync("   âš¡ RECUPERAÃ‡ÃƒO CISCO SÃ‰RIE 1100 / C1111 (IOS-XE ROMMON)");
+        await ProgressAsync("=================================================================");
+        await ProgressAsync("  Plataforma IOS-XE detectada: utilizando protocolo de inicializaÃ§Ã£o");
+        await ProgressAsync("  ROMMON de alta velocidade via 'boot tftp://' (sem tftpdnld).");
+        await ProgressAsync("=================================================================\n");
+
+        // 1. Configura ETHER_PORT=0 (GE 0/0/0 - WAN) e sincroniza variÃ¡veis
+        await ProgressAsync("[*] [Cisco 1100] Definindo interface de rede ROMMON (ETHER_PORT=0) e salvando variÃ¡veis...");
+        try { await session.SendCommandAsync("ETHER_PORT=0", TimeSpan.FromSeconds(3), cancellationToken); } catch { }
+        try { await session.SendCommandAsync("sync", TimeSpan.FromSeconds(3), cancellationToken); } catch { }
+
+        // 2. Programa registrador 0x2142 no ROMMON para ignorar senhas e startup-config corrompida
+        await ProgressAsync("[*] [Cisco 1100] Programando registrador 0x2142 no ROMMON (bypass de senha/startup-config)...");
+        try { await session.SendCommandAsync("confreg 0x2142", TimeSpan.FromSeconds(3), cancellationToken); } catch { }
+
+        // 3. InspeÃ§Ã£o preventiva de arquivos na bootflash:
+        await ProgressAsync("[*] [Cisco 1100] Verificando se a imagem alvo jÃ¡ reside na bootflash: ('dir bootflash:')...");
+        string dirBfRommon = string.Empty;
+        try
+        {
+            dirBfRommon = await session.SendCommandAsync("dir bootflash:", TimeSpan.FromSeconds(6), cancellationToken);
+            if (!string.IsNullOrWhiteSpace(dirBfRommon))
+            {
+                await ProgressAsync($"[Cisco 1100 BOOTFLASH]\n{dirBfRommon.Trim()}");
+            }
+        }
+        catch { }
+
+        bool imageAlreadyOnFlash = !string.IsNullOrWhiteSpace(dirBfRommon) &&
+            dirBfRommon.Contains(binFileName, StringComparison.OrdinalIgnoreCase);
+
+        if (imageAlreadyOnFlash)
+        {
+            await ProgressAsync($"\n[OK] [Cisco 1100] A imagem '{binFileName}' jÃ¡ existe na bootflash: do roteador!");
+            await ProgressAsync($"[*] [Cisco 1100] Dispensando transferÃªncia TFTP de rede e iniciando boot direto da Flash ('boot bootflash:{binFileName}')...");
+            _onProgress?.Invoke(40, "Fase B: Boot Direto Flash...", $"Carregando {binFileName} a partir da bootflash:...");
+            await session.SendRawAsync($"boot bootflash:{binFileName}\r", cancellationToken);
+            session.ResetPrompt();
+        }
+        else
+        {
+            // Testa conectividade ping no ROMMON antes do boot TFTP
+            await ProgressAsync($"[*] [Cisco 1100] Testando conectividade de rede com o notebook ({actualHostIp}) no ROMMON ('ping {actualHostIp}')...");
+            try
+            {
+                var pingRes = await session.SendCommandAsync($"ping {actualHostIp}", TimeSpan.FromSeconds(5), cancellationToken);
+                if (pingRes.Contains("!"))
+                {
+                    await ProgressAsync($"[OK] [Cisco 1100] Conectividade de rede (ping) confirmada com sucesso.");
+                }
+                else
+                {
+                    await ProgressAsync($"[AVISO] [Cisco 1100] Sem resposta imediata ao ping no ROMMON. Prosseguindo com boot TFTP...");
+                }
+            }
+            catch { }
+
+            await ProgressAsync($"\n[*] [Cisco 1100] Iniciando boot TFTP de recuperaÃ§Ã£o no ROMMON ('boot tftp://{actualHostIp}/{binFileName}')...");
+            _onProgress?.Invoke(35, "Fase B: Boot TFTP no ROMMON...", $"Requisitando {binFileName} via TFTP e carregando na DRAM...");
+
+            var bootCmd = $"boot tftp://{actualHostIp}/{binFileName}\r";
+            await session.SendRawAsync(bootCmd, cancellationToken);
+
+            // Monitora o download do arquivo via TFTP
+            var tftpTimeout = DateTime.UtcNow.AddMinutes(25);
+            var readBuf = new byte[4096];
+            var outputBuilder = new StringBuilder();
+            bool tftpStarted = false;
+
+            while (DateTime.UtcNow < tftpTimeout && !cancellationToken.IsCancellationRequested)
+            {
+                var bytesRead = await session.Transport.ReadAsync(readBuf, cancellationToken);
+                if (bytesRead > 0)
+                {
+                    var chunk = Encoding.ASCII.GetString(readBuf, 0, bytesRead);
+                    outputBuilder.Append(chunk);
+                    session.EmitRawOutput(chunk);
+
+                    var curText = outputBuilder.ToString();
+                    if (curText.Contains("Receiving", StringComparison.OrdinalIgnoreCase) ||
+                        curText.Contains("Loading", StringComparison.OrdinalIgnoreCase) ||
+                        curText.Contains("!"))
+                    {
+                        tftpStarted = true;
+                    }
+
+                    if (curText.Contains("ARP timeout", StringComparison.OrdinalIgnoreCase) ||
+                        curText.Contains("ARP failed", StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new DeviceSessionException(
+                            $"Falha de ARP no ROMMON: O Cisco 1100 nÃ£o obteve resposta no IP do Notebook ({actualHostIp}).\n" +
+                            $"â€¢ Conecte o cabo de rede Ethernet na porta GigabitEthernet 0/0/0 (Porta WAN) do Cisco 1100.\n" +
+                            $"â€¢ Verifique se o adaptador '{targetAdapter ?? "Ethernet"}' estÃ¡ com o IP {actualHostIp} e mÃ¡scara {actualMask}.");
+                    }
+
+                    if (curText.Contains("TFTP: timeout", StringComparison.OrdinalIgnoreCase) ||
+                        curText.Contains("No such file", StringComparison.OrdinalIgnoreCase) ||
+                        curText.Contains("permission denied", StringComparison.OrdinalIgnoreCase) ||
+                        curText.Contains("Open Error", StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new DeviceSessionException($"Falha no boot TFTP no Cisco 1100: {curText.Trim()}");
+                    }
+
+                    if (curText.Contains("Package header", StringComparison.OrdinalIgnoreCase) ||
+                        curText.Contains("Calculating SHA", StringComparison.OrdinalIgnoreCase) ||
+                        curText.Contains("Starting Linux kernel", StringComparison.OrdinalIgnoreCase) ||
+                        curText.Contains("System Bootstrap", StringComparison.OrdinalIgnoreCase) ||
+                        curText.Contains("Self decompressing", StringComparison.OrdinalIgnoreCase) ||
+                        curText.Contains("Restricted Rights", StringComparison.OrdinalIgnoreCase) ||
+                        curText.Contains("Cisco IOS Software", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await ProgressAsync("[OK] [Cisco 1100] TransferÃªncia TFTP finalizada! DescompressÃ£o e boot do IOS-XE iniciados.");
+                        break;
+                    }
+                }
+
+                if (isTftpCompleted() && tftpStarted)
+                {
+                    await ProgressAsync("[OK] [Cisco 1100] Servidor TFTP concluiu a entrega de 100% dos pacotes. Aguardando inicializaÃ§Ã£o do IOS-XE...");
+                    break;
+                }
+
+                await Task.Delay(100, cancellationToken);
+            }
+        }
+
+        // 4. Aguarda a inicializaÃ§Ã£o completa do Cisco IOS-XE
+        _onProgress?.Invoke(70, "Fase B: Inicializando IOS-XE...", "Aguardando descompressÃ£o e prompt operacional do Cisco IOS-XE (~3 a 5 min)...");
+        await ProgressAsync("[*] [Cisco 1100] Aguardando descompressÃ£o e inicializaÃ§Ã£o operacional completa do Cisco IOS-XE...");
+
+        await AguardarBootCiscoIOSAsync(
+            session,
+            TimeSpan.FromMinutes(8),
+            cancellationToken,
+            enableSecret,
+            candidatePasswords,
+            binFileName);
+
+        session.ResetPrompt();
+        try { await session.SendCommandAsync(string.Empty, TimeSpan.FromSeconds(5), cancellationToken); } catch { }
+
+        // 5. Entra em modo privilegiado e executa write erase
+        var postAdapter = new CiscoIOSAdapter(enableSecret, candidatePasswords);
+        await postAdapter.EnterPrivilegedExecAsync(session, candidatePasswords, cancellationToken);
+        try { await session.SendCommandAsync("terminal length 0", TimeSpan.FromSeconds(5), cancellationToken); } catch { }
+        try { await session.SendCommandAsync("terminal width 512", TimeSpan.FromSeconds(5), cancellationToken); } catch { }
+
+        await ProgressAsync("[*] [Cisco 1100] Apagando configuraÃ§Ãµes residuais e senhas da NVRAM ('write erase')...");
+        try
+        {
+            var weRes = await session.SendExpectAsync(
+                "write erase",
+                new StopCondition[]
+                {
+                    new StopCondition.Contains("confirm", "[confirm]"),
+                    new StopCondition.Prompt()
+                },
+                TimeSpan.FromSeconds(10),
+                cancellationToken);
+
+            if (weRes.Output.Contains("[confirm]", StringComparison.OrdinalIgnoreCase))
+            {
+                await session.WriteLineAsync(string.Empty, cancellationToken);
+            }
+            await Task.Delay(1000, cancellationToken);
+        }
+        catch { }
+
+        // 6. Assegura a persistÃªncia da imagem na bootflash:
+        var showDirPost = "";
+        try
+        {
+            showDirPost = await session.SendCommandAsync("dir bootflash:", TimeSpan.FromSeconds(15), cancellationToken);
+        }
+        catch { }
+
+        bool fileSavedInFlash = showDirPost.Contains(binFileName, StringComparison.OrdinalIgnoreCase);
+
+        if (!fileSavedInFlash)
+        {
+            await ProgressAsync($"[*] [Cisco 1100] Roteador inicializado na DRAM via TFTP. Gravando '{binFileName}' permanentemente na bootflash:...");
+            _onProgress?.Invoke(78, "Fase B: Gravando na bootflash:...", $"Copiando {binFileName} para a bootflash: do Cisco 1100...");
+
+            // Configura interface GigabitEthernet0/0/0 (cabo jÃ¡ conectado)
+            await ProgressAsync($"[*] [Cisco 1100] Configurando interface GigabitEthernet0/0/0 ({actualRouterIp} {actualMask}) no Cisco IOS-XE...");
+            await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(10), cancellationToken);
+            await session.SendCommandAsync("interface GigabitEthernet0/0/0", TimeSpan.FromSeconds(10), cancellationToken);
+            await session.SendCommandAsync("no shutdown", TimeSpan.FromSeconds(10), cancellationToken);
+            await session.SendCommandAsync($"ip address {actualRouterIp} {actualMask}", TimeSpan.FromSeconds(10), cancellationToken);
+            await session.SendCommandAsync("end", TimeSpan.FromSeconds(10), cancellationToken);
+            await Task.Delay(2000, cancellationToken);
+
+            // Limpa arquivos conflitantes se necessÃ¡rio
+            var availBytes = CiscoIOSFlashParser.ParseAvailableBytes(showDirPost);
+            var fileSize = new FileInfo(imageFilePath).Length;
+            var confFiles = CiscoIOSFlashParser.GetConflictingFirmwareFiles(showDirPost, binFileName);
+            if (confFiles.Count > 0 && (availBytes > 0 && availBytes < fileSize * 1.05))
+            {
+                await ProgressAsync($"[*] [Cisco 1100] EspaÃ§o livre na bootflash: reduzido. Removendo imagens antigas para gravar {binFileName}...");
+                foreach (var cf in confFiles)
+                {
+                    await DeleteFileFromFlashAsync(session, cf, "bootflash:", cancellationToken);
+                }
+            }
+
+            // Executa a cÃ³pia TFTP para a bootflash:
+            await ProgressAsync($"[*] [Cisco 1100] Solicitando cÃ³pia: copy tftp://{actualHostIp}/{binFileName} bootflash:{binFileName}...");
+            var copyCmd = $"copy tftp://{actualHostIp}/{binFileName} bootflash:{binFileName}";
+            await session.WriteLineAsync(copyCmd, cancellationToken);
+
+            var copyConds = new StopCondition[]
+            {
+                new StopCondition.LineRegex("confirm", PromptConfirmRegex),
+                new StopCondition.LineRegex("prompt", StrictPromptRegex),
+                new StopCondition.Contains("accessing", "Accessing tftp:"),
+                new StopCondition.Contains("loading", "Loading "),
+                new StopCondition.Contains("ok", "[OK"),
+                new StopCondition.Contains("bytes_copied", "bytes copied"),
+                new StopCondition.Contains("error", "%Error"),
+                new StopCondition.Contains("error_sp", "% Error"),
+                new StopCondition.Contains("timed_out", "Timed out"),
+                new StopCondition.Contains("socket_err", "Socket error"),
+                new StopCondition.Contains("no_route", "No route to host")
+            };
+
+            var confirmDeadline = DateTime.UtcNow.AddSeconds(45);
+            while (DateTime.UtcNow < confirmDeadline && !cancellationToken.IsCancellationRequested)
+            {
+                try
+                {
+                    var exp = await session.WaitForAsync(copyConds, TimeSpan.FromSeconds(5), cancellationToken);
+                    if (exp.Matched is StopCondition.LineRegex lrConf && lrConf.Name == "confirm")
+                    {
+                        await session.WriteLineAsync(string.Empty, cancellationToken);
+                        await Task.Delay(300, cancellationToken);
+                        continue;
+                    }
+                    if (exp.Matched is StopCondition.Contains c && (c.Text == "Accessing tftp:" || c.Text == "Loading "))
+                    {
+                        break;
+                    }
+                    if (exp.Matched is StopCondition.Contains cErr && (cErr.Text == "%Error" || cErr.Text == "% Error" || cErr.Text == "Timed out"))
+                    {
+                        throw new DeviceSessionException($"Falha ao iniciar TFTP para bootflash: no Cisco 1100: {exp.Output.Trim()}");
+                    }
+                }
+                catch (SessionTimeoutException) { break; }
+            }
+
+            var copyTimeout = DateTime.UtcNow.AddMinutes(20);
+            while (DateTime.UtcNow < copyTimeout && !cancellationToken.IsCancellationRequested)
+            {
+                try
+                {
+                    var exp = await session.WaitForAsync(copyConds, TimeSpan.FromSeconds(5), cancellationToken);
+                    if (exp.Matched is StopCondition.LineRegex lrConf && lrConf.Name == "confirm")
+                    {
+                        await session.WriteLineAsync(string.Empty, cancellationToken);
+                        continue;
+                    }
+                    if (exp.Matched is StopCondition.Contains cOk && (cOk.Text == "[OK" || cOk.Text == "bytes copied"))
+                    {
+                        await ProgressAsync("[OK] [Cisco 1100] Imagem gravada com sucesso na bootflash:.");
+                        break;
+                    }
+                    if (exp.Matched is StopCondition.LineRegex lr && lr.Name == "prompt")
+                    {
+                        break;
+                    }
+                }
+                catch (SessionTimeoutException) { }
+            }
+        }
+
+        // 7. Configura boot system e registrador 0x2102 persistentes
+        await ProgressAsync($"[*] [Cisco 1100] Configurando boot system persistente 'boot system bootflash:{binFileName}' e registrador normal 0x2102...");
+        await session.SendCommandAsync("configure terminal", TimeSpan.FromSeconds(10), cancellationToken);
+        await session.SendCommandAsync("no boot system", TimeSpan.FromSeconds(10), cancellationToken);
+        await session.SendCommandAsync($"boot system bootflash:{binFileName}", TimeSpan.FromSeconds(10), cancellationToken);
+        await session.SendCommandAsync("config-register 0x2102", TimeSpan.FromSeconds(10), cancellationToken);
+        await session.SendCommandAsync("no ip domain-lookup", TimeSpan.FromSeconds(10), cancellationToken);
+        await session.SendCommandAsync("no ip domain lookup", TimeSpan.FromSeconds(10), cancellationToken);
+        await session.SendCommandAsync("end", TimeSpan.FromSeconds(10), cancellationToken);
+        await session.SendCommandAsync("write memory", TimeSpan.FromSeconds(30), cancellationToken);
+
+        // 8. Habilita a porta LAN GigabitEthernet0/1/0 e solicita troca de cabo ao operador
+        await ProgressAsync("[*] [Cisco 1100] Habilitando porta LAN GigabitEthernet0/1/0 ('no shutdown')...");
+        await CiscoIOSAdapter.EnsureLanInterfaceNoShutdownAsync(session, "GigabitEthernet0/1/0", cancellationToken);
+
+        _onProgress?.Invoke(92, "Fase B: Troca de Cabo de Rede...", "Aguardando conexÃ£o do cabo na porta LAN (GE 0/1/0)...");
+        await ProgressAsync($"\n[AVISO] Solicitando alteraÃ§Ã£o do cabo de rede da porta WAN (GE 0/0/0) para a porta LAN (GE 0/1/0)...");
+
+        if (requestOperatorAction is not null)
+        {
+            await requestOperatorAction(
+                "âœ… FIRMWARE RECUPERADO COM SUCESSO!\n\n" +
+                "O Cisco IOS-XE jÃ¡ estÃ¡ ativo e inicializado na versÃ£o alvo.\n\n" +
+                "ðŸ‘‰ ALTERE AGORA O CABO DE REDE PARA A PORTA:\n" +
+                "ðŸŸ¢ GigabitEthernet0/1/0 (Porta GE 0/1/0 - LAN do Cliente)\n\n" +
+                "Para prosseguir com o Provisionamento e os Testes de ICMP (LAN/WAN/WEB), Telnet e Teste de Banda.\n\n" +
+                "Clique em OK assim que o cabo estiver conectado na porta GE 0/1/0.",
+                cancellationToken);
+
+            _onProgress?.Invoke(94, "Fase B: Sincronizando Porta LAN...", "Aguardando link ativo na porta GE 0/1/0...");
+            await ProgressAsync("[*] Operador confirmou a troca do cabo para a porta LAN (GE 0/1/0). Sincronizando link...");
+
+            await CiscoIOSAdapter.EnforceLanPortConnectedAsync(session, "GigabitEthernet0/1/0", requestOperatorAction, ProgressAsync, cancellationToken, _onProgress);
+        }
+
+        _onProgress?.Invoke(100, "Fase B ConcluÃ­da!", $"Cisco 1100 recuperado e porta LAN sincronizada com sucesso ({binFileName}).");
         return true;
     }
 }

@@ -332,4 +332,64 @@ public class CiscoIOSAdapterTests
         Assert.Contains(progressStatus, s => s.Title.Contains("Troca de Cabo"));
         Assert.Contains(progressStatus, s => s.Title == "Porta LAN Conectada!");
     }
+
+    [Fact]
+    public async Task EnforceLanPortConnectedAsync_Cisco1100_Vlan1UpProtocolDown_NaoDetectaComoUpENotificaOperador()
+    {
+        var iteration = 0;
+        var transport = new ScriptedTransport(
+            cmd =>
+            {
+                if (cmd.Contains("show ip interface brief"))
+                {
+                    iteration++;
+                    if (iteration <= 2)
+                    {
+                        // Cabo desconectado: Switchport em down/down e Vlan1 em up/down (status up, line protocol down)
+                        return "Interface              IP-Address      OK? Method Status                Protocol\r\n" +
+                               "GigabitEthernet0/0/0   unassigned      YES unset  down                  down    \r\n" +
+                               "GigabitEthernet0/1/0   unassigned      YES unset  down                  down    \r\n" +
+                               "Vlan1                  200.250.163.41  YES manual up                    down    \r\n" +
+                               "Router#";
+                    }
+                    else
+                    {
+                        // Operador conectou o cabo na porta GE 0/1/0: switchport e SVI sobem para up/up
+                        return "Interface              IP-Address      OK? Method Status                Protocol\r\n" +
+                               "GigabitEthernet0/0/0   unassigned      YES unset  down                  down    \r\n" +
+                               "GigabitEthernet0/1/0   unassigned      YES unset  up                    up      \r\n" +
+                               "Vlan1                  200.250.163.41  YES manual up                    up      \r\n" +
+                               "Router#";
+                    }
+                }
+                return string.Empty;
+            },
+            initialOutput: "Router#");
+
+        await using var session = await ConnectAsync(transport, enableSecret: null);
+
+        var operatorNotified = false;
+        var progressLogs = new List<string>();
+        var progressStatus = new List<(int Pct, string Title, string Sub)>();
+
+        var result = await CiscoIOSAdapter.EnforceLanPortConnectedAsync(
+            session,
+            "Vlan1",
+            requestOperatorAction: (msg, ct) =>
+            {
+                operatorNotified = true;
+                Assert.Contains("NENHUM CABO DETECTADO NA PORTA LAN", msg);
+                return Task.CompletedTask;
+            },
+            progress: msg => { progressLogs.Add(msg); return Task.CompletedTask; },
+            cancellationToken: default,
+            onProgress: (pct, title, sub) => progressStatus.Add((pct, title, sub)),
+            pollDelayMs: 0);
+
+        Assert.True(result);
+        Assert.True(operatorNotified);
+        Assert.Contains(progressLogs, p => p.Contains("[AGUARDANDO CABO LAN]"));
+        Assert.Contains(progressLogs, p => p.Contains("[OK] Link físico confirmado na porta LAN"));
+        Assert.Contains(progressStatus, s => s.Title == "Porta LAN Conectada!");
+    }
 }

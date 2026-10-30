@@ -305,5 +305,23 @@ public class CiscoSaipConfigModeTests
         Assert.Contains(cmds, c => c.StartsWith("snmp-server"));
         Assert.Contains(cmds, c => c.Contains("access-class BLOQUEIO_TELNET in"));
     }
+
+    [Fact]
+    public void GenerateCommands_Cisco841And921_IncludesNoDescriptionOnUnusedSwitchportsAndVlan()
+    {
+        var circuit = SampleCircuit();
+
+        // 921
+        var cmds921 = CiscoSaipConfigurator.GenerateCommands(circuit, "GigabitEthernet 4", "GigabitEthernet 5");
+        Assert.Contains("interface GigabitEthernet0", cmds921);
+        Assert.Contains("interface Vlan1", cmds921);
+        Assert.Contains(" no description", cmds921);
+
+        // 841
+        var cmds841 = CiscoSaipConfigurator.GenerateCommands(circuit, "GigabitEthernet0/4", "GigabitEthernet0/5");
+        Assert.Contains("interface GigabitEthernet0/0", cmds841);
+        Assert.Contains("interface Vlan1", cmds841);
+        Assert.Contains(" no description", cmds841);
+    }
 }
 

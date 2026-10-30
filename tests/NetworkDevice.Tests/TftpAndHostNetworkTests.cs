@@ -46,6 +46,21 @@ public class TftpAndHostNetworkTests
     }
 
     [Fact]
+    public void GetAllPhysicalEthernetAdapters_Returns_Detailed_List()
+    {
+        var adapters = HostNetworkManager.GetAllPhysicalEthernetAdapters(includeWirelessAsFallback: true);
+        Assert.NotNull(adapters);
+        Assert.NotEmpty(adapters);
+        foreach (var adapter in adapters)
+        {
+            Assert.False(string.IsNullOrWhiteSpace(adapter.Name));
+            Assert.DoesNotContain("Loopback", adapter.Name, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("Virtual", adapter.Description, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("WSL", adapter.Description, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public void SerialPorts_Available_Returns_NonNull_List()
     {
         var ports = NetworkDevice.Protocols.Serial.SerialPorts.Available();

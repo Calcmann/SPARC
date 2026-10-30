@@ -47,6 +47,8 @@ LDA-IP-02580#";
     }
 
     [Theory]
+    [InlineData("System image file is \"bootflash:c1100-universalk9.17.09.04a.SPA.bin\"", "bootflash:")]
+    [InlineData("Directory of bootflash:/", "bootflash:")]
     [InlineData("System image file is \"usbflash0:c1900-universalk9-mz.SPA.157-3.M9.bin\"", "usbflash0:")]
     [InlineData("249840K bytes of USB Flash usbflash0 (Read/Write)", "usbflash0:")]
     [InlineData("Directory of flash0:/", "flash0:")]

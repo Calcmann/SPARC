@@ -437,7 +437,7 @@ public static class ClaroCpeCatalogService
             return _catalog.FirstOrDefault(m => m.Id == "cisco.c841.kit2");
         if (clean.Contains("921", StringComparison.OrdinalIgnoreCase) || clean.Contains("Série 900", StringComparison.OrdinalIgnoreCase))
             return _catalog.FirstOrDefault(m => m.Id == "cisco.c921.kit1");
-        if (clean.Contains("1111", StringComparison.OrdinalIgnoreCase))
+        if (clean.Contains("1111", StringComparison.OrdinalIgnoreCase) || clean.Contains("1100", StringComparison.OrdinalIgnoreCase))
             return _catalog.FirstOrDefault(m => m.Id == "cisco.c1111.kit3");
         if (clean.Contains("1900", StringComparison.OrdinalIgnoreCase) || clean.Contains("1905", StringComparison.OrdinalIgnoreCase) || clean.Contains("1921", StringComparison.OrdinalIgnoreCase) || clean.Contains("1941", StringComparison.OrdinalIgnoreCase))
             return _catalog.FirstOrDefault(m => m.Id == "cisco.c1900.legado");

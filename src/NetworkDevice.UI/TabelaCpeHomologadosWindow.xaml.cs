@@ -284,32 +284,44 @@ public sealed class CpeModelDisplayItem
 {
     public ClaroCpeModelInfo Model { get; }
 
-    public string Fabricante => Model.Fabricante;
-    public string ModeloNome => Model.ModeloNome;
-    public string Portfolio => Model.Portfolio;
-    public string Kit => Model.Kit;
-    public string PartNumber => Model.PartNumber;
-    public string PartNumberPrincipal => Model.PartNumber.Split('\n').FirstOrDefault() ?? Model.PartNumber;
-    public string Sap => Model.Sap;
-    public string SapFormatado => "SAP: " + (Model.Sap.Split('\n').FirstOrDefault() ?? Model.Sap);
-    public string TipoAcesso => Model.TipoAcesso;
-    public int BldMaxMbps => Model.BldMaxMbps;
-    public int MplsMaxMbps => Model.MplsMaxMbps;
-    public string Descricao => Model.Descricao;
+    public string Fabricante { get => Model.Fabricante; set { } }
+    public string ModeloNome { get => Model.ModeloNome; set { } }
+    public string Portfolio { get => Model.Portfolio; set { } }
+    public string Kit { get => Model.Kit; set { } }
+    public string PartNumber { get => Model.PartNumber; set { } }
+    public string PartNumberPrincipal { get => Model.PartNumber.Split('\n').FirstOrDefault() ?? Model.PartNumber; set { } }
+    public string Sap { get => Model.Sap; set { } }
+    public string SapFormatado { get => "SAP: " + (Model.Sap.Split('\n').FirstOrDefault() ?? Model.Sap); set { } }
+    public string TipoAcesso { get => Model.TipoAcesso; set { } }
+    public int BldMaxMbps { get => Model.BldMaxMbps; set { } }
+    public int MplsMaxMbps { get => Model.MplsMaxMbps; set { } }
+    public string Descricao { get => Model.Descricao; set { } }
 
-    public string BldFormatado => Model.TipoAcesso.Equals("TDM", StringComparison.OrdinalIgnoreCase)
-        ? $"{Model.BldMaxMbps} Mbps (TDM)"
-        : Model.BldMaxMbps >= 1000 ? $"{Model.BldMaxMbps / 1000.0:F0} Gbps" : $"{Model.BldMaxMbps} Mbps";
+    public string BldFormatado
+    {
+        get => Model.TipoAcesso.Equals("TDM", StringComparison.OrdinalIgnoreCase)
+            ? $"{Model.BldMaxMbps} Mbps (TDM)"
+            : Model.BldMaxMbps >= 1000 ? $"{Model.BldMaxMbps / 1000.0:F0} Gbps" : $"{Model.BldMaxMbps} Mbps";
+        set { }
+    }
 
-    public string MplsFormatado => Model.TipoAcesso.Equals("TDM", StringComparison.OrdinalIgnoreCase)
-        ? $"{Model.MplsMaxMbps} Mbps (TDM)"
-        : Model.MplsMaxMbps >= 1000 ? $"{Model.MplsMaxMbps / 1000.0:F0} Gbps" : $"{Model.MplsMaxMbps} Mbps";
+    public string MplsFormatado
+    {
+        get => Model.TipoAcesso.Equals("TDM", StringComparison.OrdinalIgnoreCase)
+            ? $"{Model.MplsMaxMbps} Mbps (TDM)"
+            : Model.MplsMaxMbps >= 1000 ? $"{Model.MplsMaxMbps / 1000.0:F0} Gbps" : $"{Model.MplsMaxMbps} Mbps";
+        set { }
+    }
 
-    public Brush TipoAcessoColor => Model.TipoAcesso.Equals("TDM", StringComparison.OrdinalIgnoreCase)
-        ? new SolidColorBrush(Color.FromRgb(251, 146, 60)) // Laranja
-        : new SolidColorBrush(Color.FromRgb(56, 189, 248)); // Azul ciano
+    public Brush TipoAcessoColor
+    {
+        get => Model.TipoAcesso.Equals("TDM", StringComparison.OrdinalIgnoreCase)
+            ? new SolidColorBrush(Color.FromRgb(251, 146, 60)) // Laranja
+            : new SolidColorBrush(Color.FromRgb(56, 189, 248)); // Azul ciano
+        set { }
+    }
 
-    public bool IsCompativelComSimulacao { get; private set; } = true;
+    public bool IsCompativelComSimulacao { get; set; } = true;
 
     public CpeModelDisplayItem(ClaroCpeModelInfo model)
     {

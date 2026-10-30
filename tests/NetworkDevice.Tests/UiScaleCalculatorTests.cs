@@ -19,14 +19,15 @@ public class UiScaleCalculatorTests
     }
 
     [Fact]
-    public void CalculateRecommendedScale_14Inch1080p_125PercentDpi_Returns90Percent()
+    public void CalculateRecommendedScale_14Inch1080p_125PercentDpi_Returns88Percent()
     {
         // 14" 1080p com escala do Windows em 125%:
         // Resolução lógica: 1920/1.25 = 1536 DIP, 1080/1.25 = 864 DIP.
         // Área útil (WorkArea): ~1536 x 816 DIP.
+        // Escala 0.88 garante que a interface de 930 DIP caiba confortavelmente sem barra de rolagem.
         double scale = UiScaleCalculator.CalculateRecommendedScale(1536, 816);
 
-        Assert.Equal(0.90, scale);
+        Assert.Equal(0.88, scale);
     }
 
     [Fact]
@@ -55,8 +56,8 @@ public class UiScaleCalculatorTests
 
         Assert.True(height <= 672 - 24);
         Assert.True(width <= 1280 - 24);
-        Assert.True(height >= 520);
-        Assert.True(width >= 780);
+        Assert.True(height >= 560);
+        Assert.True(width >= 800);
     }
 
     [Fact]
@@ -64,8 +65,8 @@ public class UiScaleCalculatorTests
     {
         var (width, height) = UiScaleCalculator.CalculateWindowBounds(1920, 1032);
 
-        Assert.Equal(1060, width);
-        Assert.Equal(820, height);
+        Assert.Equal(1080, width);
+        Assert.Equal(930, height);
     }
 
     [Fact]

@@ -73,7 +73,14 @@ public static class FirmwareModelMap
             "hpe-msr1002",
             "HPE MSR 1002 / 1003",
             ".ipe",
-            "*.ipe;*.bin")
+            "*.ipe;*.bin"),
+
+        [DeviceSeries.Isr1100] = new(
+            DeviceSeries.Isr1100,
+            "cisco-c1100",
+            "Cisco Série 1100 / C1111-4P",
+            ".bin",
+            "*.bin")
     };
 
     public static IReadOnlyCollection<FirmwareModelDefinition> AllDefinitions => BySeries.Values;
@@ -102,6 +109,7 @@ public static class FirmwareModelMap
 
         var t = tag.ToLowerInvariant();
         if (t.Contains("fgt") || t.Contains("forti") || t.Contains("40f")) return DeviceSeries.FortiGate40F;
+        if (t.Contains("c1100") || t.Contains("c1111") || t.Contains("1111") || t.Contains("1100")) return DeviceSeries.Isr1100;
         if (t.Contains("c900") || t.Contains("921")) return DeviceSeries.Isr921;
         if (t.Contains("c841") || t.Contains("c800") || t.Contains("841") || t.Contains("c800m")) return DeviceSeries.Isr841;
         if (t.Contains("c1900") || t.Contains("1921") || t.Contains("1941") || t.Contains("1900") || t.Contains("1905")) return DeviceSeries.Series1900;

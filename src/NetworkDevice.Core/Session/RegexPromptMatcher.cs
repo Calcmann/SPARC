@@ -5,7 +5,7 @@ namespace NetworkDevice.Core.Session;
 public sealed class RegexPromptMatcher : IPromptMatcher
 {
     private static readonly Regex UniversalPromptRegex = new(
-        @"^(?:(?<rommon>rommon(?:\s+\d+)?\s*>)|(?<cisco>[A-Za-z0-9_.+()/-]+?(?:\([A-Za-z0-9_.+()/-]+\))?[#>])|\[[~*]?(?<hpe_sys>[A-Za-z0-9_.+()/-]+?)\]|<(?<hpe_user>[A-Za-z0-9_.+()/-]+?)>|(?<forti>[A-Za-z0-9_.\-]+(?:\s+\([^()\r\n]*\))?\s*[#$]))$",
+        @"^(?:(?<rommon>rommon(?:\s+\d+)?\s*>)|(?<cisco>[A-Za-z0-9_.+()/-]+?(?:\([A-Za-z0-9_.+()/-]+\))?[#>])|\[[~*]?(?<hpe_sys>[A-Za-z0-9_.+()/-]+?)\]|<(?<hpe_user>[A-Za-z0-9_.+()/-]+?)>|(?<forti>(?:[A-Za-z0-9_.\-]+(?:\s+\([^()\r\n]*\))?|[A-Za-z0-9_.\-]+)\s*[#$]))$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private readonly Regex _regex;
@@ -45,7 +45,20 @@ public sealed class RegexPromptMatcher : IPromptMatcher
             trimmed.StartsWith("[onboard", StringComparison.OrdinalIgnoreCase) ||
             trimmed.Equals("[a]", StringComparison.OrdinalIgnoreCase) ||
             trimmed.Contains("Press 'a' to accept", StringComparison.OrdinalIgnoreCase) ||
-            trimmed.Contains("press 'a' to accept", StringComparison.OrdinalIgnoreCase))
+            trimmed.Contains("press 'a' to accept", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("NP6XLITE", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("NP6XLITE#", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("Initializing", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("Booting OS", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("time out", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("resetting", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("Enter C,R,T,F,I,B,Q,or H", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("Enter Selection:", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("FortiBootLoader", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("Please accept the terms", StringComparison.OrdinalIgnoreCase) ||
+            (trimmed.Length <= 3 && trimmed.StartsWith("[") && trimmed.EndsWith("]")) ||
+            trimmed.Contains("display configuration menu", StringComparison.OrdinalIgnoreCase) ||
+            (trimmed.StartsWith("FortiGate-", StringComparison.OrdinalIgnoreCase) && !trimmed.EndsWith("#") && !trimmed.EndsWith("$")))
             return null;
 
         var m = _regex.Match(trimmed);
@@ -63,7 +76,7 @@ public sealed class RegexPromptMatcher : IPromptMatcher
                  : trimmed.Contains("(config") ? ExecMode.GlobalConfig
                  : ExecMode.PrivilegedExec;
         }
-        else if (trimmed.EndsWith(">"))
+        else if (trimmed.EndsWith(">") || trimmed.EndsWith("$"))
         {
             mode = ExecMode.UserExec;
         }

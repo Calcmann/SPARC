@@ -42,14 +42,16 @@ interface GigabitEthernet0/0
 #
 ip route-static 0.0.0.0 0.0.0.0 201.90.204.21
 ip route-static 10.0.0.0 255.0.0.0 192.168.1.1 description BACKUP
+ipv6 route-static ::/0 2001:db8::1
 #
 return
 ";
         var routes = HpeSaipConfigurator.ParseStaticRoutes(config);
 
-        Assert.Equal(2, routes.Count);
+        Assert.Equal(3, routes.Count);
         Assert.Contains("ip route-static 0.0.0.0 0.0.0.0 201.90.204.21", routes);
         Assert.Contains("ip route-static 10.0.0.0 255.0.0.0 192.168.1.1 description BACKUP", routes);
+        Assert.Contains("ipv6 route-static ::/0 2001:db8::1", routes);
     }
 
     [Fact]
@@ -58,14 +60,16 @@ return
         var routes = new[]
         {
             "ip route-static 0.0.0.0 0.0.0.0 201.90.204.21",
-            "ip route-static 10.0.0.0 255.0.0.0 192.168.1.1"
+            "ip route-static 10.0.0.0 255.0.0.0 192.168.1.1",
+            "ipv6 route-static ::/0 2001:db8::1"
         };
 
         var undos = HpeSaipConfigurator.GenerateUndoStaticRoutes(routes);
 
-        Assert.Equal(2, undos.Count);
+        Assert.Equal(3, undos.Count);
         Assert.Equal("undo ip route-static 0.0.0.0 0.0.0.0 201.90.204.21", undos[0]);
         Assert.Equal("undo ip route-static 10.0.0.0 255.0.0.0 192.168.1.1", undos[1]);
+        Assert.Equal("undo ipv6 route-static ::/0 2001:db8::1", undos[2]);
     }
 
     [Fact]

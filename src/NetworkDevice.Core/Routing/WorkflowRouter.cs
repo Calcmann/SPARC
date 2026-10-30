@@ -77,6 +77,13 @@ public static class WorkflowRouter
             (DeviceManufacturer.Cisco, DeviceSeries.Isr841, WorkflowType.FirmwareRecovery) =>
                 "Cisco Série 800 / C841M — Recuperação de IOS C841 via ROMMON",
 
+            (DeviceManufacturer.Cisco, DeviceSeries.Isr1100, WorkflowType.Provisioning) =>
+                "Cisco Série 1100 / C1111-4P — Provisionamento Canônico Cisco IOS-XE",
+            (DeviceManufacturer.Cisco, DeviceSeries.Isr1100, WorkflowType.PasswordRecovery) =>
+                "Cisco Série 1100 / C1111-4P — Recuperação de Senha ROMMON com Interrupção Break",
+            (DeviceManufacturer.Cisco, DeviceSeries.Isr1100, WorkflowType.FirmwareRecovery) =>
+                "Cisco Série 1100 / C1111-4P — Recuperação de IOS via ROMMON TFTP",
+
             // Fortinet FortiGate 40F (aditivo — braços novos antes do fallback; demais inalterados).
             (DeviceManufacturer.Fortinet, DeviceSeries.FortiGate40F, WorkflowType.Provisioning) =>
                 "Fortinet FortiGate 40F — Provisionamento Canônico FortiOS",

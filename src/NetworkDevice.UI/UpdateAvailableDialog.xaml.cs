@@ -22,9 +22,28 @@ public partial class UpdateAvailableDialog : Window
 
         TxtVersaoAtual.Text = $"v{currentVersion}";
         TxtVersaoNova.Text = $"v{_release.Version}";
-        TxtReleaseNotes.Text = string.IsNullOrWhiteSpace(_release.ReleaseNotes)
-            ? "Atualização recomendada com melhorias de estabilidade, novas funções e compatibilidade."
-            : _release.ReleaseNotes;
+
+        if (_release.IsDowngrade)
+        {
+            Title = "SPARC — Restauração de Versão Anterior (Downgrade)";
+            TxtHeaderIcon.Text = "↩️";
+            BorderHeaderIcon.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(120, 53, 15));
+            TxtHeaderTitle.Text = "Restauração de Versão Anterior Homologada";
+            TxtHeaderTitle.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(251, 191, 36));
+            TxtSubHeader.Text = "O repositório oficial determinou a restauração temporária de uma versão anterior.";
+            TxtLabelVersaoNova.Text = "Versão Alvo (Restauração / Downgrade)";
+            BtnAtualizarAgora.Content = "⚡ Restaurar Versão e Reiniciar";
+            BtnAtualizarAgora.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(217, 119, 6));
+            TxtReleaseNotes.Text = string.IsNullOrWhiteSpace(_release.ReleaseNotes)
+                ? "Restauração de versão homologada solicitada pelo administrador para recuperar estabilidade ou funcionalidades prévias."
+                : _release.ReleaseNotes;
+        }
+        else
+        {
+            TxtReleaseNotes.Text = string.IsNullOrWhiteSpace(_release.ReleaseNotes)
+                ? "Atualização recomendada com melhorias de estabilidade, novas funções e compatibilidade."
+                : _release.ReleaseNotes;
+        }
     }
 
     private void BtnLembrarMaisTarde_Click(object sender, RoutedEventArgs e)

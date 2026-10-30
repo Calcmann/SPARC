@@ -108,6 +108,8 @@ public static class WorkspaceManager
         Directory.CreateDirectory(Path.Combine(targetFullPath, "backups"));
         Directory.CreateDirectory(Path.Combine(targetFullPath, "backups", "Relatorios"));
         Directory.CreateDirectory(Path.Combine(targetFullPath, "backups", "Certidoes_Y1564"));
+        Directory.CreateDirectory(Path.Combine(targetFullPath, "backups", "Atividades"));
+        Directory.CreateDirectory(Path.Combine(targetFullPath, "logs"));
 
         File.Copy(sourceExe, targetExe, overwrite: true);
         SaveWorkspaceRoot(targetFullPath);

@@ -97,4 +97,43 @@ public sealed class ClaroCpeCatalogTests
             Assert.True(rec.BldMaxMbps >= 500, $"Modelo recomendado {rec.ModeloNome} tem limite {rec.BldMaxMbps} < 500 Mbps!");
         }
     }
+
+    [Fact]
+    public void GetCatalog_ContainsCisco1111Kit3()
+    {
+        var catalog = ClaroCpeCatalogService.GetCatalog();
+        var c1111 = catalog.FirstOrDefault(m => m.Id == "cisco.c1111.kit3");
+        Assert.NotNull(c1111);
+        Assert.Equal("C1111-4P-BR", c1111.PartNumber);
+        Assert.Equal(850, c1111.BldMaxMbps);
+        Assert.Equal(650, c1111.MplsMaxMbps);
+        Assert.Contains("cisco.c1111.break", c1111.TagsSpacCompatíveis);
+    }
+
+    [Fact]
+    public void FindByTagOrName_MatchesC1111And1100()
+    {
+        var m1 = ClaroCpeCatalogService.FindByTagOrName("cisco.c1111.break");
+        Assert.NotNull(m1);
+        Assert.Equal("cisco.c1111.kit3", m1.Id);
+
+        var m2 = ClaroCpeCatalogService.FindByTagOrName("Cisco Série 1100 / C1111-4P");
+        Assert.NotNull(m2);
+        Assert.Equal("cisco.c1111.kit3", m2.Id);
+    }
+
+    [Theory]
+    [InlineData(500, true)]
+    [InlineData(850, true)]
+    [InlineData(900, false)]
+    public void ValidarCompatibilidadeBanda_Cisco1111_BldLimits(double bandaMbps, bool expected)
+    {
+        var circuit = new SaipCircuitData
+        {
+            TipoServico = SaipServiceType.BusinessLinkDirect,
+            BandaMbpsNominal = bandaMbps
+        };
+        var result = ClaroCpeCatalogService.ValidarCompatibilidadeBanda("cisco.c1111.break", circuit);
+        Assert.Equal(expected, result.IsCompativel);
+    }
 }

@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using NetworkDevice.Cisco;
 using NetworkDevice.Core.Recovery;
 using NetworkDevice.Core.Session;
@@ -31,6 +31,7 @@ public class CiscoIOSRecoveryTests
                 "enable" => new[] { "Router#\r\n" },
                 "write erase" => new[] { "Erasing the nvram filesystem will remove all configuration files! Continue? [confirm]\r\n", "Router#\r\n" },
                 "configure terminal" => new[] { "Router(config)#\r\n" },
+            "no ip domain-lookup" => new[] { "Router(config)#\r\n" },
                 "config-register 0x2102" => new[] { "Router(config)#\r\n" },
                 "end" => new[] { "Router#\r\n" },
                 "write memory" => new[] { "Building configuration...\r\n[OK]\r\nRouter#\r\n" },
@@ -135,6 +136,7 @@ public class CiscoIOSRecoveryTests
                 "write erase" => new[] { "Erasing the nvram filesystem will remove all configuration files! Continue? [confirm]\r\n" },
                 "" => new[] { "Router#\r\n" },
                 "configure terminal" => new[] { "Router(config)#\r\n" },
+            "no ip domain-lookup" => new[] { "Router(config)#\r\n" },
                 "config-register 0x2102" => new[] { "Router(config)#\r\n" },
                 "end" => new[] { "Router#\r\n" },
                 "write memory" => new[] { "Building configuration...\r\n[OK]\r\nRouter#\r\n" },
@@ -158,6 +160,41 @@ public class CiscoIOSRecoveryTests
         Assert.False(reloadCalled);
         Assert.DoesNotContain("confreg 0x2142", transport.Commands);
         Assert.Contains("write erase", transport.Commands);
+    }
+
+    [Fact]
+    public async Task RecoverAndResetAsync_WhenForceReloadTrue_ExecutesVlanDeleteAndReload()
+    {
+        var transport = new RecoverySimTransport(
+            responder: cmd => cmd switch
+            {
+                "enable" => new[] { "Router#\r\n" },
+                "delete /force flash:vlan.dat" => new[] { "%Error deleting flash:vlan.dat (No such file or directory)\r\nRouter#\r\n" },
+                "delete /force bootflash:vlan.dat" => new[] { "Router#\r\n" },
+                "delete /force nvram:vlan.dat" => new[] { "Router#\r\n" },
+                "write erase" => new[] { "Erasing the nvram filesystem will remove all configuration files! Continue? [confirm]\r\n" },
+                "" => new[] { "Router#\r\n" },
+                "configure terminal" => new[] { "Router(config)#\r\n" },
+                "no ip domain-lookup" => new[] { "Router(config)#\r\n" },
+                "config-register 0x2102" => new[] { "Router(config)#\r\n" },
+                "end" => new[] { "Router#\r\n" },
+                "reload" => new[] { "System configuration has been modified. Save? [yes/no]: " },
+                "no" => new[] { "Proceed with reload? [confirm] \r\n" },
+                _ => Array.Empty<string>()
+            },
+            initialOutput: "Router>\r\n");
+
+        await using var session = new DeviceSession(transport, new SessionOptions());
+        var recovery = new CiscoIOSRecovery(
+            bootWait: TimeSpan.FromSeconds(2),
+            commandTimeout: TimeSpan.FromSeconds(2),
+            verifyTimeout: TimeSpan.FromSeconds(2));
+
+        await recovery.RecoverAndResetAsync(session, (_, _) => Task.CompletedTask, forceReload: true);
+
+        Assert.Contains("delete /force flash:vlan.dat", transport.Commands);
+        Assert.Contains("write erase", transport.Commands);
+        Assert.Contains("reload", transport.Commands);
     }
 
     [Fact]
@@ -691,7 +728,12 @@ public class CiscoIOSRecoveryTests
                 return 0;
 
             if (string.IsNullOrEmpty(_remainder))
-                _remainder = _pending.Dequeue();
+            {
+                var sb = new StringBuilder();
+                while (_pending.Count > 0)
+                    sb.Append(_pending.Dequeue());
+                _remainder = sb.ToString();
+            }
 
             var bytes = Encoding.UTF8.GetBytes(_remainder);
             if (bytes.Length <= buffer.Length)
@@ -756,5 +798,112 @@ public class CiscoIOSRecoveryTests
         public Task CloseAsync() => Task.CompletedTask;
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    
+
+    
+
+    
+
+    [Fact]
+    public async Task UpgradeViaRommonTftpAsync_Cisco1100_WhenTargetOnFlash_BootsDirectlyAndNeverUsesTftpdnld()
+    {
+        var tempBin = Path.Combine(Path.GetTempPath(), "c1100-universalk9.17.15.04c.SPA.bin");
+        File.WriteAllBytes(tempBin, new byte[1024]);
+
+        try
+        {
+            var isBooted = false;
+            var transport = new RecoverySimTransport(
+                responder: cmd =>
+                {
+                    if (cmd.StartsWith("boot bootflash:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        isBooted = true;
+                        return new[] { "Package header rev 3 structure detected\r\nCisco IOS Software, Cupertino\r\nPress RETURN to get started!\r\n" };
+                    }
+                    if (cmd == "dir bootflash:")
+                    {
+                        var prompt = isBooted ? "Router#\r\n" : "rommon 1 >\r\n";
+                        return new[] { $"Directory of bootflash:\r\n  1000 -rw- 700000000 c1100-universalk9.17.15.04c.SPA.bin\r\n{prompt}" };
+                    }
+                    if (cmd == "show privilege")
+                    {
+                        return new[] { "Current privilege level is 15\r\nRouter#\r\n" };
+                    }
+                    if (cmd == "show ip interface brief")
+                    {
+                        return new[] { "Interface                  IP-Address      OK? Method Status                Protocol\r\nGigabitEthernet0/1/0       unassigned      YES unset  up                    up      \r\nGigabitEthernet0/0/0       unassigned      YES unset  administratively down down    \r\nRouter#\r\n" };
+                    }
+                    if (cmd.Contains("=") && !cmd.StartsWith("ETHER_PORT", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return Array.Empty<string>();
+                    }
+                    if (string.IsNullOrWhiteSpace(cmd))
+                    {
+                        return isBooted ? new[] { "Router#\r\n" } : Array.Empty<string>();
+                    }
+
+                    return cmd switch
+                    {
+                        "set" => new[] { "PS1=rommon ! > \r\nETHER_PORT=0\r\nBOOT=c1100-universalk9.17.03.02.SPA.bin,1;\r\nrommon 1 >\r\n" },
+                        "ETHER_PORT=0" => new[] { "rommon 1 >\r\n" },
+                        "sync" => new[] { "rommon 1 >\r\n" },
+                        "confreg 0x2142" => new[] { "rommon 1 >\r\n" },
+                        "no" => new[] { "Router>\r\n" },
+                        "enable" => new[] { "Router#\r\n" },
+                        "terminal length 0" => new[] { "Router#\r\n" },
+                        "terminal width 512" => new[] { "Router#\r\n" },
+                        "write erase" => new[] { "[confirm]\r\n" },
+                        "" => new[] { isBooted ? "Router#\r\n" : "rommon 1 >\r\n" },
+                        "configure terminal" => new[] { "Router(config)#\r\n" },
+                        "no boot system" => new[] { "Router(config)#\r\n" },
+                        "boot system bootflash:c1100-universalk9.17.15.04c.SPA.bin" => new[] { "Router(config)#\r\n" },
+                        "config-register 0x2102" => new[] { "Router(config)#\r\n" },
+                        "no ip domain-lookup" => new[] { "Router(config)#\r\n" },
+                        "no ip domain lookup" => new[] { "Router(config)#\r\n" },
+                        "interface GigabitEthernet0/1/0" => new[] { "Router(config-if)#\r\n" },
+                        "no shutdown" => new[] { "Router(config-if)#\r\n" },
+                        "end" => new[] { "Router#\r\n" },
+                        "write memory" => new[] { "[OK]\r\nRouter#\r\n" },
+                        _ => new[] { isBooted ? "Router#\r\n" : "rommon 1 >\r\n" }
+                    };
+                },
+                initialOutput: "rommon 1 >\r\n",
+                rommonPrompt: "rommon 1 >\r\n");
+
+            var sessionOptions = new SessionOptions
+            {
+                PromptMatcher = RegexPromptMatcher.Universal(),
+                CommandTimeout = TimeSpan.FromSeconds(2),
+                ConnectTimeout = TimeSpan.FromSeconds(2)
+            };
+            await using var session = new DeviceSession(transport, sessionOptions);
+            await session.ConnectAsync();
+
+            var upgrader = new CiscoIOSUpgrader();
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            var success = await upgrader.UpgradeViaRommonTftpAsync(
+                session,
+                tempBin,
+                hostIpAddress: "200.250.163.42",
+                routerIpAddress: "200.250.163.41",
+                subnetMask: "255.255.255.248",
+                lanInterface: "GigabitEthernet0/1/0",
+                localAdapterName: "SimulatedAdapter",
+                requestOperatorAction: (_, _) => Task.CompletedTask,
+                cancellationToken: cts.Token);
+
+            Assert.True(success);
+            Assert.Contains("boot bootflash:c1100-universalk9.17.15.04c.SPA.bin", transport.Commands);
+            Assert.DoesNotContain("tftpdnld", transport.Commands);
+            Assert.Contains("config-register 0x2102", transport.Commands);
+            Assert.Contains("write memory", transport.Commands);
+        }
+        finally
+        {
+            if (File.Exists(tempBin)) File.Delete(tempBin);
+        }
     }
 }

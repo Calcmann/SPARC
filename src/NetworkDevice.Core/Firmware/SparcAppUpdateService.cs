@@ -34,6 +34,9 @@ public sealed class SparcPlatformRelease
 
     [JsonPropertyName("mandatory")]
     public bool Mandatory { get; set; }
+
+    [JsonIgnore]
+    public bool IsDowngrade { get; set; }
 }
 
 public sealed class SparcVersionManifest
@@ -85,7 +88,8 @@ public sealed class SparcAppUpdateService
     public async Task<(bool HasUpdate, SparcPlatformRelease? Release, string Message)> CheckForUpdateAsync(
         string currentVersion,
         string platform = "windows",
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool allowDowngrade = true)
     {
         try
         {
@@ -101,12 +105,28 @@ public sealed class SparcAppUpdateService
                 return (false, null, $"Nenhuma versão homologada registrada para {platform}.");
             }
 
-            if (IsNewerVersion(release.Version, currentVersion))
+            var cleanRemote = CleanVersionString(release.Version);
+            var cleanCurrent = CleanVersionString(currentVersion);
+
+            if (string.Equals(cleanRemote, cleanCurrent, StringComparison.OrdinalIgnoreCase))
             {
+                return (false, release, $"SPARC está atualizado na versão mais recente ({currentVersion}).");
+            }
+
+            var comp = CompareVersions(release.Version, currentVersion);
+            if (comp > 0)
+            {
+                release.IsDowngrade = false;
                 return (true, release, $"Nova versão {release.Version} disponível (versão atual: {currentVersion}).");
             }
 
-            return (false, release, $"SPARC está atualizado na versão mais recente ({currentVersion}).");
+            if (allowDowngrade && comp < 0)
+            {
+                release.IsDowngrade = true;
+                return (true, release, $"Restauração de versão {release.Version} disponível pelo repositório oficial (versão instalada: {currentVersion}).");
+            }
+
+            return (false, release, $"SPARC está na versão {currentVersion}.");
         }
         catch (Exception ex)
         {
@@ -164,37 +184,54 @@ public sealed class SparcAppUpdateService
     }
 
     /// <summary>
-    /// Compara se a versão remota é superior à versão local.
+    /// Compara numericamente duas versões (ex: "0.8.175" e "0.8.176").
+    /// Retorna > 0 se vA > vB, &lt; 0 se vA &lt; vB, e 0 se equivalentes.
+    /// </summary>
+    public static int CompareVersions(string vAStr, string vBStr)
+    {
+        if (string.IsNullOrWhiteSpace(vAStr) && string.IsNullOrWhiteSpace(vBStr)) return 0;
+        if (string.IsNullOrWhiteSpace(vAStr)) return -1;
+        if (string.IsNullOrWhiteSpace(vBStr)) return 1;
+
+        var cleanA = CleanVersionString(vAStr);
+        var cleanB = CleanVersionString(vBStr);
+
+        if (Version.TryParse(cleanA, out var vA) && Version.TryParse(cleanB, out var vB))
+        {
+            return vA.CompareTo(vB);
+        }
+
+        var partsA = cleanA.Split('.');
+        var partsB = cleanB.Split('.');
+        var maxLen = Math.Max(partsA.Length, partsB.Length);
+
+        for (int i = 0; i < maxLen; i++)
+        {
+            int pA = i < partsA.Length && int.TryParse(partsA[i], out var a) ? a : 0;
+            int pB = i < partsB.Length && int.TryParse(partsB[i], out var b) ? b : 0;
+            if (pA > pB) return 1;
+            if (pA < pB) return -1;
+        }
+
+        return 0;
+    }
+
+    /// <summary>
+    /// Compara se a versão remota é superior à versão local (Upgrade).
     /// Exemplo: "0.8.34" > "0.8.33" -> true.
     /// </summary>
     public static bool IsNewerVersion(string remoteVersionStr, string currentVersionStr)
     {
-        if (string.IsNullOrWhiteSpace(remoteVersionStr) || string.IsNullOrWhiteSpace(currentVersionStr))
-            return false;
+        return CompareVersions(remoteVersionStr, currentVersionStr) > 0;
+    }
 
-        // Limpa sufixos como "v", " Beta", "-mobile"
-        var cleanRemote = CleanVersionString(remoteVersionStr);
-        var cleanCurrent = CleanVersionString(currentVersionStr);
-
-        if (Version.TryParse(cleanRemote, out var vRemote) && Version.TryParse(cleanCurrent, out var vCurrent))
-        {
-            return vRemote > vCurrent;
-        }
-
-        // Fallback para divisão por pontos
-        var remoteParts = cleanRemote.Split('.');
-        var currentParts = cleanCurrent.Split('.');
-        var maxLen = Math.Max(remoteParts.Length, currentParts.Length);
-
-        for (int i = 0; i < maxLen; i++)
-        {
-            int rPart = i < remoteParts.Length && int.TryParse(remoteParts[i], out var rp) ? rp : 0;
-            int cPart = i < currentParts.Length && int.TryParse(currentParts[i], out var cp) ? cp : 0;
-            if (rPart > cPart) return true;
-            if (rPart < cPart) return false;
-        }
-
-        return false;
+    /// <summary>
+    /// Compara se a versão remota é anterior à versão local (Downgrade / Rollback de versão).
+    /// Exemplo: "0.8.33" < "0.8.34" -> true.
+    /// </summary>
+    public static bool IsOlderVersion(string remoteVersionStr, string currentVersionStr)
+    {
+        return CompareVersions(remoteVersionStr, currentVersionStr) < 0;
     }
 
     private static string CleanVersionString(string raw)

@@ -3,6 +3,7 @@
   <ItemGroup>
     <ProjectReference Include="..\NetworkDevice.Core\NetworkDevice.Core.csproj" />
     <ProjectReference Include="..\NetworkDevice.Protocols\NetworkDevice.Protocols.csproj" />
+    <InternalsVisibleTo Include="NetworkDevice.Tests" />
   </ItemGroup>
 
   <PropertyGroup>

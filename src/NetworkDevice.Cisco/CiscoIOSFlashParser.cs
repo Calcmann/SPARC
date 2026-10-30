@@ -120,6 +120,12 @@ public static class CiscoIOSFlashParser
     {
         if (string.IsNullOrWhiteSpace(output)) return "flash:";
 
+        if (output.Contains("bootflash:", StringComparison.OrdinalIgnoreCase) ||
+            output.Contains("bootflash", StringComparison.OrdinalIgnoreCase))
+        {
+            return "bootflash:";
+        }
+
         if (output.Contains("usbflash0:", StringComparison.OrdinalIgnoreCase) ||
             output.Contains("USB Flash usbflash0", StringComparison.OrdinalIgnoreCase))
         {

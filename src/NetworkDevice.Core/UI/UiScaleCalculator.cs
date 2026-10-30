@@ -38,15 +38,15 @@ public static class UiScaleCalculator
             return DefaultScale;
 
         // Telas compactas: 14" 1080p @ 150% (WorkArea ~1280x672) ou telas antigas 1366x768 com barra grande
-        if (workAreaHeight <= 710 || workAreaWidth <= 1200)
+        if (workAreaHeight <= 730 || workAreaWidth <= 1200)
         {
             return 0.82;
         }
 
         // Telas intermediárias: 14" 1080p @ 125% (WorkArea ~1536x816) ou 1366x768 standard
-        if (workAreaHeight <= 840)
+        if (workAreaHeight <= 860)
         {
-            return 0.90;
+            return 0.88;
         }
 
         // Telas convencionais (1080p @ 100% com altura útil ~1032, 1440p, 4K)
@@ -65,7 +65,7 @@ public static class UiScaleCalculator
     /// <summary>
     /// Calcula dimensões ideais de largura e altura da janela para caber com folga na área de trabalho.
     /// </summary>
-    public static (double Width, double Height) CalculateWindowBounds(double workAreaWidth, double workAreaHeight, double idealWidth = 1060, double idealHeight = 820)
+    public static (double Width, double Height) CalculateWindowBounds(double workAreaWidth, double workAreaHeight, double idealWidth = 1080, double idealHeight = 930)
     {
         if (workAreaWidth <= 0 || workAreaHeight <= 0)
             return (idealWidth, idealHeight);

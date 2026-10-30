@@ -63,6 +63,7 @@ public static class WanPortInspector
     {
         return series switch
         {
+            DeviceSeries.Isr1100 => ObterRoteadorPortasInfo("c1111"),
             DeviceSeries.Isr841 => ObterRoteadorPortasInfo("c841"),
             DeviceSeries.Isr921 => ObterRoteadorPortasInfo("921"),
             DeviceSeries.Series1900 => ObterRoteadorPortasInfo("1900"),
@@ -78,6 +79,15 @@ public static class WanPortInspector
     public static RoteadorPortasInfo? ObterRoteadorPortasInfo(string? tag)
     {
         var t = (tag ?? "").ToLowerInvariant();
+        if (t.Contains("c1111") || t.Contains("c1100") || t.Contains("1111") || t.Contains("1100"))
+            return new RoteadorPortasInfo(
+                "Cisco Série 1100 / C1111-4P",
+                "GE0/0/0 (Porta WAN)",
+                new[] { "gigabitethernet0/0/0", "gigabitethernet 0/0/0", "ge0/0/0" },
+                "GE0/1/0 (Porta LAN / VLAN 1)",
+                new[] { "gigabitethernet0/1/0", "gigabitethernet 0/1/0", "ge0/1/0", "vlan1", "gigabitethernet0/1/1", "gigabitethernet0/1/2", "gigabitethernet0/1/3" },
+                false);
+
         if (t.Contains("c841") || t.Contains("c800"))
             return new RoteadorPortasInfo(
                 "Cisco Série 800 / C841M",
@@ -114,7 +124,7 @@ public static class WanPortInspector
                 new[] { "gigabitethernet0/1", "gigabitethernet 0/1" },
                 false);
 
-        if (t.Contains("1002") || t.Contains("1003") || t.Contains("1000"))
+        if (t.Contains("1002") || t.Contains("1003") || t.Contains("1000") || t.Contains("100x"))
             return new RoteadorPortasInfo(
                 "HPE MSR 1002 / 1003",
                 "GE0/0",
@@ -158,6 +168,7 @@ public static class WanPortInspector
     {
         return ObterRoteadorPortasPorSerie(series)?.ToWanPortaInfo() ?? (series switch
         {
+            DeviceSeries.Isr1100 => PorTagModelo("c1111"),
             DeviceSeries.Isr841 => PorTagModelo("c841"),
             DeviceSeries.Isr921 => PorTagModelo("921"),
             DeviceSeries.Series1900 => PorTagModelo("1900"),

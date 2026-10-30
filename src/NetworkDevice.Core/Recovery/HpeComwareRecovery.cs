@@ -100,7 +100,8 @@ public sealed class HpeComwareRecovery
         BootWareTftpDownloader? tftpDownloader = null,
         Func<CancellationToken, Task<string?>>? requestFirmwareFile = null,
         bool forceFirmwareRecovery = false,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool forceReload = false)
     {
         ProgressUpdated?.Invoke(6, "1/6 Zerar Configuração...", "Verificando se o equipamento já está acessível ou interceptando BootWare (Ctrl+B)...");
         await ProgressAsync("[*] Abrindo sessão serial e verificando estado atual do equipamento HPE...");
@@ -139,7 +140,7 @@ public sealed class HpeComwareRecovery
                 if (preMatch.Name == "prompt")
                 {
                     await ProgressAsync("[OK] Equipamento HPE acessível sem senha (prompt aberto). Executando reset direto via CLI...");
-                    await ExecuteDirectHpeCliResetAsync(session, ct);
+                    await ExecuteDirectHpeCliResetAsync(session, ct, forceReload);
                     ProgressUpdated?.Invoke(100, "1/6 Zerar Configuração Concluído", "HPE zerado diretamente via CLI com sucesso.");
                     return true;
                 }
@@ -153,7 +154,7 @@ public sealed class HpeComwareRecovery
             else if (ComwarePrompt.IsMatch(outStr) || outStr.Contains("<HPE", StringComparison.OrdinalIgnoreCase) || outStr.Contains("[HPE", StringComparison.OrdinalIgnoreCase))
             {
                 await ProgressAsync("[OK] Equipamento HPE acessível sem senha (prompt aberto). Executando reset direto via CLI...");
-                await ExecuteDirectHpeCliResetAsync(session, ct);
+                await ExecuteDirectHpeCliResetAsync(session, ct, forceReload);
                 ProgressUpdated?.Invoke(100, "1/6 Zerar Configuração Concluído", "HPE zerado diretamente via CLI com sucesso.");
                 return true;
             }
@@ -879,7 +880,7 @@ public sealed class HpeComwareRecovery
         return false;
     }
 
-    private async Task ExecuteDirectHpeCliResetAsync(DeviceSession session, CancellationToken ct)
+    private async Task ExecuteDirectHpeCliResetAsync(DeviceSession session, CancellationToken ct, bool forceReload = false)
     {
         // Garante que o equipamento saiu de qualquer sub-menu/system-view e está na User View (<HPE>)
         await EnsureHpeUserViewAsync(session, _progress, ct);
@@ -928,6 +929,38 @@ public sealed class HpeComwareRecovery
         }
 
         await session.WriteLineAsync(string.Empty, ct);
+
+        if (forceReload)
+        {
+            await ProgressAsync("[*] Reiniciando HPE para aplicar o padrão de fábrica limpo (reboot)...");
+            session.ResetPrompt();
+            var rebootConditions = new StopCondition[]
+            {
+                new StopCondition.Contains("saveCurrent", "save current configuration?"),
+                new StopCondition.Contains("rebootConfirm", "This command will reboot the device"),
+                new StopCondition.Contains("[Y/N]", "[Y/N]"),
+                new StopCondition.LineRegex("prompt", ComwarePrompt)
+            };
+            var rbtRes = await session.SendExpectAsync("reboot", rebootConditions, TimeSpan.FromSeconds(10), ct);
+            if (rbtRes.Output.Contains("save current", StringComparison.OrdinalIgnoreCase) || rbtRes.Output.Contains("configuration will be lost", StringComparison.OrdinalIgnoreCase))
+            {
+                await session.WriteLineAsync("N", ct);
+                await Task.Delay(600, ct);
+            }
+            await session.WriteLineAsync("Y", ct);
+
+            await ProgressAsync("[*] Aguardando reinicialização do HPE Comware...");
+            session.ResetPrompt();
+            try
+            {
+                await session.WaitForAsync(
+                    new StopCondition[] { new StopCondition.LineRegex("prompt", ComwarePrompt) },
+                    TimeSpan.FromSeconds(120),
+                    ct);
+            }
+            catch { }
+        }
+
         await ProgressAsync("[OK] Configurações apagadas do HPE via CLI com sucesso.");
     }
 

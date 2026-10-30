@@ -76,6 +76,24 @@ public static class BootInterruptProfiles
         OsBootPolicy = OsBootPolicy.TerminalFail
     };
 
+    public static readonly BootInterruptProfile Cisco1100 = new()
+    {
+        Id = "cisco.c1111.break",
+        Name = "Cisco Série 1100 / C1111-4P (Break @ 9600)",
+        Manufacturer = "Cisco",
+        Family = "ISR 1100 / C1111",
+        ModelPatterns = new[] { "1100", "1111", "C1100", "C1111", "C1111-4P", "C1111-8P", "1100 Series", "cisco.c1111.break", "cisco.c1100" },
+        Method = BootInterruptMethod.Break,
+        RequiresManualIntervention = false,
+        InitialDelay = TimeSpan.FromMilliseconds(200),
+        BurstCount = 1,
+        BurstInterval = TimeSpan.Zero,
+        RetryInterval = TimeSpan.FromMilliseconds(1200),
+        MaxWindow = TimeSpan.FromMinutes(2.5),
+        MaxTotalTransmissions = 150,
+        OsBootPolicy = OsBootPolicy.TerminalFail
+    };
+
     public static readonly BootInterruptProfile CiscoStandardBreak = new()
     {
         Id = "cisco.standard.break",
@@ -259,6 +277,7 @@ public static class BootInterruptProfiles
         HpeMsrGeneric,
         Cisco1900,
         Cisco2900,
+        Cisco1100,
         Cisco900,
         Cisco841,
         CiscoStandardBreak,
@@ -316,6 +335,14 @@ public static class BootInterruptProfiles
             trimmed.Contains("comware", StringComparison.OrdinalIgnoreCase))
         {
             return HpeMsrGeneric;
+        }
+
+        if (trimmed.Contains("1111", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("1100", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("c1111", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("c1100", StringComparison.OrdinalIgnoreCase))
+        {
+            return Cisco1100;
         }
 
         if (trimmed.Contains("841", StringComparison.OrdinalIgnoreCase) ||

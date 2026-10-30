@@ -243,4 +243,98 @@ public class DeviceSessionTests
         Assert.True(session.IsConnected);
         Assert.Equal("FortiGate-40F #", session.CurrentPrompt);
     }
+
+    [Fact]
+    public async Task ConnectAsync_WithFortiGateDisclaimerAccept_SendsRawAAndOpensPrompt()
+    {
+        var transport = new ScriptedTransport(
+            cmd =>
+            {
+                if (cmd == "a") return "FortiGate-40F #\r\n";
+                return "";
+            },
+            initialOutput: "PRE WARNING:\r\nThis is a private computer system...\r\n(Press 'a' to accept): ");
+
+        var options = new SessionOptions
+        {
+            PromptMatcher = RegexPromptMatcher.Universal()
+        };
+        await using var session = new DeviceSession(transport, options);
+
+        await session.ConnectAsync();
+
+        Assert.True(session.IsConnected);
+        Assert.Equal("FortiGate-40F #", session.CurrentPrompt);
+        Assert.Contains("a", transport.Commands);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_WithFallbackFromEbtToAdminBlankPassword_ConnectsSuccessfully()
+    {
+        var sawAdmin = false;
+        var transport = new ScriptedTransport(
+            cmd =>
+            {
+                if (cmd == "EBT") return "Password: ";
+                if (cmd == "CQMR") return "Login incorrect\r\n\r\nFortiGate-40F login: ";
+                if (cmd == "PRO1AN") return "Login incorrect\r\n\r\nFortiGate-40F login: ";
+                if (cmd == "admin")
+                {
+                    sawAdmin = true;
+                    return "Password: ";
+                }
+                if (cmd == "" && sawAdmin) return "FortiGate-40F #\r\n";
+                return "";
+            },
+            initialOutput: "FortiGate-40F login: ");
+
+        var options = new SessionOptions
+        {
+            PromptMatcher = RegexPromptMatcher.Universal(),
+            Username = "EBT",
+            Password = "CQMR"
+        };
+        await using var session = new DeviceSession(transport, options);
+
+        await session.ConnectAsync();
+
+        Assert.True(session.IsConnected);
+        Assert.Equal("FortiGate-40F #", session.CurrentPrompt);
+        Assert.Equal("admin", session.AuthenticatedUser);
+        Assert.Equal("", session.AuthenticatedPassword);
+    }
+
+    [Fact]
+    public async Task ConnectAsync_WithAdminUserAndBlankPassword_ConnectsOnFirstAttempt()
+    {
+        var sawAdmin = false;
+        var transport = new ScriptedTransport(
+            cmd =>
+            {
+                if (cmd == "admin")
+                {
+                    sawAdmin = true;
+                    return "Password: ";
+                }
+                if (cmd == "" && sawAdmin) return "FortiGate-40F #\r\n";
+                return "";
+            },
+            initialOutput: "FortiGate-40F login: ");
+
+        var options = new SessionOptions
+        {
+            PromptMatcher = RegexPromptMatcher.Universal(),
+            Username = "admin",
+            Password = ""
+        };
+        await using var session = new DeviceSession(transport, options);
+
+        await session.ConnectAsync();
+
+        Assert.True(session.IsConnected);
+        Assert.Equal("FortiGate-40F #", session.CurrentPrompt);
+        Assert.Equal("admin", session.AuthenticatedUser);
+        Assert.Equal("", session.AuthenticatedPassword);
+        Assert.Equal(new[] { "", "admin", "" }, transport.Commands);
+    }
 }

@@ -132,6 +132,41 @@ public class MatrixWorkflowTests
         Assert.Equal(AccessState.RommonOrBootware, result.AccessState);
     }
 
+    [Theory]
+    [InlineData(DeviceSeries.Msr1002)]
+    [InlineData(DeviceSeries.Msr954)]
+    [InlineData(DeviceSeries.Msr930)]
+    [InlineData(DeviceSeries.Unknown)]
+    public void DeviceDetector_HpeBootWareWithoutModelToken_PreservesUserSelectedSeries(DeviceSeries userSelected)
+    {
+        var detector = new DeviceDetector();
+        var prompt = "==========================<EXTENDED-BOOTWARE MENU>==========================\n|<1> Boot System\nchoice(0-9):";
+        var result = detector.ClassifyPrompt(prompt, userSelectedSeries: userSelected);
+
+        Assert.Equal(DeviceManufacturer.Hpe, result.Manufacturer);
+        Assert.Equal(userSelected, result.Series);
+        Assert.Equal(DeviceOperatingState.BootFailure, result.OperatingState);
+        Assert.Equal(WorkflowType.FirmwareRecovery, result.RecommendedWorkflow);
+    }
+
+    [Theory]
+    [InlineData("HP MSR1002-4 Router BootWare\nchoice(0-9):", DeviceSeries.Msr1002)]
+    [InlineData("MSR-1002 BootWare Version 2.01\nchoice(0-9):", DeviceSeries.Msr1002)]
+    [InlineData("MSR100X-CMW710-R6749P43\nchoice(0-9):", DeviceSeries.Msr1002)]
+    [InlineData("1002-4 Router BootWare\nchoice(0-9):", DeviceSeries.Msr1002)]
+    [InlineData("HPE MSR954-4 BootWare\nchoice(0-9):", DeviceSeries.Msr954)]
+    [InlineData("MSR-954 BootWare\nchoice(0-9):", DeviceSeries.Msr954)]
+    [InlineData("HPE MSR930 BootWare\nchoice(0-9):", DeviceSeries.Msr930)]
+    public void DeviceDetector_HpeBootWareVariants_ClassifiesCorrectSeries(string prompt, DeviceSeries expectedSeries)
+    {
+        var detector = new DeviceDetector();
+        var result = detector.ClassifyPrompt(prompt);
+
+        Assert.Equal(DeviceManufacturer.Hpe, result.Manufacturer);
+        Assert.Equal(expectedSeries, result.Series);
+        Assert.Equal(DeviceOperatingState.BootFailure, result.OperatingState);
+    }
+
     [Fact]
     public void DeviceDetector_ClassifiesCisco1900ReadyState()
     {

@@ -454,9 +454,8 @@ public partial class FortiGateAutoRecoveryWindow : Window
                         AppendLog("\n[>] Termo de aviso prévio / PRE WARNING detectado. Aceitando com 'a' e continuando CLI...");
                         accumulator.Clear();
                         await Task.Delay(150, ct);
-                        await SendSerialAsync("a\r");
-                        await Task.Delay(350, ct);
-                        await SendSerialAsync("\r");
+                        await SendSerialAsync("a");
+                        await Task.Delay(400, ct);
                         continue;
                     }
 
